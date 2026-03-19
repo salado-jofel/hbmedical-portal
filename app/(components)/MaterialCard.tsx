@@ -71,7 +71,7 @@ export function MaterialCard({
 
   return (
     <div className="group bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300 flex flex-col w-full">
-      <div className="bg-linear-to-br from-[#2db0b0] to-[#1a8f8f] p-5 relative overflow-hidden">
+      <div className="bg-linear-to-br from-[#15689E] to-[#0f4f7a] p-5 relative overflow-hidden">
         <div className="absolute -top-4 -right-4 w-24 h-24 rounded-full bg-white/10" />
         <div className="absolute -bottom-6 -left-4 w-20 h-20 rounded-full bg-white/10" />
 
@@ -104,7 +104,7 @@ export function MaterialCard({
           type="button"
           onClick={handleDownload}
           disabled={isDownloading}
-          className="w-full bg-[#2db0b0] hover:bg-[#249191] text-white text-sm font-medium cursor-pointer shadow-sm transition-all duration-200 disabled:opacity-70"
+          className="w-full bg-[#15689E] hover:bg-[#0f4f7a] text-white text-sm font-medium cursor-pointer shadow-sm transition-all duration-200 disabled:opacity-70"
         >
           {isDownloading ? (
             <>

@@ -4,11 +4,15 @@ import { getAllOrders } from "./orders/(services)/actions";
 import { getFacilities } from "./facilities/(services)/actions";
 import Providers from "./(sections)/Providers";
 import RecentOrdersTable from "./(sections)/RecentOrdersTable";
-import { createClient } from "@/utils/supabase/server";
 import StatsCards from "./(sections)/StatsCard";
-
 import { getUserData } from "./(services)/actions";
 import { DashboardHeader } from "../(components)/DashboardHeader";
+import { Metadata } from "next";
+
+
+export const metadata: Metadata = {
+  title: "Dashboard",
+};
 
 export default async function DashboardPage() {
   const [facilities, orders, userData] = await Promise.all([

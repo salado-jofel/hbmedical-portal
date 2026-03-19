@@ -3,58 +3,50 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { fadeDown } from "@/components/ui/animations";
+import { HBLogo } from "../(components)/HBLogo";
 
 export function Navbar() {
   return (
     <motion.nav
-      className="fixed top-0 left-0 right-0 z-50 bg-[#0a2a35]/90 backdrop-blur-sm border-b border-white/10"
+      className="fixed top-0 left-0 right-0 z-50 bg-white border-b border-gray-200 shadow-sm"
       initial="hidden"
       animate="visible"
       variants={fadeDown}
     >
-      <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-full border-2 border-teal-400 flex items-center justify-center">
-            <span className="text-teal-400 text-xs font-bold">S</span>
-          </div>
-          <div>
-            <p className="text-white font-bold text-sm tracking-widest leading-none">
-              HB
-            </p>
-            <p className="text-white/50 text-[9px] tracking-[0.3em] leading-none mt-0.5">
-              MEDICAL
-            </p>
-          </div>
-        </div>
+      <div className="max-w-7xl mx-auto px-6 py-2.5 flex items-center justify-between">
+        {/* ── Logo ── */}
+        <HBLogo variant="light" size="md" />
 
-        <div className="hidden md:flex items-center gap-8 text-sm text-white/70">
+        {/* ── Nav Links ── */}
+        <div className="hidden md:flex items-center gap-8 text-sm text-gray-500">
           <Link
             href="#product"
-            className="hover:text-teal-400 transition-colors"
+            className="hover:text-[#15689E] transition-colors"
           >
             Product
           </Link>
           <Link
             href="#why-us"
-            className="hover:text-teal-400 transition-colors"
+            className="hover:text-[#15689E] transition-colors"
           >
             Why Us
           </Link>
-          <Link href="#demo" className="hover:text-teal-400 transition-colors">
+          <Link href="#demo" className="hover:text-[#15689E] transition-colors">
             Demo
           </Link>
           <Link
             href="#sp-contact"
-            className="hover:text-teal-400 transition-colors"
+            className="hover:text-[#15689E] transition-colors"
           >
-            Contact Scottie
+            Contact Us
           </Link>
         </div>
 
-        <div className="flex items-center gap-3">
+        {/* ── CTA Buttons ── */}
+        <div className="flex items-center gap-3 shrink-0">
           <Link
             href="#sp-contact"
-            className="bg-teal-500 hover:bg-teal-400 text-white text-sm font-semibold px-4 py-2 rounded-full flex items-center gap-2 transition-colors"
+            className="bg-[#15689E] hover:bg-[#126091] text-white text-sm font-semibold px-4 py-1.5 rounded-full flex items-center gap-2 transition-colors"
           >
             <svg
               className="w-3.5 h-3.5"
@@ -73,7 +65,7 @@ export function Navbar() {
           </Link>
           <Link
             href="/sign-in"
-            className="border border-white/30 hover:border-white/60 text-white/80 hover:text-white text-sm font-semibold px-4 py-2 rounded-full flex items-center gap-2 transition-colors"
+            className="border border-[#15689E]/40 hover:border-[#15689E] text-[#15689E]/70 hover:text-[#15689E] text-sm font-semibold px-4 py-1.5 rounded-full flex items-center gap-2 transition-colors"
           >
             <svg
               className="w-3.5 h-3.5"

@@ -24,13 +24,13 @@ export function TableCard({
         <div>
           <p className="text-sm font-semibold text-slate-700">{title}</p>
           {countLabel && (
-            <p className="text-xs text-[#2db0b0] mt-0.5">{countLabel}</p>
+            <p className="text-xs text-[#15689E] mt-0.5">{countLabel}</p>
           )}
         </div>
         {onAdd && addLabel && (
           <button
             onClick={onAdd}
-            className="flex items-center gap-1.5 bg-[#2db0b0] hover:bg-[#259999] text-white text-xs font-semibold px-3.5 py-2 rounded-lg transition-colors"
+            className="flex items-center gap-1.5 bg-[#15689E] hover:bg-[#0d4a72] text-white text-xs font-semibold px-3.5 py-2 rounded-lg transition-colors"
           >
             <Plus className="w-3.5 h-3.5" />
             {addLabel}
@@ -41,7 +41,7 @@ export function TableCard({
       {children}
 
       {footer && (
-        <div className="px-5 py-3 border-t border-slate-100 text-xs text-[#2db0b0]">
+        <div className="px-5 py-3 border-t border-slate-100 text-xs text-[#15689E]">
           {footer}
         </div>
       )}

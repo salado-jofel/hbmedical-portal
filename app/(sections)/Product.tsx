@@ -96,6 +96,7 @@ export function Product() {
   return (
     <section id="product" className="py-24 bg-white overflow-hidden">
       <div className="max-w-7xl mx-auto px-6">
+        {/* ── Badge ── */}
         <motion.div
           className="flex justify-center mb-6"
           initial="hidden"
@@ -103,11 +104,12 @@ export function Product() {
           viewport={VIEWPORT}
           variants={badgePop}
         >
-          <span className="bg-teal-50 text-teal-600 text-xs font-semibold tracking-widest uppercase px-4 py-1.5 rounded-full border border-teal-200">
+          <span className="bg-[#15689E]/10 text-[#15689E] text-xs font-semibold tracking-widest uppercase px-4 py-1.5 rounded-full border border-[#15689E]/20">
             The Product
           </span>
         </motion.div>
 
+        {/* ── Heading ── */}
         <motion.div
           className="text-center mb-16"
           initial="hidden"
@@ -117,7 +119,7 @@ export function Product() {
         >
           <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
             Non-Hydrolyzed Collagen —{" "}
-            <span className="text-teal-500">Redefining Regeneration</span>
+            <span className="text-[#e8821a]">Redefining Regeneration</span>
           </h2>
           <p className="text-gray-500 max-w-xl mx-auto text-lg leading-relaxed">
             Unlike traditional hydrolyzed collagen, our Non-Hydrolyzed Collagen
@@ -128,6 +130,7 @@ export function Product() {
         </motion.div>
 
         <div className="grid lg:grid-cols-2 gap-12 items-center">
+          {/* ── Molecule visual ── */}
           <motion.div
             className="flex flex-col items-center justify-center"
             initial="hidden"
@@ -136,12 +139,12 @@ export function Product() {
             variants={fadeLeft}
           >
             <motion.div
-              className="relative w-56 h-56 rounded-full border-2 border-teal-400/40 flex items-center justify-center bg-teal-50 shadow-xl shadow-teal-100"
+              className="relative w-56 h-56 rounded-full border-2 border-[#15689E]/30 flex items-center justify-center bg-[#15689E]/5 shadow-xl shadow-[#15689E]/10"
               whileHover={{ scale: 1.04, rotate: 2 }}
               transition={{ type: "spring", stiffness: 200, damping: 15 }}
             >
-              <div className="w-44 h-44 rounded-full border border-teal-300/60 flex items-center justify-center bg-white">
-                <div className="w-32 h-32 rounded-full bg-linear-to-br from-teal-400 to-teal-600 flex items-center justify-center shadow-lg">
+              <div className="w-44 h-44 rounded-full border border-[#15689E]/20 flex items-center justify-center bg-white">
+                <div className="w-32 h-32 rounded-full bg-gradient-to-br from-[#15689E] to-[#0d4a72] flex items-center justify-center shadow-lg">
                   <svg
                     className="w-14 h-14 text-white"
                     fill="none"
@@ -158,16 +161,18 @@ export function Product() {
                 </div>
               </div>
             </motion.div>
+
             <motion.div className="mt-6 text-center" variants={fadeUp}>
               <p className="font-bold text-gray-800 text-lg">
                 Non-Hydrolyzed Collagen™
               </p>
-              <p className="text-teal-500 text-sm font-medium mt-1">
+              <p className="text-[#e8821a] text-sm font-medium mt-1">
                 Native Molecular Structure Preserved
               </p>
             </motion.div>
           </motion.div>
 
+          {/* ── Feature cards ── */}
           <motion.div
             className="flex flex-col gap-4"
             initial="hidden"

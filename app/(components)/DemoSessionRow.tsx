@@ -22,11 +22,11 @@ export function DemoSessionRow({ day, time, status }: DemoSessionRowProps) {
       </div>
 
       {status === "open" ? (
-        <span className="bg-teal-500 text-white text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full">
+        <span className="bg-[#15689E] text-white text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full">
           Spots Open
         </span>
       ) : (
-        <span className="bg-orange-500 text-white text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full">
+        <span className="bg-[#f5a255] text-white text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full">
           2 Spots Left
         </span>
       )}

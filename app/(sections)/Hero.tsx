@@ -27,20 +27,31 @@ export function Hero() {
       className="relative min-h-screen flex flex-col items-center justify-center text-center px-6 pt-20"
       style={{
         background:
-          "radial-gradient(ellipse at top, #0d5a6a 0%, #0a3040 40%, #061d28 100%)",
+          "radial-gradient(ellipse at top, #1a7ab8 0%, #15689E 35%, #0d4a72 70%, #082d47 100%)",
       }}
     >
+      {/* Subtle dot field */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         {DOTS.map((pos, i) => (
           <div
             key={i}
-            className="absolute w-1 h-1 rounded-full bg-white/20"
+            className="absolute w-1 h-1 rounded-full bg-white/15"
             style={{ top: pos.top, left: pos.left }}
           />
         ))}
       </div>
 
+      {/* Subtle radial glow behind heading */}
+      <div
+        className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] rounded-full pointer-events-none"
+        style={{
+          background:
+            "radial-gradient(ellipse, rgba(232,130,26,0.08) 0%, transparent 70%)",
+        }}
+      />
+
       <div className="relative z-10 max-w-3xl mx-auto">
+        {/* Heading */}
         <motion.h1
           className="text-5xl md:text-6xl lg:text-7xl font-bold text-white leading-tight mb-6"
           initial="hidden"
@@ -49,9 +60,10 @@ export function Hero() {
           transition={{ delay: 0.2 }}
         >
           The Next Big Thing in{" "}
-          <span className="text-teal-400">Medical Sales</span> Is Here.
+          <span className="text-[#f5a255]">Medical Sales</span> Is Here.
         </motion.h1>
 
+        {/* Subheading */}
         <motion.p
           className="text-white/70 text-lg max-w-xl mx-auto mb-10 leading-relaxed"
           initial="hidden"
@@ -59,14 +71,15 @@ export function Hero() {
           variants={fadeUp}
           transition={{ delay: 0.35 }}
         >
-          HB Medical is seeking elite independent reps to own exclusive
-          markets with our breakthrough{" "}
-          <span className="text-teal-400 font-semibold">
+          HB Medical is seeking elite independent reps to own exclusive markets
+          with our breakthrough{" "}
+          <span className="text-[#f5a255] font-semibold">
             Non-Hydrolyzed Collagen
           </span>{" "}
           product — a clinically differentiated solution that sells itself.
         </motion.p>
 
+        {/* CTA Buttons */}
         <motion.div
           className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16"
           initial="hidden"
@@ -74,9 +87,10 @@ export function Hero() {
           variants={fadeUp}
           transition={{ delay: 0.5 }}
         >
+          {/* Primary — orange (matches logo arc) */}
           <Link
             href="tel:4042132994"
-            className="bg-teal-500 hover:bg-teal-400 text-white font-semibold px-7 py-3.5 rounded-full flex items-center gap-2 transition-colors text-sm shadow-lg shadow-teal-900/40"
+            className="bg-[#e8821a] hover:bg-[#d4741a] text-white font-semibold px-7 py-3.5 rounded-full flex items-center gap-2 transition-colors text-sm shadow-lg shadow-orange-900/30"
           >
             <svg
               className="w-4 h-4"
@@ -91,11 +105,13 @@ export function Hero() {
                 d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
               />
             </svg>
-            Talk to Scottie Today
+            Talk to Us Today
           </Link>
+
+          {/* Secondary — outlined white */}
           <Link
             href="#product"
-            className="border border-white/30 hover:border-teal-400/60 text-white hover:text-teal-400 font-semibold px-7 py-3.5 rounded-full flex items-center gap-2 transition-colors text-sm"
+            className="border border-white/30 hover:border-[#f5a255]/70 text-white hover:text-[#f5a255] font-semibold px-7 py-3.5 rounded-full flex items-center gap-2 transition-colors text-sm"
           >
             <svg
               className="w-4 h-4"
@@ -120,8 +136,9 @@ export function Hero() {
           </Link>
         </motion.div>
 
+        {/* Stats */}
         <motion.div
-          className="bg-white/10 backdrop-blur-sm border border-white/15 rounded-2xl divide-x divide-white/15 flex flex-col sm:flex-row overflow-hidden"
+          className="bg-white/8 backdrop-blur-sm border border-white/10 rounded-2xl divide-x divide-white/10 flex flex-col sm:flex-row overflow-hidden"
           initial="hidden"
           animate="visible"
           variants={staggerContainer}

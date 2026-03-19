@@ -3,7 +3,6 @@
 import { VIEWPORT, badgePop, fadeUp, scaleIn, staggerContainer } from "@/components/ui/animations";
 import { motion } from "framer-motion";
 
-
 export function Contact() {
   return (
     <section id="sp-contact" className="py-24 bg-gray-50 overflow-hidden">
@@ -16,7 +15,7 @@ export function Contact() {
           viewport={VIEWPORT}
           variants={badgePop}
         >
-          <span className="bg-teal-50 text-teal-600 text-xs font-semibold tracking-widest uppercase px-4 py-1.5 rounded-full border border-teal-200">
+          <span className="bg-[#15689E]/10 text-[#15689E] text-xs font-semibold tracking-widest uppercase px-4 py-1.5 rounded-full border border-[#15689E]/20">
             Ready to Get Started?
           </span>
         </motion.div>
@@ -30,7 +29,7 @@ export function Contact() {
         >
           <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
             Talk Directly to{" "}
-            <span className="text-teal-500">Scottie Jennings</span>
+            <span className="text-[#f5a255]">Scottie Jennings</span>
           </h2>
           <p className="text-gray-500 mb-12 text-lg leading-relaxed">
             No forms. No gatekeepers. Call or text Scottie directly — he&apos;ll
@@ -50,7 +49,7 @@ export function Contact() {
             <h3 className="text-2xl font-bold text-gray-900">
               Scottie Jennings
             </h3>
-            <span className="text-teal-600 text-xs font-bold tracking-widest uppercase">
+            <span className="text-[#15689E] text-xs font-bold tracking-widest uppercase">
               HB Medical — Rep Partnerships
             </span>
           </div>
@@ -64,7 +63,7 @@ export function Contact() {
           <div className="grid sm:grid-cols-2 gap-3 mb-6">
             <motion.a
               href="tel:4042132994"
-              className="flex items-center justify-center gap-2 bg-teal-500 hover:bg-teal-400 text-white font-semibold py-3.5 px-5 rounded-xl transition-colors"
+              className="flex items-center justify-center gap-2 bg-[#15689E] hover:bg-[#0f4f7a] text-white font-semibold py-3.5 px-5 rounded-xl transition-colors"
               whileHover={{ scale: 1.03 }}
               whileTap={{ scale: 0.97 }}
             >
@@ -91,7 +90,7 @@ export function Contact() {
 
             <motion.a
               href="sms:4042132994"
-              className="flex items-center justify-center gap-2 border border-gray-200 hover:border-teal-300 text-gray-700 hover:text-teal-600 font-semibold py-3.5 px-5 rounded-xl transition-colors bg-white"
+              className="flex items-center justify-center gap-2 border border-gray-200 hover:border-[#15689E]/40 text-gray-700 hover:text-[#15689E] font-semibold py-3.5 px-5 rounded-xl transition-colors bg-white"
               whileHover={{ scale: 1.03 }}
               whileTap={{ scale: 0.97 }}
             >
@@ -137,7 +136,7 @@ export function Contact() {
                 className="flex items-center gap-2 text-gray-600 text-sm"
               >
                 <svg
-                  className="w-4 h-4 text-teal-500 flex-shrink-0"
+                  className="w-4 h-4 text-[#f5a255] flex-shrink-0"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 56 56">
+  <!-- Blue background -->
+  <rect width="56" height="56" rx="10" fill="#15689E"/>
+
+  <!-- Orange full ring -->
+  <circle cx="28" cy="28" r="23" fill="none" stroke="#e8821a" stroke-width="3"/>
+
+  <!-- Mountain range silhouette — FILLED, not stroked -->
+  <!-- Single compound path: left tall peak + valley + right shorter peak -->
+  <path
+    d="M 6 44 L 21 10 L 30 26 L 37 15 L 50 44 Z"
+    fill="white"
+  />
+</svg>

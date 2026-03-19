@@ -36,13 +36,12 @@ export function AddProductModal() {
         if (!isSubmitting) setOpen(val);
       }}
     >
-      {/* ✅ Trigger Button → SubmitButton */}
       <DialogTrigger asChild>
         <SubmitButton
           type="button"
           variant="default"
           size="default"
-          classname="bg-[#2db0b0] hover:bg-[#249191] text-white cursor-pointer"
+          classname="bg-[#15689E] hover:bg-[#0f4f7a] text-white cursor-pointer"
           cta={
             <>
               <Plus className="w-4 h-4 mr-2" />
@@ -62,7 +61,7 @@ export function AddProductModal() {
         <form onSubmit={handleSubmit} className="space-y-4 pt-2">
           <div className="space-y-1.5">
             <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-              <Package className="w-4 h-4 text-[#2db0b0]" />
+              <Package className="w-4 h-4 text-[#15689E]" />
               Product Name
             </label>
             <Input
@@ -75,7 +74,7 @@ export function AddProductModal() {
 
           <div className="space-y-1.5">
             <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-              <DollarSign className="w-4 h-4 text-[#2db0b0]" />
+              <DollarSign className="w-4 h-4 text-[#15689E]" />
               Price
             </label>
             <Input
@@ -90,7 +89,6 @@ export function AddProductModal() {
           </div>
 
           <div className="flex flex-col-reverse sm:flex-row items-center justify-end gap-2 pt-2">
-            {/* ✅ Cancel Button → SubmitButton */}
             <SubmitButton
               type="button"
               variant="outline"
@@ -112,7 +110,7 @@ export function AddProductModal() {
               isPendingMesssage="Saving..."
               variant="default"
               size="default"
-              classname="w-full sm:w-auto bg-[#2db0b0] hover:bg-[#249191] text-white cursor-pointer"
+              classname="w-full sm:w-auto bg-[#15689E] hover:bg-[#0f4f7a] text-white cursor-pointer"
             />
           </div>
         </form>

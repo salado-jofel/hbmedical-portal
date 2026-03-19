@@ -7,21 +7,21 @@ export const STATUS_CONFIG: Record<
   { badge: string; dot: string; tab: string; next?: BoardStatus }
 > = {
   Processing: {
-    badge: "bg-yellow-50 text-yellow-600",
-    dot: "bg-yellow-400",
-    tab: "text-yellow-600",
+    badge: "bg-[#f5a255]/15 text-[#f5a255]",
+    dot: "bg-[#f5a255]",
+    tab: "text-[#f5a255]",
     next: "Shipped",
   },
   Shipped: {
-    badge: "bg-purple-50 text-purple-600",
-    dot: "bg-purple-400",
-    tab: "text-purple-600",
+    badge: "bg-[#15689E]/10 text-[#15689E]",
+    dot: "bg-[#15689E]",
+    tab: "text-[#15689E]",
     next: "Delivered",
   },
   Delivered: {
-    badge: "bg-emerald-50 text-emerald-600",
-    dot: "bg-emerald-400",
-    tab: "text-emerald-600",
+    badge: "bg-slate-100 text-slate-500",
+    dot: "bg-slate-400",
+    tab: "text-slate-500",
     next: undefined,
   },
 };
