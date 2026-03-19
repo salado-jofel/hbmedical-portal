@@ -51,8 +51,6 @@ export async function signIn(
   }
 
   // ── Step 4: Check if facility needs QB sync ───────────────────────────────
-  // ✅ removed phone — facilities table doesn't have that column
-  // ✅ destructure error so we can catch silent failures
   const { data: facility, error: facilityError } = await supabaseAdmin
     .from("facilities")
     .select("id, name, qb_customer_id")
@@ -67,7 +65,6 @@ export async function signIn(
 
   if (!facility) {
     console.warn("[signin] No facility found for user:", user.id);
-    // No facility — let them in, nothing to sync
     redirect("/dashboard");
   }
 
@@ -84,7 +81,7 @@ export async function signIn(
     redirect("/dashboard");
   }
 
-  // ── Step 5: Not synced → POST to QB customers ─────────────────────────────
+  // ── Step 5: Check if customer already exists in QB by name ────────────────
   const token = qbClient.getToken();
 
   const baseUrl =
@@ -92,49 +89,101 @@ export async function signIn(
       ? "https://quickbooks.api.intuit.com"
       : "https://sandbox-quickbooks.api.intuit.com";
 
-  let response: Response;
+  // Escape single quotes in the name to prevent QB query injection
+  const safeName = facility.name.replace(/'/g, "\\'");
+  const queryUrl = `${baseUrl}/v3/company/${token.realmId}/query?query=${encodeURIComponent(
+    `SELECT * FROM Customer WHERE DisplayName = '${safeName}'`,
+  )}&minorversion=65`;
+
+  let existingCustomer: { Id: string; SyncToken: string } | null = null;
 
   try {
-    response = await fetch(`${baseUrl}/v3/company/${token.realmId}/customer`, {
-      method: "POST",
+    const queryResponse = await fetch(queryUrl, {
+      method: "GET",
       headers: {
         Authorization: `Bearer ${token.access_token}`,
-        "Content-Type": "application/json",
         Accept: "application/json",
       },
-      body: JSON.stringify({
-        DisplayName: facility.name,
-      }),
     });
+
+    if (!queryResponse.ok) {
+      const errText = await queryResponse.text();
+      console.error("[signin] QB customer query failed:", errText);
+      // Non-fatal: fall through and attempt creation anyway
+    } else {
+      const queryJson = await queryResponse.json();
+      const rows: any[] = queryJson?.QueryResponse?.Customer ?? [];
+
+      if (rows.length > 0) {
+        // ✅ A customer with this name already exists in QB — reuse it
+        existingCustomer = { Id: rows[0].Id, SyncToken: rows[0].SyncToken };
+        console.log(
+          "[signin] QB customer already exists, reusing Id:",
+          existingCustomer.Id,
+        );
+      }
+    }
   } catch (err) {
-    console.error("[signin] QB fetch error:", err);
-    await supabase.auth.signOut();
-    return { error: "Could not reach QuickBooks. Please try again." };
+    console.error("[signin] QB customer lookup error:", err);
+    // Non-fatal: fall through and attempt creation anyway
   }
 
-  if (!response.ok) {
-    const errText = await response.text();
-    console.error("[signin] QB customer POST failed:", errText);
-    await supabase.auth.signOut();
-    return {
-      error: "Failed to sync facility with QuickBooks. Please try again.",
-    };
+  // ── Step 6: Create QB customer only if one doesn't exist ──────────────────
+  let customer: { Id: string; SyncToken: string };
+
+  if (existingCustomer) {
+    // Reuse the existing QB customer — skip POST entirely
+    customer = existingCustomer;
+  } else {
+    let response: Response;
+
+    try {
+      response = await fetch(
+        `${baseUrl}/v3/company/${token.realmId}/customer`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token.access_token}`,
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            DisplayName: facility.name,
+          }),
+        },
+      );
+    } catch (err) {
+      console.error("[signin] QB fetch error:", err);
+      await supabase.auth.signOut();
+      return { error: "Could not reach QuickBooks. Please try again." };
+    }
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error("[signin] QB customer POST failed:", errText);
+      await supabase.auth.signOut();
+      return {
+        error: "Failed to sync facility with QuickBooks. Please try again.",
+      };
+    }
+
+    const json = await response.json();
+    const created = json?.Customer;
+
+    console.log("[signin] QB customer created:", JSON.stringify(created));
+
+    if (!created?.Id || !created?.SyncToken) {
+      console.error("[signin] QB unexpected response:", json);
+      await supabase.auth.signOut();
+      return {
+        error: "QuickBooks returned an unexpected response. Please try again.",
+      };
+    }
+
+    customer = { Id: created.Id, SyncToken: created.SyncToken };
   }
 
-  const json = await response.json();
-  const customer = json?.Customer;
-
-  console.log("[signin] QB customer response:", JSON.stringify(customer));
-
-  if (!customer?.Id || !customer?.SyncToken) {
-    console.error("[signin] QB unexpected response:", json);
-    await supabase.auth.signOut();
-    return {
-      error: "QuickBooks returned an unexpected response. Please try again.",
-    };
-  }
-
-  // ── Step 6: Save QB data back to facility ─────────────────────────────────
+  // ── Step 7: Save QB data back to facility ─────────────────────────────────
   const { error: updateError } = await supabaseAdmin
     .from("facilities")
     .update({
