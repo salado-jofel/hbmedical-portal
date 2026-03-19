@@ -120,6 +120,12 @@
   button {
     @apply cursor-pointer;
   }
+  .sentence-case {
+    text-transform: lowercase;
+  }
+  .sentence-case::first-letter {
+    text-transform: uppercase;
+  }
   * {
     @apply border-border outline-ring/50;
   }

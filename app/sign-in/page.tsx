@@ -1,16 +1,39 @@
 import { Suspense } from "react";
-import SignInForm from "./(sections)/SignInForm";
-import SignInFormSkeleton from "./(sections)/SignInFormSkeleton";
 import { BackgroundDots } from "../(components)/BackgroundDots";
+import SignInForm from "./(sections)/SignInForm";
+import { Metadata } from "next";
 
-export default function Page() {
+export const metadata: Metadata = {
+  title: "Sign In",
+};
+
+export default function SignInPage() {
   return (
-    <div className="min-h-screen w-full flex items-center justify-center p-4 relative overflow-hidden bg-[linear-gradient(135deg,#0a1f2e_0%,#0d2d35_50%,#0a2420_100%)]">
+    <main
+      className="relative min-h-screen flex flex-col items-center justify-center px-4 py-16"
+      style={{
+        background:
+          "radial-gradient(ellipse at top, #1a7ab8 0%, #15689E 35%, #0d4a72 70%, #082d47 100%)",
+      }}
+    >
+      {/* Dot field — same as hero */}
       <BackgroundDots />
 
-      <Suspense fallback={<SignInFormSkeleton />}>
-        <SignInForm />
-      </Suspense>
-    </div>
+      {/* Subtle orange glow behind form */}
+      <div
+        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] rounded-full pointer-events-none"
+        style={{
+          background:
+            "radial-gradient(ellipse, rgba(232,130,26,0.07) 0%, transparent 70%)",
+        }}
+      />
+
+      {/* Form card */}
+      <div className="relative z-10 w-full max-w-md">
+        <Suspense>
+          <SignInForm />
+        </Suspense>
+      </div>
+    </main>
   );
 }

@@ -2,15 +2,39 @@ import { Suspense } from "react";
 import SignUpForm from "./(sections)/SignUpForm";
 import SignUpFormSkeleton from "./(sections)/SignUpSkeletonForm";
 import { BackgroundDots } from "../(components)/BackgroundDots";
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Sign Up",
+};
 
 export default function Page() {
   return (
-    <div className="min-h-screen w-full flex items-center justify-center p-4 relative overflow-hidden bg-[linear-gradient(135deg,#0a1f2e_0%,#0d2d35_50%,#0a2420_100%)]">
+    <main
+      className="min-h-screen w-full flex flex-col items-center justify-center p-4 relative overflow-hidden"
+      style={{
+        background:
+          "radial-gradient(ellipse at top, #1a7ab8 0%, #15689E 35%, #0d4a72 70%, #082d47 100%)",
+      }}
+    >
+      {/* Dot field */}
       <BackgroundDots />
 
-      <Suspense fallback={<SignUpFormSkeleton />}>
-        <SignUpForm />
-      </Suspense>
-    </div>
+      {/* Subtle orange glow */}
+      <div
+        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] rounded-full pointer-events-none"
+        style={{
+          background:
+            "radial-gradient(ellipse, rgba(232,130,26,0.07) 0%, transparent 70%)",
+        }}
+      />
+
+      {/* Form */}
+      <div className="relative z-10 w-full max-w-md">
+        <Suspense fallback={<SignUpFormSkeleton />}>
+          <SignUpForm />
+        </Suspense>
+      </div>
+    </main>
   );
 }

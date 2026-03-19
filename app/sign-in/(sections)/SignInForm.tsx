@@ -2,7 +2,7 @@
 
 import React, { useActionState, useState, useEffect } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Mail, Lock, UserPlus, ArrowLeft, AlertCircle } from "lucide-react";
+import { Mail, Lock, UserPlus, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { signIn } from "../(services)/actions";
 import SubmitButton from "@/app/(components)/SubmitButton";
@@ -10,12 +10,16 @@ import ErrorAlert from "@/app/(components)/ErrorAlert";
 import { useSearchParams } from "next/navigation";
 import { AuthField } from "@/app/(components)/AuthField";
 import { PasswordToggle } from "@/app/(components)/PasswordToggle";
-import { FormHeader } from "@/app/(components)/FormHeader";
+import { HBLogo } from "@/app/(components)/HBLogo";
 
 export default function SignInForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [state, formAction, isPending] = useActionState(signIn, null);
   const [formValues, setFormValues] = useState({ email: "", password: "" });
+
+  // ── All fields must be non-empty to enable submit ──
+  const isFormValid =
+    formValues.email.trim() !== "" && formValues.password.trim() !== "";
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -32,23 +36,21 @@ export default function SignInForm() {
   const qbError = searchParams.get("error");
 
   return (
-    <div className="w-full max-w-md select-none rounded-2xl border p-8 md:p-10 bg-white/5 backdrop-blur-2xl border-[#00d4c8]/15 shadow-[0_8px_32px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.06)]">
-      {qbError && (
-        <div className="mb-4 flex items-start gap-3 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
-          <p className="text-sm text-red-300">{decodeURIComponent(qbError)}</p>
-        </div>
-      )}
+    <div className="w-full max-w-md select-none rounded-2xl border p-8 md:p-10 bg-white/8 backdrop-blur-2xl border-white/15 shadow-[0_8px_32px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.06)]">
 
-      <FormHeader />
+      {/* Logo */}
+      <div className="relative z-10 mb-8 flex items-center justify-center py-10">
+        <HBLogo variant="dark" size="lg" />
+      </div>
 
       <form action={formAction} className="space-y-5">
         <div className="space-y-4">
+
           <AuthField
             id="email"
             name="email"
             label="Email"
-            icon={<Mail className="w-4 h-4" style={{ color: "#00d4c8" }} />}
+            icon={<Mail className="w-4 h-4" style={{ color: "#f5a255" }} />}
             type="email"
             placeholder="Enter your email"
             value={formValues.email}
@@ -59,7 +61,7 @@ export default function SignInForm() {
             id="password"
             name="password"
             label="Password"
-            icon={<Lock className="w-4 h-4" style={{ color: "#00d4c8" }} />}
+            icon={<Lock className="w-4 h-4" style={{ color: "#f5a255" }} />}
             type={showPassword ? "text" : "password"}
             placeholder="Enter your password"
             value={formValues.password}
@@ -75,11 +77,12 @@ export default function SignInForm() {
           {state?.error && <ErrorAlert errorMessage={state.error} />}
         </div>
 
+        {/* Remember me */}
         <div className="flex items-center space-x-2">
           <Checkbox
             id="remember"
             name="remember"
-            className="border-white/20 data-[state=checked]:bg-teal-400 data-[state=checked]:border-teal-400"
+            className="border-white/20 data-[state=checked]:bg-[#e8821a] data-[state=checked]:border-[#e8821a]"
           />
           <label
             htmlFor="remember"
@@ -91,20 +94,30 @@ export default function SignInForm() {
         </div>
 
         <div className="space-y-3 pt-1">
+
+          {/* Primary CTA — disabled until both fields filled */}
           <SubmitButton
             classname="h-12 w-full font-bold transition-all active:scale-95 text-white"
             style={{
-              background: "linear-gradient(135deg, #00d4c8, #00a89e)",
-              boxShadow: "0 4px 15px rgba(0,212,200,0.3)",
+              background: "linear-gradient(135deg, #e8821a, #d4741a)",
+              boxShadow: isFormValid
+                ? "0 4px 15px rgba(232,130,26,0.35)"
+                : "none",
+              ...(!isFormValid && {
+                opacity: 0.45,
+                cursor: "not-allowed",
+              }),
             }}
             isPending={isPending}
-            type={"submit"}
-            cta={"Sign In"}
-            variant={"default"}
-            size={"lg"}
-            isPendingMesssage={"Signing in..."}
+            disabled={!isFormValid}
+            type="submit"
+            cta="Sign In"
+            variant="default"
+            size="lg"
+            isPendingMesssage="Signing in..."
           />
 
+          {/* Divider */}
           <div className="relative flex items-center justify-center py-1">
             <div className="absolute inset-0 flex items-center">
               <span
@@ -114,23 +127,21 @@ export default function SignInForm() {
             </div>
             <span
               className="relative px-4 text-xs uppercase tracking-widest"
-              style={{
-                color: "rgba(255,255,255,0.3)",
-                background: "transparent",
-              }}
+              style={{ color: "rgba(255,255,255,0.3)", background: "transparent" }}
             >
               or
             </span>
           </div>
 
+          {/* Secondary CTA — always enabled */}
           <SubmitButton
             classname="h-12 w-full cursor-pointer font-bold transition-all active:scale-95"
             style={{
-              background: "rgba(0,212,200,0.08)",
-              border: "1px solid rgba(0,212,200,0.35)",
-              color: "#00d4c8",
+              background: "rgba(232,130,26,0.08)",
+              border: "1px solid rgba(232,130,26,0.35)",
+              color: "#f5a255",
             }}
-            type={"button"}
+            type="button"
             cta={
               <Link
                 href="/sign-up"
@@ -139,21 +150,20 @@ export default function SignInForm() {
                 <UserPlus className="w-5 h-5" /> Create New Account
               </Link>
             }
-            variant={"outline"}
-            size={"lg"}
+            variant="outline"
+            size="lg"
           />
         </div>
       </form>
 
+      {/* Back link */}
       <div className="mt-8 text-center">
         <Link
           href="/"
           className="inline-flex items-center gap-2 text-sm font-medium transition-colors"
           style={{ color: "rgba(255,255,255,0.35)" }}
-          onMouseEnter={(e) => (e.currentTarget.style.color = "#00d4c8")}
-          onMouseLeave={(e) =>
-            (e.currentTarget.style.color = "rgba(255,255,255,0.35)")
-          }
+          onMouseEnter={(e) => (e.currentTarget.style.color = "#f5a255")}
+          onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(255,255,255,0.35)")}
         >
           <ArrowLeft className="w-4 h-4" /> Back to Main Site
         </Link>

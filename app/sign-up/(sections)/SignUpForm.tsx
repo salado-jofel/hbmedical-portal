@@ -9,6 +9,7 @@ import { RoleButton } from "@/app/(components)/RoleButton";
 import ErrorAlert from "@/app/(components)/ErrorAlert";
 import SubmitButton from "@/app/(components)/SubmitButton";
 import { FormHeader } from "@/app/(components)/FormHeader";
+import { HBLogo } from "@/app/(components)/HBLogo";
 
 type Role = "sales_representative" | "doctor";
 
@@ -53,12 +54,16 @@ export default function SignUpForm() {
   const [hasAgreed, setHasAgreed] = useState(false);
 
   return (
-    <div className="w-full max-w-md select-none rounded-2xl border p-8 md:p-10 bg-white/5 backdrop-blur-2xl border-[#00d4c8]/15 shadow-[0_8px_32px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.06)]">
-      <FormHeader subtitle="Create your account to get started" />
+    <div className="w-full max-w-md select-none rounded-2xl border p-8 md:p-10 bg-white/8 backdrop-blur-2xl border-white/15 shadow-[0_8px_32px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.06)]">
+      {/* Logo above form */}
+      <div className="relative z-10 mb-8 flex items-center justify-center py-10">
+        <HBLogo variant="dark" size="lg" />
+      </div>
 
       <form action={formAction} className="space-y-4">
         <input type="hidden" name="role" value={role} />
 
+        {/* ── Role selector ── */}
         <div className="space-y-2">
           <label
             className="text-sm font-medium"
@@ -80,6 +85,7 @@ export default function SignUpForm() {
           </div>
         </div>
 
+        {/* ── Name fields ── */}
         <div className="grid grid-cols-2 gap-3">
           {nameFields.map((field) => (
             <AuthField
@@ -103,6 +109,7 @@ export default function SignUpForm() {
           height="h-11"
           required
         />
+
         <AuthField
           id="phone"
           name="phone"
@@ -112,6 +119,7 @@ export default function SignUpForm() {
           height="h-11"
         />
 
+        {/* ── Facility divider ── */}
         <div className="flex items-center gap-3 py-1">
           <div className="flex-1 h-px bg-white/10" />
           <span
@@ -147,7 +155,7 @@ export default function SignUpForm() {
 
         {state?.error && <ErrorAlert errorMessage={state.error} />}
 
-        {/* ── Terms & Privacy Agreement ─────────────────────────────────── */}
+        {/* ── Terms & Privacy ── */}
         <label className="flex items-start gap-3 cursor-pointer group">
           <div className="relative mt-0.5 shrink-0">
             <input
@@ -157,12 +165,12 @@ export default function SignUpForm() {
               className="peer sr-only"
               required
             />
+            {/* Custom checkbox — orange when checked */}
             <div
-              className={`w-4 h-4 rounded border transition-all flex items-center justify-center ${
-                hasAgreed
-                  ? "border-[#00d4c8] bg-[#00d4c8]"
-                  : "border-white/20 bg-white/5 group-hover:border-[#00d4c8]/50"
-              }`}
+              className={`w-4 h-4 rounded border transition-all flex items-center justify-center ${hasAgreed
+                  ? "border-[#e8821a] bg-[#e8821a]"
+                  : "border-white/20 bg-white/5 group-hover:border-[#e8821a]/50"
+                }`}
             >
               {hasAgreed && (
                 <svg
@@ -181,6 +189,7 @@ export default function SignUpForm() {
               )}
             </div>
           </div>
+
           <span
             className="text-xs leading-relaxed"
             style={{ color: "rgba(255,255,255,0.45)" }}
@@ -191,9 +200,9 @@ export default function SignUpForm() {
               target="_blank"
               onClick={(e) => e.stopPropagation()}
               className="font-medium underline underline-offset-2 transition-colors"
-              style={{ color: "#00d4c8" }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = "#5ee8e2")}
-              onMouseLeave={(e) => (e.currentTarget.style.color = "#00d4c8")}
+              style={{ color: "#f5a255" }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = "#e8821a")}
+              onMouseLeave={(e) => (e.currentTarget.style.color = "#f5a255")}
             >
               Terms of Use
             </Link>{" "}
@@ -203,20 +212,21 @@ export default function SignUpForm() {
               target="_blank"
               onClick={(e) => e.stopPropagation()}
               className="font-medium underline underline-offset-2 transition-colors"
-              style={{ color: "#00d4c8" }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = "#5ee8e2")}
-              onMouseLeave={(e) => (e.currentTarget.style.color = "#00d4c8")}
+              style={{ color: "#f5a255" }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = "#e8821a")}
+              onMouseLeave={(e) => (e.currentTarget.style.color = "#f5a255")}
             >
               Privacy Policy
             </Link>
           </span>
         </label>
 
+        {/* ── Submit — orange gradient ── */}
         <SubmitButton
           classname="w-full h-12 font-bold text-white transition-all active:scale-95 mt-2"
           style={{
-            background: "linear-gradient(135deg, #00d4c8, #00a89e)",
-            boxShadow: "0 4px 15px rgba(0,212,200,0.3)",
+            background: "linear-gradient(135deg, #e8821a, #d4741a)",
+            boxShadow: "0 4px 15px rgba(232,130,26,0.35)",
             ...(!hasAgreed && { opacity: 0.5, cursor: "not-allowed" }),
           }}
           isPending={isPending}
@@ -229,6 +239,7 @@ export default function SignUpForm() {
         />
       </form>
 
+      {/* ── Sign in link ── */}
       <p
         className="text-sm text-center mt-6"
         style={{ color: "rgba(255,255,255,0.4)" }}
@@ -237,9 +248,9 @@ export default function SignUpForm() {
         <Link
           href="/sign-in"
           className="font-medium transition-colors"
-          style={{ color: "#00d4c8" }}
-          onMouseEnter={(e) => (e.currentTarget.style.color = "#5ee8e2")}
-          onMouseLeave={(e) => (e.currentTarget.style.color = "#00d4c8")}
+          style={{ color: "#f5a255" }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = "#e8821a")}
+          onMouseLeave={(e) => (e.currentTarget.style.color = "#f5a255")}
         >
           Sign in
         </Link>
