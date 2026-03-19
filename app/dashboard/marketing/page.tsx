@@ -4,6 +4,11 @@ import { getMarketingMaterials } from "./(services)/actions";
 import Providers from "./(sections)/Providers";
 import MarketingCards from "./(sections)/MarketingCards";
 import { DashboardHeader } from "@/app/(components)/DashboardHeader";
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Marketing",
+};
 
 export default async function MarketingPage() {
   const materials = await getMarketingMaterials();
