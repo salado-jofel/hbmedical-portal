@@ -33,10 +33,11 @@ export function LiveDemo() {
       className="py-24 overflow-hidden"
       style={{
         background:
-          "radial-gradient(ellipse at bottom left, #0d5a6a 0%, #0a3040 45%, #061d28 100%)",
+          "radial-gradient(ellipse at bottom left, #1a7ab8 0%, #15689E 45%, #082d47 100%)",
       }}
     >
       <div className="max-w-7xl mx-auto px-6">
+        {/* ── Badge ── */}
         <motion.div
           className="flex justify-center mb-10"
           initial="hidden"
@@ -44,12 +45,13 @@ export function LiveDemo() {
           viewport={VIEWPORT}
           variants={badgePop}
         >
-          <span className="bg-white/10 text-teal-400 text-xs font-semibold tracking-widest uppercase px-4 py-1.5 rounded-full border border-white/20">
+          <span className="bg-white/10 text-[#f5a255] text-xs font-semibold tracking-widest uppercase px-4 py-1.5 rounded-full border border-white/20">
             See It Live
           </span>
         </motion.div>
 
         <div className="grid lg:grid-cols-2 gap-14 items-center">
+          {/* ── Left col ── */}
           <motion.div
             initial="hidden"
             whileInView="visible"
@@ -57,13 +59,15 @@ export function LiveDemo() {
             variants={fadeLeft}
           >
             <h2 className="text-4xl md:text-5xl font-bold text-white mb-5">
-              Watch the Product <span className="text-teal-400">In Action</span>
+              Watch the Product{" "}
+              <span className="text-[#f5a255]">In Action</span>
             </h2>
             <p className="text-white/60 mb-8 text-lg leading-relaxed">
               Join one of our live weekly demo sessions and see exactly why
               physicians and clinics are switching to Non-Hydrolyzed Collagen.
             </p>
 
+            {/* Topics list */}
             <motion.ul
               className="space-y-3 mb-10"
               initial="hidden"
@@ -76,9 +80,10 @@ export function LiveDemo() {
               ))}
             </motion.ul>
 
+            {/* CTA — orange matches logo arc */}
             <motion.a
               href="tel:4042132994"
-              className="inline-flex items-center gap-2 bg-teal-500 hover:bg-teal-400 text-white font-semibold px-7 py-3.5 rounded-full transition-colors text-sm shadow-lg shadow-teal-900/40"
+              className="inline-flex items-center gap-2 bg-[#e8821a] hover:bg-[#d4741a] text-white font-semibold px-7 py-3.5 rounded-full transition-colors text-sm shadow-lg shadow-orange-900/30"
               whileHover={{ scale: 1.04 }}
               whileTap={{ scale: 0.97 }}
             >
@@ -99,6 +104,7 @@ export function LiveDemo() {
             </motion.a>
           </motion.div>
 
+          {/* ── Right col — session card ── */}
           <motion.div
             className="bg-white/8 backdrop-blur-sm border border-white/15 rounded-2xl p-6"
             initial="hidden"
@@ -106,13 +112,15 @@ export function LiveDemo() {
             viewport={VIEWPORT}
             variants={fadeRight}
           >
+            {/* Live indicator */}
             <div className="flex items-center gap-2 mb-6">
-              <span className="w-2 h-2 rounded-full bg-teal-400 animate-pulse" />
+              <span className="w-2 h-2 rounded-full bg-[#f5a255] animate-pulse" />
               <p className="text-white/80 text-sm font-semibold">
                 Live Demo Sessions — Weekly
               </p>
             </div>
 
+            {/* Session rows */}
             <motion.div
               className="space-y-3"
               initial="hidden"
@@ -133,6 +141,7 @@ export function LiveDemo() {
               ))}
             </motion.div>
 
+            {/* Footer note */}
             <div className="mt-6 flex items-center justify-center gap-2 text-white/40 text-xs">
               <svg
                 className="w-3.5 h-3.5"

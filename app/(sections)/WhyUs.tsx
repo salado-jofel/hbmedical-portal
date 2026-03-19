@@ -163,10 +163,11 @@ export function WhyUs() {
       className="py-24 overflow-hidden"
       style={{
         background:
-          "radial-gradient(ellipse at top, #0d5a6a 0%, #0a3040 40%, #061d28 100%)",
+          "radial-gradient(ellipse at top, #1a7ab8 0%, #15689E 35%, #0d4a72 70%, #082d47 100%)",
       }}
     >
       <div className="max-w-7xl mx-auto px-6">
+        {/* ── Badge ── */}
         <motion.div
           className="flex justify-center mb-6"
           initial="hidden"
@@ -174,11 +175,12 @@ export function WhyUs() {
           viewport={VIEWPORT}
           variants={badgePop}
         >
-          <span className="bg-white/10 text-teal-400 text-xs font-semibold tracking-widest uppercase px-4 py-1.5 rounded-full border border-white/20">
+          <span className="bg-white/10 text-[#f5a255] text-xs font-semibold tracking-widest uppercase px-4 py-1.5 rounded-full border border-white/20">
             Why HB Medical
           </span>
         </motion.div>
 
+        {/* ── Heading ── */}
         <motion.div
           className="text-center mb-16"
           initial="hidden"
@@ -187,7 +189,7 @@ export function WhyUs() {
           variants={fadeUp}
         >
           <h2 className="text-4xl md:text-5xl font-bold text-white mb-4">
-            Built for <span className="text-teal-400 italic">Elite Reps</span>
+            Built for <span className="text-[#f5a255] italic">Elite Reps</span>
           </h2>
           <p className="text-white/60 max-w-xl mx-auto text-lg leading-relaxed">
             We don&apos;t just hand you a product — we hand you a business.
@@ -195,6 +197,7 @@ export function WhyUs() {
           </p>
         </motion.div>
 
+        {/* ── Cards grid ── */}
         <motion.div
           className="grid md:grid-cols-2 lg:grid-cols-3 gap-5"
           initial="hidden"

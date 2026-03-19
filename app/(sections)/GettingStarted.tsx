@@ -95,6 +95,7 @@ export function GettingStarted() {
   return (
     <section className="py-24 bg-white overflow-hidden">
       <div className="max-w-7xl mx-auto px-6">
+        {/* ── Badge ── */}
         <motion.div
           className="flex justify-center mb-6"
           initial="hidden"
@@ -102,11 +103,12 @@ export function GettingStarted() {
           viewport={VIEWPORT}
           variants={badgePop}
         >
-          <span className="bg-teal-50 text-teal-600 text-xs font-semibold tracking-widest uppercase px-4 py-1.5 rounded-full border border-teal-200">
+          <span className="bg-[#15689E]/10 text-[#15689E] text-xs font-semibold tracking-widest uppercase px-4 py-1.5 rounded-full border border-[#15689E]/20">
             Getting Started
           </span>
         </motion.div>
 
+        {/* ── Heading ── */}
         <motion.div
           className="text-center mb-16"
           initial="hidden"
@@ -115,11 +117,12 @@ export function GettingStarted() {
           variants={fadeUp}
         >
           <h2 className="text-4xl md:text-5xl font-bold text-gray-900">
-            From First Call to <span className="text-teal-500">First Sale</span>{" "}
-            in 5 Days
+            From First Call to{" "}
+            <span className="text-[#e8821a]">First Sale</span> in 5 Days
           </h2>
         </motion.div>
 
+        {/* ── Steps ── */}
         <div className="relative flex flex-col md:flex-row items-start justify-center">
           {steps.map((step, index) => (
             <StepCard

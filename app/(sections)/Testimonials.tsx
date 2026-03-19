@@ -40,6 +40,7 @@ export function Testimonials() {
   return (
     <section className="py-24 bg-gray-50 overflow-hidden">
       <div className="max-w-7xl mx-auto px-6">
+        {/* ── Badge ── */}
         <motion.div
           className="flex justify-center mb-6"
           initial="hidden"
@@ -47,11 +48,12 @@ export function Testimonials() {
           viewport={VIEWPORT}
           variants={badgePop}
         >
-          <span className="bg-teal-50 text-teal-600 text-xs font-semibold tracking-widest uppercase px-4 py-1.5 rounded-full border border-teal-200">
+          <span className="bg-[#15689E]/10 text-[#15689E] text-xs font-semibold tracking-widest uppercase px-4 py-1.5 rounded-full border border-[#15689E]/20">
             Rep Stories
           </span>
         </motion.div>
 
+        {/* ── Heading ── */}
         <motion.div
           className="text-center mb-14"
           initial="hidden"
@@ -61,10 +63,11 @@ export function Testimonials() {
         >
           <h2 className="text-4xl md:text-5xl font-bold text-gray-900">
             Reps Are{" "}
-            <span className="text-teal-500 italic">Already Winning</span>
+            <span className="text-[#e8821a] italic">Already Winning</span>
           </h2>
         </motion.div>
 
+        {/* ── Cards ── */}
         <motion.div
           className="grid md:grid-cols-3 gap-6"
           initial="hidden"
@@ -91,7 +94,7 @@ export function Testimonials() {
               whileHover={{ y: -6, transition: { duration: 0.25 } }}
               className={`p-7 rounded-2xl flex flex-col justify-between cursor-default ${
                 t.highlight
-                  ? "bg-[#0a3040] text-white shadow-xl"
+                  ? "bg-[#15689E] text-white shadow-xl shadow-[#15689E]/30"
                   : "bg-white border border-gray-100 shadow-sm"
               }`}
             >
@@ -105,12 +108,14 @@ export function Testimonials() {
                   &ldquo;{t.quote}&rdquo;
                 </p>
               </div>
+
               <div className="flex items-center gap-3">
+                {/* Avatar */}
                 <div
                   className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold ${
                     t.highlight
-                      ? "bg-teal-500 text-white"
-                      : "bg-teal-100 text-teal-700"
+                      ? "bg-[#e8821a] text-white"
+                      : "bg-[#15689E]/10 text-[#15689E]"
                   }`}
                 >
                   {t.initials}
@@ -122,7 +127,7 @@ export function Testimonials() {
                     {t.name}
                   </p>
                   <p
-                    className={`text-xs ${t.highlight ? "text-white/50" : "text-gray-400"}`}
+                    className={`text-xs ${t.highlight ? "text-white/60" : "text-gray-400"}`}
                   >
                     {t.role}
                   </p>
