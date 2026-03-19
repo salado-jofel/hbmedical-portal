@@ -3,6 +3,7 @@ import contractsSlice from "@/app/dashboard/contracts/(redux)/contracts-slice";
 import facilitiesSlice from "@/app/dashboard/facilities/(redux)/facilities-slice";
 import facilitySlice from "@/app/dashboard/facilities/[id]/(redux)/facility-slice";
 import marketingSlice from "@/app/dashboard/marketing/(redux)/marketing-slice";
+import materialSlice from "@/app/dashboard/materials/(redux)/material-slice";
 import ordersSlice from "@/app/dashboard/orders/(redux)/orders-slice";
 import productsSlice from "@/app/dashboard/products/(redux)/products-slice";
 import profileSlice from "@/app/dashboard/profile/(redux)/profile-slice";
@@ -19,7 +20,8 @@ export const store = configureStore({
     marketing: marketingSlice,
     contracts: contractsSlice,
     trainings: trainingsSlice,
-    dashboard: dashboardSlice
+    dashboard: dashboardSlice,
+    materials: materialSlice,
   },
 });
 

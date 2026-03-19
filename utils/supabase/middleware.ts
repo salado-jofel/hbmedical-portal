@@ -64,5 +64,21 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // ── LOGIC C: Authenticated user — check QB connection, sign out if missing ─
+  if (user && currentPath.startsWith("/dashboard")) {
+    const { data: qbConnection } = await supabase
+      .from("quickbooks_connections")
+      .select("id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (!qbConnection) {
+      await supabase.auth.signOut();
+      const url = request.nextUrl.clone();
+      url.pathname = "/sign-in";
+      return NextResponse.redirect(url);
+    }
+  }
+
   return supabaseResponse;
 }

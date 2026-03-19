@@ -33,6 +33,32 @@ interface QBInvoiceResponse {
   Invoice: QBInvoice & { Id: string; SyncToken: string };
 }
 
+// ── Shared: fetch invoice Id + SyncToken from QB ──────────────────────────────
+async function fetchQBInvoice(
+  accessToken: string,
+  realmId: string,
+  invoiceId: string,
+): Promise<{ Id: string; SyncToken: string } | null> {
+  const res = await fetch(
+    `${getQBBaseUrl()}/v3/company/${realmId}/invoice/${invoiceId}?minorversion=65`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/json",
+      },
+    },
+  );
+
+  if (!res.ok) {
+    console.error("[fetchQBInvoice] Failed:", await res.text());
+    return null;
+  }
+
+  const json = (await res.json()) as QBInvoiceResponse;
+  if (!json?.Invoice?.Id || !json?.Invoice?.SyncToken) return null;
+  return { Id: json.Invoice.Id, SyncToken: json.Invoice.SyncToken };
+}
+
 // ── Create QB Invoice — throws on failure ─────────────────────────────────────
 export async function createQBInvoiceFromData(params: {
   orderDocNumber: string;
@@ -90,39 +116,33 @@ export async function createQBInvoiceFromData(params: {
   return json.Invoice.Id;
 }
 
-// ── Void QB Invoice — throws on failure ───────────────────────────────────────
+// ── Void QB Invoice ───────────────────────────────────────────────────────────
 export async function voidQuickBooksInvoice(
   qbInvoiceId: string,
 ): Promise<{ success: boolean; message: string }> {
   try {
     const client = await getValidQBClient();
     const token = client.getToken();
-    const baseUrl = getQBBaseUrl();
 
-    // ── Step 1: Fetch invoice to get current SyncToken ────────────────────
-    const getResponse = await fetch(
-      `${baseUrl}/v3/company/${token.realmId}/invoice/${qbInvoiceId}`,
-      {
-        headers: {
-          Authorization: `Bearer ${token.access_token}`,
-          Accept: "application/json",
-        },
-      },
+    if (!token.access_token || !token.realmId) {
+      return { success: false, message: "QB_TOKEN_INVALID" };
+    }
+
+    const invoice = await fetchQBInvoice(
+      token.access_token,
+      token.realmId,
+      qbInvoiceId,
     );
 
-    if (!getResponse.ok) {
-      return { success: false, message: "Failed to fetch QB invoice" };
+    if (!invoice) {
+      return {
+        success: false,
+        message: "Failed to fetch QB invoice or missing SyncToken",
+      };
     }
 
-    const getJson = (await getResponse.json()) as QBInvoiceResponse;
-
-    if (!getJson?.Invoice?.SyncToken) {
-      return { success: false, message: "QB invoice missing SyncToken" };
-    }
-
-    // ── Step 2: Void it ───────────────────────────────────────────────────
-    const voidResponse = await fetch(
-      `${baseUrl}/v3/company/${token.realmId}/invoice?operation=void&minorversion=65`,
+    const voidRes = await fetch(
+      `${getQBBaseUrl()}/v3/company/${token.realmId}/invoice?operation=void&minorversion=65`,
       {
         method: "POST",
         headers: {
@@ -130,22 +150,80 @@ export async function voidQuickBooksInvoice(
           "Content-Type": "application/json",
           Accept: "application/json",
         },
-        body: JSON.stringify({
-          Id: qbInvoiceId,
-          SyncToken: getJson.Invoice.SyncToken,
-        }),
+        body: JSON.stringify({ Id: invoice.Id, SyncToken: invoice.SyncToken }),
       },
     );
 
-    if (!voidResponse.ok) {
-      const errText = await voidResponse.text();
-      console.error("[voidQuickBooksInvoice] QB error:", errText);
+    if (!voidRes.ok) {
+      console.error("[voidQuickBooksInvoice] QB error:", await voidRes.text());
       return { success: false, message: "Failed to void QB invoice" };
     }
 
     return { success: true, message: "Invoice voided in QuickBooks" };
   } catch (err) {
     console.error("[voidQuickBooksInvoice] Unexpected error:", err);
+    return {
+      success: false,
+      message: err instanceof Error ? err.message : "Unexpected error",
+    };
+  }
+}
+
+// ── Delete QB Invoice ─────────────────────────────────────────────────────────
+export async function deleteQuickBooksInvoice(
+  qbInvoiceId: string,
+): Promise<{ success: boolean; message: string }> {
+  try {
+    const client = await getValidQBClient();
+    const token = client.getToken();
+
+    if (!token.access_token || !token.realmId) {
+      return { success: false, message: "QB_TOKEN_INVALID" };
+    }
+
+    const invoice = await fetchQBInvoice(
+      token.access_token,
+      token.realmId,
+      qbInvoiceId,
+    );
+
+    if (!invoice) {
+      return {
+        success: false,
+        message: "Failed to fetch QB invoice or missing SyncToken",
+      };
+    }
+
+    const deleteRes = await fetch(
+      `${getQBBaseUrl()}/v3/company/${token.realmId}/invoice?operation=delete&minorversion=65`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token.access_token}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ Id: invoice.Id, SyncToken: invoice.SyncToken }),
+      },
+    );
+
+    if (!deleteRes.ok) {
+      console.error(
+        "[deleteQuickBooksInvoice] QB error:",
+        await deleteRes.text(),
+      );
+      return {
+        success: false,
+        message: `QB delete failed: ${deleteRes.status}`,
+      };
+    }
+
+    return {
+      success: true,
+      message: `Invoice ${qbInvoiceId} deleted from QuickBooks`,
+    };
+  } catch (err) {
+    console.error("[deleteQuickBooksInvoice] Unexpected error:", err);
     return {
       success: false,
       message: err instanceof Error ? err.message : "Unexpected error",
