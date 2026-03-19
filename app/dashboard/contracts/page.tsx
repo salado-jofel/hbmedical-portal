@@ -2,6 +2,11 @@ import { getContractMaterials } from "./(services)/actions";
 import Providers from "./(sections)/Providers";
 import ContractCards from "./(sections)/ContractCards";
 import { DashboardHeader } from "@/app/(components)/DashboardHeader";
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Contracts",
+};
 
 export default async function ContractsPage() {
   const contracts = await getContractMaterials();

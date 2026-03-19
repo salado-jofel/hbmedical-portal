@@ -2,6 +2,11 @@ import { getAllProducts } from "./(services)/actions";
 import Providers from "./(sections)/Providers";
 import Header from "./(sections)/Header";
 import ProductsTable from "./(sections)/ProductsTable";
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Products",
+};
 
 export default async function ProductsPage() {
   const products = await getAllProducts();

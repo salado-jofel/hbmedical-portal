@@ -4,6 +4,11 @@ import { getAllOrders } from "./(services)/actions";
 import Providers from "./(sections)/Providers";
 import Header from "./(sections)/Header";
 import KanbanBoard from "./(sections)/KanBoard";
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Orders",
+};
 
 export default async function OrdersPage() {
   const orders = await getAllOrders();

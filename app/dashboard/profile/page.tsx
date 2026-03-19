@@ -5,6 +5,11 @@ import Providers from "./(sections)/Providers";
 import Header from "./(sections)/Header";
 import ProfileForm from "./(sections)/ProfileForm";
 import { notFound } from "next/navigation";
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Profile",
+};
 
 export default async function ProfilePage() {
   const profile = await getProfile();
