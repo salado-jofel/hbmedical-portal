@@ -19,7 +19,7 @@ export const store = configureStore({
     marketing: marketingSlice,
     contracts: contractsSlice,
     trainings: trainingsSlice,
-    dashboard: dashboardSlice
+    dashboard: dashboardSlice,
   },
 });
 

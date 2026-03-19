@@ -9,6 +9,7 @@ import { requireUser } from "@/utils/auth-guard";
 import {
   createQBInvoiceFromData,
   voidQuickBooksInvoice,
+  deleteQuickBooksInvoice, // ✅ added
 } from "./quickbooks-actions";
 
 const ORDER_TABLE = "orders";
@@ -136,6 +137,7 @@ export async function addOrder(formData: FormData): Promise<Order> {
 
   if (insertError || !insertedRow) {
     console.error("[addOrder] DB insert error:", insertError?.message);
+    // Compensate — void the QB invoice since DB failed
     try {
       await voidQuickBooksInvoice(qbInvoiceId);
     } catch (e) {
@@ -207,11 +209,11 @@ export async function deleteOrder(orderId: string): Promise<void> {
 
   if (fetchErr || !current) throw new Error("Order not found.");
 
-  // ── Step 1: Void QB invoice first if one exists ───────────────────────────
+  // ── Step 1: Delete QB invoice first if one exists ─────────────────────────
   if (current.qb_invoice_id) {
-    const voidResult = await voidQuickBooksInvoice(current.qb_invoice_id);
-    if (!voidResult.success) {
-      throw new Error(`Failed to void QB invoice: ${voidResult.message}`);
+    const deleteResult = await deleteQuickBooksInvoice(current.qb_invoice_id); // ✅ delete not void
+    if (!deleteResult.success) {
+      throw new Error(`Failed to delete QB invoice: ${deleteResult.message}`);
     }
   }
 
@@ -235,7 +237,6 @@ export async function getUserFacility(): Promise<Facility | null> {
   try {
     const supabase = await getSupabaseClient();
 
-    // ── Get current user explicitly ───────────────────────────────────────
     const {
       data: { user },
       error: authError,
@@ -246,12 +247,11 @@ export async function getUserFacility(): Promise<Facility | null> {
       return null;
     }
 
-    // ── Filter by user_id — don't rely on RLS alone ───────────────────────
     const { data, error } = await supabase
       .from("facilities")
       .select("id, name, location, status")
-      .eq("user_id", user.id) // ✅ explicit filter
-      .maybeSingle(); // ✅ won't throw if 0 or multiple rows
+      .eq("user_id", user.id)
+      .maybeSingle();
 
     if (error) {
       console.error("[getUserFacility] Supabase error:", error.message);

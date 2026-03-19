@@ -1,40 +1,73 @@
 "use server";
 
-import { dbSelect, getSupabaseClient } from "@/utils/supabase/db";
+import { getSupabaseClient } from "@/utils/supabase/db";
 import type { MarketingMaterial } from "@/app/(interfaces)/marketing";
 
-const MARKETING_TABLE = "marketing_materials";
+// ── Parse bucket + file path from any Supabase public storage URL ─────────────
+// URL format: https://<project>.supabase.co/storage/v1/object/public/<bucket>/<path>
+function parseStorageUrl(
+  fileUrl: string,
+): { bucket: string; filePath: string } | null {
+  const marker = "/storage/v1/object/public/";
+  const idx = fileUrl.indexOf(marker);
+  if (idx === -1) return null;
 
+  const after = fileUrl.slice(idx + marker.length); // "<bucket>/<path>"
+  const slashIdx = after.indexOf("/");
+  if (slashIdx === -1) return null;
+
+  return {
+    bucket: after.slice(0, slashIdx),
+    filePath: after.slice(slashIdx + 1),
+  };
+}
+
+// ── Fetch all marketing materials ─────────────────────────────────────────────
 export async function getMarketingMaterials(): Promise<MarketingMaterial[]> {
-  const { data, error } = await dbSelect<MarketingMaterial>({
-    table: MARKETING_TABLE,
-    columns: "id, created_at, title, tag, description, file_url, sort_order",
-    order: { column: "sort_order", ascending: true },
-  });
+  try {
+    const supabase = await getSupabaseClient();
 
-  if (error) {
-    console.error("[getMarketingMaterials] error:", error.message);
+    const { data, error } = await supabase
+      .from("marketing_materials")
+      .select("*")
+      .order("sort_order", { ascending: true });
+
+    if (error) {
+      console.error("[getMarketingMaterials] Supabase error:", error.message);
+      return [];
+    }
+
+    return data ?? [];
+  } catch (err) {
+    console.error("[getMarketingMaterials] Unexpected error:", err);
     return [];
   }
-
-  return data ?? [];
 }
 
-export async function getSignedDownloadUrl(file_url: string): Promise<string> {
-  const supabase = await getSupabaseClient();
+// ── Get signed download URL (5 min expiry) ────────────────────────────────────
+export async function getSignedDownloadUrl(fileUrl: string): Promise<string> {
+  const parsed = parseStorageUrl(fileUrl);
 
-  // Extract file path from full URL
-  const filePath = file_url.split("/object/public/hbmedical-assets/")[1];
-
-  const { data, error } = await supabase.storage
-    .from("hbmedical-assets")
-    .createSignedUrl(filePath, 300); // valid for 5 minutes
-
-  if (error || !data) {
-    console.error("[getSignedDownloadUrl] error:", error?.message);
-    throw new Error("Failed to generate download URL");
+  if (!parsed) {
+    console.error("[getSignedDownloadUrl] Could not parse URL:", fileUrl);
+    return fileUrl; // fallback — use public URL as-is
   }
 
-  return data.signedUrl;
-}
+  try {
+    const supabase = await getSupabaseClient();
 
+    const { data, error } = await supabase.storage
+      .from(parsed.bucket)
+      .createSignedUrl(parsed.filePath, 300); // valid for 5 minutes
+
+    if (error || !data) {
+      console.error("[getSignedDownloadUrl] error:", error?.message);
+      return fileUrl; // fallback — use public URL as-is
+    }
+
+    return data.signedUrl;
+  } catch (err) {
+    console.error("[getSignedDownloadUrl] Unexpected error:", err);
+    return fileUrl; // fallback — use public URL as-is
+  }
+}
