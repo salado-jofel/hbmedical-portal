@@ -18,24 +18,28 @@ export function SidebarUserCard({
   const isDoctor = role === "doctor";
 
   return (
-    <div className="flex items-center gap-3 p-3 rounded-xl bg-[#f8fafb] border border-slate-100 mb-3">
-      <div className="w-10 h-10 rounded-full bg-[#1db0b0] flex items-center justify-center text-white font-bold text-sm shadow-sm shrink-0">
+    <div className="flex items-center gap-3 p-3 rounded-xl border border-white/10 bg-white/5 mb-3">
+
+      {/* Avatar — orange bg */}
+      <div className="w-10 h-10 rounded-full bg-[#f5a255] flex items-center justify-center text-white font-bold text-sm shrink-0">
         {initials || <User className="w-5 h-5" />}
       </div>
+
+      {/* Name / email / role badge */}
       <div className="flex flex-col overflow-hidden gap-0.5 min-w-0">
-        <span className="text-sm font-bold text-[#1e293b] leading-tight truncate">
+        <span className="text-sm font-bold text-white leading-tight truncate">
           {name || "—"}
         </span>
-        <span className="text-[10px] text-slate-400 truncate">
+        <span className="text-[10px] text-white/40 truncate">
           {email || "—"}
         </span>
+
         {role != null && (
           <div
-            className={`inline-flex items-center gap-1.5 mt-1 w-fit px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide border ${
-              isDoctor
-                ? "bg-blue-50 text-blue-600 border-blue-200"
-                : "bg-teal-50 text-teal-600 border-teal-200"
-            }`}
+            className={`inline-flex items-center gap-1.5 mt-1 w-fit px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide border ${isDoctor
+              ? "bg-[#15689E]/30 text-white/80 border-[#15689E]/40"
+              : "bg-[#f5a255]/15 text-[#f5a255] border-[#f5a255]/30"
+              }`}
           >
             {isDoctor ? (
               <>

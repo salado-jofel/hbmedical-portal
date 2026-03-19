@@ -9,7 +9,7 @@ interface DataTableProps<T> {
   keyExtractor: (row: T) => string | number;
   emptyMessage?: string;
   onRowClick?: (row: T) => void;
-  headerVariant?: "teal" | "minimal";
+  headerVariant?: "brand" | "minimal";
 }
 
 export function DataTable<T>({
@@ -18,7 +18,7 @@ export function DataTable<T>({
   keyExtractor,
   emptyMessage = "No data found",
   onRowClick,
-  headerVariant = "teal",
+  headerVariant = "brand",
 }: DataTableProps<T>) {
   if (data.length === 0) {
     return (
@@ -29,21 +29,20 @@ export function DataTable<T>({
     );
   }
 
-  const isTeal = headerVariant === "teal";
+  const isBrand = headerVariant === "brand";
 
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm text-left">
         <thead>
-          <tr className={isTeal ? "bg-[#2db0b0]" : "border-b border-slate-100"}>
+          <tr className={isBrand ? "bg-[#15689E]" : "border-b border-slate-100"}>
             {columns.map((col) => (
               <th
                 key={col.key}
-                className={`px-5 py-3 font-medium text-xs tracking-wide ${
-                  isTeal
-                    ? "text-white font-semibold"
-                    : (col.headerClassName ?? "text-slate-400")
-                }`}
+                className={`px-5 py-3 font-medium text-xs tracking-wide ${isBrand
+                  ? "text-white font-semibold"
+                  : (col.headerClassName ?? "text-slate-400")
+                  }`}
               >
                 {col.label}
               </th>
@@ -55,9 +54,8 @@ export function DataTable<T>({
             <tr
               key={keyExtractor(row)}
               onClick={() => onRowClick?.(row)}
-              className={`hover:bg-slate-50 transition-colors ${
-                onRowClick ? "cursor-pointer" : ""
-              }`}
+              className={`hover:bg-slate-50 transition-colors ${onRowClick ? "cursor-pointer" : ""
+                }`}
             >
               {columns.map((col) => (
                 <td

@@ -13,8 +13,8 @@ export function StatCard({
         <p className="text-xs text-slate-400 font-medium mb-2">{label}</p>
         <p className="text-2xl font-bold text-slate-800">{value}</p>
       </div>
-      <div className="p-2.5 bg-teal-50 rounded-lg">
-        <Icon className="w-5 h-5 text-[#2db0b0]" />
+      <div className="p-2.5 bg-[#15689E]/10 rounded-lg">
+        <Icon className="w-5 h-5 text-[#15689E]" />
       </div>
     </div>
   );

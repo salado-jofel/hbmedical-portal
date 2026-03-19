@@ -11,9 +11,8 @@ export function HBMedicalBrand({
 }: HBMedicalBrandProps) {
   return (
     <div
-      className={`flex items-center text-[#2db0b0] ${
-        layout === "col" ? "flex-col gap-0" : "flex-row gap-2"
-      }`}
+      className={`flex items-center text-[#2db0b0] ${layout === "col" ? "flex-col gap-0" : "flex-row gap-2"
+        }`}
     >
       <div className={iconSize}>
         <svg viewBox="0 0 24 24" fill="currentColor">
@@ -21,11 +20,10 @@ export function HBMedicalBrand({
         </svg>
       </div>
       <span
-        className={`font-black tracking-widest uppercase ${textSize} ${
-          layout === "col" ? "mt-3" : ""
-        }`}
+        className={`font-black tracking-widest uppercase ${textSize} ${layout === "col" ? "mt-3" : ""
+          }`}
       >
-        Spearhead
+        HB Medical
       </span>
     </div>
   );
