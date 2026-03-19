@@ -271,7 +271,7 @@ export default function FacilitiesTable() {
               data={filtered}
               keyExtractor={(f) => f.id!}
               emptyMessage="No facilities found"
-              headerVariant="teal"
+              headerVariant="brand"
               onRowClick={(facility) =>
                 router.push(`/dashboard/facilities/${facility.id}`)
               }
