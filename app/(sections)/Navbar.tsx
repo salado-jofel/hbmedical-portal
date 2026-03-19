@@ -38,7 +38,7 @@ export function Navbar() {
             href="#sp-contact"
             className="hover:text-[#15689E] transition-colors"
           >
-            Contact Scottie
+            Contact Us
           </Link>
         </div>
 

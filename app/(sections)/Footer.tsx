@@ -9,7 +9,7 @@ const navLinks = [
   { label: "Product", href: "#product" },
   { label: "Why Us", href: "#why-us" },
   { label: "Demo", href: "#demo" },
-  { label: "Contact Scottie", href: "#sp-contact" },
+  { label: "Contact Us", href: "#sp-contact" },
 ];
 
 export function Footer() {

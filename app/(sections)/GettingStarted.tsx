@@ -22,9 +22,9 @@ const steps = [
         />
       </svg>
     ),
-    title: "Call or Text Scottie",
+    title: "Call or Text Us",
     description:
-      "Reach out to Scottie Jennings at (404) 213-2994. Most reps get a same-day response.",
+      "Reach out to our team at (404) 213-2994. Most reps get a same-day response.",
   },
   {
     number: "02",

@@ -11,7 +11,7 @@ export function FooterLink({ label, href }: FooterLinkProps) {
   return (
     <Link
       href={href}
-      className="text-white/50 hover:text-teal-400 text-sm transition-colors"
+      className="text-gray-500 hover:text-[#f5a255] text-sm transition-colors"
     >
       {label}
     </Link>
