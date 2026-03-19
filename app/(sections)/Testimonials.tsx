@@ -63,7 +63,7 @@ export function Testimonials() {
         >
           <h2 className="text-4xl md:text-5xl font-bold text-gray-900">
             Reps Are{" "}
-            <span className="text-[#e8821a] italic">Already Winning</span>
+            <span className="text-[#f5a255] italic">Already Winning</span>
           </h2>
         </motion.div>
 
@@ -92,18 +92,16 @@ export function Testimonials() {
                 },
               }}
               whileHover={{ y: -6, transition: { duration: 0.25 } }}
-              className={`p-7 rounded-2xl flex flex-col justify-between cursor-default ${
-                t.highlight
-                  ? "bg-[#15689E] text-white shadow-xl shadow-[#15689E]/30"
-                  : "bg-white border border-gray-100 shadow-sm"
-              }`}
+              className={`p-7 rounded-2xl flex flex-col justify-between cursor-default ${t.highlight
+                ? "bg-[#15689E] text-white shadow-xl shadow-[#15689E]/30"
+                : "bg-white border border-gray-100 shadow-sm"
+                }`}
             >
               <div>
                 <StarRating />
                 <p
-                  className={`text-sm leading-relaxed italic mb-6 ${
-                    t.highlight ? "text-white/85" : "text-gray-600"
-                  }`}
+                  className={`text-sm leading-relaxed italic mb-6 ${t.highlight ? "text-white/85" : "text-gray-600"
+                    }`}
                 >
                   &ldquo;{t.quote}&rdquo;
                 </p>
@@ -112,11 +110,10 @@ export function Testimonials() {
               <div className="flex items-center gap-3">
                 {/* Avatar */}
                 <div
-                  className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold ${
-                    t.highlight
-                      ? "bg-[#e8821a] text-white"
-                      : "bg-[#15689E]/10 text-[#15689E]"
-                  }`}
+                  className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold ${t.highlight
+                    ? "bg-[#f5a255] text-white"
+                    : "bg-[#15689E]/10 text-[#15689E]"
+                    }`}
                 >
                   {t.initials}
                 </div>
