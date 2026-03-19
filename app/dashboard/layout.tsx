@@ -10,11 +10,12 @@ export default async function DashboardLayout({
   return (
     <>
       <NextTopLoader
-        color="#2db0b0"
-        shadow="0 0 10px #2db0b0, 0 0 5px #2db0b0"
+        color="#f5a255"
+        shadow="0 0 10px #f5a255, 0 0 5px #f5a255"
         height={3}
         showSpinner={false}
       />
+
       <div className="flex min-h-screen bg-slate-100">
         <Sidebar />
         <div className="flex flex-col flex-1 md:ml-64 min-w-0">

@@ -11,7 +11,7 @@ import { useState } from "react";
 function FieldLabel({
   icon: Icon,
   label,
-  color = "text-[#2db0b0]",
+  color = "text-[#15689E]",
 }: {
   icon: React.ElementType;
   label: string;
@@ -66,7 +66,7 @@ export default function ProfileForm() {
               defaultValue={profile?.first_name ?? ""}
               placeholder="First name"
               disabled={saving}
-              className="border-slate-200 focus-visible:ring-[#2db0b0]"
+              className="border-slate-200 focus-visible:ring-[#15689E]"
             />
           </div>
           <div>
@@ -76,34 +76,34 @@ export default function ProfileForm() {
               defaultValue={profile?.last_name ?? ""}
               placeholder="Last name"
               disabled={saving}
-              className="border-slate-200 focus-visible:ring-[#2db0b0]"
+              className="border-slate-200 focus-visible:ring-[#15689E]"
             />
           </div>
         </div>
 
         {/* ── Row: Email ── */}
         <div>
-          <FieldLabel icon={Mail} label="Email" color="text-emerald-500" />
+          <FieldLabel icon={Mail} label="Email" />
           <Input
             name="email"
             type="email"
             defaultValue={profile?.email ?? ""}
             placeholder="email@example.com"
             disabled={saving}
-            className="border-slate-200 focus-visible:ring-[#2db0b0]"
+            className="border-slate-200 focus-visible:ring-[#15689E]"
           />
         </div>
 
         {/* ── Row: Phone ── */}
         <div>
-          <FieldLabel icon={Phone} label="Phone" color="text-slate-400" />
+          <FieldLabel icon={Phone} label="Phone" />
           <Input
             name="phone"
             type="tel"
             defaultValue={profile?.phone ?? ""}
             placeholder="+63 9XX XXX XXXX"
             disabled={saving}
-            className="border-slate-200 focus-visible:ring-[#2db0b0]"
+            className="border-slate-200 focus-visible:ring-[#15689E]"
           />
         </div>
 
@@ -120,7 +120,7 @@ export default function ProfileForm() {
           }
           variant={null}
           size="default"
-          classname="w-full sm:w-auto bg-[#2db0b0] hover:bg-[#249191] text-white"
+          classname="w-full sm:w-auto bg-[#15689E] hover:bg-[#0f4f7a] text-white"
         />
       </form>
     </div>

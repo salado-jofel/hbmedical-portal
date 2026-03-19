@@ -17,12 +17,12 @@ export default function StatsCards({
   activeOrders,
 }: StatsCardsProps) {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      <StatCard
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {/* <StatCard
         label="Total Facilities"
         value={totalFacilities}
         icon={Building2}
-      />
+      /> */}
       <StatCard label="Total Orders" value={totalOrders} icon={ShoppingCart} />
       <StatCard
         label="Total Revenue"

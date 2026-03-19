@@ -68,8 +68,8 @@ export function ProductCard({ product }: { product: Product }) {
       <div className="p-4 border-b border-slate-100 last:border-0">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-3 flex-1 min-w-0">
-            <div className="w-9 h-9 rounded-lg bg-[#2db0b0]/10 flex items-center justify-center shrink-0 mt-0.5">
-              <Package className="w-4 h-4 text-[#2db0b0]" />
+            <div className="w-9 h-9 rounded-lg bg-[#15689E]/10 flex items-center justify-center shrink-0 mt-0.5">
+              <Package className="w-4 h-4 text-[#15689E]" />
             </div>
             <div className="flex-1 min-w-0 space-y-1">
               {isEditing ? (
@@ -96,17 +96,17 @@ export function ProductCard({ product }: { product: Product }) {
                     disabled={isSaving}
                   />
                 ) : (
-                  <span className="text-sm font-medium text-[#2db0b0]">
+                  <span className="text-sm font-medium text-[#f5a255]">
                     ${Number(product.price).toFixed(2)}
                   </span>
                 )}
                 <span className="text-xs text-slate-400">
                   {product.created_at
                     ? new Date(product.created_at).toLocaleDateString("en-PH", {
-                        year: "numeric",
-                        month: "short",
-                        day: "numeric",
-                      })
+                      year: "numeric",
+                      month: "short",
+                      day: "numeric",
+                    })
                     : "—"}
                 </span>
               </div>
@@ -144,7 +144,7 @@ export function ProductCard({ product }: { product: Product }) {
                   isPendingMesssage=""
                   variant="ghost"
                   size="icon-xs"
-                  classname="text-[#2db0b0] hover:bg-transparent cursor-pointer"
+                  classname="text-[#15689E] hover:bg-transparent cursor-pointer"
                 />
               </>
             ) : (
@@ -153,7 +153,7 @@ export function ProductCard({ product }: { product: Product }) {
                   type="button"
                   onClick={() => setIsEditing(true)}
                   disabled={isDeleting}
-                  className="p-1.5 text-slate-300 hover:text-[#2db0b0] rounded cursor-pointer"
+                  className="p-1.5 text-slate-300 hover:text-[#15689E] rounded cursor-pointer"
                 >
                   <Pencil className="w-4 h-4" />
                 </button>

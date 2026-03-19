@@ -73,7 +73,7 @@ export function OrderCard({ order }: { order: Order }) {
       <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-sm hover:shadow-md transition-shadow">
         {/* Top Row */}
         <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-[#2db0b0] tracking-wide">
+          <span className="text-xs font-semibold text-[#15689E] tracking-wide">
             {order.order_id}
           </span>
           <Button
@@ -120,7 +120,7 @@ export function OrderCard({ order }: { order: Order }) {
               size="sm"
               onClick={handleAdvance}
               disabled={isAdvancing}
-              className="h-7 px-2 text-xs text-[#2db0b0] hover:text-[#249191] hover:bg-teal-50 font-medium cursor-pointer"
+              className="h-7 px-2 text-xs text-[#15689E] hover:text-[#0f4f7a] hover:bg-[#15689E]/10 font-medium cursor-pointer"
             >
               {isAdvancing ? (
                 <>

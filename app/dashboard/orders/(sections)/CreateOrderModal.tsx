@@ -92,7 +92,7 @@ export function CreateOrderModal() {
     formData.set("order_id", orderId);
     formData.set("facility_id", facilityId);
     formData.set("product_id", productId);
-    formData.set("amount", String(totalAmount)); // ✅ price × quantity
+    formData.set("amount", String(totalAmount));
 
     const optimistic: Order = {
       id: crypto.randomUUID(),
@@ -131,7 +131,7 @@ export function CreateOrderModal() {
           type="button"
           variant="default"
           size="default"
-          classname="bg-[#2db0b0] hover:bg-[#249191] text-white cursor-pointer w-full sm:w-auto"
+          classname="bg-[#15689E] hover:bg-[#0f4f7a] text-white cursor-pointer w-full sm:w-auto"
           cta={
             <>
               <Plus className="w-4 h-4 mr-2" />
@@ -152,7 +152,7 @@ export function CreateOrderModal() {
           {/* Order ID */}
           <div className="space-y-1.5">
             <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-              <Hash className="w-4 h-4 text-[#2db0b0]" />
+              <Hash className="w-4 h-4 text-[#15689E]" />
               Order ID
             </label>
             <Input
@@ -167,7 +167,7 @@ export function CreateOrderModal() {
           {/* Facility — Read Only */}
           <div className="space-y-1.5">
             <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-              <Building2 className="w-4 h-4 text-[#2db0b0]" />
+              <Building2 className="w-4 h-4 text-[#15689E]" />
               Facility
             </label>
             <div className="flex items-center gap-2 w-full border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 min-h-[38px]">
@@ -197,18 +197,18 @@ export function CreateOrderModal() {
           {/* Product */}
           <div className="space-y-1.5">
             <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-              <Package className="w-4 h-4 text-[#2db0b0]" />
+              <Package className="w-4 h-4 text-[#15689E]" />
               Product
             </label>
             <select
               value={productId}
               onChange={(e) => {
                 setProductId(e.target.value);
-                setQuantity(1); // reset quantity on product change
+                setQuantity(1);
               }}
               required
               disabled={isPending || isLoadingData || products.length === 0}
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white disabled:opacity-50"
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#15689E] bg-white disabled:opacity-50"
             >
               <option value="">
                 {isLoadingData
@@ -230,7 +230,7 @@ export function CreateOrderModal() {
             {/* Quantity */}
             <div className="space-y-1.5">
               <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-                <Layers className="w-4 h-4 text-[#2db0b0]" />
+                <Layers className="w-4 h-4 text-[#15689E]" />
                 Quantity
               </label>
               <Input
@@ -250,7 +250,7 @@ export function CreateOrderModal() {
             {/* Unit Price — locked */}
             <div className="space-y-1.5">
               <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-                <DollarSign className="w-4 h-4 text-[#2db0b0]" />
+                <DollarSign className="w-4 h-4 text-[#15689E]" />
                 Unit Price
               </label>
               <div className="flex items-center w-full border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 min-h-[38px]">
@@ -264,14 +264,13 @@ export function CreateOrderModal() {
           {/* Total Amount — computed, read only */}
           <div className="space-y-1.5">
             <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-              <DollarSign className="w-4 h-4 text-[#2db0b0]" />
+              <DollarSign className="w-4 h-4 text-[#15689E]" />
               Total Amount
             </label>
             <div className="flex items-center w-full border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 min-h-[38px]">
               <span
-                className={`text-sm font-semibold ${
-                  totalAmount > 0 ? "text-[#2db0b0]" : "text-slate-400"
-                }`}
+                className={`text-sm font-semibold ${totalAmount > 0 ? "text-[#f5a255]" : "text-slate-400"
+                  }`}
               >
                 {totalAmount > 0 ? `$${totalAmount.toFixed(2)}` : "—"}
               </span>
@@ -314,7 +313,7 @@ export function CreateOrderModal() {
               isPendingMesssage="Creating..."
               variant="default"
               size="default"
-              classname="bg-[#2db0b0] hover:bg-[#249191] text-white w-full sm:w-auto cursor-pointer"
+              classname="bg-[#15689E] hover:bg-[#0f4f7a] text-white w-full sm:w-auto cursor-pointer"
             />
           </div>
         </form>

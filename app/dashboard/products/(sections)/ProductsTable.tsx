@@ -114,8 +114,8 @@ export default function ProductsTable() {
           />
         ) : (
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-[#2db0b0]/10 flex items-center justify-center shrink-0">
-              <Package className="w-4 h-4 text-[#2db0b0]" />
+            <div className="w-8 h-8 rounded-lg bg-[#15689E]/10 flex items-center justify-center shrink-0">
+              <Package className="w-4 h-4 text-[#15689E]" />
             </div>
             <span className="text-slate-700 font-medium text-sm">
               {product.name}
@@ -154,10 +154,10 @@ export default function ProductsTable() {
       render: (product) =>
         product.created_at
           ? new Date(product.created_at).toLocaleDateString("en-PH", {
-              year: "numeric",
-              month: "short",
-              day: "numeric",
-            })
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+          })
           : "—",
     },
     {
@@ -178,7 +178,6 @@ export default function ProductsTable() {
         const saving = savingId === product.id;
         const deleting = deletingId === product.id;
         return (
-          // stopPropagation keeps DataTable's onRowClick (if ever added) from firing
           <div
             className="flex items-center gap-1"
             onClick={(e) => e.stopPropagation()}
@@ -201,7 +200,7 @@ export default function ProductsTable() {
                   isPendingMesssage=""
                   variant="ghost"
                   size="icon-xs"
-                  classname="text-[#2db0b0] hover:text-[#249191] hover:bg-transparent cursor-pointer"
+                  classname="text-[#15689E] hover:text-[#0f4f7a] hover:bg-transparent cursor-pointer"
                 />
               </>
             ) : (
@@ -210,7 +209,7 @@ export default function ProductsTable() {
                   type="button"
                   onClick={() => startEditing(product)}
                   disabled={deleting}
-                  className="p-1.5 text-slate-300 hover:text-[#2db0b0] transition-colors rounded disabled:opacity-40 cursor-pointer"
+                  className="p-1.5 text-slate-300 hover:text-[#15689E] transition-colors rounded disabled:opacity-40 cursor-pointer"
                 >
                   <Pencil className="w-4 h-4" />
                 </button>
@@ -296,8 +295,9 @@ export default function ProductsTable() {
               data={filtered}
               keyExtractor={(p) => p.id!}
               emptyMessage="No Products Found"
-              headerVariant="teal"
+              headerVariant="brand"
             />
+
           </div>
         </div>
 
