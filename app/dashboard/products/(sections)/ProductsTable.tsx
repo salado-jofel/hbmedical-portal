@@ -21,6 +21,7 @@ import { DataTable } from "@/app/(components)/DataTable";
 import { AddProductModal } from "./AddProductModal";
 import { ProductCard } from "./ProductCard";
 import { Package, Trash2, Pencil, X, Check } from "lucide-react";
+import toast from "react-hot-toast"; // ✅ import
 
 type RowEdit = { name: string; price: string };
 
@@ -81,6 +82,10 @@ export default function ProductsTable() {
         }),
       );
       cancelEditing(product.id);
+      toast.success("Product updated successfully!"); // ✅ success toast
+    } catch (err) {
+      console.error("[ProductsTable] Edit error:", err);
+      toast.error("Failed to update product. Please try again."); // ✅ error toast
     } finally {
       setSavingId(null);
     }
@@ -88,11 +93,16 @@ export default function ProductsTable() {
 
   async function handleDelete() {
     if (!confirmId) return;
+    const productName = items.find((p) => p.id === confirmId)?.name; // ✅ capture before removal
     setDeletingId(confirmId);
     try {
       await deleteProduct(confirmId);
       dispatch(removeProductFromStore(confirmId));
       setConfirmId(null);
+      toast.success(`"${productName}" deleted successfully.`); // ✅ success toast
+    } catch (err) {
+      console.error("[ProductsTable] Delete error:", err);
+      toast.error("Failed to delete product. Please try again."); // ✅ error toast
     } finally {
       setDeletingId(null);
     }
@@ -174,9 +184,18 @@ export default function ProductsTable() {
       key: "actions",
       label: "Actions",
       render: (product) => {
-        const isEditing = !!editingRows[product.id!];
+        const edit = editingRows[product.id!];
+        const isEditing = !!edit;
         const saving = savingId === product.id;
         const deleting = deletingId === product.id;
+
+        // ✅ save button is only enabled when both fields have valid values
+        const isRowValid =
+          isEditing &&
+          edit.name.trim() !== "" &&
+          edit.price.trim() !== "" &&
+          parseFloat(edit.price) >= 0;
+
         return (
           <div
             className="flex items-center gap-1"
@@ -196,11 +215,12 @@ export default function ProductsTable() {
                   type="button"
                   onClick={() => handleSave(product)}
                   isPending={saving}
+                  disabled={!isRowValid || saving}          // ✅ guarded
                   cta={<Check className="w-4 h-4" />}
                   isPendingMesssage=""
                   variant="ghost"
                   size="icon-xs"
-                  classname="text-[#15689E] hover:text-[#0f4f7a] hover:bg-transparent cursor-pointer"
+                  classname="text-[#15689E] hover:text-[#0f4f7a] hover:bg-transparent cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 />
               </>
             ) : (
@@ -297,7 +317,6 @@ export default function ProductsTable() {
               emptyMessage="No Products Found"
               headerVariant="brand"
             />
-
           </div>
         </div>
 

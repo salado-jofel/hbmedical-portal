@@ -21,6 +21,7 @@ import ConfirmModal from "@/app/(components)/ConfirmModal";
 import { OrderInfoRow } from "./OrderInfoRow";
 import QuickBooksInvoiceBadge from "../../../(components)/QuickBooksInvoiceBadge";
 import { STATUS_CONFIG, type BoardStatus } from "./kanban-config";
+import toast from "react-hot-toast"; // ✅ import
 
 export function OrderCard({ order }: { order: Order }) {
   const dispatch = useAppDispatch();
@@ -37,8 +38,10 @@ export function OrderCard({ order }: { order: Order }) {
       formData.set("status", config.next);
       await updateOrderStatus(order.id, formData);
       dispatch(updateOrderInStore({ ...order, status: config.next }));
+      toast.success(`Order moved to "${config.next}".`); // ✅ success toast
     } catch (err) {
       console.error("[handleAdvance]", err);
+      toast.error("Failed to advance order. Please try again."); // ✅ error toast
     } finally {
       setIsAdvancing(false);
     }
@@ -50,8 +53,10 @@ export function OrderCard({ order }: { order: Order }) {
     try {
       await deleteOrder(order.id);
       dispatch(removeOrderFromStore(order.id));
+      toast.success(`Order ${order.order_id} deleted successfully.`); // ✅ success toast
     } catch (err) {
       console.error("[handleDelete]", err);
+      toast.error("Failed to delete order. Please try again."); // ✅ error toast
     } finally {
       setIsDeleting(false);
       setConfirmOpen(false);
