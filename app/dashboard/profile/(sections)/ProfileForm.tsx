@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import SubmitButton from "@/app/(components)/SubmitButton";
 import { User, Mail, Phone, Save } from "lucide-react";
 import { useState } from "react";
+import toast from "react-hot-toast"; // ✅ import
 
 function FieldLabel({
   icon: Icon,
@@ -47,8 +48,10 @@ export default function ProfileForm() {
           phone: formData.get("phone") as string,
         }),
       );
+      toast.success("Profile saved successfully!"); // ✅ success toast
     } catch (err) {
       console.error("[ProfileForm] Error:", err);
+      toast.error("Failed to save profile. Please try again."); // ✅ error toast
     } finally {
       setSaving(false);
     }
@@ -79,19 +82,6 @@ export default function ProfileForm() {
               className="border-slate-200 focus-visible:ring-[#15689E]"
             />
           </div>
-        </div>
-
-        {/* ── Row: Email ── */}
-        <div>
-          <FieldLabel icon={Mail} label="Email" />
-          <Input
-            name="email"
-            type="email"
-            defaultValue={profile?.email ?? ""}
-            placeholder="email@example.com"
-            disabled={saving}
-            className="border-slate-200 focus-visible:ring-[#15689E]"
-          />
         </div>
 
         {/* ── Row: Phone ── */}

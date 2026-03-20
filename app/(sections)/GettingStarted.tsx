@@ -123,7 +123,7 @@ export function GettingStarted() {
         </motion.div>
 
         {/* ── Steps ── */}
-        <div className="relative flex flex-col md:flex-row items-start justify-center">
+        <div className="relative flex flex-col md:flex-row items-start justify-center gap-6">
           {steps.map((step, index) => (
             <StepCard
               key={step.number}

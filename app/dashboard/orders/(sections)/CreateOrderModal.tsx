@@ -28,6 +28,7 @@ import type { Order } from "@/app/(interfaces)/order";
 import type { Facility } from "@/app/(interfaces)/facility";
 import type { Product } from "@/app/(interfaces)/product";
 import SubmitButton from "@/app/(components)/SubmitButton";
+import toast from "react-hot-toast"; // ✅ import
 
 export function CreateOrderModal() {
   const dispatch = useAppDispatch();
@@ -72,9 +73,15 @@ export function CreateOrderModal() {
 
   const selectedProduct = products.find((p) => p.id === productId);
 
-  // ── Computed total: price × quantity ──────────────────────────────────────
   const unitPrice = selectedProduct?.price ?? 0;
   const totalAmount = unitPrice * quantity;
+
+  // ✅ all required fields must be present to enable submit
+  const isFormValid =
+    orderId.trim() !== "" &&
+    !!facility &&
+    !isLoadingData &&
+    !!selectedProduct;
 
   function resetForm() {
     setFacilityId(facility?.id ?? "");
@@ -109,11 +116,15 @@ export function CreateOrderModal() {
     try {
       await addOrder(formData);
       dispatch(addOrderToStore(optimistic));
+      toast.success("Order created successfully!"); // ✅ success toast
       resetForm();
       setOpen(false);
     } catch (err) {
       console.error("[CreateOrderModal]", err);
-      setError(err instanceof Error ? err.message : "Failed to create order.");
+      const message =
+        err instanceof Error ? err.message : "Failed to create order.";
+      setError(message);                  // ✅ inline banner (modal stays open)
+      toast.error(message);               // ✅ error toast
     } finally {
       setIsPending(false);
     }
@@ -225,9 +236,8 @@ export function CreateOrderModal() {
             </select>
           </div>
 
-          {/* Quantity + Unit Price — side by side */}
+          {/* Quantity + Unit Price */}
           <div className="grid grid-cols-2 gap-3">
-            {/* Quantity */}
             <div className="space-y-1.5">
               <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
                 <Layers className="w-4 h-4 text-[#15689E]" />
@@ -247,7 +257,6 @@ export function CreateOrderModal() {
               />
             </div>
 
-            {/* Unit Price — locked */}
             <div className="space-y-1.5">
               <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
                 <DollarSign className="w-4 h-4 text-[#15689E]" />
@@ -261,7 +270,7 @@ export function CreateOrderModal() {
             </div>
           </div>
 
-          {/* Total Amount — computed, read only */}
+          {/* Total Amount */}
           <div className="space-y-1.5">
             <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
               <DollarSign className="w-4 h-4 text-[#15689E]" />
@@ -282,7 +291,7 @@ export function CreateOrderModal() {
             </div>
           </div>
 
-          {/* Error */}
+          {/* Inline error banner */}
           {error && (
             <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-600">
               {error}
@@ -296,14 +305,14 @@ export function CreateOrderModal() {
               variant="outline"
               size="default"
               onClick={() => setOpen(false)}
-              isPending={isPending}
+              disabled={isPending}
               classname="text-slate-600 w-full sm:w-auto cursor-pointer"
               cta={<span>Cancel</span>}
             />
             <SubmitButton
               type="submit"
               isPending={isPending}
-              disabled={!facility || isLoadingData || !selectedProduct}
+              disabled={!isFormValid || isPending}           // ✅ guarded
               cta={
                 <>
                   <Plus className="w-4 h-4 mr-1.5" />
@@ -313,7 +322,7 @@ export function CreateOrderModal() {
               isPendingMesssage="Creating..."
               variant="default"
               size="default"
-              classname="bg-[#15689E] hover:bg-[#0f4f7a] text-white w-full sm:w-auto cursor-pointer"
+              classname="bg-[#15689E] hover:bg-[#0f4f7a] text-white w-full sm:w-auto cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             />
           </div>
         </form>

@@ -7,12 +7,30 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import SubmitButton from "@/app/(components)/SubmitButton";
 import { Input } from "@/components/ui/input";
 import { Plus, Package, DollarSign } from "lucide-react";
+import toast from "react-hot-toast";
 
 // ─── Add Product Modal ────────────────────────────────────────────────────────
 export function AddProductModal() {
   const dispatch = useAppDispatch();
   const [open, setOpen] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+
+  // ✅ controlled field state
+  const [name, setName] = useState("");
+  const [price, setPrice] = useState("");
+
+  // ✅ true only when both fields have valid values
+  const isFormValid = name.trim() !== "" && price.trim() !== "" && parseFloat(price) >= 0;
+
+  // ✅ reset fields when modal closes
+  function handleOpenChange(val: boolean) {
+    if (isSubmitting) return;
+    if (!val) {
+      setName("");
+      setPrice("");
+    }
+    setOpen(val);
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -21,21 +39,18 @@ export function AddProductModal() {
       const formData = new FormData(e.currentTarget);
       const created: Product = await addProduct(formData);
       dispatch(addProductToStore(created));
+      toast.success("Product added successfully!");
       setOpen(false);
     } catch (err) {
       console.error("[AddProductModal] Error:", err);
+      toast.error("Failed to add product. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
   }
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(val) => {
-        if (!isSubmitting) setOpen(val);
-      }}
-    >
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <SubmitButton
           type="button"
@@ -66,6 +81,8 @@ export function AddProductModal() {
             </label>
             <Input
               name="name"
+              value={name}                                  // ✅ controlled
+              onChange={(e) => setName(e.target.value)}    // ✅
               placeholder="e.g. Paracetamol 500mg"
               required
               disabled={isSubmitting}
@@ -82,6 +99,8 @@ export function AddProductModal() {
               type="number"
               min="0"
               step="0.01"
+              value={price}                                 // ✅ controlled
+              onChange={(e) => setPrice(e.target.value)}   // ✅
               placeholder="e.g. 99.00"
               required
               disabled={isSubmitting}
@@ -93,14 +112,15 @@ export function AddProductModal() {
               type="button"
               variant="outline"
               size="default"
-              onClick={() => setOpen(false)}
-              isPending={isSubmitting}
+              onClick={() => handleOpenChange(false)}
+              disabled={isSubmitting}
               classname="w-full sm:w-auto text-slate-600 cursor-pointer"
               cta={<span>Cancel</span>}
             />
             <SubmitButton
               type="submit"
               isPending={isSubmitting}
+              disabled={!isFormValid || isSubmitting}       // ✅ guarded
               cta={
                 <>
                   <Plus className="w-4 h-4 mr-1.5" />
@@ -110,7 +130,7 @@ export function AddProductModal() {
               isPendingMesssage="Saving..."
               variant="default"
               size="default"
-              classname="w-full sm:w-auto bg-[#15689E] hover:bg-[#0f4f7a] text-white cursor-pointer"
+              classname="w-full sm:w-auto bg-[#15689E] hover:bg-[#0f4f7a] text-white cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             />
           </div>
         </form>

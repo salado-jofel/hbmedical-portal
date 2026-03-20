@@ -24,13 +24,13 @@ export function Hero() {
   return (
     <section
       id="hero"
-      className="relative min-h-screen flex flex-col items-center justify-center text-center px-6 pt-20"
+      className="relative min-h-screen flex flex-col items-center justify-center text-center px-6 pt-20 overflow-hidden" // ✅ overflow-hidden added
       style={{
         background:
           "radial-gradient(ellipse at top, #1a7ab8 0%, #15689E 35%, #0d4a72 70%, #082d47 100%)",
       }}
     >
-      {/* Subtle dot field */}
+      {/* Dot field — already overflow-hidden ✅ */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         {DOTS.map((pos, i) => (
           <div
@@ -41,7 +41,7 @@ export function Hero() {
         ))}
       </div>
 
-      {/* Subtle radial glow behind heading */}
+      {/* ✅ Glow — now safely clipped by section's overflow-hidden */}
       <div
         className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] rounded-full pointer-events-none"
         style={{
@@ -50,7 +50,8 @@ export function Hero() {
         }}
       />
 
-      <div className="relative z-10 max-w-3xl mx-auto">
+      <div className="relative z-10 max-w-3xl mx-auto w-full"> {/* ✅ w-full added */}
+
         {/* Heading */}
         <motion.h1
           className="text-5xl md:text-6xl lg:text-7xl font-bold text-white leading-tight mb-6"
@@ -87,48 +88,25 @@ export function Hero() {
           variants={fadeUp}
           transition={{ delay: 0.5 }}
         >
-          {/* Primary — orange (matches logo arc) */}
           <Link
             href="tel:4042132994"
-            className="bg-[#e8821a] hover:bg-[#d4741a] text-white font-semibold px-7 py-3.5 rounded-full flex items-center gap-2 transition-colors text-sm shadow-lg shadow-orange-900/30"
-          >
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
+            className="w-full sm:w-auto bg-[#e8821a] hover:bg-[#d4741a] text-white font-semibold px-7 py-3.5 rounded-full flex items-center justify-center gap-2 transition-colors text-sm shadow-lg shadow-orange-900/30"
+          >   {/* ✅ w-full on mobile, justify-center */}
+            <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
               />
             </svg>
             Talk to Us Today
           </Link>
 
-          {/* Secondary — outlined white */}
           <Link
             href="#product"
-            className="border border-white/30 hover:border-[#f5a255]/70 text-white hover:text-[#f5a255] font-semibold px-7 py-3.5 rounded-full flex items-center gap-2 transition-colors text-sm"
-          >
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-              />
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
+            className="w-full sm:w-auto border border-white/30 hover:border-[#f5a255]/70 text-white hover:text-[#f5a255] font-semibold px-7 py-3.5 rounded-full flex items-center justify-center gap-2 transition-colors text-sm"
+          >   {/* ✅ w-full on mobile, justify-center */}
+            <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
               />
             </svg>
@@ -138,7 +116,10 @@ export function Hero() {
 
         {/* Stats */}
         <motion.div
-          className="bg-white/8 backdrop-blur-sm border border-white/10 rounded-2xl divide-x divide-white/10 flex flex-col sm:flex-row overflow-hidden"
+          className="bg-white/8 backdrop-blur-sm border border-white/10 rounded-2xl
+                     flex flex-col sm:flex-row overflow-hidden
+                     divide-y divide-white/10 sm:divide-y-0 sm:divide-x sm:divide-white/10"
+          // ✅ divide-y on mobile (stacked), divide-x on sm+ (row)
           initial="hidden"
           animate="visible"
           variants={staggerContainer}
@@ -148,6 +129,7 @@ export function Hero() {
           <AnimatedStat target={3} suffix="x" label="Avg. Commission Growth" />
           <AnimatedStat target={50} suffix="+" label="Open Sales Markets" />
         </motion.div>
+
       </div>
     </section>
   );
