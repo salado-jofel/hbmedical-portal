@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { dbSelect, getSupabaseClient } from "@/utils/supabase/db";
+import { getSupabaseClient, dbSelect } from "@/utils/supabase/db";
 import type { Order } from "@/app/(interfaces)/order";
 import type { Facility } from "@/app/(interfaces)/facility";
 import type { Product } from "@/app/(interfaces)/product";
@@ -9,7 +9,7 @@ import { requireUser } from "@/utils/auth-guard";
 import {
   createQBInvoiceFromData,
   voidQuickBooksInvoice,
-  deleteQuickBooksInvoice, // ✅ added
+  deleteQuickBooksInvoice,
 } from "./quickbooks-actions";
 
 const ORDER_TABLE = "orders";
@@ -55,22 +55,64 @@ function flattenOrder(row: RawOrder): Order {
   };
 }
 
+// ── Shared helper: get the current user's facility IDs ────────────────────────
+//
+// All mutations and reads go through this to ensure cross-user access is
+// impossible regardless of what values the client sends.
+
+async function getCurrentUserFacilityIds(
+  supabase: Awaited<ReturnType<typeof getSupabaseClient>>,
+  userId: string,
+): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("facilities")
+    .select("id")
+    .eq("user_id", userId);
+
+  if (error) {
+    console.error("[getCurrentUserFacilityIds] Supabase error:", error.message);
+    return [];
+  }
+
+  return (data ?? []).map((f) => f.id);
+}
+
 // ── READ ──────────────────────────────────────────────────────────────────────
 
 export async function getAllOrders(): Promise<Order[]> {
   try {
-    const { data, error } = await dbSelect<RawOrder>({
-      table: ORDER_TABLE,
-      columns: ORDER_COLUMNS,
-      order: { column: "created_at", ascending: false },
-    });
+    const supabase = await getSupabaseClient();
+
+    // 1. Resolve the current user (throws / returns null when not signed in)
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      console.error("[getAllOrders] Auth error:", authError?.message);
+      return [];
+    }
+
+    // 2. Find every facility that belongs to this user
+    const facilityIds = await getCurrentUserFacilityIds(supabase, user.id);
+
+    // No facilities → no orders to show
+    if (facilityIds.length === 0) return [];
+
+    // 3. Fetch only orders whose facility_id is in the user's facilities
+    const { data, error } = await supabase
+      .from(ORDER_TABLE)
+      .select(ORDER_COLUMNS)
+      .in("facility_id", facilityIds) // ← ownership filter
+      .order("created_at", { ascending: false });
 
     if (error) {
       console.error("[getAllOrders] Supabase error:", error.message);
       return [];
     }
 
-    return (data ?? []).map(flattenOrder);
+    return (data ?? []).map((row) => flattenOrder(row as unknown as RawOrder));
   } catch (err) {
     console.error("[getAllOrders] Unexpected error:", err);
     return [];
@@ -84,12 +126,31 @@ export async function addOrder(formData: FormData): Promise<Order> {
 
   const supabase = await getSupabaseClient();
 
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) throw new Error("Not authenticated.");
+
   const order_id = formData.get("order_id") as string;
   const facility_id = formData.get("facility_id") as string;
   const product_id = formData.get("product_id") as string;
   const amount = parseFloat(formData.get("amount") as string) || 0;
 
-  // ── Step 1: Fetch facility + product for QB ───────────────────────────────
+  // ── Step 1: Confirm the submitted facility belongs to this user ───────────
+  //
+  // Without this check a user could craft a request with someone else's
+  // facility_id and attach an order to their account.
+  const facilityIds = await getCurrentUserFacilityIds(supabase, user.id);
+
+  if (!facilityIds.includes(facility_id)) {
+    throw new Error(
+      "You do not have permission to create orders for this facility.",
+    );
+  }
+
+  // ── Step 2: Fetch facility + product for QB ───────────────────────────────
   const [{ data: facility }, { data: product }] = await Promise.all([
     supabase
       .from("facilities")
@@ -109,7 +170,7 @@ export async function addOrder(formData: FormData): Promise<Order> {
     );
   }
 
-  // ── Step 2: QB first — create invoice, throws on failure ──────────────────
+  // ── Step 3: QB first — create invoice, throws on failure ──────────────────
   const qbInvoiceId = await createQBInvoiceFromData({
     orderDocNumber: order_id,
     qbCustomerId: facility.qb_customer_id,
@@ -119,7 +180,7 @@ export async function addOrder(formData: FormData): Promise<Order> {
     amount,
   });
 
-  // ── Step 3: DB insert ─────────────────────────────────────────────────────
+  // ── Step 4: DB insert ─────────────────────────────────────────────────────
   const { data: insertedRow, error: insertError } = await supabase
     .from(ORDER_TABLE)
     .insert({
@@ -137,7 +198,6 @@ export async function addOrder(formData: FormData): Promise<Order> {
 
   if (insertError || !insertedRow) {
     console.error("[addOrder] DB insert error:", insertError?.message);
-    // Compensate — void the QB invoice since DB failed
     try {
       await voidQuickBooksInvoice(qbInvoiceId);
     } catch (e) {
@@ -146,7 +206,7 @@ export async function addOrder(formData: FormData): Promise<Order> {
     throw new Error("Failed to save order to database.");
   }
 
-  // ── Step 4: Fetch full order with joins ───────────────────────────────────
+  // ── Step 5: Fetch full order with joins ───────────────────────────────────
   const { data: row, error: fetchError } = await supabase
     .from(ORDER_TABLE)
     .select(ORDER_COLUMNS)
@@ -171,15 +231,31 @@ export async function updateOrderStatus(
   await requireUser();
 
   const supabase = await getSupabaseClient();
+
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) throw new Error("Not authenticated.");
+
   const status = formData.get("status") as Order["status"];
 
+  // Fetch the order and confirm ownership in one query
   const { data: current, error: fetchErr } = await supabase
     .from(ORDER_TABLE)
-    .select("id, status, qb_invoice_id, qb_invoice_status")
+    .select("id, status, qb_invoice_id, qb_invoice_status, facility_id")
     .eq("id", orderId)
     .single();
 
   if (fetchErr || !current) throw new Error("Order not found.");
+
+  // ── Ownership check ───────────────────────────────────────────────────────
+  const facilityIds = await getCurrentUserFacilityIds(supabase, user.id);
+
+  if (!facilityIds.includes(current.facility_id)) {
+    throw new Error("You do not have permission to update this order.");
+  }
 
   const { error: updateErr } = await supabase
     .from(ORDER_TABLE)
@@ -201,17 +277,31 @@ export async function deleteOrder(orderId: string): Promise<void> {
 
   const supabase = await getSupabaseClient();
 
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) throw new Error("Not authenticated.");
+
   const { data: current, error: fetchErr } = await supabase
     .from(ORDER_TABLE)
-    .select("id, order_id, qb_invoice_id")
+    .select("id, order_id, qb_invoice_id, facility_id")
     .eq("id", orderId)
     .single();
 
   if (fetchErr || !current) throw new Error("Order not found.");
 
+  // ── Ownership check ───────────────────────────────────────────────────────
+  const facilityIds = await getCurrentUserFacilityIds(supabase, user.id);
+
+  if (!facilityIds.includes(current.facility_id)) {
+    throw new Error("You do not have permission to delete this order.");
+  }
+
   // ── Step 1: Delete QB invoice first if one exists ─────────────────────────
   if (current.qb_invoice_id) {
-    const deleteResult = await deleteQuickBooksInvoice(current.qb_invoice_id); // ✅ delete not void
+    const deleteResult = await deleteQuickBooksInvoice(current.qb_invoice_id);
     if (!deleteResult.success) {
       throw new Error(`Failed to delete QB invoice: ${deleteResult.message}`);
     }
