@@ -19,9 +19,8 @@ import {
 import { Button } from "@/components/ui/button";
 import ConfirmModal from "@/app/(components)/ConfirmModal";
 import { OrderInfoRow } from "./OrderInfoRow";
-import QuickBooksInvoiceBadge from "../../../(components)/QuickBooksInvoiceBadge";
 import { STATUS_CONFIG, type BoardStatus } from "./kanban-config";
-import toast from "react-hot-toast"; // ✅ import
+import toast from "react-hot-toast";
 
 export function OrderCard({ order }: { order: Order }) {
   const dispatch = useAppDispatch();
@@ -32,16 +31,18 @@ export function OrderCard({ order }: { order: Order }) {
 
   async function handleAdvance() {
     if (!order.id || !config?.next || isAdvancing) return;
+
     setIsAdvancing(true);
     try {
       const formData = new FormData();
       formData.set("status", config.next);
+
       await updateOrderStatus(order.id, formData);
       dispatch(updateOrderInStore({ ...order, status: config.next }));
-      toast.success(`Order moved to "${config.next}".`); // ✅ success toast
+      toast.success(`Order moved to "${config.next}".`);
     } catch (err) {
       console.error("[handleAdvance]", err);
-      toast.error("Failed to advance order. Please try again."); // ✅ error toast
+      toast.error("Failed to advance order. Please try again.");
     } finally {
       setIsAdvancing(false);
     }
@@ -49,14 +50,15 @@ export function OrderCard({ order }: { order: Order }) {
 
   async function handleDelete() {
     if (!order.id) return;
+
     setIsDeleting(true);
     try {
       await deleteOrder(order.id);
       dispatch(removeOrderFromStore(order.id));
-      toast.success(`Order ${order.order_id} deleted successfully.`); // ✅ success toast
+      toast.success(`Order ${order.order_id} deleted successfully.`);
     } catch (err) {
       console.error("[handleDelete]", err);
-      toast.error("Failed to delete order. Please try again."); // ✅ error toast
+      toast.error("Failed to delete order. Please try again.");
     } finally {
       setIsDeleting(false);
       setConfirmOpen(false);
@@ -76,11 +78,11 @@ export function OrderCard({ order }: { order: Order }) {
       />
 
       <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-sm hover:shadow-md transition-shadow">
-        {/* Top Row */}
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold text-[#15689E] tracking-wide">
             {order.order_id}
           </span>
+
           <Button
             type="button"
             variant="ghost"
@@ -93,31 +95,20 @@ export function OrderCard({ order }: { order: Order }) {
           </Button>
         </div>
 
-        {/* Info Rows */}
         <OrderInfoRow icon={Package} text={order.product_name ?? "—"} primary />
         <OrderInfoRow icon={Building2} text={order.facility_name ?? "—"} />
+
         {order.created_by_email && (
           <OrderInfoRow icon={User} text={order.created_by_email} />
         )}
 
         <div className="border-t border-slate-100" />
 
-        <QuickBooksInvoiceBadge
-          orderId={order.id!}
-          orderDocNumber={order.order_id}
-          qbInvoiceId={order.qb_invoice_id}
-          qbInvoiceStatus={order.qb_invoice_status}
-          facilityQbCustomerId={order.facility_qb_customer_id}
-          productQbItemId={order.product_qb_item_id}
-        />
-
-        <div className="border-t border-slate-100" />
-
-        {/* Bottom Row */}
         <div className="flex items-center justify-between">
           <span className="text-sm font-bold text-slate-800">
             ${Number(order.amount).toFixed(2)}
           </span>
+
           {config?.next && (
             <Button
               type="button"

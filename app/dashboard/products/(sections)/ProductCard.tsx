@@ -1,11 +1,12 @@
 import { Product } from "@/app/(interfaces)/product";
 import { useAppDispatch } from "@/store/hooks";
 import { useState } from "react";
-import { removeProductFromStore, updateProductInStore } from "../(redux)/products-slice";
+import {
+  removeProductFromStore,
+  updateProductInStore,
+} from "../(redux)/products-slice";
 import { deleteProduct, editProduct } from "../(services)/actions";
 import ConfirmModal from "@/app/(components)/ConfirmModal";
-import { NotSyncedBadge } from "@/app/(components)/NotSyncBadge";
-import { QBSyncBadge } from "@/app/(components)/QBSyncBadge";
 import SubmitButton from "@/app/(components)/SubmitButton";
 import { Input } from "@/components/ui/input";
 import { Package, X, Check, Pencil, Trash2 } from "lucide-react";
@@ -22,12 +23,15 @@ export function ProductCard({ product }: { product: Product }) {
 
   async function handleSave() {
     if (!product.id) return;
+
     setIsSaving(true);
     try {
       const formData = new FormData();
       formData.set("name", name);
       formData.set("price", price);
+
       await editProduct(product.id, formData);
+
       dispatch(
         updateProductInStore({
           ...product,
@@ -35,6 +39,7 @@ export function ProductCard({ product }: { product: Product }) {
           price: parseFloat(price) || 0,
         }),
       );
+
       setIsEditing(false);
     } finally {
       setIsSaving(false);
@@ -43,6 +48,7 @@ export function ProductCard({ product }: { product: Product }) {
 
   async function handleConfirmDelete() {
     if (!product.id) return;
+
     setIsDeleting(true);
     try {
       await deleteProduct(product.id);
@@ -71,6 +77,7 @@ export function ProductCard({ product }: { product: Product }) {
             <div className="w-9 h-9 rounded-lg bg-[#15689E]/10 flex items-center justify-center shrink-0 mt-0.5">
               <Package className="w-4 h-4 text-[#15689E]" />
             </div>
+
             <div className="flex-1 min-w-0 space-y-1">
               {isEditing ? (
                 <Input
@@ -84,6 +91,7 @@ export function ProductCard({ product }: { product: Product }) {
                   {product.name}
                 </p>
               )}
+
               <div className="flex items-center gap-2 flex-wrap">
                 {isEditing ? (
                   <Input
@@ -100,6 +108,7 @@ export function ProductCard({ product }: { product: Product }) {
                     ${Number(product.price).toFixed(2)}
                   </span>
                 )}
+
                 <span className="text-xs text-slate-400">
                   {product.created_at
                     ? new Date(product.created_at).toLocaleDateString("en-PH", {
@@ -109,14 +118,6 @@ export function ProductCard({ product }: { product: Product }) {
                     })
                     : "—"}
                 </span>
-              </div>
-              {/* ✅ QB status → QBSyncBadge / NotSyncedBadge */}
-              <div>
-                {product.qb_item_id ? (
-                  <QBSyncBadge syncedAt={product.qb_synced_at} />
-                ) : (
-                  <NotSyncedBadge />
-                )}
               </div>
             </div>
           </div>
@@ -136,6 +137,7 @@ export function ProductCard({ product }: { product: Product }) {
                 >
                   <X className="w-4 h-4" />
                 </button>
+
                 <SubmitButton
                   type="button"
                   onClick={handleSave}
@@ -157,6 +159,7 @@ export function ProductCard({ product }: { product: Product }) {
                 >
                   <Pencil className="w-4 h-4" />
                 </button>
+
                 <button
                   type="button"
                   onClick={() => setConfirmOpen(true)}

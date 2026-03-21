@@ -18,14 +18,7 @@ export interface Order {
   facility_name?: string;
   product_name?: string;
   created_by_email?: string;
-  qb_invoice_id?: string | null;
-  qb_invoice_status?: string | null;
-  qb_synced_at?: string | null;
-  facility_qb_customer_id?: string | null; 
-  product_qb_item_id?: string | null; 
 }
-
-
 
 export type InsertOrderPayload = Omit<
   Order,

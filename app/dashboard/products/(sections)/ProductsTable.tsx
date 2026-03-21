@@ -14,14 +14,12 @@ import { Input } from "@/components/ui/input";
 import SubmitButton from "@/app/(components)/SubmitButton";
 import ConfirmModal from "@/app/(components)/ConfirmModal";
 import { EmptyState } from "@/app/(components)/EmptyState";
-import { QBSyncBadge } from "@/app/(components)/QBSyncBadge";
-import { NotSyncedBadge } from "@/app/(components)/NotSyncBadge";
 import { TableToolbar } from "@/app/(components)/TableToolbar";
 import { DataTable } from "@/app/(components)/DataTable";
 import { AddProductModal } from "./AddProductModal";
 import { ProductCard } from "./ProductCard";
 import { Package, Trash2, Pencil, X, Check } from "lucide-react";
-import toast from "react-hot-toast"; // ✅ import
+import toast from "react-hot-toast";
 
 type RowEdit = { name: string; price: string };
 
@@ -68,12 +66,15 @@ export default function ProductsTable() {
   async function handleSave(product: Product) {
     const edit = editingRows[product.id!];
     if (!edit || !product.id) return;
+
     setSavingId(product.id);
     try {
       const formData = new FormData();
       formData.set("name", edit.name);
       formData.set("price", edit.price);
+
       await editProduct(product.id, formData);
+
       dispatch(
         updateProductInStore({
           ...product,
@@ -81,11 +82,12 @@ export default function ProductsTable() {
           price: parseFloat(edit.price) || 0,
         }),
       );
+
       cancelEditing(product.id);
-      toast.success("Product updated successfully!"); // ✅ success toast
+      toast.success("Product updated successfully!");
     } catch (err) {
       console.error("[ProductsTable] Edit error:", err);
-      toast.error("Failed to update product. Please try again."); // ✅ error toast
+      toast.error("Failed to update product. Please try again.");
     } finally {
       setSavingId(null);
     }
@@ -93,16 +95,18 @@ export default function ProductsTable() {
 
   async function handleDelete() {
     if (!confirmId) return;
-    const productName = items.find((p) => p.id === confirmId)?.name; // ✅ capture before removal
+
+    const productName = items.find((p) => p.id === confirmId)?.name;
     setDeletingId(confirmId);
+
     try {
       await deleteProduct(confirmId);
       dispatch(removeProductFromStore(confirmId));
       setConfirmId(null);
-      toast.success(`"${productName}" deleted successfully.`); // ✅ success toast
+      toast.success(`"${productName}" deleted successfully.`);
     } catch (err) {
       console.error("[ProductsTable] Delete error:", err);
-      toast.error("Failed to delete product. Please try again."); // ✅ error toast
+      toast.error("Failed to delete product. Please try again.");
     } finally {
       setDeletingId(null);
     }
@@ -115,6 +119,7 @@ export default function ProductsTable() {
       render: (product) => {
         const edit = editingRows[product.id!];
         const saving = savingId === product.id;
+
         return edit ? (
           <Input
             value={edit.name}
@@ -140,6 +145,7 @@ export default function ProductsTable() {
       render: (product) => {
         const edit = editingRows[product.id!];
         const saving = savingId === product.id;
+
         return edit ? (
           <Input
             value={edit.price}
@@ -171,16 +177,6 @@ export default function ProductsTable() {
           : "—",
     },
     {
-      key: "qb_item_id",
-      label: "QuickBooks",
-      render: (product) =>
-        product.qb_item_id ? (
-          <QBSyncBadge syncedAt={product.qb_synced_at} />
-        ) : (
-          <NotSyncedBadge />
-        ),
-    },
-    {
       key: "actions",
       label: "Actions",
       render: (product) => {
@@ -189,7 +185,6 @@ export default function ProductsTable() {
         const saving = savingId === product.id;
         const deleting = deletingId === product.id;
 
-        // ✅ save button is only enabled when both fields have valid values
         const isRowValid =
           isEditing &&
           edit.name.trim() !== "" &&
@@ -211,11 +206,12 @@ export default function ProductsTable() {
                 >
                   <X className="w-4 h-4" />
                 </button>
+
                 <SubmitButton
                   type="button"
                   onClick={() => handleSave(product)}
                   isPending={saving}
-                  disabled={!isRowValid || saving}          // ✅ guarded
+                  disabled={!isRowValid || saving}
                   cta={<Check className="w-4 h-4" />}
                   isPendingMesssage=""
                   variant="ghost"
@@ -233,6 +229,7 @@ export default function ProductsTable() {
                 >
                   <Pencil className="w-4 h-4" />
                 </button>
+
                 <button
                   type="button"
                   onClick={() => setConfirmId(product.id!)}

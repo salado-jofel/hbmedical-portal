@@ -6,16 +6,11 @@ import type { Order } from "@/app/(interfaces)/order";
 import type { Facility } from "@/app/(interfaces)/facility";
 import type { Product } from "@/app/(interfaces)/product";
 import { requireUser } from "@/utils/auth-guard";
-import {
-  createQBInvoiceFromData,
-  voidQuickBooksInvoice,
-  deleteQuickBooksInvoice,
-} from "./quickbooks-actions";
 
 const ORDER_TABLE = "orders";
 
 const ORDER_COLUMNS =
-  "id, created_at, order_id, facility_id, product_id, amount, status, qb_invoice_id, qb_invoice_status, qb_synced_at, facilities(name, qb_customer_id), products(name, qb_item_id)";
+  "id, created_at, order_id, facility_id, product_id, amount, status, facilities(name), products(name)";
 
 const ORDERS_PATH = "/dashboard/orders";
 
@@ -29,11 +24,8 @@ type RawOrder = {
   product_id: string;
   amount: number;
   status: string;
-  qb_invoice_id: string | null;
-  qb_invoice_status: string | null;
-  qb_synced_at: string | null;
-  facilities: { name: string; qb_customer_id: string | null } | null;
-  products: { name: string; qb_item_id: string | null } | null;
+  facilities: { name: string } | null;
+  products: { name: string } | null;
 };
 
 function flattenOrder(row: RawOrder): Order {
@@ -47,18 +39,18 @@ function flattenOrder(row: RawOrder): Order {
     status: row.status as Order["status"],
     facility_name: row.facilities?.name ?? "—",
     product_name: row.products?.name ?? "—",
-    facility_qb_customer_id: row.facilities?.qb_customer_id ?? null,
-    product_qb_item_id: row.products?.qb_item_id ?? null,
-    qb_invoice_id: row.qb_invoice_id ?? null,
-    qb_invoice_status: row.qb_invoice_status ?? null,
-    qb_synced_at: row.qb_synced_at ?? null,
+
+    // QB fields removed from app flow.
+    // Keep these as null temporarily if your existing Order interface still expects them.
+    facility_qb_customer_id: null,
+    product_qb_item_id: null,
+    qb_invoice_id: null,
+    qb_invoice_status: null,
+    qb_synced_at: null,
   };
 }
 
 // ── Shared helper: get the current user's facility IDs ────────────────────────
-//
-// All mutations and reads go through this to ensure cross-user access is
-// impossible regardless of what values the client sends.
 
 async function getCurrentUserFacilityIds(
   supabase: Awaited<ReturnType<typeof getSupabaseClient>>,
@@ -83,7 +75,6 @@ export async function getAllOrders(): Promise<Order[]> {
   try {
     const supabase = await getSupabaseClient();
 
-    // 1. Resolve the current user (throws / returns null when not signed in)
     const {
       data: { user },
       error: authError,
@@ -94,17 +85,14 @@ export async function getAllOrders(): Promise<Order[]> {
       return [];
     }
 
-    // 2. Find every facility that belongs to this user
     const facilityIds = await getCurrentUserFacilityIds(supabase, user.id);
 
-    // No facilities → no orders to show
     if (facilityIds.length === 0) return [];
 
-    // 3. Fetch only orders whose facility_id is in the user's facilities
     const { data, error } = await supabase
       .from(ORDER_TABLE)
       .select(ORDER_COLUMNS)
-      .in("facility_id", facilityIds) // ← ownership filter
+      .in("facility_id", facilityIds)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -138,10 +126,7 @@ export async function addOrder(formData: FormData): Promise<Order> {
   const product_id = formData.get("product_id") as string;
   const amount = parseFloat(formData.get("amount") as string) || 0;
 
-  // ── Step 1: Confirm the submitted facility belongs to this user ───────────
-  //
-  // Without this check a user could craft a request with someone else's
-  // facility_id and attach an order to their account.
+  // Confirm facility belongs to current user
   const facilityIds = await getCurrentUserFacilityIds(supabase, user.id);
 
   if (!facilityIds.includes(facility_id)) {
@@ -150,37 +135,23 @@ export async function addOrder(formData: FormData): Promise<Order> {
     );
   }
 
-  // ── Step 2: Fetch facility + product for QB ───────────────────────────────
-  const [{ data: facility }, { data: product }] = await Promise.all([
-    supabase
-      .from("facilities")
-      .select("name, qb_customer_id")
-      .eq("id", facility_id)
-      .single(),
-    supabase
-      .from("products")
-      .select("name, qb_item_id")
-      .eq("id", product_id)
-      .single(),
-  ]);
+  // Optional: verify product exists
+  const { data: productExists, error: productError } = await supabase
+    .from("products")
+    .select("id")
+    .eq("id", product_id)
+    .maybeSingle();
 
-  if (!facility?.qb_customer_id || !product?.qb_item_id) {
-    throw new Error(
-      "Facility or product is not synced to QuickBooks. Please sync them first.",
-    );
+  if (productError) {
+    console.error("[addOrder] Product lookup error:", productError.message);
+    throw new Error("Failed to validate selected product.");
   }
 
-  // ── Step 3: QB first — create invoice, throws on failure ──────────────────
-  const qbInvoiceId = await createQBInvoiceFromData({
-    orderDocNumber: order_id,
-    qbCustomerId: facility.qb_customer_id,
-    facilityName: facility.name,
-    qbItemId: product.qb_item_id,
-    productName: product.name,
-    amount,
-  });
+  if (!productExists) {
+    throw new Error("Selected product not found.");
+  }
 
-  // ── Step 4: DB insert ─────────────────────────────────────────────────────
+  // Insert local order only (no QuickBooks sync)
   const { data: insertedRow, error: insertError } = await supabase
     .from(ORDER_TABLE)
     .insert({
@@ -189,24 +160,15 @@ export async function addOrder(formData: FormData): Promise<Order> {
       product_id,
       amount,
       status: "Processing",
-      qb_invoice_id: qbInvoiceId,
-      qb_invoice_status: "draft",
-      qb_synced_at: new Date().toISOString(),
     })
     .select("id")
     .single();
 
   if (insertError || !insertedRow) {
     console.error("[addOrder] DB insert error:", insertError?.message);
-    try {
-      await voidQuickBooksInvoice(qbInvoiceId);
-    } catch (e) {
-      console.error("[addOrder] QB void compensation failed:", e);
-    }
     throw new Error("Failed to save order to database.");
   }
 
-  // ── Step 5: Fetch full order with joins ───────────────────────────────────
   const { data: row, error: fetchError } = await supabase
     .from(ORDER_TABLE)
     .select(ORDER_COLUMNS)
@@ -241,16 +203,14 @@ export async function updateOrderStatus(
 
   const status = formData.get("status") as Order["status"];
 
-  // Fetch the order and confirm ownership in one query
   const { data: current, error: fetchErr } = await supabase
     .from(ORDER_TABLE)
-    .select("id, status, qb_invoice_id, qb_invoice_status, facility_id")
+    .select("id, status, facility_id")
     .eq("id", orderId)
     .single();
 
   if (fetchErr || !current) throw new Error("Order not found.");
 
-  // ── Ownership check ───────────────────────────────────────────────────────
   const facilityIds = await getCurrentUserFacilityIds(supabase, user.id);
 
   if (!facilityIds.includes(current.facility_id)) {
@@ -286,28 +246,18 @@ export async function deleteOrder(orderId: string): Promise<void> {
 
   const { data: current, error: fetchErr } = await supabase
     .from(ORDER_TABLE)
-    .select("id, order_id, qb_invoice_id, facility_id")
+    .select("id, order_id, facility_id")
     .eq("id", orderId)
     .single();
 
   if (fetchErr || !current) throw new Error("Order not found.");
 
-  // ── Ownership check ───────────────────────────────────────────────────────
   const facilityIds = await getCurrentUserFacilityIds(supabase, user.id);
 
   if (!facilityIds.includes(current.facility_id)) {
     throw new Error("You do not have permission to delete this order.");
   }
 
-  // ── Step 1: Delete QB invoice first if one exists ─────────────────────────
-  if (current.qb_invoice_id) {
-    const deleteResult = await deleteQuickBooksInvoice(current.qb_invoice_id);
-    if (!deleteResult.success) {
-      throw new Error(`Failed to delete QB invoice: ${deleteResult.message}`);
-    }
-  }
-
-  // ── Step 2: Delete from DB ────────────────────────────────────────────────
   const { error: deleteErr } = await supabase
     .from(ORDER_TABLE)
     .delete()

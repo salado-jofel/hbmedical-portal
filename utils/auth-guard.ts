@@ -1,5 +1,3 @@
-// utils/auth-guard.ts  ← CREATE THIS FILE
-
 import { getSupabaseClient } from "@/utils/supabase/db";
 import type { User } from "@supabase/supabase-js";
 
