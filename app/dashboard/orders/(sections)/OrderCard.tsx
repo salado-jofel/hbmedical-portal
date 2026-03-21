@@ -6,7 +6,11 @@ import {
   updateOrderInStore,
   removeOrderFromStore,
 } from "../(redux)/orders-slice";
-import { updateOrderStatus, deleteOrder } from "../(services)/actions";
+import {
+  updateOrderStatus,
+  deleteOrder,
+  createStripeCheckoutSession,
+} from "../(services)/actions";
 import type { Order } from "@/app/(interfaces)/order";
 import {
   Trash2,
@@ -15,6 +19,8 @@ import {
   User,
   ChevronRight,
   Loader2,
+  CreditCard,
+  CheckCircle2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ConfirmModal from "@/app/(components)/ConfirmModal";
@@ -27,7 +33,11 @@ export function OrderCard({ order }: { order: Order }) {
   const config = STATUS_CONFIG[order.status as BoardStatus];
   const [isAdvancing, setIsAdvancing] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isPaying, setIsPaying] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+
+  const isPaid = order.payment_status === "paid";
+  const isPaymentPending = order.payment_status === "pending";
 
   async function handleAdvance() {
     if (!order.id || !config?.next || isAdvancing) return;
@@ -36,7 +46,6 @@ export function OrderCard({ order }: { order: Order }) {
     try {
       const formData = new FormData();
       formData.set("status", config.next);
-
       await updateOrderStatus(order.id, formData);
       dispatch(updateOrderInStore({ ...order, status: config.next }));
       toast.success(`Order moved to "${config.next}".`);
@@ -62,6 +71,20 @@ export function OrderCard({ order }: { order: Order }) {
     } finally {
       setIsDeleting(false);
       setConfirmOpen(false);
+    }
+  }
+
+  async function handlePayNow() {
+    if (!order.id || isPaying || isPaid) return;
+
+    setIsPaying(true);
+    try {
+      const checkoutUrl = await createStripeCheckoutSession(order.id);
+      window.location.href = checkoutUrl;
+    } catch (err) {
+      console.error("[handlePayNow]", err);
+      toast.error("Failed to start payment. Please try again.");
+      setIsPaying(false);
     }
   }
 
@@ -102,11 +125,49 @@ export function OrderCard({ order }: { order: Order }) {
           <OrderInfoRow icon={User} text={order.created_by_email} />
         )}
 
+        <div className="border-t border-slate-100 pt-3">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm font-bold text-slate-800">
+              ${Number(order.amount).toFixed(2)}
+            </span>
+
+            {isPaid ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-1 text-xs font-medium text-green-700">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Paid
+              </span>
+            ) : (
+              <Button
+                type="button"
+                size="sm"
+                onClick={handlePayNow}
+                disabled={isPaying}
+                className="h-8 bg-[#15689E] hover:bg-[#0f4f7a] text-white text-xs cursor-pointer"
+              >
+                {isPaying ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                    Redirecting...
+                  </>
+                ) : (
+                  <>
+                    <CreditCard className="w-3.5 h-3.5 mr-1" />
+                    {isPaymentPending ? "Resume Payment" : "Pay Now"}
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
+        </div>
+
         <div className="border-t border-slate-100" />
 
         <div className="flex items-center justify-between">
-          <span className="text-sm font-bold text-slate-800">
-            ${Number(order.amount).toFixed(2)}
+          <span className="text-xs text-slate-500">
+            Payment:{" "}
+            <span className="font-medium text-slate-700">
+              {order.payment_status ?? "unpaid"}
+            </span>
           </span>
 
           {config?.next && (
