@@ -3,8 +3,8 @@ export const dynamic = "force-dynamic";
 import { getAllOrders } from "./(services)/actions";
 import Providers from "./(sections)/Providers";
 import Header from "./(sections)/Header";
-import KanbanBoard from "./(sections)/KanBoard";
 import { Metadata } from "next";
+import { KanbanBoard } from "./(sections)/KanbanBoard";
 
 export const metadata: Metadata = {
   title: "Orders",
@@ -17,7 +17,7 @@ export default async function OrdersPage() {
     <Providers orders={orders}>
       <div className="p-4 md:p-8 w-full mx-auto space-y-6 select-none h-full overflow-y-auto">
         <Header />
-        <KanbanBoard />
+        <KanbanBoard orders={orders} />
       </div>
     </Providers>
   );

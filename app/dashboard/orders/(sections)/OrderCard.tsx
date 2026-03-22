@@ -2,12 +2,8 @@
 
 import { useState } from "react";
 import { useAppDispatch } from "@/store/hooks";
+import { removeOrderFromStore } from "../(redux)/orders-slice";
 import {
-  updateOrderInStore,
-  removeOrderFromStore,
-} from "../(redux)/orders-slice";
-import {
-  updateOrderStatus,
   deleteOrder,
   createStripeCheckoutSession,
 } from "../(services)/actions";
@@ -17,45 +13,31 @@ import {
   Package,
   Building2,
   User,
-  ChevronRight,
   Loader2,
   CreditCard,
   CheckCircle2,
+  Boxes,
+  DollarSign,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ConfirmModal from "@/app/(components)/ConfirmModal";
 import { OrderInfoRow } from "./OrderInfoRow";
-import { STATUS_CONFIG, type BoardStatus } from "./kanban-config";
+import { getFulfillmentLabel } from "./kanban-config";
 import toast from "react-hot-toast";
 
 export function OrderCard({ order }: { order: Order }) {
   const dispatch = useAppDispatch();
-  const config = STATUS_CONFIG[order.status as BoardStatus];
-  const [isAdvancing, setIsAdvancing] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isPaying, setIsPaying] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   const isPaid = order.payment_status === "paid";
   const isPaymentPending = order.payment_status === "pending";
+  const fulfillmentLabel = getFulfillmentLabel(order);
 
-  async function handleAdvance() {
-    if (!order.id || !config?.next || isAdvancing) return;
-
-    setIsAdvancing(true);
-    try {
-      const formData = new FormData();
-      formData.set("status", config.next);
-      await updateOrderStatus(order.id, formData);
-      dispatch(updateOrderInStore({ ...order, status: config.next }));
-      toast.success(`Order moved to "${config.next}".`);
-    } catch (err) {
-      console.error("[handleAdvance]", err);
-      toast.error("Failed to advance order. Please try again.");
-    } finally {
-      setIsAdvancing(false);
-    }
-  }
+  const quantity = Number(order.quantity ?? 1);
+  const totalAmount = Number(order.amount ?? 0);
+  const unitPrice = quantity > 0 ? totalAmount / quantity : totalAmount;
 
   async function handleDelete() {
     if (!order.id) return;
@@ -118,18 +100,37 @@ export function OrderCard({ order }: { order: Order }) {
           </Button>
         </div>
 
-        <OrderInfoRow icon={Package} text={order.product_name ?? "—"} primary />
-        <OrderInfoRow icon={Building2} text={order.facility_name ?? "—"} />
+        <OrderInfoRow
+          icon={Package}
+          text={`Product: ${order.product_name ?? "—"}`}
+          primary
+        />
+
+        <OrderInfoRow
+          icon={Building2}
+          text={`Facility: ${order.facility_name ?? "—"}`}
+        />
 
         {order.created_by_email && (
           <OrderInfoRow icon={User} text={order.created_by_email} />
         )}
 
+        <OrderInfoRow icon={Boxes} text={`Qty: ${quantity}`} />
+        <OrderInfoRow
+          icon={DollarSign}
+          text={`Unit Price: $${unitPrice.toFixed(2)}`}
+        />
+
         <div className="border-t border-slate-100 pt-3">
           <div className="flex items-center justify-between gap-3">
-            <span className="text-sm font-bold text-slate-800">
-              ${Number(order.amount).toFixed(2)}
-            </span>
+            <div className="flex flex-col">
+              <span className="text-sm font-bold text-slate-800">
+                ${totalAmount.toFixed(2)}
+              </span>
+              <span className="text-xs text-slate-400">
+                Total ({quantity} × ${unitPrice.toFixed(2)})
+              </span>
+            </div>
 
             {isPaid ? (
               <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-1 text-xs font-medium text-green-700">
@@ -170,28 +171,9 @@ export function OrderCard({ order }: { order: Order }) {
             </span>
           </span>
 
-          {config?.next && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={handleAdvance}
-              disabled={isAdvancing}
-              className="h-7 px-2 text-xs text-[#15689E] hover:text-[#0f4f7a] hover:bg-[#15689E]/10 font-medium cursor-pointer"
-            >
-              {isAdvancing ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
-                  Moving...
-                </>
-              ) : (
-                <>
-                  {config.next}
-                  <ChevronRight className="w-3.5 h-3.5 ml-1" />
-                </>
-              )}
-            </Button>
-          )}
+          <span className="text-xs font-medium text-slate-500">
+            {fulfillmentLabel}
+          </span>
         </div>
       </div>
     </>

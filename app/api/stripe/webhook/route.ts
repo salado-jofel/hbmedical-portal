@@ -3,24 +3,99 @@ import type Stripe from "stripe";
 import { stripe } from "@/utils/stripe/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 
-async function markOrderPaid(session: Stripe.Checkout.Session) {
-  const orderId = session.metadata?.order_id;
-  if (!orderId) return;
-
-  const supabaseAdmin = createAdminClient();
-
-  const { data: existing, error: fetchError } = await supabaseAdmin
+async function findOrderForSession(
+  supabaseAdmin: ReturnType<typeof createAdminClient>,
+  session: Stripe.Checkout.Session,
+) {
+  // 1) Best match: stored Stripe Checkout Session ID
+  let { data: order, error } = await supabaseAdmin
     .from("orders")
-    .select("id, payment_status")
-    .eq("id", orderId)
+    .select("id, order_id, payment_status")
+    .eq("stripe_checkout_session_id", session.id)
     .maybeSingle();
 
-  if (fetchError || !existing) {
-    console.error("[stripe webhook] Order lookup failed:", fetchError?.message);
-    return;
+  if (error) {
+    console.error(
+      "[stripe webhook] Lookup by session.id failed:",
+      error.message,
+    );
   }
 
-  if (existing.payment_status === "paid") {
+  if (order) return order;
+
+  // 2) Next best: client_reference_id (you set this to order.id in one good version)
+  const clientReferenceId =
+    typeof session.client_reference_id === "string"
+      ? session.client_reference_id
+      : null;
+
+  if (clientReferenceId) {
+    ({ data: order, error } = await supabaseAdmin
+      .from("orders")
+      .select("id, order_id, payment_status")
+      .eq("id", clientReferenceId)
+      .maybeSingle());
+
+    if (error) {
+      console.error(
+        "[stripe webhook] Lookup by client_reference_id failed:",
+        error.message,
+      );
+    }
+
+    if (order) return order;
+  }
+
+  // 3) Metadata fallbacks
+  const metadataOrderId = session.metadata?.order_id ?? null;
+  const metadataOrderDocNumber = session.metadata?.order_doc_number ?? null;
+
+  if (metadataOrderId) {
+    // try UUID column first
+    ({ data: order, error } = await supabaseAdmin
+      .from("orders")
+      .select("id, order_id, payment_status")
+      .eq("id", metadataOrderId)
+      .maybeSingle());
+
+    if (order) return order;
+
+    // then try human-readable order number column
+    ({ data: order, error } = await supabaseAdmin
+      .from("orders")
+      .select("id, order_id, payment_status")
+      .eq("order_id", metadataOrderId)
+      .maybeSingle());
+
+    if (order) return order;
+  }
+
+  if (metadataOrderDocNumber) {
+    ({ data: order, error } = await supabaseAdmin
+      .from("orders")
+      .select("id, order_id, payment_status")
+      .eq("order_id", metadataOrderDocNumber)
+      .maybeSingle());
+
+    if (order) return order;
+  }
+
+  console.error("[stripe webhook] No matching order found", {
+    sessionId: session.id,
+    clientReferenceId,
+    metadata: session.metadata,
+  });
+
+  return null;
+}
+
+async function markOrderPaid(session: Stripe.Checkout.Session) {
+  const supabaseAdmin = createAdminClient();
+
+  const order = await findOrderForSession(supabaseAdmin, session);
+  if (!order) return;
+
+  if (order.payment_status === "paid") {
     return;
   }
 
@@ -43,7 +118,7 @@ async function markOrderPaid(session: Stripe.Checkout.Session) {
       stripe_customer_id: customerId,
       paid_at: new Date().toISOString(),
     })
-    .eq("id", orderId);
+    .eq("id", order.id);
 
   if (updateError) {
     console.error(
@@ -57,10 +132,10 @@ async function markOrderFailedOrCanceled(
   session: Stripe.Checkout.Session,
   status: "failed" | "canceled",
 ) {
-  const orderId = session.metadata?.order_id;
-  if (!orderId) return;
-
   const supabaseAdmin = createAdminClient();
+
+  const order = await findOrderForSession(supabaseAdmin, session);
+  if (!order) return;
 
   const { error } = await supabaseAdmin
     .from("orders")
@@ -68,7 +143,7 @@ async function markOrderFailedOrCanceled(
       payment_status: status,
       stripe_checkout_session_id: session.id,
     })
-    .eq("id", orderId);
+    .eq("id", order.id);
 
   if (error) {
     console.error(
@@ -98,6 +173,7 @@ export async function POST(request: Request) {
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Invalid webhook signature.";
+    console.error("[stripe webhook] Signature verification failed:", message);
     return NextResponse.json({ error: message }, { status: 400 });
   }
 
