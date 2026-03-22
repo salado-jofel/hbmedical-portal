@@ -33,6 +33,7 @@ import ConfirmModal from "@/app/(components)/ConfirmModal";
 import { OrderInfoRow } from "./OrderInfoRow";
 import { getFulfillmentLabel } from "./kanban-config";
 import toast from "react-hot-toast";
+import { formatStatus } from "@/utils/formatter";
 
 function PaymentBadge({
   isPaid,
@@ -263,8 +264,8 @@ export function OrderCard({ order }: { order: Order }) {
         <div className="mt-3 flex flex-wrap gap-2">
           <PaymentBadge isPaid={isPaid} isPending={isPaymentPending} />
           <FulfillmentBadge label={fulfillmentLabel} delivered={isDelivered} />
-          <ShipStationSyncBadge syncStatus={order.shipstation_sync_status} />
-          <DevModeBadge show={isMockCarrier || hasMockShipment} />
+          <ShipStationSyncBadge syncStatus={formatStatus(order.shipstation_sync_status)} />
+          {/* <DevModeBadge show={isMockCarrier || hasMockShipment} /> */}
         </div>
 
         <div className="mt-4 space-y-2">
