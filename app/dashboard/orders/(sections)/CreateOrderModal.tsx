@@ -28,7 +28,7 @@ import type { Order } from "@/app/(interfaces)/order";
 import type { Facility } from "@/app/(interfaces)/facility";
 import type { Product } from "@/app/(interfaces)/product";
 import SubmitButton from "@/app/(components)/SubmitButton";
-import toast from "react-hot-toast"; // ✅ import
+import toast from "react-hot-toast";
 
 export function CreateOrderModal() {
   const dispatch = useAppDispatch();
@@ -43,40 +43,39 @@ export function CreateOrderModal() {
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Clear error when modal closes
   useEffect(() => {
     if (!open) setError(null);
   }, [open]);
 
-  // Generate random order ID on open
   useEffect(() => {
     const pad = (n: number) => String(n).padStart(3, "0");
     setOrderId(`ORD-${pad(Math.floor(Math.random() * 999) + 1)}`);
   }, [open]);
 
-  // Fetch facility + products when modal opens
   useEffect(() => {
     if (!open) return;
+
     async function fetchData() {
       setIsLoadingData(true);
+
       const [fetchedFacility, fetchedProducts] = await Promise.all([
         getUserFacility(),
         getAllProducts(),
       ]);
+
       setFacility(fetchedFacility);
       setFacilityId(fetchedFacility?.id ?? "");
       setProducts(fetchedProducts);
       setIsLoadingData(false);
     }
+
     fetchData();
   }, [open]);
 
   const selectedProduct = products.find((p) => p.id === productId);
-
   const unitPrice = selectedProduct?.price ?? 0;
   const totalAmount = unitPrice * quantity;
 
-  // ✅ all required fields must be present to enable submit
   const isFormValid =
     orderId.trim() !== "" &&
     !!facility &&
@@ -92,6 +91,7 @@ export function CreateOrderModal() {
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!facility) return;
+
     setIsPending(true);
     setError(null);
 
@@ -108,23 +108,25 @@ export function CreateOrderModal() {
       facility_id: facilityId,
       product_id: productId,
       amount: totalAmount,
-      status: "Processing",
+      quantity,
+      status: "Processing", // stays a backend/internal status
       facility_name: facility?.name ?? "—",
       product_name: selectedProduct?.name ?? "—",
+      payment_status: "pending",
     };
 
     try {
       await addOrder(formData);
       dispatch(addOrderToStore(optimistic));
-      toast.success("Order created successfully!"); // ✅ success toast
+      toast.success("Order created successfully!");
       resetForm();
       setOpen(false);
     } catch (err) {
       console.error("[CreateOrderModal]", err);
       const message =
         err instanceof Error ? err.message : "Failed to create order.";
-      setError(message);                  // ✅ inline banner (modal stays open)
-      toast.error(message);               // ✅ error toast
+      setError(message);
+      toast.error(message);
     } finally {
       setIsPending(false);
     }
@@ -160,7 +162,6 @@ export function CreateOrderModal() {
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 pt-2">
-          {/* Order ID */}
           <div className="space-y-1.5">
             <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
               <Hash className="w-4 h-4 text-[#15689E]" />
@@ -175,7 +176,6 @@ export function CreateOrderModal() {
             />
           </div>
 
-          {/* Facility — Read Only */}
           <div className="space-y-1.5">
             <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
               <Building2 className="w-4 h-4 text-[#15689E]" />
@@ -205,7 +205,6 @@ export function CreateOrderModal() {
             </div>
           </div>
 
-          {/* Product */}
           <div className="space-y-1.5">
             <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
               <Package className="w-4 h-4 text-[#15689E]" />
@@ -236,7 +235,6 @@ export function CreateOrderModal() {
             </select>
           </div>
 
-          {/* Quantity + Unit Price */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
@@ -270,7 +268,6 @@ export function CreateOrderModal() {
             </div>
           </div>
 
-          {/* Total Amount */}
           <div className="space-y-1.5">
             <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
               <DollarSign className="w-4 h-4 text-[#15689E]" />
@@ -291,14 +288,12 @@ export function CreateOrderModal() {
             </div>
           </div>
 
-          {/* Inline error banner */}
           {error && (
             <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-600">
               {error}
             </div>
           )}
 
-          {/* Actions */}
           <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
             <SubmitButton
               type="button"
@@ -309,10 +304,11 @@ export function CreateOrderModal() {
               classname="text-slate-600 w-full sm:w-auto cursor-pointer"
               cta={<span>Cancel</span>}
             />
+
             <SubmitButton
               type="submit"
               isPending={isPending}
-              disabled={!isFormValid || isPending}           // ✅ guarded
+              disabled={!isFormValid || isPending}
               cta={
                 <>
                   <Plus className="w-4 h-4 mr-1.5" />

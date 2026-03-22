@@ -2,24 +2,45 @@
 
 import { revalidatePath } from "next/cache";
 import { getSupabaseClient, dbSelect } from "@/utils/supabase/db";
+import { stripe } from "@/utils/stripe/server";
 import type { Order } from "@/app/(interfaces)/order";
 import type { Facility } from "@/app/(interfaces)/facility";
 import type { Product } from "@/app/(interfaces)/product";
 import { requireUser } from "@/utils/auth-guard";
-import {
-  createQBInvoiceFromData,
-  voidQuickBooksInvoice,
-  deleteQuickBooksInvoice,
-} from "./quickbooks-actions";
+import { getShipStationClient } from "@/lib/shipstation/server";
 
 const ORDER_TABLE = "orders";
 
-const ORDER_COLUMNS =
-  "id, created_at, order_id, facility_id, product_id, amount, status, qb_invoice_id, qb_invoice_status, qb_synced_at, facilities(name, qb_customer_id), products(name, qb_item_id)";
+const ORDER_COLUMNS = `
+  id,
+  created_at,
+  order_id,
+  facility_id,
+  product_id,
+  amount,
+  quantity,
+  status,
+  payment_provider,
+  payment_status,
+  stripe_checkout_session_id,
+  stripe_payment_intent_id,
+  stripe_invoice_id,
+  stripe_checkout_url,
+  stripe_customer_id,
+  paid_at,
+  tracking_number,
+  carrier_code,
+  shipstation_order_id,
+  shipstation_shipment_id,
+  shipstation_status,
+  shipstation_sync_status,
+  shipstation_label_url,
+  shipped_at,
+  facilities(name, stripe_customer_id, phone),
+  products(name, price)
+`;
 
 const ORDERS_PATH = "/dashboard/orders";
-
-// ── Types ─────────────────────────────────────────────────────────────────────
 
 type RawOrder = {
   id: string;
@@ -27,13 +48,41 @@ type RawOrder = {
   order_id: string;
   facility_id: string;
   product_id: string;
-  amount: number;
+  amount: number | string;
+  quantity: number;
   status: string;
-  qb_invoice_id: string | null;
-  qb_invoice_status: string | null;
-  qb_synced_at: string | null;
-  facilities: { name: string; qb_customer_id: string | null } | null;
-  products: { name: string; qb_item_id: string | null } | null;
+  payment_provider: "stripe" | "legacy_qb" | null;
+  payment_status:
+    | "unpaid"
+    | "pending"
+    | "paid"
+    | "failed"
+    | "canceled"
+    | "refunded"
+    | null;
+  stripe_checkout_session_id: string | null;
+  stripe_payment_intent_id: string | null;
+  stripe_invoice_id: string | null;
+  stripe_checkout_url: string | null;
+  stripe_customer_id: string | null;
+  paid_at: string | null;
+  tracking_number: string | null;
+  shipstation_sync_status: string | null;
+  carrier_code: string | null;
+  shipstation_order_id: string | null;
+  shipstation_shipment_id: string | null;
+  shipstation_status: string | null;
+  shipstation_label_url: string | null;
+  shipped_at: string | null;
+  facilities: {
+    name: string;
+    stripe_customer_id: string | null;
+    phone: string | null;
+  } | null;
+  products: {
+    name: string;
+    price: number | string;
+  } | null;
 };
 
 function flattenOrder(row: RawOrder): Order {
@@ -43,22 +92,29 @@ function flattenOrder(row: RawOrder): Order {
     order_id: row.order_id,
     facility_id: row.facility_id,
     product_id: row.product_id,
-    amount: row.amount,
+    amount: Number(row.amount),
+    quantity: row.quantity,
     status: row.status as Order["status"],
     facility_name: row.facilities?.name ?? "—",
     product_name: row.products?.name ?? "—",
-    facility_qb_customer_id: row.facilities?.qb_customer_id ?? null,
-    product_qb_item_id: row.products?.qb_item_id ?? null,
-    qb_invoice_id: row.qb_invoice_id ?? null,
-    qb_invoice_status: row.qb_invoice_status ?? null,
-    qb_synced_at: row.qb_synced_at ?? null,
+    payment_provider: row.payment_provider ?? "stripe",
+    payment_status: row.payment_status ?? "unpaid",
+    stripe_checkout_session_id: row.stripe_checkout_session_id,
+    stripe_payment_intent_id: row.stripe_payment_intent_id,
+    stripe_invoice_id: row.stripe_invoice_id,
+    stripe_checkout_url: row.stripe_checkout_url,
+    stripe_customer_id: row.stripe_customer_id,
+    paid_at: row.paid_at,
+    shipstation_sync_status: row.shipstation_sync_status,
+    tracking_number: row.tracking_number,
+    carrier_code: row.carrier_code,
+    shipstation_order_id: row.shipstation_order_id,
+    shipstation_shipment_id: row.shipstation_shipment_id,
+    shipstation_status: row.shipstation_status,
+    shipstation_label_url: row.shipstation_label_url,
+    shipped_at: row.shipped_at,
   };
 }
-
-// ── Shared helper: get the current user's facility IDs ────────────────────────
-//
-// All mutations and reads go through this to ensure cross-user access is
-// impossible regardless of what values the client sends.
 
 async function getCurrentUserFacilityIds(
   supabase: Awaited<ReturnType<typeof getSupabaseClient>>,
@@ -77,13 +133,16 @@ async function getCurrentUserFacilityIds(
   return (data ?? []).map((f) => f.id);
 }
 
+function toCents(amount: number) {
+  return Math.round(amount * 100);
+}
+
 // ── READ ──────────────────────────────────────────────────────────────────────
 
 export async function getAllOrders(): Promise<Order[]> {
   try {
     const supabase = await getSupabaseClient();
 
-    // 1. Resolve the current user (throws / returns null when not signed in)
     const {
       data: { user },
       error: authError,
@@ -94,17 +153,14 @@ export async function getAllOrders(): Promise<Order[]> {
       return [];
     }
 
-    // 2. Find every facility that belongs to this user
     const facilityIds = await getCurrentUserFacilityIds(supabase, user.id);
 
-    // No facilities → no orders to show
     if (facilityIds.length === 0) return [];
 
-    // 3. Fetch only orders whose facility_id is in the user's facilities
     const { data, error } = await supabase
       .from(ORDER_TABLE)
       .select(ORDER_COLUMNS)
-      .in("facility_id", facilityIds) // ← ownership filter
+      .in("facility_id", facilityIds)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -136,12 +192,11 @@ export async function addOrder(formData: FormData): Promise<Order> {
   const order_id = formData.get("order_id") as string;
   const facility_id = formData.get("facility_id") as string;
   const product_id = formData.get("product_id") as string;
-  const amount = parseFloat(formData.get("amount") as string) || 0;
+  const quantity = Math.max(
+    1,
+    parseInt(String(formData.get("quantity") ?? "1"), 10) || 1,
+  );
 
-  // ── Step 1: Confirm the submitted facility belongs to this user ───────────
-  //
-  // Without this check a user could craft a request with someone else's
-  // facility_id and attach an order to their account.
   const facilityIds = await getCurrentUserFacilityIds(supabase, user.id);
 
   if (!facilityIds.includes(facility_id)) {
@@ -150,37 +205,19 @@ export async function addOrder(formData: FormData): Promise<Order> {
     );
   }
 
-  // ── Step 2: Fetch facility + product for QB ───────────────────────────────
-  const [{ data: facility }, { data: product }] = await Promise.all([
-    supabase
-      .from("facilities")
-      .select("name, qb_customer_id")
-      .eq("id", facility_id)
-      .single(),
-    supabase
-      .from("products")
-      .select("name, qb_item_id")
-      .eq("id", product_id)
-      .single(),
-  ]);
+  const { data: product, error: productError } = await supabase
+    .from("products")
+    .select("id, name, price")
+    .eq("id", product_id)
+    .single();
 
-  if (!facility?.qb_customer_id || !product?.qb_item_id) {
-    throw new Error(
-      "Facility or product is not synced to QuickBooks. Please sync them first.",
-    );
+  if (productError || !product) {
+    console.error("[addOrder] Product lookup error:", productError?.message);
+    throw new Error("Selected product not found.");
   }
 
-  // ── Step 3: QB first — create invoice, throws on failure ──────────────────
-  const qbInvoiceId = await createQBInvoiceFromData({
-    orderDocNumber: order_id,
-    qbCustomerId: facility.qb_customer_id,
-    facilityName: facility.name,
-    qbItemId: product.qb_item_id,
-    productName: product.name,
-    amount,
-  });
+  const amount = Number(product.price) * quantity;
 
-  // ── Step 4: DB insert ─────────────────────────────────────────────────────
   const { data: insertedRow, error: insertError } = await supabase
     .from(ORDER_TABLE)
     .insert({
@@ -188,25 +225,20 @@ export async function addOrder(formData: FormData): Promise<Order> {
       facility_id,
       product_id,
       amount,
+      quantity,
       status: "Processing",
-      qb_invoice_id: qbInvoiceId,
-      qb_invoice_status: "draft",
-      qb_synced_at: new Date().toISOString(),
+      payment_provider: "stripe",
+      payment_status: "unpaid",
+      user_id: user.id,
     })
     .select("id")
     .single();
 
   if (insertError || !insertedRow) {
     console.error("[addOrder] DB insert error:", insertError?.message);
-    try {
-      await voidQuickBooksInvoice(qbInvoiceId);
-    } catch (e) {
-      console.error("[addOrder] QB void compensation failed:", e);
-    }
     throw new Error("Failed to save order to database.");
   }
 
-  // ── Step 5: Fetch full order with joins ───────────────────────────────────
   const { data: row, error: fetchError } = await supabase
     .from(ORDER_TABLE)
     .select(ORDER_COLUMNS)
@@ -220,6 +252,387 @@ export async function addOrder(formData: FormData): Promise<Order> {
 
   revalidatePath(ORDERS_PATH);
   return flattenOrder(row as unknown as RawOrder);
+}
+
+// ── STRIPE CUSTOMER ───────────────────────────────────────────────────────────
+
+export async function ensureStripeCustomerForFacility(
+  facilityId: string,
+): Promise<string> {
+  await requireUser();
+
+  const supabase = await getSupabaseClient();
+
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) throw new Error("Not authenticated.");
+
+  const facilityIds = await getCurrentUserFacilityIds(supabase, user.id);
+
+  if (!facilityIds.includes(facilityId)) {
+    throw new Error("You do not have permission to access this facility.");
+  }
+
+  const { data: facility, error: facilityError } = await supabase
+    .from("facilities")
+    .select("id, name, phone, stripe_customer_id")
+    .eq("id", facilityId)
+    .single();
+
+  if (facilityError || !facility) {
+    throw new Error("Facility not found.");
+  }
+
+  if (facility.stripe_customer_id) {
+    return facility.stripe_customer_id;
+  }
+
+  const customer = await stripe.customers.create({
+    name: facility.name,
+    email: user.email ?? undefined,
+    phone: facility.phone ?? undefined,
+    metadata: {
+      facility_id: facility.id,
+      user_id: user.id,
+    },
+  });
+
+  const { error: updateError } = await supabase
+    .from("facilities")
+    .update({
+      stripe_customer_id: customer.id,
+      stripe_synced_at: new Date().toISOString(),
+    })
+    .eq("id", facility.id);
+
+  if (updateError) {
+    console.error(
+      "[ensureStripeCustomerForFacility] DB update error:",
+      updateError.message,
+    );
+    throw new Error("Failed to save Stripe customer.");
+  }
+
+  return customer.id;
+}
+
+// ── CREATE CHECKOUT SESSION ───────────────────────────────────────────────────
+
+type RawCheckoutOrder = {
+  id: string;
+  order_id: string;
+  facility_id: string;
+  product_id: string;
+  amount: number | string;
+  quantity: number;
+  payment_status: string | null;
+  facilities: {
+    id?: string;
+    name: string;
+    stripe_customer_id: string | null;
+    phone: string | null;
+  } | null;
+  products: {
+    id?: string;
+    name: string;
+    price: number | string;
+  } | null;
+};
+
+type RawShipStationOrder = {
+  id: string;
+  created_at: string;
+  order_id: string;
+  facility_id: string;
+  product_id: string;
+  amount: number | string;
+  quantity: number;
+  payment_status: string | null;
+  status: string;
+  tracking_number: string | null;
+  shipstation_sync_status: string | null;
+  carrier_code: string | null;
+  shipstation_order_id: string | null;
+  shipstation_shipment_id: string | null;
+  shipstation_status: string | null;
+  shipstation_label_url: string | null;
+  facilities: {
+    name: string;
+    phone: string | null;
+  } | null;
+  products: {
+    name: string;
+    price: number | string;
+  } | null;
+};
+
+export async function createStripeCheckoutSession(
+  orderId: string,
+): Promise<string> {
+  await requireUser();
+
+  const supabase = await getSupabaseClient();
+
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user || !user.email) {
+    throw new Error("Not authenticated.");
+  }
+
+  const { data: rawOrder, error: orderError } = await supabase
+    .from("orders")
+    .select(
+      `
+      id,
+      order_id,
+      facility_id,
+      product_id,
+      amount,
+      quantity,
+      payment_status,
+      facilities(id, name, stripe_customer_id, phone),
+      products(id, name, price)
+    `,
+    )
+    .eq("id", orderId)
+    .single();
+
+  if (orderError || !rawOrder) {
+    throw new Error("Order not found.");
+  }
+
+  const order = rawOrder as unknown as RawCheckoutOrder;
+
+  const facilityIds = await getCurrentUserFacilityIds(supabase, user.id);
+
+  if (!facilityIds.includes(order.facility_id)) {
+    throw new Error("You do not have permission to access this order.");
+  }
+
+  if (order.payment_status === "paid") {
+    throw new Error("This order has already been paid.");
+  }
+
+  const stripeCustomerId = await ensureStripeCustomerForFacility(
+    order.facility_id,
+  );
+
+  // Keep Stripe customer email in sync with logged-in user email
+  await stripe.customers.update(stripeCustomerId, {
+    email: user.email,
+    phone: order.facilities?.phone ?? undefined,
+    metadata: {
+      facility_id: order.facility_id,
+      user_id: user.id,
+    },
+  });
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (!appUrl) {
+    throw new Error("NEXT_PUBLIC_APP_URL is not configured.");
+  }
+
+  const totalAmount = Number(order.amount);
+
+  const session = await stripe.checkout.sessions.create({
+    mode: "payment",
+    customer: stripeCustomerId,
+    client_reference_id: order.id,
+    success_url: `${appUrl}/dashboard/orders?payment=success&session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${appUrl}/dashboard/orders?payment=cancelled`,
+    payment_method_types: ["card"],
+    line_items: [
+      {
+        quantity: 1,
+        price_data: {
+          currency: "usd",
+          unit_amount: toCents(totalAmount),
+          product_data: {
+            name: order.products?.name ?? `Order ${order.order_id}`,
+            description: `Order ${order.order_id} • Qty ${order.quantity}`,
+            metadata: {
+              order_id: order.id,
+              product_id: order.product_id,
+              facility_id: order.facility_id,
+            },
+          },
+        },
+      },
+    ],
+    metadata: {
+      order_id: order.id,
+      order_doc_number: order.order_id,
+      facility_id: order.facility_id,
+      product_id: order.product_id,
+      user_id: user.id,
+      user_email: user.email,
+    },
+  });
+
+  if (!session.url) {
+    throw new Error("Stripe did not return a checkout URL.");
+  }
+
+  const { error: updateError } = await supabase
+    .from("orders")
+    .update({
+      payment_provider: "stripe",
+      payment_status: "pending",
+      stripe_checkout_session_id: session.id,
+      stripe_checkout_url: session.url,
+      stripe_customer_id: stripeCustomerId,
+      receipt_email: user.email,
+    })
+    .eq("id", order.id);
+
+  if (updateError) {
+    console.error(
+      "[createStripeCheckoutSession] DB update error:",
+      updateError.message,
+    );
+    throw new Error("Failed to save Stripe checkout session.");
+  }
+
+  revalidatePath(ORDERS_PATH);
+  return session.url;
+}
+
+// ── SHIPSTATION MOCK / DEV INTEGRATION ───────────────────────────────────────
+
+export async function shipOrderWithShipStation(orderId: string): Promise<{
+  trackingNumber: string;
+  carrierCode: string;
+  labelUrl: string | null;
+  status: string;
+  alreadyShipped: boolean;
+}> {
+  await requireUser();
+
+  const supabase = await getSupabaseClient();
+
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) throw new Error("Not authenticated.");
+
+  const { data: rawOrder, error: fetchErr } = await supabase
+    .from(ORDER_TABLE)
+    .select(
+      `
+      id,
+      created_at,
+      order_id,
+      facility_id,
+      product_id,
+      amount,
+      quantity,
+      payment_status,
+      status,
+      tracking_number,
+      carrier_code,
+      shipstation_order_id,
+      shipstation_shipment_id,
+      shipstation_status,
+      shipstation_sync_status,
+      shipstation_label_url,
+      facilities(name, phone),
+      products(name, price)
+    `,
+    )
+    .eq("id", orderId)
+    .single();
+
+  if (fetchErr || !rawOrder) {
+    throw new Error("Order not found.");
+  }
+
+  const order = rawOrder as unknown as RawShipStationOrder;
+
+  const facilityIds = await getCurrentUserFacilityIds(supabase, user.id);
+
+  if (!facilityIds.includes(order.facility_id)) {
+    throw new Error("You do not have permission to update this order.");
+  }
+
+  if (order.payment_status !== "paid") {
+    throw new Error("Only paid orders can be fulfilled.");
+  }
+
+  if (
+    order.shipstation_shipment_id &&
+    order.tracking_number &&
+    order.carrier_code
+  ) {
+    return {
+      trackingNumber: order.tracking_number,
+      carrierCode: order.carrier_code,
+      labelUrl: order.shipstation_label_url,
+      status: order.shipstation_status ?? "label_purchased_mock",
+      alreadyShipped: true,
+    };
+  }
+
+  const shipstation = getShipStationClient();
+
+  const syncedOrder = await shipstation.syncOrder({
+    localOrderId: order.id,
+    orderNumber: order.order_id,
+    createdAt: order.created_at,
+    amount: Number(order.amount),
+    quantity: Number(order.quantity),
+    facilityId: order.facility_id,
+    facilityName: order.facilities?.name ?? "Unknown Facility",
+    recipientPhone: order.facilities?.phone ?? null,
+    productName: order.products?.name ?? `Order ${order.order_id}`,
+  });
+
+  const label = await shipstation.purchaseLabel({
+    localOrderId: order.id,
+    orderNumber: order.order_id,
+    amount: Number(order.amount),
+    quantity: Number(order.quantity),
+    facilityId: order.facility_id,
+    facilityName: order.facilities?.name ?? "Unknown Facility",
+    productName: order.products?.name ?? `Order ${order.order_id}`,
+  });
+
+  const { error: updateErr } = await supabase
+    .from(ORDER_TABLE)
+    .update({
+      status: "Shipped",
+      tracking_number: label.trackingNumber,
+      carrier_code: label.carrierCode,
+      shipstation_order_id: syncedOrder.externalOrderId,
+      shipstation_shipment_id: label.shipmentId,
+      shipstation_status: label.status,
+      shipstation_sync_status: "sent",
+      shipstation_label_url: label.labelUrl,
+      shipped_at: new Date().toISOString(),
+    })
+    .eq("id", order.id);
+
+  if (updateErr) {
+    console.error("[shipOrderWithShipStation] DB error:", updateErr.message);
+    throw new Error("Failed to save ShipStation fulfillment data.");
+  }
+
+  revalidatePath(ORDERS_PATH);
+
+  return {
+    trackingNumber: label.trackingNumber,
+    carrierCode: label.carrierCode,
+    labelUrl: label.labelUrl,
+    status: label.status,
+    alreadyShipped: false,
+  };
 }
 
 // ── UPDATE STATUS ─────────────────────────────────────────────────────────────
@@ -241,16 +654,14 @@ export async function updateOrderStatus(
 
   const status = formData.get("status") as Order["status"];
 
-  // Fetch the order and confirm ownership in one query
   const { data: current, error: fetchErr } = await supabase
     .from(ORDER_TABLE)
-    .select("id, status, qb_invoice_id, qb_invoice_status, facility_id")
+    .select("id, status, facility_id")
     .eq("id", orderId)
     .single();
 
   if (fetchErr || !current) throw new Error("Order not found.");
 
-  // ── Ownership check ───────────────────────────────────────────────────────
   const facilityIds = await getCurrentUserFacilityIds(supabase, user.id);
 
   if (!facilityIds.includes(current.facility_id)) {
@@ -286,28 +697,18 @@ export async function deleteOrder(orderId: string): Promise<void> {
 
   const { data: current, error: fetchErr } = await supabase
     .from(ORDER_TABLE)
-    .select("id, order_id, qb_invoice_id, facility_id")
+    .select("id, order_id, facility_id")
     .eq("id", orderId)
     .single();
 
   if (fetchErr || !current) throw new Error("Order not found.");
 
-  // ── Ownership check ───────────────────────────────────────────────────────
   const facilityIds = await getCurrentUserFacilityIds(supabase, user.id);
 
   if (!facilityIds.includes(current.facility_id)) {
     throw new Error("You do not have permission to delete this order.");
   }
 
-  // ── Step 1: Delete QB invoice first if one exists ─────────────────────────
-  if (current.qb_invoice_id) {
-    const deleteResult = await deleteQuickBooksInvoice(current.qb_invoice_id);
-    if (!deleteResult.success) {
-      throw new Error(`Failed to delete QB invoice: ${deleteResult.message}`);
-    }
-  }
-
-  // ── Step 2: Delete from DB ────────────────────────────────────────────────
   const { error: deleteErr } = await supabase
     .from(ORDER_TABLE)
     .delete()
@@ -339,7 +740,9 @@ export async function getUserFacility(): Promise<Facility | null> {
 
     const { data, error } = await supabase
       .from("facilities")
-      .select("id, name, location, status")
+      .select(
+        "id, name, location, status, stripe_customer_id, stripe_synced_at",
+      )
       .eq("user_id", user.id)
       .maybeSingle();
 

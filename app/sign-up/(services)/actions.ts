@@ -20,7 +20,7 @@ export async function signUp(
   const facilityName = formData.get("facility_name") as string;
   const facilityLocation = formData.get("facility_location") as string;
 
-  // ── Step 1: Create Supabase auth user ─────────────────────────────────────
+  // Step 1: Create Supabase auth user
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
@@ -48,7 +48,7 @@ export async function signUp(
     return { error: "Failed to create account. Please try again." };
   }
 
-  // ── Step 2: Insert facility in DB (no QB yet) ──────────────────────────────
+  // Step 2: Insert facility in DB
   const { error: facilityError } = await supabaseAdmin
     .from("facilities")
     .insert({
@@ -56,10 +56,6 @@ export async function signUp(
       location: facilityLocation || null,
       user_id: data.user.id,
       status: "Active",
-      // QB fields left null — to be synced later
-      qb_customer_id: null,
-      qb_sync_token: null,
-      qb_synced_at: null,
     });
 
   if (facilityError) {
