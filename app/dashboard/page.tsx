@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 };
 
 export default async function DashboardPage() {
-  const orders = await getAllOrders();
+  const orders = await getAllOrders(); // This data is already here!
 
   const totalOrders = orders.length;
   const totalRevenue = orders.reduce((sum, o) => sum + (o.amount ?? 0), 0);
@@ -27,7 +27,8 @@ export default async function DashboardPage() {
         totalRevenue={totalRevenue}
         activeOrders={activeOrders}
       />
-      <RecentOrdersTable />
+      {/* Pass the orders here */}
+      <RecentOrdersTable initialOrders={orders} />
     </div>
   );
 }
