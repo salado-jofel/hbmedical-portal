@@ -13,12 +13,37 @@ type MarkOrderPaidResult = {
   orderId: string | null;
   orderNumber: string | null;
   shouldSyncShipStation: boolean;
-  shouldSendReceiptEmail: boolean;
   receiptEmail: string | null;
   receiptUrl: string | null;
   amountTotal: number | null;
   currency: string | null;
 };
+
+async function registerStripeEvent(
+  event: Stripe.Event,
+  session?: Stripe.Checkout.Session,
+) {
+  const supabaseAdmin = createAdminClient();
+
+  const { error } = await supabaseAdmin.from("stripe_webhook_events").insert({
+    event_id: event.id,
+    event_type: event.type,
+    checkout_session_id: session?.id ?? null,
+    order_id: session?.metadata?.order_id ?? null,
+  });
+
+  if (!error) {
+    return true;
+  }
+
+  // Postgres unique violation => already processed
+  if (error.code === "23505") {
+    console.log("[stripe webhook] Duplicate event ignored:", event.id);
+    return false;
+  }
+
+  throw new Error(error.message);
+}
 
 async function getReceiptDetails(session: Stripe.Checkout.Session) {
   const receiptEmail =
@@ -73,7 +98,6 @@ async function markOrderPaid(
       orderId: null,
       orderNumber: null,
       shouldSyncShipStation: false,
-      shouldSendReceiptEmail: false,
       receiptEmail: null,
       receiptUrl: null,
       amountTotal: session.amount_total ?? null,
@@ -86,7 +110,14 @@ async function markOrderPaid(
   const { data: existing, error: fetchError } = await supabaseAdmin
     .from("orders")
     .select(
-      "id, order_id, payment_status, shipstation_sync_status, shipstation_shipment_id, receipt_email, receipt_email_sent_at",
+      `
+        id,
+        order_id,
+        payment_status,
+        shipstation_sync_status,
+        shipstation_shipment_id,
+        receipt_email
+      `,
     )
     .eq("id", orderId)
     .maybeSingle();
@@ -97,7 +128,6 @@ async function markOrderPaid(
       orderId: null,
       orderNumber: null,
       shouldSyncShipStation: false,
-      shouldSendReceiptEmail: false,
       receiptEmail: null,
       receiptUrl: null,
       amountTotal: session.amount_total ?? null,
@@ -121,51 +151,37 @@ async function markOrderPaid(
     existing.shipstation_sync_status === "fulfilled" ||
     !!existing.shipstation_shipment_id;
 
+  const updatePayload: Record<string, unknown> = {
+    payment_status: "paid",
+    stripe_checkout_session_id: session.id,
+    stripe_payment_intent_id: paymentIntentId,
+    stripe_customer_id: customerId,
+    receipt_email: finalReceiptEmail,
+    stripe_receipt_url: receiptUrl,
+  };
+
   if (!alreadyPaid) {
-    const { error: updateError } = await supabaseAdmin
-      .from("orders")
-      .update({
-        payment_status: "paid",
-        stripe_checkout_session_id: session.id,
-        stripe_payment_intent_id: paymentIntentId,
-        stripe_customer_id: customerId,
-        paid_at: new Date().toISOString(),
-        shipstation_sync_status: "ready",
-        receipt_email: finalReceiptEmail,
-        stripe_receipt_url: receiptUrl,
-      })
-      .eq("id", orderId);
+    updatePayload.paid_at = new Date().toISOString();
+    updatePayload.shipstation_sync_status = "ready";
+  }
 
-    if (updateError) {
-      console.error(
-        "[stripe webhook] Failed to mark order paid:",
-        updateError.message,
-      );
-      throw new Error(updateError.message);
-    }
-  } else {
-    const { error: refreshError } = await supabaseAdmin
-      .from("orders")
-      .update({
-        receipt_email: finalReceiptEmail,
-        stripe_receipt_url: receiptUrl,
-      })
-      .eq("id", orderId);
+  const { error: updateError } = await supabaseAdmin
+    .from("orders")
+    .update(updatePayload)
+    .eq("id", orderId);
 
-    if (refreshError) {
-      console.error(
-        "[stripe webhook] Failed to refresh receipt fields:",
-        refreshError.message,
-      );
-    }
+  if (updateError) {
+    console.error(
+      "[stripe webhook] Failed to update paid order:",
+      updateError.message,
+    );
+    throw new Error(updateError.message);
   }
 
   return {
     orderId,
     orderNumber: existing.order_id ?? orderId,
     shouldSyncShipStation: !alreadySynced,
-    shouldSendReceiptEmail:
-      !existing.receipt_email_sent_at && !!finalReceiptEmail,
     receiptEmail: finalReceiptEmail,
     receiptUrl,
     amountTotal: session.amount_total ?? null,
@@ -198,19 +214,55 @@ async function markOrderFailedOrCanceled(
   }
 }
 
+async function claimReceiptEmailLock(orderId: string) {
+  const supabaseAdmin = createAdminClient();
+  const lockId = crypto.randomUUID();
+
+  const { data, error } = await supabaseAdmin
+    .from("orders")
+    .update({
+      receipt_email_lock_id: lockId,
+    })
+    .eq("id", orderId)
+    .is("receipt_email_sent_at", null)
+    .is("receipt_email_lock_id", null)
+    .select("id, receipt_email_lock_id")
+    .maybeSingle();
+
+  if (error) {
+    console.error(
+      "[stripe webhook] Failed to claim receipt email lock:",
+      error.message,
+    );
+    return null;
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  return lockId;
+}
+
 async function maybeSendReceiptEmail(result: MarkOrderPaidResult) {
-  if (
-    !result.orderId ||
-    !result.shouldSendReceiptEmail ||
-    !result.receiptEmail
-  ) {
+  if (!result.orderId || !result.receiptEmail) {
     return;
   }
 
   const supabaseAdmin = createAdminClient();
+  const lockId = await claimReceiptEmailLock(result.orderId);
+
+  // Another request already sent it or is currently sending it.
+  if (!lockId) {
+    console.log(
+      "[stripe webhook] Receipt email skipped; already locked or sent:",
+      result.orderId,
+    );
+    return;
+  }
 
   try {
-    await sendPaymentReceiptEmail({
+    const resendResult = await sendPaymentReceiptEmail({
       to: result.receiptEmail,
       orderId: result.orderId,
       orderNumber: result.orderNumber,
@@ -219,13 +271,20 @@ async function maybeSendReceiptEmail(result: MarkOrderPaidResult) {
       receiptUrl: result.receiptUrl,
     });
 
+    console.log("[stripe webhook] Receipt email sent:", {
+      orderId: result.orderId,
+      resendId: resendResult?.data?.id ?? null,
+    });
+
     const { error } = await supabaseAdmin
       .from("orders")
       .update({
         receipt_email_sent_at: new Date().toISOString(),
         receipt_email_error: null,
+        receipt_email_lock_id: null,
       })
-      .eq("id", result.orderId);
+      .eq("id", result.orderId)
+      .eq("receipt_email_lock_id", lockId);
 
     if (error) {
       console.error(
@@ -243,8 +302,10 @@ async function maybeSendReceiptEmail(result: MarkOrderPaidResult) {
       .from("orders")
       .update({
         receipt_email_error: message,
+        receipt_email_lock_id: null,
       })
-      .eq("id", result.orderId);
+      .eq("id", result.orderId)
+      .eq("receipt_email_lock_id", lockId);
 
     if (dbError) {
       console.error(
@@ -253,9 +314,47 @@ async function maybeSendReceiptEmail(result: MarkOrderPaidResult) {
       );
     }
 
-    // Don't throw here.
-    // Payment already succeeded, and throwing would cause webhook retries.
+    // Do not throw. Payment already succeeded.
   }
+}
+
+async function handleSuccessfulCheckoutSession(
+  event: Stripe.Event,
+  session: Stripe.Checkout.Session,
+) {
+  const isNewEvent = await registerStripeEvent(event, session);
+
+  if (!isNewEvent) {
+    return;
+  }
+
+  const result = await markOrderPaid(session);
+
+  await maybeSendReceiptEmail(result);
+
+  if (result.orderId && result.shouldSyncShipStation) {
+    try {
+      await syncPaidOrderToShipStation(result.orderId);
+    } catch (shipstationError) {
+      console.error(
+        "[stripe webhook] ShipStation sync failed:",
+        shipstationError,
+      );
+
+      const supabaseAdmin = createAdminClient();
+
+      await supabaseAdmin
+        .from("orders")
+        .update({
+          shipstation_sync_status: "failed",
+        })
+        .eq("id", result.orderId);
+
+      // Do not throw here, otherwise Stripe may retry the webhook.
+    }
+  }
+
+  revalidatePath("/dashboard/orders");
 }
 
 export async function POST(request: Request) {
@@ -281,38 +380,27 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: message }, { status: 400 });
   }
 
+  console.log("[stripe webhook] received", {
+    eventId: event.id,
+    eventType: event.type,
+  });
+
   try {
     switch (event.type) {
-      case "checkout.session.completed":
-      case "checkout.session.async_payment_succeeded": {
+      case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
 
-        const result = await markOrderPaid(session);
-
-        await maybeSendReceiptEmail(result);
-
-        if (result.orderId && result.shouldSyncShipStation) {
-          try {
-            await syncPaidOrderToShipStation(result.orderId);
-          } catch (shipstationError) {
-            console.error(
-              "[stripe webhook] ShipStation mock sync failed:",
-              shipstationError,
-            );
-
-            const supabaseAdmin = createAdminClient();
-            await supabaseAdmin
-              .from("orders")
-              .update({
-                shipstation_sync_status: "failed",
-              })
-              .eq("id", result.orderId);
-
-            throw shipstationError;
-          }
+        // Only fulfill immediately if the Checkout Session is actually paid.
+        if (session.payment_status === "paid") {
+          await handleSuccessfulCheckoutSession(event, session);
         }
 
-        revalidatePath("/dashboard/orders");
+        break;
+      }
+
+      case "checkout.session.async_payment_succeeded": {
+        const session = event.data.object as Stripe.Checkout.Session;
+        await handleSuccessfulCheckoutSession(event, session);
         break;
       }
 

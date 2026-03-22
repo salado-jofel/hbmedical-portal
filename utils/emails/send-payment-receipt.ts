@@ -184,7 +184,6 @@ export async function sendPaymentReceiptEmail({
 <body>
   <div class="wrapper">
     <div class="container">
-
       <div class="header">
         <img
           src="${logoUrl}"
