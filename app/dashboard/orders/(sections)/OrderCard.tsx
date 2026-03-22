@@ -26,6 +26,7 @@ import {
   MapPin,
   FlaskConical,
   FileText,
+  RefreshCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ConfirmModal from "@/app/(components)/ConfirmModal";
@@ -90,13 +91,42 @@ function FulfillmentBadge({
   );
 }
 
-function ShipStationBadge({ status }: { status?: string | null }) {
-  if (!status) return null;
+function ShipStationSyncBadge({
+  syncStatus,
+}: {
+  syncStatus?: string | null;
+}) {
+  if (!syncStatus) return null;
+
+  const map: Record<
+    string,
+    { text: string; className: string }
+  > = {
+    ready: {
+      text: "ShipStation Ready",
+      className: "bg-sky-100 text-sky-700",
+    },
+    sent: {
+      text: "ShipStation Synced",
+      className: "bg-violet-100 text-violet-700",
+    },
+    failed: {
+      text: "ShipStation Failed",
+      className: "bg-red-100 text-red-700",
+    },
+  };
+
+  const display = map[syncStatus] ?? {
+    text: syncStatus,
+    className: "bg-slate-100 text-slate-700",
+  };
 
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2.5 py-1 text-xs font-semibold text-violet-700">
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${display.className}`}
+    >
       <Truck className="h-3.5 w-3.5" />
-      {status}
+      {display.text}
     </span>
   );
 }
@@ -123,11 +153,17 @@ export function OrderCard({ order }: { order: Order }) {
   const isPaymentPending = order.payment_status === "pending";
   const isDelivered = order.status === "Delivered";
   const fulfillmentLabel = getFulfillmentLabel(order);
-  const isMockCarrier = (order.carrier_code ?? "").startsWith("mock-");
 
   const quantity = Number(order.quantity ?? 1);
   const totalAmount = Number(order.amount ?? 0);
   const unitPrice = quantity > 0 ? totalAmount / quantity : totalAmount;
+
+  const hasMockShipment = !!order.shipstation_shipment_id;
+  const syncFailed = order.shipstation_sync_status === "failed";
+  const syncReady =
+    order.shipstation_sync_status === "ready" ||
+    (!order.shipstation_sync_status && isPaid && !hasMockShipment);
+  const isMockCarrier = (order.carrier_code ?? "").startsWith("mock-");
 
   async function handleDelete() {
     if (!order.id) return;
@@ -160,7 +196,7 @@ export function OrderCard({ order }: { order: Order }) {
     }
   }
 
-  async function handleMockShipStation() {
+  async function handleMockShipStationSync() {
     if (!order.id || isFulfilling || !isPaid) return;
 
     setIsFulfilling(true);
@@ -174,15 +210,15 @@ export function OrderCard({ order }: { order: Order }) {
         );
       } else {
         toast.success(
-          `Mock shipment created: ${result.carrierCode} • ${result.trackingNumber}`,
+          `Mock shipment synced: ${result.carrierCode} • ${result.trackingNumber}`,
         );
       }
     } catch (err) {
-      console.error("[handleMockShipStation]", err);
+      console.error("[handleMockShipStationSync]", err);
       toast.error(
         err instanceof Error
           ? err.message
-          : "Failed to create ShipStation mock shipment. Please try again.",
+          : "Failed to sync mock ShipStation shipment. Please try again.",
       );
     } finally {
       setIsFulfilling(false);
@@ -227,8 +263,8 @@ export function OrderCard({ order }: { order: Order }) {
         <div className="mt-3 flex flex-wrap gap-2">
           <PaymentBadge isPaid={isPaid} isPending={isPaymentPending} />
           <FulfillmentBadge label={fulfillmentLabel} delivered={isDelivered} />
-          <ShipStationBadge status={order.shipstation_status} />
-          <DevModeBadge show={isMockCarrier} />
+          <ShipStationSyncBadge syncStatus={order.shipstation_sync_status} />
+          <DevModeBadge show={isMockCarrier || hasMockShipment} />
         </div>
 
         <div className="mt-4 space-y-2">
@@ -337,25 +373,74 @@ export function OrderCard({ order }: { order: Order }) {
                   </>
                 )}
               </Button>
-            ) : (
+            ) : syncFailed ? (
               <Button
                 type="button"
                 size="sm"
-                onClick={handleMockShipStation}
+                onClick={handleMockShipStationSync}
+                disabled={isFulfilling}
+                className="h-9 bg-red-600 text-white hover:bg-red-700 cursor-pointer"
+              >
+                {isFulfilling ? (
+                  <>
+                    <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                    Retrying...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCcw className="mr-1 h-4 w-4" />
+                    Retry Mock Sync
+                  </>
+                )}
+              </Button>
+            ) : syncReady ? (
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleMockShipStationSync}
                 disabled={isFulfilling}
                 className="h-9 bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer"
               >
                 {isFulfilling ? (
                   <>
                     <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-                    Shipping...
+                    Syncing...
                   </>
                 ) : (
                   <>
                     <Truck className="mr-1 h-4 w-4" />
-                    {order.shipstation_shipment_id
-                      ? "View Mock Shipment"
-                      : "Ship (Mock)"}
+                    Sync Mock Shipment
+                  </>
+                )}
+              </Button>
+            ) : hasMockShipment && order.shipstation_label_url ? (
+              <Link href={order.shipstation_label_url} target="_blank">
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-9 bg-violet-600 text-white hover:bg-violet-700 cursor-pointer"
+                >
+                  <FileText className="mr-1 h-4 w-4" />
+                  View Mock Shipment
+                </Button>
+              </Link>
+            ) : (
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleMockShipStationSync}
+                disabled={isFulfilling}
+                className="h-9 bg-violet-600 text-white hover:bg-violet-700 cursor-pointer"
+              >
+                {isFulfilling ? (
+                  <>
+                    <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                    Loading...
+                  </>
+                ) : (
+                  <>
+                    <Truck className="mr-1 h-4 w-4" />
+                    View Mock Shipment
                   </>
                 )}
               </Button>

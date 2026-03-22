@@ -33,6 +33,7 @@ const ORDER_COLUMNS = `
   shipstation_order_id,
   shipstation_shipment_id,
   shipstation_status,
+  shipstation_sync_status,
   shipstation_label_url,
   shipped_at,
   facilities(name, stripe_customer_id, phone),
@@ -66,6 +67,7 @@ type RawOrder = {
   stripe_customer_id: string | null;
   paid_at: string | null;
   tracking_number: string | null;
+  shipstation_sync_status: string | null;
   carrier_code: string | null;
   shipstation_order_id: string | null;
   shipstation_shipment_id: string | null;
@@ -103,6 +105,7 @@ function flattenOrder(row: RawOrder): Order {
     stripe_checkout_url: row.stripe_checkout_url,
     stripe_customer_id: row.stripe_customer_id,
     paid_at: row.paid_at,
+    shipstation_sync_status: row.shipstation_sync_status,
     tracking_number: row.tracking_number,
     carrier_code: row.carrier_code,
     shipstation_order_id: row.shipstation_order_id,
@@ -350,6 +353,7 @@ type RawShipStationOrder = {
   payment_status: string | null;
   status: string;
   tracking_number: string | null;
+  shipstation_sync_status: string | null;
   carrier_code: string | null;
   shipstation_order_id: string | null;
   shipstation_shipment_id: string | null;
@@ -523,6 +527,7 @@ export async function shipOrderWithShipStation(orderId: string): Promise<{
       shipstation_order_id,
       shipstation_shipment_id,
       shipstation_status,
+      shipstation_sync_status,
       shipstation_label_url,
       facilities(name, phone),
       products(name, price)
@@ -588,12 +593,13 @@ export async function shipOrderWithShipStation(orderId: string): Promise<{
   const { error: updateErr } = await supabase
     .from(ORDER_TABLE)
     .update({
-      status: "Delivered",
+      status: "Shipped",
       tracking_number: label.trackingNumber,
       carrier_code: label.carrierCode,
       shipstation_order_id: syncedOrder.externalOrderId,
       shipstation_shipment_id: label.shipmentId,
       shipstation_status: label.status,
+      shipstation_sync_status: "sent",
       shipstation_label_url: label.labelUrl,
       shipped_at: new Date().toISOString(),
     })

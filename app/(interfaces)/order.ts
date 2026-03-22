@@ -47,7 +47,7 @@ export interface Order {
 
   tracking_number?: string | null;
   carrier_code?: string | null;
-
+  shipstation_sync_status?: string | null;
   shipstation_order_id?: string | null;
   shipstation_shipment_id?: string | null;
   shipstation_status?: string | null;

@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import type Stripe from "stripe";
 import { stripe } from "@/utils/stripe/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { syncPaidOrderToShipStation } from "@/lib/actions/shipstation";
+
+const ORDERS_PATH = "/dashboard/orders";
 
 async function markOrderPaid(session: Stripe.Checkout.Session) {
   const orderId = session.metadata?.order_id;
@@ -36,7 +39,6 @@ async function markOrderPaid(session: Stripe.Checkout.Session) {
   const alreadyPaid = existing.payment_status === "paid";
   const alreadySynced =
     existing.shipstation_sync_status === "sent" ||
-    existing.shipstation_sync_status === "fulfilled" ||
     !!existing.shipstation_shipment_id;
 
   if (!alreadyPaid) {
@@ -48,7 +50,7 @@ async function markOrderPaid(session: Stripe.Checkout.Session) {
         stripe_payment_intent_id: paymentIntentId,
         stripe_customer_id: customerId,
         paid_at: new Date().toISOString(),
-        shipstation_sync_status: "ready",
+        shipstation_sync_status: alreadySynced ? "sent" : "ready",
       })
       .eq("id", orderId);
 
@@ -60,6 +62,8 @@ async function markOrderPaid(session: Stripe.Checkout.Session) {
       throw new Error(updateError.message);
     }
   }
+
+  revalidatePath(ORDERS_PATH);
 
   return {
     orderId,
@@ -90,6 +94,8 @@ async function markOrderFailedOrCanceled(
       error.message,
     );
   }
+
+  revalidatePath(ORDERS_PATH);
 }
 
 export async function POST(request: Request) {
@@ -140,6 +146,7 @@ export async function POST(request: Request) {
               })
               .eq("id", orderId);
 
+            revalidatePath(ORDERS_PATH);
             throw shipstationError;
           }
         }
