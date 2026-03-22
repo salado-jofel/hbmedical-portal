@@ -1,30 +1,31 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import type Stripe from "stripe";
+
 import { stripe } from "@/utils/stripe/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { syncPaidOrderToShipStation } from "@/lib/actions/shipstation";
+import { sendPaymentReceiptEmail } from "@/utils/emails/send-payment-receipt";
 
-const ORDERS_PATH = "/dashboard/orders";
+export const runtime = "nodejs";
 
-async function markOrderPaid(session: Stripe.Checkout.Session) {
-  const orderId = session.metadata?.order_id;
-  if (!orderId) return { orderId: null, shouldSyncShipStation: false };
+type MarkOrderPaidResult = {
+  orderId: string | null;
+  orderNumber: string | null;
+  shouldSyncShipStation: boolean;
+  shouldSendReceiptEmail: boolean;
+  receiptEmail: string | null;
+  receiptUrl: string | null;
+  amountTotal: number | null;
+  currency: string | null;
+};
 
-  const supabaseAdmin = createAdminClient();
-
-  const { data: existing, error: fetchError } = await supabaseAdmin
-    .from("orders")
-    .select(
-      "id, payment_status, shipstation_sync_status, shipstation_shipment_id",
-    )
-    .eq("id", orderId)
-    .maybeSingle();
-
-  if (fetchError || !existing) {
-    console.error("[stripe webhook] Order lookup failed:", fetchError?.message);
-    return { orderId: null, shouldSyncShipStation: false };
-  }
+async function getReceiptDetails(session: Stripe.Checkout.Session) {
+  const receiptEmail =
+    session.customer_details?.email ??
+    session.customer_email ??
+    session.metadata?.user_email ??
+    null;
 
   const paymentIntentId =
     typeof session.payment_intent === "string"
@@ -36,9 +37,88 @@ async function markOrderPaid(session: Stripe.Checkout.Session) {
       ? session.customer
       : (session.customer?.id ?? null);
 
+  let receiptUrl: string | null = null;
+
+  if (paymentIntentId) {
+    const paymentIntent = await stripe.paymentIntents.retrieve(
+      paymentIntentId,
+      {
+        expand: ["latest_charge"],
+      },
+    );
+
+    const latestCharge =
+      typeof paymentIntent.latest_charge === "string"
+        ? null
+        : paymentIntent.latest_charge;
+
+    receiptUrl = latestCharge?.receipt_url ?? null;
+  }
+
+  return {
+    receiptEmail,
+    receiptUrl,
+    paymentIntentId,
+    customerId,
+  };
+}
+
+async function markOrderPaid(
+  session: Stripe.Checkout.Session,
+): Promise<MarkOrderPaidResult> {
+  const orderId = session.metadata?.order_id;
+
+  if (!orderId) {
+    return {
+      orderId: null,
+      orderNumber: null,
+      shouldSyncShipStation: false,
+      shouldSendReceiptEmail: false,
+      receiptEmail: null,
+      receiptUrl: null,
+      amountTotal: session.amount_total ?? null,
+      currency: session.currency ?? null,
+    };
+  }
+
+  const supabaseAdmin = createAdminClient();
+
+  const { data: existing, error: fetchError } = await supabaseAdmin
+    .from("orders")
+    .select(
+      "id, order_id, payment_status, shipstation_sync_status, shipstation_shipment_id, receipt_email, receipt_email_sent_at",
+    )
+    .eq("id", orderId)
+    .maybeSingle();
+
+  if (fetchError || !existing) {
+    console.error("[stripe webhook] Order lookup failed:", fetchError?.message);
+    return {
+      orderId: null,
+      orderNumber: null,
+      shouldSyncShipStation: false,
+      shouldSendReceiptEmail: false,
+      receiptEmail: null,
+      receiptUrl: null,
+      amountTotal: session.amount_total ?? null,
+      currency: session.currency ?? null,
+    };
+  }
+
+  const { receiptEmail, receiptUrl, paymentIntentId, customerId } =
+    await getReceiptDetails(session);
+
+  const finalReceiptEmail =
+    receiptEmail ??
+    existing.receipt_email ??
+    session.metadata?.user_email ??
+    null;
+
   const alreadyPaid = existing.payment_status === "paid";
+
   const alreadySynced =
     existing.shipstation_sync_status === "sent" ||
+    existing.shipstation_sync_status === "fulfilled" ||
     !!existing.shipstation_shipment_id;
 
   if (!alreadyPaid) {
@@ -50,7 +130,9 @@ async function markOrderPaid(session: Stripe.Checkout.Session) {
         stripe_payment_intent_id: paymentIntentId,
         stripe_customer_id: customerId,
         paid_at: new Date().toISOString(),
-        shipstation_sync_status: alreadySynced ? "sent" : "ready",
+        shipstation_sync_status: "ready",
+        receipt_email: finalReceiptEmail,
+        stripe_receipt_url: receiptUrl,
       })
       .eq("id", orderId);
 
@@ -61,13 +143,33 @@ async function markOrderPaid(session: Stripe.Checkout.Session) {
       );
       throw new Error(updateError.message);
     }
-  }
+  } else {
+    const { error: refreshError } = await supabaseAdmin
+      .from("orders")
+      .update({
+        receipt_email: finalReceiptEmail,
+        stripe_receipt_url: receiptUrl,
+      })
+      .eq("id", orderId);
 
-  revalidatePath(ORDERS_PATH);
+    if (refreshError) {
+      console.error(
+        "[stripe webhook] Failed to refresh receipt fields:",
+        refreshError.message,
+      );
+    }
+  }
 
   return {
     orderId,
+    orderNumber: existing.order_id ?? orderId,
     shouldSyncShipStation: !alreadySynced,
+    shouldSendReceiptEmail:
+      !existing.receipt_email_sent_at && !!finalReceiptEmail,
+    receiptEmail: finalReceiptEmail,
+    receiptUrl,
+    amountTotal: session.amount_total ?? null,
+    currency: session.currency ?? null,
   };
 }
 
@@ -94,8 +196,66 @@ async function markOrderFailedOrCanceled(
       error.message,
     );
   }
+}
 
-  revalidatePath(ORDERS_PATH);
+async function maybeSendReceiptEmail(result: MarkOrderPaidResult) {
+  if (
+    !result.orderId ||
+    !result.shouldSendReceiptEmail ||
+    !result.receiptEmail
+  ) {
+    return;
+  }
+
+  const supabaseAdmin = createAdminClient();
+
+  try {
+    await sendPaymentReceiptEmail({
+      to: result.receiptEmail,
+      orderId: result.orderId,
+      orderNumber: result.orderNumber,
+      amountTotal: result.amountTotal,
+      currency: result.currency,
+      receiptUrl: result.receiptUrl,
+    });
+
+    const { error } = await supabaseAdmin
+      .from("orders")
+      .update({
+        receipt_email_sent_at: new Date().toISOString(),
+        receipt_email_error: null,
+      })
+      .eq("id", result.orderId);
+
+    if (error) {
+      console.error(
+        "[stripe webhook] Failed to save receipt_email_sent_at:",
+        error.message,
+      );
+    }
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unknown email error";
+
+    console.error("[stripe webhook] Failed to send receipt email:", message);
+
+    const { error: dbError } = await supabaseAdmin
+      .from("orders")
+      .update({
+        receipt_email_error: message,
+      })
+      .eq("id", result.orderId);
+
+    if (dbError) {
+      console.error(
+        "[stripe webhook] Failed to save receipt email error:",
+        dbError.message,
+      );
+    }
+
+    // Don't throw here.
+    // Payment already succeeded, and throwing would cause webhook retries.
+  }
 }
 
 export async function POST(request: Request) {
@@ -127,11 +287,13 @@ export async function POST(request: Request) {
       case "checkout.session.async_payment_succeeded": {
         const session = event.data.object as Stripe.Checkout.Session;
 
-        const { orderId, shouldSyncShipStation } = await markOrderPaid(session);
+        const result = await markOrderPaid(session);
 
-        if (orderId && shouldSyncShipStation) {
+        await maybeSendReceiptEmail(result);
+
+        if (result.orderId && result.shouldSyncShipStation) {
           try {
-            await syncPaidOrderToShipStation(orderId);
+            await syncPaidOrderToShipStation(result.orderId);
           } catch (shipstationError) {
             console.error(
               "[stripe webhook] ShipStation mock sync failed:",
@@ -144,25 +306,27 @@ export async function POST(request: Request) {
               .update({
                 shipstation_sync_status: "failed",
               })
-              .eq("id", orderId);
+              .eq("id", result.orderId);
 
-            revalidatePath(ORDERS_PATH);
             throw shipstationError;
           }
         }
 
+        revalidatePath("/dashboard/orders");
         break;
       }
 
       case "checkout.session.async_payment_failed": {
         const session = event.data.object as Stripe.Checkout.Session;
         await markOrderFailedOrCanceled(session, "failed");
+        revalidatePath("/dashboard/orders");
         break;
       }
 
       case "checkout.session.expired": {
         const session = event.data.object as Stripe.Checkout.Session;
         await markOrderFailedOrCanceled(session, "canceled");
+        revalidatePath("/dashboard/orders");
         break;
       }
 

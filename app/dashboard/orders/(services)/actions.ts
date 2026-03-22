@@ -381,7 +381,9 @@ export async function createStripeCheckoutSession(
     error: authError,
   } = await supabase.auth.getUser();
 
-  if (authError || !user) throw new Error("Not authenticated.");
+  if (authError || !user || !user.email) {
+    throw new Error("Not authenticated.");
+  }
 
   const { data: rawOrder, error: orderError } = await supabase
     .from("orders")
@@ -421,6 +423,16 @@ export async function createStripeCheckoutSession(
     order.facility_id,
   );
 
+  // Keep Stripe customer email in sync with logged-in user email
+  await stripe.customers.update(stripeCustomerId, {
+    email: user.email,
+    phone: order.facilities?.phone ?? undefined,
+    metadata: {
+      facility_id: order.facility_id,
+      user_id: user.id,
+    },
+  });
+
   const appUrl = process.env.NEXT_PUBLIC_APP_URL;
   if (!appUrl) {
     throw new Error("NEXT_PUBLIC_APP_URL is not configured.");
@@ -459,6 +471,7 @@ export async function createStripeCheckoutSession(
       facility_id: order.facility_id,
       product_id: order.product_id,
       user_id: user.id,
+      user_email: user.email,
     },
   });
 
@@ -474,6 +487,7 @@ export async function createStripeCheckoutSession(
       stripe_checkout_session_id: session.id,
       stripe_checkout_url: session.url,
       stripe_customer_id: stripeCustomerId,
+      receipt_email: user.email,
     })
     .eq("id", order.id);
 
