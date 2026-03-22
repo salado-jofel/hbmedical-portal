@@ -2,101 +2,25 @@ import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { stripe } from "@/utils/stripe/server";
 import { createAdminClient } from "@/utils/supabase/admin";
-
-async function findOrderForSession(
-  supabaseAdmin: ReturnType<typeof createAdminClient>,
-  session: Stripe.Checkout.Session,
-) {
-  // 1) Best match: stored Stripe Checkout Session ID
-  let { data: order, error } = await supabaseAdmin
-    .from("orders")
-    .select("id, order_id, payment_status")
-    .eq("stripe_checkout_session_id", session.id)
-    .maybeSingle();
-
-  if (error) {
-    console.error(
-      "[stripe webhook] Lookup by session.id failed:",
-      error.message,
-    );
-  }
-
-  if (order) return order;
-
-  // 2) Next best: client_reference_id (you set this to order.id in one good version)
-  const clientReferenceId =
-    typeof session.client_reference_id === "string"
-      ? session.client_reference_id
-      : null;
-
-  if (clientReferenceId) {
-    ({ data: order, error } = await supabaseAdmin
-      .from("orders")
-      .select("id, order_id, payment_status")
-      .eq("id", clientReferenceId)
-      .maybeSingle());
-
-    if (error) {
-      console.error(
-        "[stripe webhook] Lookup by client_reference_id failed:",
-        error.message,
-      );
-    }
-
-    if (order) return order;
-  }
-
-  // 3) Metadata fallbacks
-  const metadataOrderId = session.metadata?.order_id ?? null;
-  const metadataOrderDocNumber = session.metadata?.order_doc_number ?? null;
-
-  if (metadataOrderId) {
-    // try UUID column first
-    ({ data: order, error } = await supabaseAdmin
-      .from("orders")
-      .select("id, order_id, payment_status")
-      .eq("id", metadataOrderId)
-      .maybeSingle());
-
-    if (order) return order;
-
-    // then try human-readable order number column
-    ({ data: order, error } = await supabaseAdmin
-      .from("orders")
-      .select("id, order_id, payment_status")
-      .eq("order_id", metadataOrderId)
-      .maybeSingle());
-
-    if (order) return order;
-  }
-
-  if (metadataOrderDocNumber) {
-    ({ data: order, error } = await supabaseAdmin
-      .from("orders")
-      .select("id, order_id, payment_status")
-      .eq("order_id", metadataOrderDocNumber)
-      .maybeSingle());
-
-    if (order) return order;
-  }
-
-  console.error("[stripe webhook] No matching order found", {
-    sessionId: session.id,
-    clientReferenceId,
-    metadata: session.metadata,
-  });
-
-  return null;
-}
+import { syncPaidOrderToShipStation } from "@/lib/actions/shipstation";
 
 async function markOrderPaid(session: Stripe.Checkout.Session) {
+  const orderId = session.metadata?.order_id;
+  if (!orderId) return { orderId: null, shouldSyncShipStation: false };
+
   const supabaseAdmin = createAdminClient();
 
-  const order = await findOrderForSession(supabaseAdmin, session);
-  if (!order) return;
+  const { data: existing, error: fetchError } = await supabaseAdmin
+    .from("orders")
+    .select(
+      "id, payment_status, shipstation_sync_status, shipstation_shipment_id",
+    )
+    .eq("id", orderId)
+    .maybeSingle();
 
-  if (order.payment_status === "paid") {
-    return;
+  if (fetchError || !existing) {
+    console.error("[stripe webhook] Order lookup failed:", fetchError?.message);
+    return { orderId: null, shouldSyncShipStation: false };
   }
 
   const paymentIntentId =
@@ -109,33 +33,48 @@ async function markOrderPaid(session: Stripe.Checkout.Session) {
       ? session.customer
       : (session.customer?.id ?? null);
 
-  const { error: updateError } = await supabaseAdmin
-    .from("orders")
-    .update({
-      payment_status: "paid",
-      stripe_checkout_session_id: session.id,
-      stripe_payment_intent_id: paymentIntentId,
-      stripe_customer_id: customerId,
-      paid_at: new Date().toISOString(),
-    })
-    .eq("id", order.id);
+  const alreadyPaid = existing.payment_status === "paid";
+  const alreadySynced =
+    existing.shipstation_sync_status === "sent" ||
+    existing.shipstation_sync_status === "fulfilled" ||
+    !!existing.shipstation_shipment_id;
 
-  if (updateError) {
-    console.error(
-      "[stripe webhook] Failed to mark order paid:",
-      updateError.message,
-    );
+  if (!alreadyPaid) {
+    const { error: updateError } = await supabaseAdmin
+      .from("orders")
+      .update({
+        payment_status: "paid",
+        stripe_checkout_session_id: session.id,
+        stripe_payment_intent_id: paymentIntentId,
+        stripe_customer_id: customerId,
+        paid_at: new Date().toISOString(),
+        shipstation_sync_status: "ready",
+      })
+      .eq("id", orderId);
+
+    if (updateError) {
+      console.error(
+        "[stripe webhook] Failed to mark order paid:",
+        updateError.message,
+      );
+      throw new Error(updateError.message);
+    }
   }
+
+  return {
+    orderId,
+    shouldSyncShipStation: !alreadySynced,
+  };
 }
 
 async function markOrderFailedOrCanceled(
   session: Stripe.Checkout.Session,
   status: "failed" | "canceled",
 ) {
-  const supabaseAdmin = createAdminClient();
+  const orderId = session.metadata?.order_id;
+  if (!orderId) return;
 
-  const order = await findOrderForSession(supabaseAdmin, session);
-  if (!order) return;
+  const supabaseAdmin = createAdminClient();
 
   const { error } = await supabaseAdmin
     .from("orders")
@@ -143,7 +82,7 @@ async function markOrderFailedOrCanceled(
       payment_status: status,
       stripe_checkout_session_id: session.id,
     })
-    .eq("id", order.id);
+    .eq("id", orderId);
 
   if (error) {
     console.error(
@@ -173,21 +112,38 @@ export async function POST(request: Request) {
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Invalid webhook signature.";
-    console.error("[stripe webhook] Signature verification failed:", message);
     return NextResponse.json({ error: message }, { status: 400 });
   }
 
   try {
     switch (event.type) {
-      case "checkout.session.completed": {
-        const session = event.data.object as Stripe.Checkout.Session;
-        await markOrderPaid(session);
-        break;
-      }
-
+      case "checkout.session.completed":
       case "checkout.session.async_payment_succeeded": {
         const session = event.data.object as Stripe.Checkout.Session;
-        await markOrderPaid(session);
+
+        const { orderId, shouldSyncShipStation } = await markOrderPaid(session);
+
+        if (orderId && shouldSyncShipStation) {
+          try {
+            await syncPaidOrderToShipStation(orderId);
+          } catch (shipstationError) {
+            console.error(
+              "[stripe webhook] ShipStation mock sync failed:",
+              shipstationError,
+            );
+
+            const supabaseAdmin = createAdminClient();
+            await supabaseAdmin
+              .from("orders")
+              .update({
+                shipstation_sync_status: "failed",
+              })
+              .eq("id", orderId);
+
+            throw shipstationError;
+          }
+        }
+
         break;
       }
 

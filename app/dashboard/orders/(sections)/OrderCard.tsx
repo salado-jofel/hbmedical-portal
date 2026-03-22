@@ -18,6 +18,10 @@ import {
   CheckCircle2,
   Boxes,
   DollarSign,
+  Truck,
+  BadgeCheck,
+  Clock3,
+  MapPin,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ConfirmModal from "@/app/(components)/ConfirmModal";
@@ -25,14 +29,73 @@ import { OrderInfoRow } from "./OrderInfoRow";
 import { getFulfillmentLabel } from "./kanban-config";
 import toast from "react-hot-toast";
 
+function PaymentBadge({
+  isPaid,
+  isPending,
+}: {
+  isPaid: boolean;
+  isPending: boolean;
+}) {
+  if (isPaid) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+        <CheckCircle2 className="h-3.5 w-3.5" />
+        Paid
+      </span>
+    );
+  }
+
+  if (isPending) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">
+        <Clock3 className="h-3.5 w-3.5" />
+        Pending
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+      <Clock3 className="h-3.5 w-3.5" />
+      Unpaid
+    </span>
+  );
+}
+
+function FulfillmentBadge({
+  label,
+  delivered,
+}: {
+  label: string;
+  delivered: boolean;
+}) {
+  if (delivered) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-700">
+        <BadgeCheck className="h-3.5 w-3.5" />
+        Delivered
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+      <Truck className="h-3.5 w-3.5" />
+      {label}
+    </span>
+  );
+}
+
 export function OrderCard({ order }: { order: Order }) {
   const dispatch = useAppDispatch();
   const [isDeleting, setIsDeleting] = useState(false);
   const [isPaying, setIsPaying] = useState(false);
+  const [isFulfilling, setIsFulfilling] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   const isPaid = order.payment_status === "paid";
   const isPaymentPending = order.payment_status === "pending";
+  const isDelivered = order.status === "Delivered";
   const fulfillmentLabel = getFulfillmentLabel(order);
 
   const quantity = Number(order.quantity ?? 1);
@@ -70,6 +133,49 @@ export function OrderCard({ order }: { order: Order }) {
     }
   }
 
+  async function handleMockShipStation() {
+    if (!order.id || isFulfilling || !isPaid || isDelivered) return;
+
+    setIsFulfilling(true);
+
+    try {
+      const res = await fetch("/api/dev/shipstation/fulfill", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ orderId: order.id }),
+      });
+
+      const text = await res.text();
+
+      let data: any = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        console.error("[handleMockShipStation] Non-JSON response:", text);
+        throw new Error(
+          "Server returned HTML instead of JSON. Check server logs.",
+        );
+      }
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to mark delivered");
+      }
+
+      toast.success(`Order ${order.order_id} marked delivered.`);
+      window.location.reload();
+    } catch (err) {
+      console.error("[handleMockShipStation]", err);
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Failed to mark delivered. Please try again.",
+      );
+      setIsFulfilling(false);
+    }
+  }
+
   return (
     <>
       <ConfirmModal
@@ -82,11 +188,16 @@ export function OrderCard({ order }: { order: Order }) {
         onConfirm={handleDelete}
       />
 
-      <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-sm hover:shadow-md transition-shadow">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-[#15689E] tracking-wide">
-            {order.order_id}
-          </span>
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
+        <div className="flex items-start justify-between gap-3">
+          <div className="space-y-1">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#15689E]">
+              Order
+            </p>
+            <h3 className="text-sm font-bold text-slate-800">
+              {order.order_id}
+            </h3>
+          </div>
 
           <Button
             type="button"
@@ -94,85 +205,153 @@ export function OrderCard({ order }: { order: Order }) {
             size="icon"
             onClick={() => setConfirmOpen(true)}
             disabled={isDeleting}
-            className="h-6 w-6 text-slate-300 hover:text-red-500 hover:bg-red-50 cursor-pointer"
+            className="h-7 w-7 text-slate-300 hover:bg-red-50 hover:text-red-500 cursor-pointer"
           >
-            <Trash2 className="w-3.5 h-3.5" />
+            <Trash2 className="h-4 w-4" />
           </Button>
         </div>
 
-        <OrderInfoRow
-          icon={Package}
-          text={`Product: ${order.product_name ?? "—"}`}
-          primary
-        />
+        <div className="mt-3 flex flex-wrap gap-2">
+          <PaymentBadge isPaid={isPaid} isPending={isPaymentPending} />
+          <FulfillmentBadge label={fulfillmentLabel} delivered={isDelivered} />
+        </div>
 
-        <OrderInfoRow
-          icon={Building2}
-          text={`Facility: ${order.facility_name ?? "—"}`}
-        />
+        <div className="mt-4 space-y-2">
+          <OrderInfoRow
+            icon={Package}
+            text={`Product: ${order.product_name ?? "—"}`}
+            primary
+          />
 
-        {order.created_by_email && (
-          <OrderInfoRow icon={User} text={order.created_by_email} />
-        )}
+          <OrderInfoRow
+            icon={Building2}
+            text={`Facility: ${order.facility_name ?? "—"}`}
+          />
 
-        <OrderInfoRow icon={Boxes} text={`Qty: ${quantity}`} />
-        <OrderInfoRow
-          icon={DollarSign}
-          text={`Unit Price: $${unitPrice.toFixed(2)}`}
-        />
+          {order.created_by_email && (
+            <OrderInfoRow icon={User} text={order.created_by_email} />
+          )}
 
-        <div className="border-t border-slate-100 pt-3">
-          <div className="flex items-center justify-between gap-3">
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                Quantity
+              </p>
+              <div className="mt-1 flex items-center gap-2 text-slate-800">
+                <Boxes className="h-4 w-4 text-slate-500" />
+                <span className="text-sm font-semibold">{quantity}</span>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                Unit Price
+              </p>
+              <div className="mt-1 flex items-center gap-2 text-slate-800">
+                <DollarSign className="h-4 w-4 text-slate-500" />
+                <span className="text-sm font-semibold">
+                  ${unitPrice.toFixed(2)}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {order.tracking_number && (
+            <div className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-blue-500">
+                Tracking
+              </p>
+              <div className="mt-1 flex items-center gap-2 text-blue-800">
+                <MapPin className="h-4 w-4" />
+                <span className="text-sm font-semibold">
+                  {order.tracking_number}
+                </span>
+              </div>
+              {order.carrier_code ? (
+                <p className="mt-1 text-xs text-blue-600">
+                  Carrier: {order.carrier_code}
+                </p>
+              ) : null}
+            </div>
+          )}
+        </div>
+
+        <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50 px-3 py-3">
+          <div className="flex items-end justify-between gap-3">
             <div className="flex flex-col">
-              <span className="text-sm font-bold text-slate-800">
+              <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                Total Amount
+              </span>
+              <span className="mt-1 text-xl font-bold text-slate-800">
                 ${totalAmount.toFixed(2)}
               </span>
-              <span className="text-xs text-slate-400">
-                Total ({quantity} × ${unitPrice.toFixed(2)})
+              <span className="text-xs text-slate-500">
+                {quantity} × ${unitPrice.toFixed(2)}
               </span>
             </div>
 
-            {isPaid ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-1 text-xs font-medium text-green-700">
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                Paid
-              </span>
-            ) : (
+            {!isPaid ? (
               <Button
                 type="button"
                 size="sm"
                 onClick={handlePayNow}
                 disabled={isPaying}
-                className="h-8 bg-[#15689E] hover:bg-[#0f4f7a] text-white text-xs cursor-pointer"
+                className="h-9 bg-[#15689E] text-white hover:bg-[#0f4f7a] cursor-pointer"
               >
                 {isPaying ? (
                   <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                    <Loader2 className="mr-1 h-4 w-4 animate-spin" />
                     Redirecting...
                   </>
                 ) : (
                   <>
-                    <CreditCard className="w-3.5 h-3.5 mr-1" />
+                    <CreditCard className="mr-1 h-4 w-4" />
                     {isPaymentPending ? "Resume Payment" : "Pay Now"}
                   </>
                 )}
               </Button>
+            ) : !isDelivered ? (
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleMockShipStation}
+                disabled={isFulfilling}
+                className="h-9 bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer"
+              >
+                {isFulfilling ? (
+                  <>
+                    <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                    Updating...
+                  </>
+                ) : (
+                  <>
+                    <Truck className="mr-1 h-4 w-4" />
+                    Simulate Delivery
+                  </>
+                )}
+              </Button>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-3 py-1.5 text-xs font-semibold text-blue-700">
+                <BadgeCheck className="h-4 w-4" />
+                Delivered
+              </span>
             )}
           </div>
         </div>
 
-        <div className="border-t border-slate-100" />
-
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-slate-500">
+        <div className="mt-3 flex items-center justify-between text-xs">
+          <span className="text-slate-500">
             Payment:{" "}
-            <span className="font-medium text-slate-700">
+            <span className="font-semibold text-slate-700">
               {order.payment_status ?? "unpaid"}
             </span>
           </span>
 
-          <span className="text-xs font-medium text-slate-500">
-            {fulfillmentLabel}
+          <span className="text-slate-500">
+            Status:{" "}
+            <span className="font-semibold text-slate-700">
+              {order.status ?? "Processing"}
+            </span>
           </span>
         </div>
       </div>

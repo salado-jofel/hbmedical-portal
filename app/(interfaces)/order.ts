@@ -9,27 +9,40 @@ export type OrderStatus =
   | "Delivered";
 
 export interface Order {
-  id?: string;
-  created_at?: string;
+  id: string;
   order_id: string;
-  facility_id: string;
-  product_id: string;
-  amount: number;
-  quantity: number;
-  status: OrderStatus;
-  created_by?: string;
-  facility_name?: string;
-  product_name?: string;
-  created_by_email?: string;
+  product_name?: string | null;
+  facility_name?: string | null;
+  created_by_email?: string | null;
+  quantity?: number | null;
+  amount?: number | null;
 
-  payment_provider?: PaymentProvider;
-  payment_status?: PaymentStatus;
+  status?: string | null;
+  payment_status?: string | null;
+
   stripe_checkout_session_id?: string | null;
   stripe_payment_intent_id?: string | null;
-  stripe_invoice_id?: string | null;
-  stripe_checkout_url?: string | null;
   stripe_customer_id?: string | null;
   paid_at?: string | null;
+
+  shipstation_sync_status?: string | null;
+  shipstation_shipment_id?: string | null;
+  shipstation_fulfillment_id?: string | null;
+  tracking_number?: string | null;
+  carrier_code?: string | null;
+  shipped_at?: string | null;
+  delivered_at?: string | null;
+  shipstation_raw?: unknown;
+
+  // if these exist in your project already, keep them too
+  customer_name?: string | null;
+  customer_phone?: string | null;
+  address_line1?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postal_code?: string | null;
+  country_code?: string | null;
+  order_doc_number?: string | null;
 }
 
 export type InsertOrderPayload = Omit<
