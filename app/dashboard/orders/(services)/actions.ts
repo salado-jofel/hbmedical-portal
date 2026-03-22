@@ -7,6 +7,7 @@ import type { Order } from "@/app/(interfaces)/order";
 import type { Facility } from "@/app/(interfaces)/facility";
 import type { Product } from "@/app/(interfaces)/product";
 import { requireUser } from "@/utils/auth-guard";
+import { getShipStationClient } from "@/lib/shipstation/server";
 
 const ORDER_TABLE = "orders";
 
@@ -27,6 +28,13 @@ const ORDER_COLUMNS = `
   stripe_checkout_url,
   stripe_customer_id,
   paid_at,
+  tracking_number,
+  carrier_code,
+  shipstation_order_id,
+  shipstation_shipment_id,
+  shipstation_status,
+  shipstation_label_url,
+  shipped_at,
   facilities(name, stripe_customer_id, phone),
   products(name, price)
 `;
@@ -57,6 +65,13 @@ type RawOrder = {
   stripe_checkout_url: string | null;
   stripe_customer_id: string | null;
   paid_at: string | null;
+  tracking_number: string | null;
+  carrier_code: string | null;
+  shipstation_order_id: string | null;
+  shipstation_shipment_id: string | null;
+  shipstation_status: string | null;
+  shipstation_label_url: string | null;
+  shipped_at: string | null;
   facilities: {
     name: string;
     stripe_customer_id: string | null;
@@ -88,6 +103,13 @@ function flattenOrder(row: RawOrder): Order {
     stripe_checkout_url: row.stripe_checkout_url,
     stripe_customer_id: row.stripe_customer_id,
     paid_at: row.paid_at,
+    tracking_number: row.tracking_number,
+    carrier_code: row.carrier_code,
+    shipstation_order_id: row.shipstation_order_id,
+    shipstation_shipment_id: row.shipstation_shipment_id,
+    shipstation_status: row.shipstation_status,
+    shipstation_label_url: row.shipstation_label_url,
+    shipped_at: row.shipped_at,
   };
 }
 
@@ -317,6 +339,32 @@ type RawCheckoutOrder = {
   } | null;
 };
 
+type RawShipStationOrder = {
+  id: string;
+  created_at: string;
+  order_id: string;
+  facility_id: string;
+  product_id: string;
+  amount: number | string;
+  quantity: number;
+  payment_status: string | null;
+  status: string;
+  tracking_number: string | null;
+  carrier_code: string | null;
+  shipstation_order_id: string | null;
+  shipstation_shipment_id: string | null;
+  shipstation_status: string | null;
+  shipstation_label_url: string | null;
+  facilities: {
+    name: string;
+    phone: string | null;
+  } | null;
+  products: {
+    name: string;
+    price: number | string;
+  } | null;
+};
+
 export async function createStripeCheckoutSession(
   orderId: string,
 ): Promise<string> {
@@ -437,9 +485,15 @@ export async function createStripeCheckoutSession(
   return session.url;
 }
 
-// ── MOCK SHIPSTATION FULFILLMENT ──────────────────────────────────────────────
+// ── SHIPSTATION MOCK / DEV INTEGRATION ───────────────────────────────────────
 
-export async function fulfillOrderMock(orderId: string): Promise<void> {
+export async function shipOrderWithShipStation(orderId: string): Promise<{
+  trackingNumber: string;
+  carrierCode: string;
+  labelUrl: string | null;
+  status: string;
+  alreadyShipped: boolean;
+}> {
   await requireUser();
 
   const supabase = await getSupabaseClient();
@@ -451,43 +505,114 @@ export async function fulfillOrderMock(orderId: string): Promise<void> {
 
   if (authError || !user) throw new Error("Not authenticated.");
 
-  const { data: current, error: fetchErr } = await supabase
+  const { data: rawOrder, error: fetchErr } = await supabase
     .from(ORDER_TABLE)
-    .select("id, order_id, facility_id, payment_status, status")
+    .select(
+      `
+      id,
+      created_at,
+      order_id,
+      facility_id,
+      product_id,
+      amount,
+      quantity,
+      payment_status,
+      status,
+      tracking_number,
+      carrier_code,
+      shipstation_order_id,
+      shipstation_shipment_id,
+      shipstation_status,
+      shipstation_label_url,
+      facilities(name, phone),
+      products(name, price)
+    `,
+    )
     .eq("id", orderId)
     .single();
 
-  if (fetchErr || !current) {
+  if (fetchErr || !rawOrder) {
     throw new Error("Order not found.");
   }
 
+  const order = rawOrder as unknown as RawShipStationOrder;
+
   const facilityIds = await getCurrentUserFacilityIds(supabase, user.id);
 
-  if (!facilityIds.includes(current.facility_id)) {
+  if (!facilityIds.includes(order.facility_id)) {
     throw new Error("You do not have permission to update this order.");
   }
 
-  if (current.payment_status !== "paid") {
+  if (order.payment_status !== "paid") {
     throw new Error("Only paid orders can be fulfilled.");
   }
 
-  if (current.status === "Delivered") {
-    return;
+  if (
+    order.shipstation_shipment_id &&
+    order.tracking_number &&
+    order.carrier_code
+  ) {
+    return {
+      trackingNumber: order.tracking_number,
+      carrierCode: order.carrier_code,
+      labelUrl: order.shipstation_label_url,
+      status: order.shipstation_status ?? "label_purchased_mock",
+      alreadyShipped: true,
+    };
   }
+
+  const shipstation = getShipStationClient();
+
+  const syncedOrder = await shipstation.syncOrder({
+    localOrderId: order.id,
+    orderNumber: order.order_id,
+    createdAt: order.created_at,
+    amount: Number(order.amount),
+    quantity: Number(order.quantity),
+    facilityId: order.facility_id,
+    facilityName: order.facilities?.name ?? "Unknown Facility",
+    recipientPhone: order.facilities?.phone ?? null,
+    productName: order.products?.name ?? `Order ${order.order_id}`,
+  });
+
+  const label = await shipstation.purchaseLabel({
+    localOrderId: order.id,
+    orderNumber: order.order_id,
+    amount: Number(order.amount),
+    quantity: Number(order.quantity),
+    facilityId: order.facility_id,
+    facilityName: order.facilities?.name ?? "Unknown Facility",
+    productName: order.products?.name ?? `Order ${order.order_id}`,
+  });
 
   const { error: updateErr } = await supabase
     .from(ORDER_TABLE)
     .update({
       status: "Delivered",
+      tracking_number: label.trackingNumber,
+      carrier_code: label.carrierCode,
+      shipstation_order_id: syncedOrder.externalOrderId,
+      shipstation_shipment_id: label.shipmentId,
+      shipstation_status: label.status,
+      shipstation_label_url: label.labelUrl,
+      shipped_at: new Date().toISOString(),
     })
-    .eq("id", orderId);
+    .eq("id", order.id);
 
   if (updateErr) {
-    console.error("[fulfillOrderMock] DB error:", updateErr.message);
-    throw new Error("Failed to mark order delivered.");
+    console.error("[shipOrderWithShipStation] DB error:", updateErr.message);
+    throw new Error("Failed to save ShipStation fulfillment data.");
   }
 
   revalidatePath(ORDERS_PATH);
+
+  return {
+    trackingNumber: label.trackingNumber,
+    carrierCode: label.carrierCode,
+    labelUrl: label.labelUrl,
+    status: label.status,
+    alreadyShipped: false,
+  };
 }
 
 // ── UPDATE STATUS ─────────────────────────────────────────────────────────────

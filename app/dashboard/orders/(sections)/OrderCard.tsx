@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useAppDispatch } from "@/store/hooks";
 import { removeOrderFromStore } from "../(redux)/orders-slice";
 import {
   deleteOrder,
   createStripeCheckoutSession,
-  fulfillOrderMock,
+  shipOrderWithShipStation,
 } from "../(services)/actions";
 import type { Order } from "@/app/(interfaces)/order";
 import {
@@ -23,6 +24,8 @@ import {
   BadgeCheck,
   Clock3,
   MapPin,
+  FlaskConical,
+  FileText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ConfirmModal from "@/app/(components)/ConfirmModal";
@@ -87,6 +90,28 @@ function FulfillmentBadge({
   );
 }
 
+function ShipStationBadge({ status }: { status?: string | null }) {
+  if (!status) return null;
+
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2.5 py-1 text-xs font-semibold text-violet-700">
+      <Truck className="h-3.5 w-3.5" />
+      {status}
+    </span>
+  );
+}
+
+function DevModeBadge({ show }: { show: boolean }) {
+  if (!show) return null;
+
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2.5 py-1 text-xs font-semibold text-orange-700">
+      <FlaskConical className="h-3.5 w-3.5" />
+      Dev Mode
+    </span>
+  );
+}
+
 export function OrderCard({ order }: { order: Order }) {
   const dispatch = useAppDispatch();
   const [isDeleting, setIsDeleting] = useState(false);
@@ -98,6 +123,7 @@ export function OrderCard({ order }: { order: Order }) {
   const isPaymentPending = order.payment_status === "pending";
   const isDelivered = order.status === "Delivered";
   const fulfillmentLabel = getFulfillmentLabel(order);
+  const isMockCarrier = (order.carrier_code ?? "").startsWith("mock-");
 
   const quantity = Number(order.quantity ?? 1);
   const totalAmount = Number(order.amount ?? 0);
@@ -135,19 +161,28 @@ export function OrderCard({ order }: { order: Order }) {
   }
 
   async function handleMockShipStation() {
-    if (!order.id || isFulfilling || !isPaid || isDelivered) return;
+    if (!order.id || isFulfilling || !isPaid) return;
 
     setIsFulfilling(true);
 
     try {
-      await fulfillOrderMock(order.id);
-      toast.success(`Order ${order.order_id} marked delivered.`);
+      const result = await shipOrderWithShipStation(order.id);
+
+      if (result.alreadyShipped) {
+        toast.success(
+          `Existing mock shipment loaded: ${result.carrierCode} • ${result.trackingNumber}`,
+        );
+      } else {
+        toast.success(
+          `Mock shipment created: ${result.carrierCode} • ${result.trackingNumber}`,
+        );
+      }
     } catch (err) {
       console.error("[handleMockShipStation]", err);
       toast.error(
         err instanceof Error
           ? err.message
-          : "Failed to mark delivered. Please try again.",
+          : "Failed to create ShipStation mock shipment. Please try again.",
       );
     } finally {
       setIsFulfilling(false);
@@ -192,6 +227,8 @@ export function OrderCard({ order }: { order: Order }) {
         <div className="mt-3 flex flex-wrap gap-2">
           <PaymentBadge isPaid={isPaid} isPending={isPaymentPending} />
           <FulfillmentBadge label={fulfillmentLabel} delivered={isDelivered} />
+          <ShipStationBadge status={order.shipstation_status} />
+          <DevModeBadge show={isMockCarrier} />
         </div>
 
         <div className="mt-4 space-y-2">
@@ -245,10 +282,22 @@ export function OrderCard({ order }: { order: Order }) {
                   {order.tracking_number}
                 </span>
               </div>
+
               {order.carrier_code ? (
                 <p className="mt-1 text-xs text-blue-600">
                   Carrier: {order.carrier_code}
                 </p>
+              ) : null}
+
+              {order.shipstation_label_url ? (
+                <Link
+                  href={order.shipstation_label_url}
+                  target="_blank"
+                  className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-blue-700 underline underline-offset-2"
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  View Mock Label
+                </Link>
               ) : null}
             </div>
           )}
@@ -288,7 +337,7 @@ export function OrderCard({ order }: { order: Order }) {
                   </>
                 )}
               </Button>
-            ) : !isDelivered ? (
+            ) : (
               <Button
                 type="button"
                 size="sm"
@@ -299,20 +348,17 @@ export function OrderCard({ order }: { order: Order }) {
                 {isFulfilling ? (
                   <>
                     <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-                    Updating...
+                    Shipping...
                   </>
                 ) : (
                   <>
                     <Truck className="mr-1 h-4 w-4" />
-                    Simulate Delivery
+                    {order.shipstation_shipment_id
+                      ? "View Mock Shipment"
+                      : "Ship (Mock)"}
                   </>
                 )}
               </Button>
-            ) : (
-              <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-3 py-1.5 text-xs font-semibold text-blue-700">
-                <BadgeCheck className="h-4 w-4" />
-                Delivered
-              </span>
             )}
           </div>
         </div>

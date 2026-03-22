@@ -1,44 +1,56 @@
-import {
-  ShipStationService,
-  ShipStationShipmentInput,
-  ShipStationShipmentResult,
-  ShipStationFulfillmentInput,
-  ShipStationFulfillmentResult,
+import type {
+  ShipStationClient,
+  ShipStationLabelInput,
+  ShipStationLabelResult,
+  ShipStationOrderInput,
+  ShipStationOrderResult,
 } from "./types";
 
-export class MockShipStationService implements ShipStationService {
-  async createShipment(
-    input: ShipStationShipmentInput,
-  ): Promise<ShipStationShipmentResult> {
-    const shipmentId = `mock_shipment_${Date.now()}`;
-
-    return {
-      ok: true,
-      shipmentId,
-      raw: {
-        mode: "mock",
-        action: "createShipment",
-        shipment_id: shipmentId,
-        create_sales_order: true,
-        input,
-      },
-    };
-  }
-
-  async createFulfillment(
-    input: ShipStationFulfillmentInput,
-  ): Promise<ShipStationFulfillmentResult> {
-    const fulfillmentId = `mock_fulfillment_${Date.now()}`;
-
-    return {
-      ok: true,
-      fulfillmentId,
-      raw: {
-        mode: "mock",
-        action: "createFulfillment",
-        fulfillment_id: fulfillmentId,
-        input,
-      },
-    };
-  }
+function shortId(value: string) {
+  return value.replace(/-/g, "").slice(0, 8).toUpperCase();
 }
+
+function mockTrackingNumber() {
+  const stamp = Date.now().toString().slice(-10);
+  const rand = Math.floor(10 + Math.random() * 89).toString();
+  return `9400${stamp}${rand}`;
+}
+
+async function sleep(ms = 350) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export const mockShipStationClient: ShipStationClient = {
+  async syncOrder(
+    input: ShipStationOrderInput,
+  ): Promise<ShipStationOrderResult> {
+    await sleep();
+
+    const short = shortId(input.localOrderId);
+
+    return {
+      externalOrderId: `mock-ss-order-${short}`,
+      orderKey: `mock-ss-key-${short}`,
+      status: "awaiting_shipment",
+    };
+  },
+
+  async purchaseLabel(
+    input: ShipStationLabelInput,
+  ): Promise<ShipStationLabelResult> {
+    await sleep();
+
+    const short = shortId(input.localOrderId);
+
+    return {
+      shipmentId: `mock-ss-shipment-${short}`,
+      trackingNumber: mockTrackingNumber(),
+      carrierCode: "mock-usps",
+      serviceCode: "mock-priority",
+      labelUrl: `/api/dev/shipstation/label/${short}?orderNumber=${encodeURIComponent(
+        input.orderNumber,
+      )}`,
+      status: "label_purchased_mock",
+    };
+  },
+};

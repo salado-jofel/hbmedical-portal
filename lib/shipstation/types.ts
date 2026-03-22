@@ -1,42 +1,43 @@
-export type ShipStationShipmentInput = {
-  orderId: string;
+export type ShipStationMode = "mock" | "production";
+
+export type ShipStationOrderInput = {
+  localOrderId: string;
   orderNumber: string;
-  customerName: string;
-  customerPhone?: string | null;
-  address1: string;
-  city: string;
-  state: string;
-  postalCode: string;
-  countryCode: string;
-  productName: string;
+  createdAt: string;
+  amount: number;
   quantity: number;
-  unitPrice: number;
+  facilityId: string;
+  facilityName: string;
+  recipientPhone?: string | null;
+  productName: string;
 };
 
-export type ShipStationShipmentResult = {
-  ok: boolean;
-  shipmentId?: string;
-  raw: unknown;
+export type ShipStationOrderResult = {
+  externalOrderId: string;
+  orderKey: string;
+  status: string;
 };
 
-export type ShipStationFulfillmentInput = {
+export type ShipStationLabelInput = {
+  localOrderId: string;
+  orderNumber: string;
+  amount: number;
+  quantity: number;
+  facilityId: string;
+  facilityName: string;
+  productName: string;
+};
+
+export type ShipStationLabelResult = {
   shipmentId: string;
   trackingNumber: string;
   carrierCode: string;
+  serviceCode: string;
+  labelUrl: string | null;
+  status: string;
 };
 
-export type ShipStationFulfillmentResult = {
-  ok: boolean;
-  fulfillmentId?: string;
-  raw: unknown;
-};
-
-export interface ShipStationService {
-  createShipment(
-    input: ShipStationShipmentInput,
-  ): Promise<ShipStationShipmentResult>;
-
-  createFulfillment(
-    input: ShipStationFulfillmentInput,
-  ): Promise<ShipStationFulfillmentResult>;
+export interface ShipStationClient {
+  syncOrder(input: ShipStationOrderInput): Promise<ShipStationOrderResult>;
+  purchaseLabel(input: ShipStationLabelInput): Promise<ShipStationLabelResult>;
 }
