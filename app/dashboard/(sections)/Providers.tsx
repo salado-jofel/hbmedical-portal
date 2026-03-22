@@ -1,32 +1,37 @@
 "use client";
 
-import { ReactNode, useEffect } from "react";
+import { useEffect } from "react";
 import { useAppDispatch } from "@/store/hooks";
-import { setOrders } from "@/app/dashboard/orders/(redux)/orders-slice";
-import type { Facility } from "@/app/(interfaces)/facility";
-import type { Order } from "@/app/(interfaces)/order";
-import { UserData } from "../(services)/actions";
 import { setUser } from "../(redux)/dashboard-slice";
 
-interface DashboardProvidersProps {
-  children: ReactNode;
-  orders: Order[];
-  userData: UserData | null;
-}
+type UserData = {
+  name: string;
+  email: string;
+  initials: string;
+  role: "sales_representative" | "doctor" | null;
+};
 
 export default function Providers({
   children,
-  orders,
   userData,
-}: DashboardProvidersProps) {
+}: {
+  children: React.ReactNode;
+  userData: UserData | null;
+}) {
   const dispatch = useAppDispatch();
 
   useEffect(() => {
-    dispatch(setOrders(orders));
-    if (userData) {
-      dispatch(setUser(userData));
-    }
-  }, [dispatch, orders, userData]);
+    if (!userData) return;
+
+    dispatch(
+      setUser({
+        name: userData.name ?? "",
+        email: userData.email ?? "",
+        initials: userData.initials ?? "",
+        role: userData.role ?? null,
+      }),
+    );
+  }, [dispatch, userData]);
 
   return <>{children}</>;
 }

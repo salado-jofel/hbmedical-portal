@@ -191,7 +191,6 @@ export async function addOrder(formData: FormData): Promise<Order> {
     throw new Error("Selected product not found.");
   }
 
-  // Always compute server-side, never trust amount from client
   const amount = Number(product.price) * quantity;
 
   const { data: insertedRow, error: insertError } = await supabase
@@ -381,8 +380,8 @@ export async function createStripeCheckoutSession(
     mode: "payment",
     customer: stripeCustomerId,
     client_reference_id: order.id,
-    success_url: `${appUrl}/dashboard/orders/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${appUrl}/dashboard/orders?canceled=1`,
+    success_url: `${appUrl}/dashboard/orders?payment=success&session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${appUrl}/dashboard/orders?payment=cancelled`,
     payment_method_types: ["card"],
     line_items: [
       {
@@ -436,6 +435,59 @@ export async function createStripeCheckoutSession(
 
   revalidatePath(ORDERS_PATH);
   return session.url;
+}
+
+// ── MOCK SHIPSTATION FULFILLMENT ──────────────────────────────────────────────
+
+export async function fulfillOrderMock(orderId: string): Promise<void> {
+  await requireUser();
+
+  const supabase = await getSupabaseClient();
+
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) throw new Error("Not authenticated.");
+
+  const { data: current, error: fetchErr } = await supabase
+    .from(ORDER_TABLE)
+    .select("id, order_id, facility_id, payment_status, status")
+    .eq("id", orderId)
+    .single();
+
+  if (fetchErr || !current) {
+    throw new Error("Order not found.");
+  }
+
+  const facilityIds = await getCurrentUserFacilityIds(supabase, user.id);
+
+  if (!facilityIds.includes(current.facility_id)) {
+    throw new Error("You do not have permission to update this order.");
+  }
+
+  if (current.payment_status !== "paid") {
+    throw new Error("Only paid orders can be fulfilled.");
+  }
+
+  if (current.status === "Delivered") {
+    return;
+  }
+
+  const { error: updateErr } = await supabase
+    .from(ORDER_TABLE)
+    .update({
+      status: "Delivered",
+    })
+    .eq("id", orderId);
+
+  if (updateErr) {
+    console.error("[fulfillOrderMock] DB error:", updateErr.message);
+    throw new Error("Failed to mark order delivered.");
+  }
+
+  revalidatePath(ORDERS_PATH);
 }
 
 // ── UPDATE STATUS ─────────────────────────────────────────────────────────────

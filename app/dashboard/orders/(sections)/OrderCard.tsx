@@ -6,6 +6,7 @@ import { removeOrderFromStore } from "../(redux)/orders-slice";
 import {
   deleteOrder,
   createStripeCheckoutSession,
+  fulfillOrderMock,
 } from "../(services)/actions";
 import type { Order } from "@/app/(interfaces)/order";
 import {
@@ -139,32 +140,8 @@ export function OrderCard({ order }: { order: Order }) {
     setIsFulfilling(true);
 
     try {
-      const res = await fetch("/api/dev/shipstation/fulfill", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ orderId: order.id }),
-      });
-
-      const text = await res.text();
-
-      let data: any = {};
-      try {
-        data = text ? JSON.parse(text) : {};
-      } catch {
-        console.error("[handleMockShipStation] Non-JSON response:", text);
-        throw new Error(
-          "Server returned HTML instead of JSON. Check server logs.",
-        );
-      }
-
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to mark delivered");
-      }
-
+      await fulfillOrderMock(order.id);
       toast.success(`Order ${order.order_id} marked delivered.`);
-      window.location.reload();
     } catch (err) {
       console.error("[handleMockShipStation]", err);
       toast.error(
@@ -172,6 +149,7 @@ export function OrderCard({ order }: { order: Order }) {
           ? err.message
           : "Failed to mark delivered. Please try again.",
       );
+    } finally {
       setIsFulfilling(false);
     }
   }

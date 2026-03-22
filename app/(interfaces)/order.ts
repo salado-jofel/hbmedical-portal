@@ -11,15 +11,23 @@ export type OrderStatus =
 export interface Order {
   id: string;
   order_id: string;
-  product_name?: string | null;
+  stripe_checkout_url?: string | null;
+
+  facility_id?: string | null;
+  product_id?: string | null;
+
   facility_name?: string | null;
+  product_name?: string | null;
   created_by_email?: string | null;
+
   quantity?: number | null;
   amount?: number | null;
 
-  status?: string | null;
-  payment_status?: string | null;
+  status?: OrderStatus | null;
+  payment_status?: PaymentStatus | null;
+  payment_provider?: PaymentProvider | null;
 
+  stripe_invoice_id?: string | null;
   stripe_checkout_session_id?: string | null;
   stripe_payment_intent_id?: string | null;
   stripe_customer_id?: string | null;
@@ -34,15 +42,7 @@ export interface Order {
   delivered_at?: string | null;
   shipstation_raw?: unknown;
 
-  // if these exist in your project already, keep them too
-  customer_name?: string | null;
-  customer_phone?: string | null;
-  address_line1?: string | null;
-  city?: string | null;
-  state?: string | null;
-  postal_code?: string | null;
-  country_code?: string | null;
-  order_doc_number?: string | null;
+  created_at?: string | null;
 }
 
 export type InsertOrderPayload = Omit<
