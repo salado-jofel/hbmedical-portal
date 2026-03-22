@@ -16,16 +16,16 @@ export function MobileKanbanTabs({
 }: {
   grouped: Record<BoardStatus, Order[]>;
 }) {
-  const [activeTab, setActiveTab] = useState<BoardStatus>("Processing");
+  const [activeTab, setActiveTab] = useState<BoardStatus>("New Orders");
   const config = STATUS_CONFIG[activeTab];
 
   return (
     <div>
-      {/* Tab bar */}
       <div className="flex bg-slate-100 rounded-xl p-1 gap-1 mb-4">
         {BOARD_STATUSES.map((status) => {
           const isActive = activeTab === status;
           const cfg = STATUS_CONFIG[status];
+
           return (
             <button
               key={status}
@@ -59,7 +59,6 @@ export function MobileKanbanTabs({
         })}
       </div>
 
-      {/* Active column indicator */}
       <div className="flex items-center gap-2 mb-3 px-1">
         <div className={`w-2.5 h-2.5 rounded-full ${config.dot}`} />
         <span className="text-sm font-semibold text-slate-700">
@@ -71,7 +70,6 @@ export function MobileKanbanTabs({
         </span>
       </div>
 
-      {/* Cards */}
       <div className="flex flex-col gap-3">
         {grouped[activeTab].length === 0 ? (
           <div className="bg-slate-50 rounded-xl border border-slate-200 py-14">

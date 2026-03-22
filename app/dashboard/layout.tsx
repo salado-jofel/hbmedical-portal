@@ -1,14 +1,20 @@
 import { Sidebar } from "./(sections)/Sidebar";
 import { MobileTopBar } from "./(sections)/MobileTopBar";
 import NextTopLoader from "nextjs-toploader";
+import Providers from "./(sections)/Providers";
+import { getUserData } from "./(services)/actions";
+
+export const dynamic = "force-dynamic";
 
 export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const userData = await getUserData();
+
   return (
-    <>
+    <Providers userData={userData}>
       <NextTopLoader
         color="#f5a255"
         shadow="0 0 10px #f5a255, 0 0 5px #f5a255"
@@ -25,6 +31,6 @@ export default async function DashboardLayout({
           </main>
         </div>
       </div>
-    </>
+    </Providers>
   );
 }

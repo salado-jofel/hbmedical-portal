@@ -16,7 +16,9 @@ export async function updateSession(request: NextRequest) {
           cookiesToSet.forEach(({ name, value, options }) =>
             request.cookies.set({ name, value, ...options }),
           );
+
           supabaseResponse = NextResponse.next({ request });
+
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options),
           );
@@ -36,7 +38,7 @@ export async function updateSession(request: NextRequest) {
     currentPath === "/sign-up" ||
     currentPath === "/verify-email";
 
-  // ── LOGIC A: Logged-in user visits an auth page → send to dashboard ───────
+  // Logged-in user visits auth pages → redirect away
   if (user && isAuthPage) {
     const referer = request.headers.get("referer");
     const refererUrl = referer ? new URL(referer) : null;
@@ -56,28 +58,11 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(referer);
   }
 
-  // ── LOGIC B: Unauthenticated user visits /dashboard → send to sign-in ─────
   if (!user && currentPath.startsWith("/dashboard")) {
     const url = request.nextUrl.clone();
     url.pathname = "/sign-in";
     url.searchParams.set("next", currentPath);
     return NextResponse.redirect(url);
-  }
-
-  // ── LOGIC C: Authenticated user — check QB connection, sign out if missing ─
-  if (user && currentPath.startsWith("/dashboard")) {
-    const { data: qbConnection } = await supabase
-      .from("quickbooks_connections")
-      .select("id")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (!qbConnection) {
-      await supabase.auth.signOut();
-      const url = request.nextUrl.clone();
-      url.pathname = "/sign-in";
-      return NextResponse.redirect(url);
-    }
   }
 
   return supabaseResponse;

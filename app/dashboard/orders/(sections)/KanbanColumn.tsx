@@ -22,10 +22,12 @@ export function KanbanColumn({
           <div className={`w-2 h-2 rounded-full ${config.dot}`} />
           <span className="text-sm font-semibold text-slate-700">{status}</span>
         </div>
+
         <span className="min-w-5.5 h-5.5 flex items-center justify-center rounded-full bg-[#15689E] text-white text-xs font-bold px-1.5">
           {orders.length}
         </span>
       </div>
+
       <div className="flex flex-col gap-3 p-3 flex-1 overflow-y-auto max-h-[calc(100vh-280px)]">
         {orders.length === 0 ? (
           <EmptyState

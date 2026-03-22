@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { useAppSelector } from "@/store/hooks";
 
 interface DashboardHeaderProps {
@@ -17,6 +17,13 @@ export function DashboardHeader({
   actions,
 }: DashboardHeaderProps) {
   const userData = useAppSelector((state) => state.dashboard);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const showGreetingText = mounted && showGreeting && !!userData.name;
 
   return (
     <div className="flex items-start justify-between gap-4 pb-5 border-b border-slate-200">
@@ -25,20 +32,29 @@ export function DashboardHeader({
           <h1 className="text-xl md:text-2xl font-bold text-slate-800 leading-tight">
             {title}
           </h1>
-          {showGreeting && userData.name && (
-            <p className="text-xs md:text-sm text-slate-400 mt-0.5">
-              Welcome back,{" "}
-              <span className="font-semibold text-slate-600">
-                {userData.name}
-              </span>
-              ! Here&apos;s your sales overview.
+
+          {showGreeting ? (
+            <p
+              className="text-xs md:text-sm text-slate-400 mt-0.5 min-h-[20px]"
+              suppressHydrationWarning
+            >
+              {showGreetingText ? (
+                <>
+                  Welcome back,{" "}
+                  <span className="font-semibold text-slate-600">
+                    {userData.name}
+                  </span>
+                  ! Here&apos;s your sales overview.
+                </>
+              ) : (
+                "\u00A0"
+              )}
             </p>
-          )}
-          {description && !showGreeting && (
+          ) : description ? (
             <p className="text-xs md:text-sm text-slate-400 mt-0.5">
               {description}
             </p>
-          )}
+          ) : null}
         </div>
       </div>
 
