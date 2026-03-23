@@ -16,6 +16,7 @@ import {
   Package,
   DollarSign,
   Layers,
+  AlertTriangle,
 } from "lucide-react";
 import {
   addOrder,
@@ -30,7 +31,15 @@ import type { Product } from "@/app/(interfaces)/product";
 import SubmitButton from "@/app/(components)/SubmitButton";
 import toast from "react-hot-toast";
 
-export function CreateOrderModal() {
+type CreateOrderModalProps = {
+  disabled?: boolean;
+  disabledReason?: string | null;
+};
+
+export function CreateOrderModal({
+  disabled = false,
+  disabledReason = null,
+}: CreateOrderModalProps) {
   const dispatch = useAppDispatch();
   const [open, setOpen] = useState(false);
   const [facility, setFacility] = useState<Facility | null>(null);
@@ -48,6 +57,7 @@ export function CreateOrderModal() {
   }, [open]);
 
   useEffect(() => {
+    if (!open) return;
     const pad = (n: number) => String(n).padStart(3, "0");
     setOrderId(`ORD-${pad(Math.floor(Math.random() * 999) + 1)}`);
   }, [open]);
@@ -73,14 +83,15 @@ export function CreateOrderModal() {
   }, [open]);
 
   const selectedProduct = products.find((p) => p.id === productId);
-  const unitPrice = selectedProduct?.price ?? 0;
+  const unitPrice = Number(selectedProduct?.price ?? 0);
   const totalAmount = unitPrice * quantity;
 
   const isFormValid =
     orderId.trim() !== "" &&
     !!facility &&
     !isLoadingData &&
-    !!selectedProduct;
+    !!selectedProduct &&
+    !disabled;
 
   function resetForm() {
     setFacilityId(facility?.id ?? "");
@@ -90,6 +101,16 @@ export function CreateOrderModal() {
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+
+    if (disabled) {
+      const message =
+        disabledReason ??
+        "Ordering is currently disabled for this account.";
+      setError(message);
+      toast.error(message);
+      return;
+    }
+
     if (!facility) return;
 
     setIsPending(true);
@@ -109,7 +130,7 @@ export function CreateOrderModal() {
       product_id: productId,
       amount: totalAmount,
       quantity,
-      status: "Processing", // stays a backend/internal status
+      status: "Processing",
       facility_name: facility?.name ?? "—",
       product_name: selectedProduct?.name ?? "—",
       payment_status: "pending",
@@ -136,25 +157,44 @@ export function CreateOrderModal() {
     <Dialog
       open={open}
       onOpenChange={(val) => {
+        if (disabled) {
+          setOpen(false);
+          return;
+        }
+
         if (!isPending) setOpen(val);
       }}
     >
-      <DialogTrigger asChild>
-        <SubmitButton
-          type="button"
-          variant="default"
-          size="default"
-          classname="bg-[#15689E] hover:bg-[#0f4f7a] text-white cursor-pointer w-full sm:w-auto"
-          cta={
-            <>
-              <Plus className="w-4 h-4 mr-2" />
-              New Order
-            </>
-          }
-        />
-      </DialogTrigger>
+      <div className="space-y-2">
+        <DialogTrigger asChild>
+          <div>
+            <SubmitButton
+              type="button"
+              variant="default"
+              size="default"
+              disabled={disabled}
+              classname="bg-[#15689E] hover:bg-[#0f4f7a] text-white cursor-pointer w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-300"
+              cta={
+                <>
+                  <Plus className="mr-2 h-4 w-4" />
+                  New Order
+                </>
+              }
+            />
+          </div>
+        </DialogTrigger>
 
-      <DialogContent className="w-[calc(100%-2rem)] sm:max-w-md rounded-xl max-h-[90dvh] overflow-y-auto">
+        {disabledReason ? (
+          <div className="max-w-xs rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{disabledReason}</span>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      <DialogContent className="max-h-[90dvh] w-[calc(100%-2rem)] overflow-y-auto rounded-xl sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="text-lg font-semibold text-slate-800">
             Create New Order
@@ -164,7 +204,7 @@ export function CreateOrderModal() {
         <form onSubmit={handleSubmit} className="space-y-4 pt-2">
           <div className="space-y-1.5">
             <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-              <Hash className="w-4 h-4 text-[#15689E]" />
+              <Hash className="h-4 w-4 text-[#15689E]" />
               Order ID
             </label>
             <Input
@@ -173,26 +213,27 @@ export function CreateOrderModal() {
               onChange={(e) => setOrderId(e.target.value)}
               placeholder="ORD-001"
               required
+              disabled={isPending || disabled}
             />
           </div>
 
           <div className="space-y-1.5">
             <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-              <Building2 className="w-4 h-4 text-[#15689E]" />
+              <Building2 className="h-4 w-4 text-[#15689E]" />
               Facility
             </label>
-            <div className="flex items-center gap-2 w-full border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 min-h-[38px]">
+            <div className="flex min-h-[38px] w-full items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
               {isLoadingData ? (
-                <span className="text-sm text-slate-400 animate-pulse">
+                <span className="animate-pulse text-sm text-slate-400">
                   Loading facility...
                 </span>
               ) : facility ? (
                 <>
-                  <span className="text-sm text-slate-700 flex-1 truncate font-medium">
+                  <span className="flex-1 truncate text-sm font-medium text-slate-700">
                     {facility.name}
                   </span>
                   {facility.location && (
-                    <span className="text-xs text-slate-400 shrink-0">
+                    <span className="shrink-0 text-xs text-slate-400">
                       {facility.location as string}
                     </span>
                   )}
@@ -207,7 +248,7 @@ export function CreateOrderModal() {
 
           <div className="space-y-1.5">
             <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-              <Package className="w-4 h-4 text-[#15689E]" />
+              <Package className="h-4 w-4 text-[#15689E]" />
               Product
             </label>
             <select
@@ -217,8 +258,8 @@ export function CreateOrderModal() {
                 setQuantity(1);
               }}
               required
-              disabled={isPending || isLoadingData || products.length === 0}
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#15689E] bg-white disabled:opacity-50"
+              disabled={isPending || isLoadingData || products.length === 0 || disabled}
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#15689E] disabled:opacity-50"
             >
               <option value="">
                 {isLoadingData
@@ -238,7 +279,7 @@ export function CreateOrderModal() {
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-                <Layers className="w-4 h-4 text-[#15689E]" />
+                <Layers className="h-4 w-4 text-[#15689E]" />
                 Quantity
               </label>
               <Input
@@ -250,17 +291,17 @@ export function CreateOrderModal() {
                 onChange={(e) =>
                   setQuantity(Math.max(1, parseInt(e.target.value) || 1))
                 }
-                disabled={isPending || !selectedProduct}
+                disabled={isPending || !selectedProduct || disabled}
                 required
               />
             </div>
 
             <div className="space-y-1.5">
               <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-                <DollarSign className="w-4 h-4 text-[#15689E]" />
+                <DollarSign className="h-4 w-4 text-[#15689E]" />
                 Unit Price
               </label>
-              <div className="flex items-center w-full border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 min-h-[38px]">
+              <div className="flex min-h-[38px] w-full items-center rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                 <span className="text-sm text-slate-500">
                   {selectedProduct ? `$${Number(unitPrice).toFixed(2)}` : "—"}
                 </span>
@@ -270,10 +311,10 @@ export function CreateOrderModal() {
 
           <div className="space-y-1.5">
             <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-              <DollarSign className="w-4 h-4 text-[#15689E]" />
+              <DollarSign className="h-4 w-4 text-[#15689E]" />
               Total Amount
             </label>
-            <div className="flex items-center w-full border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 min-h-[38px]">
+            <div className="flex min-h-[38px] w-full items-center rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
               <span
                 className={`text-sm font-semibold ${totalAmount > 0 ? "text-[#f5a255]" : "text-slate-400"
                   }`}
@@ -281,7 +322,7 @@ export function CreateOrderModal() {
                 {totalAmount > 0 ? `$${totalAmount.toFixed(2)}` : "—"}
               </span>
               {selectedProduct && quantity > 1 && (
-                <span className="text-xs text-slate-400 ml-2">
+                <span className="ml-2 text-xs text-slate-400">
                   ${Number(unitPrice).toFixed(2)} × {quantity}
                 </span>
               )}
@@ -294,7 +335,7 @@ export function CreateOrderModal() {
             </div>
           )}
 
-          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
+          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
             <SubmitButton
               type="button"
               variant="outline"
@@ -308,10 +349,10 @@ export function CreateOrderModal() {
             <SubmitButton
               type="submit"
               isPending={isPending}
-              disabled={!isFormValid || isPending}
+              disabled={!isFormValid || isPending || disabled}
               cta={
                 <>
-                  <Plus className="w-4 h-4 mr-1.5" />
+                  <Plus className="mr-1.5 h-4 w-4" />
                   Create Order
                 </>
               }

@@ -1,432 +1,330 @@
-import { NextResponse } from "next/server";
-import { revalidatePath } from "next/cache";
-import type Stripe from "stripe";
-
+import { NextRequest, NextResponse } from "next/server";
+import Stripe from "stripe";
 import { stripe } from "@/utils/stripe/server";
 import { createAdminClient } from "@/utils/supabase/admin";
-import { syncPaidOrderToShipStation } from "@/lib/actions/shipstation";
-import { sendPaymentReceiptEmail } from "@/utils/emails/send-payment-receipt";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-type MarkOrderPaidResult = {
+function toNullableString(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function toNullableNumber(value: unknown): number | null {
+  return typeof value === "number" ? value : null;
+}
+
+function toIsoDateFromUnix(value: unknown): string | null {
+  if (typeof value !== "number") return null;
+  return new Date(value * 1000).toISOString();
+}
+
+/**
+ * Keep payment_status simple for now to avoid DB constraint issues:
+ * - paid => paid
+ * - everything else => invoice_sent
+ *
+ * Detailed Stripe status still goes into stripe_invoice_status.
+ */
+function mapInvoiceToPaymentStatus(invoice: Stripe.Invoice): string {
+  return invoice.status === "paid" ? "paid" : "invoice_sent";
+}
+
+async function registerStripeEvent(params: {
+  eventId: string;
+  eventType: string;
+  stripeObjectId: string | null;
   orderId: string | null;
-  orderNumber: string | null;
-  shouldSyncShipStation: boolean;
-  receiptEmail: string | null;
-  receiptUrl: string | null;
-  amountTotal: number | null;
-  currency: string | null;
-};
+  checkoutSessionId?: string | null;
+}): Promise<boolean> {
+  const supabase = createAdminClient();
 
-async function registerStripeEvent(
-  event: Stripe.Event,
-  session?: Stripe.Checkout.Session,
-) {
-  const supabaseAdmin = createAdminClient();
-
-  const { error } = await supabaseAdmin.from("stripe_webhook_events").insert({
-    event_id: event.id,
-    event_type: event.type,
-    checkout_session_id: session?.id ?? null,
-    order_id: session?.metadata?.order_id ?? null,
+  const { error } = await supabase.from("stripe_webhook_events").insert({
+    event_id: params.eventId,
+    event_type: params.eventType,
+    stripe_object_id: params.stripeObjectId,
+    order_id: params.orderId,
+    checkout_session_id: params.checkoutSessionId ?? null,
   });
 
-  if (!error) {
-    return true;
-  }
+  if (!error) return true;
 
-  // Postgres unique violation => already processed
-  if (error.code === "23505") {
-    console.log("[stripe webhook] Duplicate event ignored:", event.id);
+  const pgCode = (error as { code?: string } | null)?.code;
+
+  if (pgCode === "23505") {
     return false;
   }
 
-  throw new Error(error.message);
+  throw new Error(`Failed to register Stripe event: ${error.message}`);
 }
 
-async function getReceiptDetails(session: Stripe.Checkout.Session) {
-  const receiptEmail =
-    session.customer_details?.email ??
-    session.customer_email ??
-    session.metadata?.user_email ??
-    null;
+async function resolveOrderIdFromInvoice(
+  invoice: Stripe.Invoice,
+): Promise<string | null> {
+  const metadataOrderId = toNullableString(invoice.metadata?.order_id);
+  if (metadataOrderId) return metadataOrderId;
 
-  const paymentIntentId =
-    typeof session.payment_intent === "string"
-      ? session.payment_intent
-      : (session.payment_intent?.id ?? null);
+  const invoiceId = toNullableString(invoice.id);
+  if (!invoiceId) return null;
 
-  const customerId =
-    typeof session.customer === "string"
-      ? session.customer
-      : (session.customer?.id ?? null);
+  const supabase = createAdminClient();
 
-  let receiptUrl: string | null = null;
-
-  if (paymentIntentId) {
-    const paymentIntent = await stripe.paymentIntents.retrieve(
-      paymentIntentId,
-      {
-        expand: ["latest_charge"],
-      },
-    );
-
-    const latestCharge =
-      typeof paymentIntent.latest_charge === "string"
-        ? null
-        : paymentIntent.latest_charge;
-
-    receiptUrl = latestCharge?.receipt_url ?? null;
-  }
-
-  return {
-    receiptEmail,
-    receiptUrl,
-    paymentIntentId,
-    customerId,
-  };
-}
-
-async function markOrderPaid(
-  session: Stripe.Checkout.Session,
-): Promise<MarkOrderPaidResult> {
-  const orderId = session.metadata?.order_id;
-
-  if (!orderId) {
-    return {
-      orderId: null,
-      orderNumber: null,
-      shouldSyncShipStation: false,
-      receiptEmail: null,
-      receiptUrl: null,
-      amountTotal: session.amount_total ?? null,
-      currency: session.currency ?? null,
-    };
-  }
-
-  const supabaseAdmin = createAdminClient();
-
-  const { data: existing, error: fetchError } = await supabaseAdmin
+  const { data } = await supabase
     .from("orders")
-    .select(
-      `
-        id,
-        order_id,
-        payment_status,
-        shipstation_sync_status,
-        shipstation_shipment_id,
-        receipt_email
-      `,
-    )
-    .eq("id", orderId)
+    .select("id")
+    .eq("stripe_invoice_id", invoiceId)
     .maybeSingle();
 
-  if (fetchError || !existing) {
-    console.error("[stripe webhook] Order lookup failed:", fetchError?.message);
-    return {
-      orderId: null,
-      orderNumber: null,
-      shouldSyncShipStation: false,
-      receiptEmail: null,
-      receiptUrl: null,
-      amountTotal: session.amount_total ?? null,
-      currency: session.currency ?? null,
-    };
+  return toNullableString(data?.id);
+}
+
+async function syncStripeInvoiceToOrder(
+  invoice: Stripe.Invoice,
+  options?: {
+    markSentAt?: boolean;
+    markPaidAt?: boolean;
+  },
+): Promise<{ orderId: string | null; invoiceId: string | null }> {
+  const supabase = createAdminClient();
+
+  const orderId = await resolveOrderIdFromInvoice(invoice);
+  const invoiceId = toNullableString(invoice.id);
+
+  if (!orderId && !invoiceId) {
+    return { orderId: null, invoiceId };
   }
 
-  const { receiptEmail, receiptUrl, paymentIntentId, customerId } =
-    await getReceiptDetails(session);
+  const amountDueCents = toNullableNumber(invoice.amount_due);
+  const amountRemainingCents = toNullableNumber(invoice.amount_remaining);
 
-  const finalReceiptEmail =
-    receiptEmail ??
-    existing.receipt_email ??
-    session.metadata?.user_email ??
-    null;
-
-  const alreadyPaid = existing.payment_status === "paid";
-
-  const alreadySynced =
-    existing.shipstation_sync_status === "sent" ||
-    existing.shipstation_sync_status === "fulfilled" ||
-    !!existing.shipstation_shipment_id;
-
-  const updatePayload: Record<string, unknown> = {
-    payment_status: "paid",
-    stripe_checkout_session_id: session.id,
-    stripe_payment_intent_id: paymentIntentId,
-    stripe_customer_id: customerId,
-    receipt_email: finalReceiptEmail,
-    stripe_receipt_url: receiptUrl,
+  const payload: Record<string, unknown> = {
+    payment_mode: "net_30",
+    payment_status: mapInvoiceToPaymentStatus(invoice),
+    stripe_invoice_id: invoiceId,
+    stripe_invoice_number: toNullableString(invoice.number),
+    stripe_invoice_status: toNullableString(invoice.status),
+    stripe_invoice_hosted_url: toNullableString(invoice.hosted_invoice_url),
+    invoice_due_date: toIsoDateFromUnix(invoice.due_date),
+    invoice_amount_due: amountDueCents !== null ? amountDueCents / 100 : null,
+    invoice_amount_remaining:
+      amountRemainingCents !== null ? amountRemainingCents / 100 : null,
   };
 
-  if (!alreadyPaid) {
-    updatePayload.paid_at = new Date().toISOString();
-    updatePayload.shipstation_sync_status = "ready";
+  if (options?.markSentAt) {
+    payload.invoice_sent_at = new Date().toISOString();
   }
 
-  const { error: updateError } = await supabaseAdmin
-    .from("orders")
-    .update(updatePayload)
-    .eq("id", orderId);
-
-  if (updateError) {
-    console.error(
-      "[stripe webhook] Failed to update paid order:",
-      updateError.message,
-    );
-    throw new Error(updateError.message);
+  if (options?.markPaidAt || invoice.status === "paid") {
+    payload.payment_status = "paid";
+    payload.invoice_paid_at = new Date().toISOString();
+    if (amountRemainingCents === 0) {
+      payload.invoice_amount_remaining = 0;
+    }
   }
 
-  return {
-    orderId,
-    orderNumber: existing.order_id ?? orderId,
-    shouldSyncShipStation: !alreadySynced,
-    receiptEmail: finalReceiptEmail,
-    receiptUrl,
-    amountTotal: session.amount_total ?? null,
-    currency: session.currency ?? null,
-  };
-}
-
-async function markOrderFailedOrCanceled(
-  session: Stripe.Checkout.Session,
-  status: "failed" | "canceled",
-) {
-  const orderId = session.metadata?.order_id;
-  if (!orderId) return;
-
-  const supabaseAdmin = createAdminClient();
-
-  const { error } = await supabaseAdmin
-    .from("orders")
-    .update({
-      payment_status: status,
-      stripe_checkout_session_id: session.id,
-    })
-    .eq("id", orderId);
-
-  if (error) {
-    console.error(
-      `[stripe webhook] Failed to mark order ${status}:`,
-      error.message,
-    );
-  }
-}
-
-async function claimReceiptEmailLock(orderId: string) {
-  const supabaseAdmin = createAdminClient();
-  const lockId = crypto.randomUUID();
-
-  const { data, error } = await supabaseAdmin
-    .from("orders")
-    .update({
-      receipt_email_lock_id: lockId,
-    })
-    .eq("id", orderId)
-    .is("receipt_email_sent_at", null)
-    .is("receipt_email_lock_id", null)
-    .select("id, receipt_email_lock_id")
-    .maybeSingle();
-
-  if (error) {
-    console.error(
-      "[stripe webhook] Failed to claim receipt email lock:",
-      error.message,
-    );
-    return null;
-  }
-
-  if (!data) {
-    return null;
-  }
-
-  return lockId;
-}
-
-async function maybeSendReceiptEmail(result: MarkOrderPaidResult) {
-  if (!result.orderId || !result.receiptEmail) {
-    return;
-  }
-
-  const supabaseAdmin = createAdminClient();
-  const lockId = await claimReceiptEmailLock(result.orderId);
-
-  // Another request already sent it or is currently sending it.
-  if (!lockId) {
-    console.log(
-      "[stripe webhook] Receipt email skipped; already locked or sent:",
-      result.orderId,
-    );
-    return;
-  }
-
-  try {
-    const resendResult = await sendPaymentReceiptEmail({
-      to: result.receiptEmail,
-      orderId: result.orderId,
-      orderNumber: result.orderNumber,
-      amountTotal: result.amountTotal,
-      currency: result.currency,
-      receiptUrl: result.receiptUrl,
-    });
-
-    console.log("[stripe webhook] Receipt email sent:", {
-      orderId: result.orderId,
-      resendId: resendResult?.data?.id ?? null,
-    });
-
-    const { error } = await supabaseAdmin
+  if (orderId) {
+    const { error } = await supabase
       .from("orders")
-      .update({
-        receipt_email_sent_at: new Date().toISOString(),
-        receipt_email_error: null,
-        receipt_email_lock_id: null,
-      })
-      .eq("id", result.orderId)
-      .eq("receipt_email_lock_id", lockId);
+      .update(payload)
+      .eq("id", orderId);
 
     if (error) {
-      console.error(
-        "[stripe webhook] Failed to save receipt_email_sent_at:",
-        error.message,
-      );
-    }
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Unknown email error";
-
-    console.error("[stripe webhook] Failed to send receipt email:", message);
-
-    const { error: dbError } = await supabaseAdmin
-      .from("orders")
-      .update({
-        receipt_email_error: message,
-        receipt_email_lock_id: null,
-      })
-      .eq("id", result.orderId)
-      .eq("receipt_email_lock_id", lockId);
-
-    if (dbError) {
-      console.error(
-        "[stripe webhook] Failed to save receipt email error:",
-        dbError.message,
-      );
+      throw new Error(`Failed to update order by id: ${error.message}`);
     }
 
-    // Do not throw. Payment already succeeded.
+    return { orderId, invoiceId };
   }
+
+  if (invoiceId) {
+    const { error } = await supabase
+      .from("orders")
+      .update(payload)
+      .eq("stripe_invoice_id", invoiceId);
+
+    if (error) {
+      throw new Error(
+        `Failed to update order by stripe_invoice_id: ${error.message}`,
+      );
+    }
+  }
+
+  return { orderId: null, invoiceId };
 }
 
-async function handleSuccessfulCheckoutSession(
-  event: Stripe.Event,
+async function handleInvoiceFinalized(invoice: Stripe.Invoice) {
+  await syncStripeInvoiceToOrder(invoice, {
+    markSentAt: true,
+  });
+}
+
+async function handleInvoicePaid(invoice: Stripe.Invoice) {
+  await syncStripeInvoiceToOrder(invoice, {
+    markPaidAt: true,
+  });
+}
+
+async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
+  // Keep payment_status as invoice_sent for now, and rely on stripe_invoice_status
+  // for the richer detail in Phase 2A.
+  await syncStripeInvoiceToOrder(invoice);
+}
+
+async function handleInvoiceUpdated(invoice: Stripe.Invoice) {
+  await syncStripeInvoiceToOrder(invoice);
+}
+
+/**
+ * Keep this if you want a minimal pay-now sync here.
+ * If your current route already has richer checkout.session.completed logic
+ * (receipt email, lock, fulfillment, etc.), keep your existing version instead.
+ */
+async function handleCheckoutSessionCompleted(
   session: Stripe.Checkout.Session,
 ) {
-  const isNewEvent = await registerStripeEvent(event, session);
+  const supabase = createAdminClient();
 
-  if (!isNewEvent) {
-    return;
+  const orderId = toNullableString(session.metadata?.order_id);
+  if (!orderId) return;
+
+  const payload: Record<string, unknown> = {
+    payment_mode: "pay_now",
+    payment_status: session.payment_status === "paid" ? "paid" : "unpaid",
+  };
+
+  if (session.payment_status === "paid") {
+    payload.invoice_paid_at = new Date().toISOString();
   }
 
-  const result = await markOrderPaid(session);
+  const { error } = await supabase
+    .from("orders")
+    .update(payload)
+    .eq("id", orderId);
 
-  await maybeSendReceiptEmail(result);
-
-  if (result.orderId && result.shouldSyncShipStation) {
-    try {
-      await syncPaidOrderToShipStation(result.orderId);
-    } catch (shipstationError) {
-      console.error(
-        "[stripe webhook] ShipStation sync failed:",
-        shipstationError,
-      );
-
-      const supabaseAdmin = createAdminClient();
-
-      await supabaseAdmin
-        .from("orders")
-        .update({
-          shipstation_sync_status: "failed",
-        })
-        .eq("id", result.orderId);
-
-      // Do not throw here, otherwise Stripe may retry the webhook.
-    }
+  if (error) {
+    throw new Error(`Failed to update pay-now order: ${error.message}`);
   }
-
-  revalidatePath("/dashboard/orders");
 }
 
-export async function POST(request: Request) {
-  const signature = request.headers.get("stripe-signature");
+async function handleCheckoutSessionAsyncPaymentSucceeded(
+  session: Stripe.Checkout.Session,
+) {
+  const supabase = createAdminClient();
+
+  const orderId = toNullableString(session.metadata?.order_id);
+  if (!orderId) return;
+
+  const { error } = await supabase
+    .from("orders")
+    .update({
+      payment_mode: "pay_now",
+      payment_status: "paid",
+      invoice_paid_at: new Date().toISOString(),
+    })
+    .eq("id", orderId);
+
+  if (error) {
+    throw new Error(
+      `Failed to update async pay-now order as paid: ${error.message}`,
+    );
+  }
+}
+
+export async function POST(req: NextRequest) {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
-  if (!signature || !webhookSecret) {
+  if (!webhookSecret) {
     return NextResponse.json(
-      { error: "Missing Stripe webhook configuration." },
+      { error: "Missing STRIPE_WEBHOOK_SECRET" },
+      { status: 500 },
+    );
+  }
+
+  const body = await req.text();
+  const signature = req.headers.get("stripe-signature");
+
+  if (!signature) {
+    return NextResponse.json(
+      { error: "Missing Stripe signature" },
       { status: 400 },
     );
   }
-
-  const body = await request.text();
 
   let event: Stripe.Event;
 
   try {
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
-  } catch (err) {
+  } catch (error) {
     const message =
-      err instanceof Error ? err.message : "Invalid webhook signature.";
+      error instanceof Error ? error.message : "Invalid webhook signature";
+
     return NextResponse.json({ error: message }, { status: 400 });
   }
 
-  console.log("[stripe webhook] received", {
+  const eventObject = event.data.object as {
+    id?: unknown;
+    metadata?: Record<string, unknown>;
+  };
+  const stripeObjectId = toNullableString(eventObject?.id);
+  const orderIdFromMetadata = toNullableString(eventObject?.metadata?.order_id);
+
+  const shouldProcess = await registerStripeEvent({
     eventId: event.id,
     eventType: event.type,
+    stripeObjectId,
+    orderId: orderIdFromMetadata,
+    checkoutSessionId: event.type.startsWith("checkout.session.")
+      ? stripeObjectId
+      : null,
   });
+
+  if (!shouldProcess) {
+    return NextResponse.json({
+      received: true,
+      duplicate: true,
+    });
+  }
 
   try {
     switch (event.type) {
-      case "checkout.session.completed": {
-        const session = event.data.object as Stripe.Checkout.Session;
-
-        // Only fulfill immediately if the Checkout Session is actually paid.
-        if (session.payment_status === "paid") {
-          await handleSuccessfulCheckoutSession(event, session);
-        }
-
+      case "checkout.session.completed":
+        await handleCheckoutSessionCompleted(
+          event.data.object as Stripe.Checkout.Session,
+        );
         break;
-      }
 
-      case "checkout.session.async_payment_succeeded": {
-        const session = event.data.object as Stripe.Checkout.Session;
-        await handleSuccessfulCheckoutSession(event, session);
+      case "checkout.session.async_payment_succeeded":
+        await handleCheckoutSessionAsyncPaymentSucceeded(
+          event.data.object as Stripe.Checkout.Session,
+        );
         break;
-      }
 
-      case "checkout.session.async_payment_failed": {
-        const session = event.data.object as Stripe.Checkout.Session;
-        await markOrderFailedOrCanceled(session, "failed");
-        revalidatePath("/dashboard/orders");
+      case "invoice.finalized":
+        await handleInvoiceFinalized(event.data.object as Stripe.Invoice);
         break;
-      }
 
-      case "checkout.session.expired": {
-        const session = event.data.object as Stripe.Checkout.Session;
-        await markOrderFailedOrCanceled(session, "canceled");
-        revalidatePath("/dashboard/orders");
+      case "invoice.paid":
+        await handleInvoicePaid(event.data.object as Stripe.Invoice);
         break;
-      }
+
+      case "invoice.payment_failed":
+        await handleInvoicePaymentFailed(event.data.object as Stripe.Invoice);
+        break;
+
+      case "invoice.updated":
+        await handleInvoiceUpdated(event.data.object as Stripe.Invoice);
+        break;
 
       default:
         break;
     }
 
     return NextResponse.json({ received: true });
-  } catch (err) {
+  } catch (error) {
     const message =
-      err instanceof Error ? err.message : "Webhook processing failed.";
-    console.error("[stripe webhook]", message);
+      error instanceof Error ? error.message : "Webhook handler failed";
+
+    console.error("Stripe webhook error:", message);
+
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

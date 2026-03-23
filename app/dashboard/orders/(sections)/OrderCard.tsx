@@ -24,48 +24,72 @@ import {
   BadgeCheck,
   Clock3,
   MapPin,
-  FlaskConical,
   FileText,
   RefreshCcw,
+  AlertTriangle,
 } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import ConfirmModal from "@/app/(components)/ConfirmModal";
 import { OrderInfoRow } from "./OrderInfoRow";
 import { getFulfillmentLabel } from "./kanban-config";
 import toast from "react-hot-toast";
-import { formatStatus } from "@/utils/formatter";
 
 function PaymentBadge({
-  isPaid,
-  isPending,
+  paymentStatus,
 }: {
-  isPaid: boolean;
-  isPending: boolean;
+  paymentStatus?: string | null;
 }) {
-  if (isPaid) {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-        <CheckCircle2 className="h-3.5 w-3.5" />
-        Paid
-      </span>
-    );
-  }
+  switch (paymentStatus) {
+    case "paid":
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+          <CheckCircle2 className="h-3.5 w-3.5" />
+          Paid
+        </span>
+      );
 
-  if (isPending) {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">
-        <Clock3 className="h-3.5 w-3.5" />
-        Pending
-      </span>
-    );
-  }
+    case "pending":
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">
+          <Clock3 className="h-3.5 w-3.5" />
+          Pending
+        </span>
+      );
 
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
-      <Clock3 className="h-3.5 w-3.5" />
-      Unpaid
-    </span>
-  );
+    case "invoice_sent":
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold text-sky-700">
+          <FileText className="h-3.5 w-3.5" />
+          Invoice Sent
+        </span>
+      );
+
+    case "overdue":
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-700">
+          <AlertTriangle className="h-3.5 w-3.5" />
+          Overdue
+        </span>
+      );
+
+    case "payment_failed":
+    case "failed":
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2.5 py-1 text-xs font-semibold text-rose-700">
+          <RefreshCcw className="h-3.5 w-3.5" />
+          Payment Failed
+        </span>
+      );
+
+    default:
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+          <Clock3 className="h-3.5 w-3.5" />
+          Unpaid
+        </span>
+      );
+  }
 }
 
 function FulfillmentBadge({
@@ -99,10 +123,7 @@ function ShipStationSyncBadge({
 }) {
   if (!syncStatus) return null;
 
-  const map: Record<
-    string,
-    { text: string; className: string }
-  > = {
+  const map: Record<string, { text: string; className: string }> = {
     ready: {
       text: "ShipStation Ready",
       className: "bg-sky-100 text-sky-700",
@@ -132,17 +153,6 @@ function ShipStationSyncBadge({
   );
 }
 
-function DevModeBadge({ show }: { show: boolean }) {
-  if (!show) return null;
-
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2.5 py-1 text-xs font-semibold text-orange-700">
-      <FlaskConical className="h-3.5 w-3.5" />
-      Dev Mode
-    </span>
-  );
-}
-
 export function OrderCard({ order }: { order: Order }) {
   const dispatch = useAppDispatch();
   const [isDeleting, setIsDeleting] = useState(false);
@@ -151,7 +161,6 @@ export function OrderCard({ order }: { order: Order }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   const isPaid = order.payment_status === "paid";
-  const isPaymentPending = order.payment_status === "pending";
   const isDelivered = order.status === "Delivered";
   const fulfillmentLabel = getFulfillmentLabel(order);
 
@@ -164,7 +173,6 @@ export function OrderCard({ order }: { order: Order }) {
   const syncReady =
     order.shipstation_sync_status === "ready" ||
     (!order.shipstation_sync_status && isPaid && !hasMockShipment);
-  const isMockCarrier = (order.carrier_code ?? "").startsWith("mock-");
 
   async function handleDelete() {
     if (!order.id) return;
@@ -255,17 +263,16 @@ export function OrderCard({ order }: { order: Order }) {
             size="icon"
             onClick={() => setConfirmOpen(true)}
             disabled={isDeleting}
-            className="h-7 w-7 text-slate-300 hover:bg-red-50 hover:text-red-500 cursor-pointer"
+            className="h-7 w-7 cursor-pointer text-slate-300 hover:bg-red-50 hover:text-red-500"
           >
             <Trash2 className="h-4 w-4" />
           </Button>
         </div>
 
         <div className="mt-3 flex flex-wrap gap-2">
-          <PaymentBadge isPaid={isPaid} isPending={isPaymentPending} />
+          <PaymentBadge paymentStatus={order.payment_status} />
           <FulfillmentBadge label={fulfillmentLabel} delivered={isDelivered} />
-          <ShipStationSyncBadge syncStatus={formatStatus(order.shipstation_sync_status)} />
-          {/* <DevModeBadge show={isMockCarrier || hasMockShipment} /> */}
+          <ShipStationSyncBadge syncStatus={order.shipstation_sync_status} />
         </div>
 
         <div className="mt-4 space-y-2">
@@ -360,7 +367,7 @@ export function OrderCard({ order }: { order: Order }) {
                 size="sm"
                 onClick={handlePayNow}
                 disabled={isPaying}
-                className="h-9 bg-[#15689E] text-white hover:bg-[#0f4f7a] cursor-pointer"
+                className="h-9 cursor-pointer bg-[#15689E] text-white hover:bg-[#0f4f7a]"
               >
                 {isPaying ? (
                   <>
@@ -370,7 +377,9 @@ export function OrderCard({ order }: { order: Order }) {
                 ) : (
                   <>
                     <CreditCard className="mr-1 h-4 w-4" />
-                    {isPaymentPending ? "Resume Payment" : "Pay Now"}
+                    {order.payment_status === "pending"
+                      ? "Resume Payment"
+                      : "Pay Now"}
                   </>
                 )}
               </Button>
@@ -380,7 +389,7 @@ export function OrderCard({ order }: { order: Order }) {
                 size="sm"
                 onClick={handleMockShipStationSync}
                 disabled={isFulfilling}
-                className="h-9 bg-red-600 text-white hover:bg-red-700 cursor-pointer"
+                className="h-9 cursor-pointer bg-red-600 text-white hover:bg-red-700"
               >
                 {isFulfilling ? (
                   <>
@@ -400,7 +409,7 @@ export function OrderCard({ order }: { order: Order }) {
                 size="sm"
                 onClick={handleMockShipStationSync}
                 disabled={isFulfilling}
-                className="h-9 bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer"
+                className="h-9 cursor-pointer bg-emerald-600 text-white hover:bg-emerald-700"
               >
                 {isFulfilling ? (
                   <>
@@ -419,7 +428,7 @@ export function OrderCard({ order }: { order: Order }) {
                 <Button
                   type="button"
                   size="sm"
-                  className="h-9 bg-violet-600 text-white hover:bg-violet-700 cursor-pointer"
+                  className="h-9 cursor-pointer bg-violet-600 text-white hover:bg-violet-700"
                 >
                   <FileText className="mr-1 h-4 w-4" />
                   View Mock Shipment
@@ -431,7 +440,7 @@ export function OrderCard({ order }: { order: Order }) {
                 size="sm"
                 onClick={handleMockShipStationSync}
                 disabled={isFulfilling}
-                className="h-9 bg-violet-600 text-white hover:bg-violet-700 cursor-pointer"
+                className="h-9 cursor-pointer bg-violet-600 text-white hover:bg-violet-700"
               >
                 {isFulfilling ? (
                   <>

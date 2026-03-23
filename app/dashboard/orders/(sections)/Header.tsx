@@ -1,17 +1,25 @@
 import { CreateOrderModal } from "./CreateOrderModal";
+import type { Net30CreditStatus } from "@/lib/billing/net30";
 
-export default function Header() {
+type HeaderProps = {
+  creditStatus: Net30CreditStatus;
+};
+
+export default function Header({ creditStatus }: HeaderProps) {
   return (
-    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
       <div className="space-y-1">
-        <h1 className="text-xl md:text-2xl font-bold text-slate-800">
+        <h1 className="text-xl font-bold text-slate-800 md:text-2xl">
           Orders Management
         </h1>
-        <p className="text-slate-500 text-sm">Track and manage your orders</p>
+        <p className="text-sm text-slate-500">Track and manage your orders</p>
       </div>
-      {/* Button sits inline on sm+, below title on mobile */}
+
       <div className="shrink-0">
-        <CreateOrderModal />
+        <CreateOrderModal
+          disabled={creditStatus.blocked}
+          disabledReason={creditStatus.reason}
+        />
       </div>
     </div>
   );

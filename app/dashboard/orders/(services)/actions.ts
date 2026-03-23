@@ -8,6 +8,8 @@ import type { Facility } from "@/app/(interfaces)/facility";
 import type { Product } from "@/app/(interfaces)/product";
 import { requireUser } from "@/utils/auth-guard";
 import { getShipStationClient } from "@/lib/shipstation/server";
+import { assertOrderingAllowedByUserId } from "@/lib/billing/net30";
+import { PaymentProvider, PaymentStatus } from "@/app/(interfaces)/payment";
 
 const ORDER_TABLE = "orders";
 
@@ -20,14 +22,26 @@ const ORDER_COLUMNS = `
   amount,
   quantity,
   status,
+  payment_mode,
   payment_provider,
   payment_status,
+  receipt_email,
   stripe_checkout_session_id,
   stripe_payment_intent_id,
   stripe_invoice_id,
+  stripe_invoice_number,
+  stripe_invoice_status,
+  stripe_invoice_hosted_url,
   stripe_checkout_url,
   stripe_customer_id,
+  stripe_receipt_url,
   paid_at,
+  invoice_due_date,
+  invoice_sent_at,
+  invoice_paid_at,
+  invoice_amount_due,
+  invoice_amount_remaining,
+  invoice_overdue_at,
   tracking_number,
   carrier_code,
   shipstation_order_id,
@@ -51,21 +65,26 @@ type RawOrder = {
   amount: number | string;
   quantity: number;
   status: string;
-  payment_provider: "stripe" | "legacy_qb" | null;
-  payment_status:
-    | "unpaid"
-    | "pending"
-    | "paid"
-    | "failed"
-    | "canceled"
-    | "refunded"
-    | null;
+  payment_mode: "pay_now" | "net_30" | null;
+  payment_provider: PaymentProvider | null;
+  payment_status: PaymentStatus;
+  receipt_email: string | null;
   stripe_checkout_session_id: string | null;
   stripe_payment_intent_id: string | null;
   stripe_invoice_id: string | null;
+  stripe_invoice_number: string | null;
+  stripe_invoice_status: string | null;
+  stripe_invoice_hosted_url: string | null;
   stripe_checkout_url: string | null;
   stripe_customer_id: string | null;
+  stripe_receipt_url: string | null;
   paid_at: string | null;
+  invoice_due_date: string | null;
+  invoice_sent_at: string | null;
+  invoice_paid_at: string | null;
+  invoice_amount_due: number | null;
+  invoice_amount_remaining: number | null;
+  invoice_overdue_at: string | null;
   tracking_number: string | null;
   shipstation_sync_status: string | null;
   carrier_code: string | null;
@@ -85,6 +104,77 @@ type RawOrder = {
   } | null;
 };
 
+type RawCheckoutOrder = {
+  id: string;
+  order_id: string;
+  facility_id: string;
+  product_id: string;
+  amount: number | string;
+  quantity: number;
+  payment_mode: "pay_now" | "net_30" | null;
+  payment_status:
+    | "unpaid"
+    | "invoice_sent"
+    | "paid"
+    | "overdue"
+    | "payment_failed"
+    | null;
+  facilities: {
+    id?: string;
+    name: string;
+    stripe_customer_id: string | null;
+    phone: string | null;
+  } | null;
+  products: {
+    id?: string;
+    name: string;
+    price: number | string;
+  } | null;
+};
+
+type RawShipStationOrder = {
+  id: string;
+  created_at: string;
+  order_id: string;
+  facility_id: string;
+  product_id: string;
+  amount: number | string;
+  quantity: number;
+  payment_mode: "pay_now" | "net_30" | null;
+  payment_status:
+    | "unpaid"
+    | "invoice_sent"
+    | "paid"
+    | "overdue"
+    | "payment_failed"
+    | null;
+  status: string;
+  tracking_number: string | null;
+  shipstation_sync_status: string | null;
+  carrier_code: string | null;
+  shipstation_order_id: string | null;
+  shipstation_shipment_id: string | null;
+  shipstation_status: string | null;
+  shipstation_label_url: string | null;
+  facilities: {
+    name: string;
+    phone: string | null;
+  } | null;
+  products: {
+    name: string;
+    price: number | string;
+  } | null;
+};
+
+function centsToDollars(value: number | null): number | null {
+  if (typeof value !== "number") return null;
+  return value / 100;
+}
+
+function toCents(amount: number) {
+  return Math.round(amount * 100);
+}
+
 function flattenOrder(row: RawOrder): Order {
   return {
     id: row.id,
@@ -97,14 +187,30 @@ function flattenOrder(row: RawOrder): Order {
     status: row.status as Order["status"],
     facility_name: row.facilities?.name ?? "—",
     product_name: row.products?.name ?? "—",
+
+    payment_mode: row.payment_mode,
     payment_provider: row.payment_provider ?? "stripe",
     payment_status: row.payment_status ?? "unpaid",
+    receipt_email: row.receipt_email,
+
     stripe_checkout_session_id: row.stripe_checkout_session_id,
     stripe_payment_intent_id: row.stripe_payment_intent_id,
     stripe_invoice_id: row.stripe_invoice_id,
+    stripe_invoice_number: row.stripe_invoice_number,
+    stripe_invoice_status: row.stripe_invoice_status,
+    stripe_invoice_hosted_url: row.stripe_invoice_hosted_url,
     stripe_checkout_url: row.stripe_checkout_url,
     stripe_customer_id: row.stripe_customer_id,
+    stripe_receipt_url: row.stripe_receipt_url,
+
     paid_at: row.paid_at,
+    invoice_due_date: row.invoice_due_date,
+    invoice_sent_at: row.invoice_sent_at,
+    invoice_paid_at: row.invoice_paid_at,
+    invoice_amount_due: centsToDollars(row.invoice_amount_due),
+    invoice_amount_remaining: centsToDollars(row.invoice_amount_remaining),
+    invoice_overdue_at: row.invoice_overdue_at,
+
     shipstation_sync_status: row.shipstation_sync_status,
     tracking_number: row.tracking_number,
     carrier_code: row.carrier_code,
@@ -131,10 +237,6 @@ async function getCurrentUserFacilityIds(
   }
 
   return (data ?? []).map((f) => f.id);
-}
-
-function toCents(amount: number) {
-  return Math.round(amount * 100);
 }
 
 // ── READ ──────────────────────────────────────────────────────────────────────
@@ -189,6 +291,9 @@ export async function addOrder(formData: FormData): Promise<Order> {
 
   if (authError || !user) throw new Error("Not authenticated.");
 
+  // Net 30 / credit hold backend enforcement
+  await assertOrderingAllowedByUserId(user.id);
+
   const order_id = formData.get("order_id") as string;
   const facility_id = formData.get("facility_id") as string;
   const product_id = formData.get("product_id") as string;
@@ -229,6 +334,7 @@ export async function addOrder(formData: FormData): Promise<Order> {
       status: "Processing",
       payment_provider: "stripe",
       payment_status: "unpaid",
+      receipt_email: user.email ?? null,
       user_id: user.id,
     })
     .select("id")
@@ -321,54 +427,6 @@ export async function ensureStripeCustomerForFacility(
 
 // ── CREATE CHECKOUT SESSION ───────────────────────────────────────────────────
 
-type RawCheckoutOrder = {
-  id: string;
-  order_id: string;
-  facility_id: string;
-  product_id: string;
-  amount: number | string;
-  quantity: number;
-  payment_status: string | null;
-  facilities: {
-    id?: string;
-    name: string;
-    stripe_customer_id: string | null;
-    phone: string | null;
-  } | null;
-  products: {
-    id?: string;
-    name: string;
-    price: number | string;
-  } | null;
-};
-
-type RawShipStationOrder = {
-  id: string;
-  created_at: string;
-  order_id: string;
-  facility_id: string;
-  product_id: string;
-  amount: number | string;
-  quantity: number;
-  payment_status: string | null;
-  status: string;
-  tracking_number: string | null;
-  shipstation_sync_status: string | null;
-  carrier_code: string | null;
-  shipstation_order_id: string | null;
-  shipstation_shipment_id: string | null;
-  shipstation_status: string | null;
-  shipstation_label_url: string | null;
-  facilities: {
-    name: string;
-    phone: string | null;
-  } | null;
-  products: {
-    name: string;
-    price: number | string;
-  } | null;
-};
-
 export async function createStripeCheckoutSession(
   orderId: string,
 ): Promise<string> {
@@ -395,6 +453,7 @@ export async function createStripeCheckoutSession(
       product_id,
       amount,
       quantity,
+      payment_mode,
       payment_status,
       facilities(id, name, stripe_customer_id, phone),
       products(id, name, price)
@@ -419,11 +478,16 @@ export async function createStripeCheckoutSession(
     throw new Error("This order has already been paid.");
   }
 
+  if (order.payment_mode === "net_30" && order.payment_status !== "paid") {
+    throw new Error(
+      "This order uses Net 30 billing. Please pay through the invoice link.",
+    );
+  }
+
   const stripeCustomerId = await ensureStripeCustomerForFacility(
     order.facility_id,
   );
 
-  // Keep Stripe customer email in sync with logged-in user email
   await stripe.customers.update(stripeCustomerId, {
     email: user.email,
     phone: order.facilities?.phone ?? undefined,
@@ -483,7 +547,8 @@ export async function createStripeCheckoutSession(
     .from("orders")
     .update({
       payment_provider: "stripe",
-      payment_status: "pending",
+      payment_mode: "pay_now",
+      payment_status: "unpaid",
       stripe_checkout_session_id: session.id,
       stripe_checkout_url: session.url,
       stripe_customer_id: stripeCustomerId,
@@ -534,6 +599,7 @@ export async function shipOrderWithShipStation(orderId: string): Promise<{
       product_id,
       amount,
       quantity,
+      payment_mode,
       payment_status,
       status,
       tracking_number,
@@ -562,8 +628,11 @@ export async function shipOrderWithShipStation(orderId: string): Promise<{
     throw new Error("You do not have permission to update this order.");
   }
 
-  if (order.payment_status !== "paid") {
-    throw new Error("Only paid orders can be fulfilled.");
+  const canFulfill =
+    order.payment_status === "paid" || order.payment_mode === "net_30";
+
+  if (!canFulfill) {
+    throw new Error("Only paid orders or Net 30 orders can be fulfilled.");
   }
 
   if (
