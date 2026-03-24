@@ -8,8 +8,11 @@ import { AuthField } from "@/app/(components)/AuthField";
 import { RoleButton } from "@/app/(components)/RoleButton";
 import ErrorAlert from "@/app/(components)/ErrorAlert";
 import SubmitButton from "@/app/(components)/SubmitButton";
-import { FormHeader } from "@/app/(components)/FormHeader";
 import { HBLogo } from "@/app/(components)/HBLogo";
+
+// --- Phone Input Imports ---
+import { PhoneInput } from "react-international-phone";
+import "react-international-phone/style.css";
 
 type Role = "sales_representative" | "doctor";
 
@@ -20,6 +23,7 @@ const nameFields = [
   { label: "Last Name", name: "last_name", placeholder: "Doe" },
 ];
 
+// Reorganized to match the new Supabase columns
 const facilityFields = [
   {
     label: "Facility Name",
@@ -28,9 +32,15 @@ const facilityFields = [
     required: true,
   },
   {
-    label: "Facility Location",
-    name: "facility_location",
-    placeholder: "New York, NY",
+    label: "Address Line 1",
+    name: "address_line_1",
+    placeholder: "123 Medical Way",
+    required: true,
+  },
+  {
+    label: "Address Line 2 (Optional)",
+    name: "address_line_2",
+    placeholder: "Suite 400",
     required: false,
   },
 ];
@@ -52,25 +62,21 @@ export default function SignUpForm() {
   const [state, formAction, isPending] = useActionState(signUp, initialState);
   const [role, setRole] = useState<Role>("sales_representative");
   const [hasAgreed, setHasAgreed] = useState(false);
+  const [phone, setPhone] = useState("");
 
   return (
     <div className="w-full max-w-md select-none rounded-2xl border p-8 md:p-10 bg-white/8 backdrop-blur-2xl border-white/15 shadow-[0_8px_32px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.06)]">
-      {/* Logo above form */}
-      <div className="relative z-10 mb-8 flex items-center justify-center py-10">
+      <div className="relative z-10 mb-8 flex items-center justify-center py-6">
         <HBLogo variant="dark" size="lg" />
       </div>
 
       <form action={formAction} className="space-y-4">
         <input type="hidden" name="role" value={role} />
+        <input type="hidden" name="phone" value={phone} />
 
         {/* ── Role selector ── */}
         <div className="space-y-2">
-          <label
-            className="text-sm font-medium"
-            style={{ color: "rgba(255,255,255,0.7)" }}
-          >
-            I am a
-          </label>
+          <label className="text-sm font-medium text-white/70">I am a</label>
           <div className="grid grid-cols-2 gap-3">
             {roles.map((r) => (
               <RoleButton
@@ -110,23 +116,28 @@ export default function SignUpForm() {
           required
         />
 
-        <AuthField
-          id="phone"
-          name="phone"
-          label="Phone"
-          type="tel"
-          placeholder="+1 (555) 000-0000"
-          height="h-11"
-        />
+        {/* ── International Phone Field ── */}
+        <div className="space-y-1.5 phone-input-container">
+          <label className="text-sm font-medium text-white/70">
+            Phone Number
+          </label>
+          <PhoneInput
+            defaultCountry="us"
+            value={phone}
+            onChange={(p) => setPhone(p)}
+            inputClassName="!w-full !h-11 !bg-white/5 !border-white/10 !text-white !rounded-r-lg focus:!border-[#e8821a] !transition-all"
+            countrySelectorStyleProps={{
+              buttonClassName:
+                "!h-11 !bg-transparent !border-white/10 !rounded-l-lg hover:!bg-white/10 !transition-all",
+            }}
+          />
+        </div>
 
-        {/* ── Facility divider ── */}
+        {/* ── Facility Section ── */}
         <div className="flex items-center gap-3 py-1">
           <div className="flex-1 h-px bg-white/10" />
-          <span
-            className="text-xs font-medium"
-            style={{ color: "rgba(255,255,255,0.35)" }}
-          >
-            Facility Information
+          <span className="text-xs font-medium text-white/35">
+            Facility & Shipping
           </span>
           <div className="flex-1 h-px bg-white/10" />
         </div>
@@ -143,6 +154,36 @@ export default function SignUpForm() {
           />
         ))}
 
+        {/* City, State, and Zip in a compact grid */}
+        <div className="grid grid-cols-2 gap-3">
+          <AuthField
+            id="city"
+            name="city"
+            label="City"
+            placeholder="Miami"
+            height="h-11"
+            required
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <AuthField
+              id="state"
+              name="state"
+              label="State"
+              placeholder="FL"
+              height="h-11"
+              required
+            />
+            <AuthField
+              id="postal_code"
+              name="postal_code"
+              label="Zip"
+              placeholder="33101"
+              height="h-11"
+              required
+            />
+          </div>
+        </div>
+
         <AuthField
           id="password"
           name="password"
@@ -155,7 +196,7 @@ export default function SignUpForm() {
 
         {state?.error && <ErrorAlert errorMessage={state.error} />}
 
-        {/* ── Terms & Privacy ── */}
+        {/* ── Terms & Submit ── */}
         <label className="flex items-start gap-3 cursor-pointer group">
           <div className="relative mt-0.5 shrink-0">
             <input
@@ -165,12 +206,8 @@ export default function SignUpForm() {
               className="peer sr-only"
               required
             />
-            {/* Custom checkbox — orange when checked */}
             <div
-              className={`w-4 h-4 rounded border transition-all flex items-center justify-center ${hasAgreed
-                  ? "border-[#e8821a] bg-[#e8821a]"
-                  : "border-white/20 bg-white/5 group-hover:border-[#e8821a]/50"
-                }`}
+              className={`w-4 h-4 rounded border transition-all flex items-center justify-center ${hasAgreed ? "border-[#e8821a] bg-[#e8821a]" : "border-white/20 bg-white/5 group-hover:border-[#e8821a]/50"}`}
             >
               {hasAgreed && (
                 <svg
@@ -189,39 +226,18 @@ export default function SignUpForm() {
               )}
             </div>
           </div>
-
-          <span
-            className="text-xs leading-relaxed"
-            style={{ color: "rgba(255,255,255,0.45)" }}
-          >
-            I have read and agree to the{" "}
-            <Link
-              href="/eula"
-              target="_blank"
-              onClick={(e) => e.stopPropagation()}
-              className="font-medium underline underline-offset-2 transition-colors"
-              style={{ color: "#f5a255" }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = "#e8821a")}
-              onMouseLeave={(e) => (e.currentTarget.style.color = "#f5a255")}
-            >
-              Terms of Use
+          <span className="text-xs leading-relaxed text-white/45">
+            I agree to the{" "}
+            <Link href="/eula" className="text-[#f5a255] underline">
+              Terms
             </Link>{" "}
             and{" "}
-            <Link
-              href="/privacy-policy"
-              target="_blank"
-              onClick={(e) => e.stopPropagation()}
-              className="font-medium underline underline-offset-2 transition-colors"
-              style={{ color: "#f5a255" }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = "#e8821a")}
-              onMouseLeave={(e) => (e.currentTarget.style.color = "#f5a255")}
-            >
+            <Link href="/privacy-policy" className="text-[#f5a255] underline">
               Privacy Policy
             </Link>
           </span>
         </label>
 
-        {/* ── Submit — orange gradient ── */}
         <SubmitButton
           classname="w-full h-12 font-bold text-white transition-all active:scale-95 mt-2"
           style={{
@@ -233,28 +249,11 @@ export default function SignUpForm() {
           disabled={!hasAgreed}
           type="submit"
           cta="Create Account"
-          variant="default"
-          size="lg"
           isPendingMesssage="Creating account..."
+          variant={undefined}
+          size={undefined}
         />
       </form>
-
-      {/* ── Sign in link ── */}
-      <p
-        className="text-sm text-center mt-6"
-        style={{ color: "rgba(255,255,255,0.4)" }}
-      >
-        Already have an account?{" "}
-        <Link
-          href="/sign-in"
-          className="font-medium transition-colors"
-          style={{ color: "#f5a255" }}
-          onMouseEnter={(e) => (e.currentTarget.style.color = "#e8821a")}
-          onMouseLeave={(e) => (e.currentTarget.style.color = "#f5a255")}
-        >
-          Sign in
-        </Link>
-      </p>
     </div>
   );
 }

@@ -10,7 +10,10 @@ import type { Facility } from "@/app/(interfaces)/facility";
 import type { Product } from "@/app/(interfaces)/product";
 import { requireUser } from "@/utils/auth-guard";
 import { createStripeNet30Invoice as createStripeNet30InvoiceService } from "./create-stripe-net30-invoice";
-import { syncPaidOrderToShipStation } from "@/lib/actions/shipstation";
+import {
+  syncPaidOrderToShipStation,
+  type SyncPaidOrderToShipStationResult,
+} from "@/lib/actions/shipstation";
 
 const ORDER_TABLE = "orders";
 const ORDERS_PATH = "/dashboard/orders";
@@ -52,7 +55,7 @@ const ORDER_COLUMNS = `
   shipstation_status,
   shipstation_label_url,
   shipped_at,
-  facilities(name, stripe_customer_id, phone),
+  facilities(name, stripe_customer_id, phone, location),
   products(name, price)
 `;
 
@@ -110,6 +113,7 @@ type RawOrder = {
     name?: string | null;
     stripe_customer_id?: string | null;
     phone?: string | null;
+    location?: string | null;
   } | null;
 
   products?: {
@@ -600,11 +604,12 @@ export async function createStripeNet30Invoice(
     throw new Error("You do not have permission to access this order.");
   }
 
-  if (
+  const shouldSyncNet30ToShipStation =
     order.payment_mode === "net_30" &&
-    order.stripe_invoice_id &&
-    !order.shipstation_shipment_id
-  ) {
+    !!order.stripe_invoice_id &&
+    (!order.shipstation_order_id || order.shipstation_sync_status !== "sent");
+
+  if (shouldSyncNet30ToShipStation) {
     try {
       await syncPaidOrderToShipStation(order.id);
     } catch (shipstationError) {
@@ -645,11 +650,7 @@ export async function createStripeNet30Invoice(
   return flattenOrder(rawOrder as unknown as RawOrder);
 }
 
-export type ShipOrderWithShipStationResult = {
-  alreadyShipped: boolean;
-  carrierCode: string;
-  trackingNumber: string;
-};
+export type ShipOrderWithShipStationResult = SyncPaidOrderToShipStationResult;
 
 export async function shipOrderWithShipStation(
   orderId: string,
@@ -675,14 +676,8 @@ export async function shipOrderWithShipStation(
       payment_mode,
       payment_status,
       stripe_invoice_id,
-      tracking_number,
-      carrier_code,
       shipstation_sync_status,
-      shipstation_order_id,
-      shipstation_shipment_id,
-      shipstation_status,
-      shipstation_label_url,
-      shipped_at
+      shipstation_order_id
     `,
     )
     .eq("id", orderId)
@@ -698,58 +693,17 @@ export async function shipOrderWithShipStation(
     throw new Error("You do not have permission to access this order.");
   }
 
-  const canShip =
+  const canSyncToShipStation =
     current.payment_status === "paid" ||
     (current.payment_mode === "net_30" && !!current.stripe_invoice_id);
 
-  if (!canShip) {
+  if (!canSyncToShipStation) {
     throw new Error(
       "Only paid orders or Net 30 invoiced orders can be synced to ShipStation.",
     );
   }
 
-  if (current.shipstation_shipment_id && current.tracking_number) {
-    return {
-      alreadyShipped: true,
-      carrierCode: current.carrier_code ?? "mock-ups",
-      trackingNumber: current.tracking_number,
-    };
-  }
-
-  const trackingNumber = `MOCK-${current.order_id}-${Date.now().toString().slice(-6)}`;
-  const carrierCode = "mock-ups";
-  const shippedAt = new Date().toISOString();
-  const mockShipmentId = `mock-shipment-${current.id}`;
-  const mockOrderId = `mock-order-${current.id}`;
-  const mockLabelUrl = `https://example.com/mock-label/${current.order_id}`;
-
-  const { error: updateErr } = await supabase
-    .from(ORDER_TABLE)
-    .update({
-      status: "Shipped",
-      shipstation_sync_status: "sent",
-      shipstation_order_id: mockOrderId,
-      shipstation_shipment_id: mockShipmentId,
-      shipstation_status: "label_purchased",
-      tracking_number: trackingNumber,
-      carrier_code: carrierCode,
-      shipstation_label_url: mockLabelUrl,
-      shipped_at: shippedAt,
-    })
-    .eq("id", orderId);
-
-  if (updateErr) {
-    console.error("[shipOrderWithShipStation] DB error:", updateErr.message);
-    throw new Error("Failed to sync mock ShipStation shipment.");
-  }
-
-  revalidatePath(ORDERS_PATH);
-
-  return {
-    alreadyShipped: false,
-    carrierCode,
-    trackingNumber,
-  };
+  return syncPaidOrderToShipStation(orderId);
 }
 
 // ── UPDATE STATUS ─────────────────────────────────────────────────────────────
