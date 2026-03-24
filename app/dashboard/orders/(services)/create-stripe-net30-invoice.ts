@@ -6,6 +6,7 @@ import type Stripe from "stripe";
 import { stripe } from "@/utils/stripe/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import type { PersistedPaymentStatus } from "@/app/(interfaces)/payment";
+import { sendNet30InvoiceCreatedEmail } from "@/utils/emails/send-net30-invoice-created";
 
 type Net30OrderRow = {
   id: string;
@@ -21,6 +22,7 @@ type Net30OrderRow = {
   stripe_customer_id: string | null;
   stripe_invoice_id: string | null;
   receipt_email: string | null;
+  invoice_email_sent_at: string | null;
 };
 
 export type CreateStripeNet30InvoiceResult = {
@@ -79,6 +81,12 @@ function mapInvoiceStatusToPaymentStatus(
   return "invoice_sent";
 }
 
+function shouldSendInvoiceCreatedEmail(invoice: Stripe.Invoice): boolean {
+  if (invoice.status !== "open") return false;
+  if ((invoice.amount_due ?? 0) <= 0) return false;
+  return true;
+}
+
 async function getNet30Order(orderId: string): Promise<Net30OrderRow> {
   const supabaseAdmin = createAdminClient();
 
@@ -98,7 +106,8 @@ async function getNet30Order(orderId: string): Promise<Net30OrderRow> {
         payment_status,
         stripe_customer_id,
         stripe_invoice_id,
-        receipt_email
+        receipt_email,
+        invoice_email_sent_at
       `,
     )
     .eq("id", orderId)
@@ -217,7 +226,7 @@ async function persistStripeInvoiceOnOrder(
   invoice: Stripe.Invoice,
   options?: {
     markInvoiceSentAt?: boolean;
-    invoiceEmailSentAt?: string | null;
+    fallbackReceiptEmail?: string | null;
   },
 ): Promise<CreateStripeNet30InvoiceResult> {
   const supabaseAdmin = createAdminClient();
@@ -234,7 +243,9 @@ async function persistStripeInvoiceOnOrder(
     stripe_invoice_number: toNullableString(invoice.number),
     stripe_invoice_status: toNullableString(invoice.status),
     stripe_invoice_hosted_url: toNullableString(invoice.hosted_invoice_url),
-    receipt_email: toNullableString(invoice.customer_email),
+    receipt_email: toNullableString(
+      invoice.customer_email ?? options?.fallbackReceiptEmail,
+    ),
     invoice_due_date: toIsoFromUnix(invoice.due_date),
     invoice_amount_due:
       typeof invoice.amount_due === "number" ? invoice.amount_due : null,
@@ -247,10 +258,6 @@ async function persistStripeInvoiceOnOrder(
 
   if (options?.markInvoiceSentAt) {
     updatePayload.invoice_sent_at = new Date().toISOString();
-  }
-
-  if (options?.invoiceEmailSentAt) {
-    updatePayload.invoice_email_sent_at = options.invoiceEmailSentAt;
   }
 
   if (paymentStatus === "paid") {
@@ -328,6 +335,66 @@ async function persistStripeInvoiceOnOrder(
   };
 }
 
+async function maybeSendInvoiceCreatedEmail(params: {
+  orderId: string;
+  orderNumber: string;
+  receiptEmail: string;
+  invoice: Stripe.Invoice;
+}) {
+  const { orderId, orderNumber, receiptEmail, invoice } = params;
+  const supabaseAdmin = createAdminClient();
+
+  if (!receiptEmail.trim()) {
+    await supabaseAdmin
+      .from("orders")
+      .update({
+        invoice_email_error: "Missing receipt_email for Net 30 invoice email.",
+      })
+      .eq("id", orderId);
+
+    return;
+  }
+
+  try {
+    await sendNet30InvoiceCreatedEmail({
+      to: receiptEmail,
+      orderId,
+      orderNumber,
+      amountDue:
+        typeof invoice.amount_due === "number"
+          ? invoice.amount_due / 100
+          : undefined,
+      currency: invoice.currency ?? "usd",
+      dueDate: toIsoFromUnix(invoice.due_date),
+      hostedInvoiceUrl: invoice.hosted_invoice_url ?? undefined,
+      invoiceNumber: invoice.number ?? undefined,
+    });
+
+    await supabaseAdmin
+      .from("orders")
+      .update({
+        invoice_email_sent_at: new Date().toISOString(),
+        invoice_email_error: null,
+      })
+      .eq("id", orderId);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unknown invoice email error";
+
+    await supabaseAdmin
+      .from("orders")
+      .update({
+        invoice_email_error: message,
+      })
+      .eq("id", orderId);
+
+    console.error("[createStripeNet30Invoice] failed to send invoice email", {
+      orderId,
+      message,
+    });
+  }
+}
+
 export async function createStripeNet30Invoice(
   orderId: string,
 ): Promise<CreateStripeNet30InvoiceResult> {
@@ -350,16 +417,34 @@ export async function createStripeNet30Invoice(
     const existingInvoice = await stripe.invoices.retrieve(
       order.stripe_invoice_id,
     );
-    return persistStripeInvoiceOnOrder(
+
+    const persisted = await persistStripeInvoiceOnOrder(
       order.id,
       stripeCustomerId,
       existingInvoice,
+      {
+        fallbackReceiptEmail: receiptEmail,
+      },
     );
+
+    if (
+      !order.invoice_email_sent_at &&
+      shouldSendInvoiceCreatedEmail(existingInvoice)
+    ) {
+      await maybeSendInvoiceCreatedEmail({
+        orderId: order.id,
+        orderNumber: order.order_id,
+        receiptEmail,
+        invoice: existingInvoice,
+      });
+    }
+
+    return persisted;
   }
 
   const supabaseAdmin = createAdminClient();
 
-  await supabaseAdmin
+  const { error: prepareError } = await supabaseAdmin
     .from("orders")
     .update({
       payment_provider: "stripe",
@@ -369,6 +454,12 @@ export async function createStripeNet30Invoice(
       receipt_email: receiptEmail,
     })
     .eq("id", order.id);
+
+  if (prepareError) {
+    throw new Error(
+      `[createStripeNet30Invoice] Failed to prepare order ${order.id} for Net 30 invoicing: ${prepareError.message}`,
+    );
+  }
 
   const stripeMetadata = {
     order_db_id: order.id,
@@ -397,30 +488,30 @@ export async function createStripeNet30Invoice(
     metadata: stripeMetadata,
   });
 
-  let finalizedInvoice = await stripe.invoices.finalizeInvoice(
-    draftInvoice.id,
-    {
-      auto_advance: true,
-    },
-  );
+  await stripe.invoices.finalizeInvoice(draftInvoice.id, {
+    auto_advance: true,
+  });
 
-  let invoiceEmailSentAt: string | null = null;
+  const finalizedInvoice = await stripe.invoices.retrieve(draftInvoice.id);
 
-  if (
-    finalizedInvoice.status === "open" &&
-    (finalizedInvoice.amount_due ?? 0) > 0
-  ) {
-    finalizedInvoice = await stripe.invoices.sendInvoice(finalizedInvoice.id);
-    invoiceEmailSentAt = new Date().toISOString();
-  }
-
-  return persistStripeInvoiceOnOrder(
+  const persisted = await persistStripeInvoiceOnOrder(
     order.id,
     stripeCustomerId,
     finalizedInvoice,
     {
       markInvoiceSentAt: true,
-      invoiceEmailSentAt,
+      fallbackReceiptEmail: receiptEmail,
     },
   );
+
+  if (shouldSendInvoiceCreatedEmail(finalizedInvoice)) {
+    await maybeSendInvoiceCreatedEmail({
+      orderId: order.id,
+      orderNumber: order.order_id,
+      receiptEmail,
+      invoice: finalizedInvoice,
+    });
+  }
+
+  return persisted;
 }
