@@ -46,7 +46,6 @@ type ShipStationCreateOrUpdateOrderResponse = {
   orderNumber?: string | null;
   orderKey?: string | null;
   orderStatus?: string | null;
-  [key: string]: unknown;
 };
 
 const US_STATE_ABBREVIATIONS: Record<string, string> = {
@@ -136,6 +135,14 @@ function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
+function resolveStateCode(state: string, country: string): string {
+  const s = state.trim();
+  if (country.toUpperCase() !== "US") return s; // PH or others use full names or specific codes
+  if (s.length === 2) return s.toUpperCase();
+  // Add mapping here if needed, otherwise return as is
+  return s;
+}
+
 function resolveStateAbbreviation(input: string): string {
   const normalized = normalizeWhitespace(input).toLowerCase();
 
@@ -155,23 +162,11 @@ function resolveStateAbbreviation(input: string): string {
   );
 }
 
-function normalizeCountry(input?: string | null): string {
-  const raw = normalizeWhitespace(input || DEFAULT_COUNTRY).toLowerCase();
-
-  if (
-    raw === "us" ||
-    raw === "usa" ||
-    raw === "united states" ||
-    raw === "united states of america"
-  ) {
-    return "US";
-  }
-
-  if (/^[A-Za-z]{2}$/.test(raw)) {
-    return raw.toUpperCase();
-  }
-
-  return raw.slice(0, 2).toUpperCase();
+function normalizeCountry(country?: string | null): string {
+  const c = (country || DEFAULT_COUNTRY).trim().toUpperCase();
+  if (c === "USA" || c === "UNITED STATES") return "US";
+  if (c === "PHILIPPINES") return "PH";
+  return c;
 }
 
 function parseStateAndPostal(value: string): {
@@ -317,46 +312,19 @@ function parseDelimitedAddress(location: string): Partial<ShipStationAddress> {
 }
 
 function buildShipStationAddress(
-  input: ExtendedShipStationOrderInput,
+  input: ShipStationOrderInput,
 ): ShipStationAddress {
-  const facilityName = normalizeWhitespace(
-    input.facilityName || "Unknown Facility",
-  );
-  const contactName = toNullableString(input.facilityContact);
-  const phone = toNullableString(input.recipientPhone);
-  const location = toNullableString(input.facilityLocation);
-
-  if (!location) {
-    throw new Error(
-      "Facility location is required for ShipStation sync. Please update the facility address before syncing.",
-    );
-  }
-
-  const jsonAddress = tryParseJsonAddress(location);
-  const baseAddress = jsonAddress ?? parseDelimitedAddress(location);
-
-  if (
-    !baseAddress.street1 ||
-    !baseAddress.city ||
-    !baseAddress.state ||
-    !baseAddress.postalCode
-  ) {
-    throw new Error(
-      "Facility location is incomplete for ShipStation sync. Please provide street, city, state, and postal code.",
-    );
-  }
-
   return {
-    name: contactName ?? facilityName,
-    company: facilityName,
-    street1: baseAddress.street1,
-    street2: baseAddress.street2 ?? null,
-    street3: baseAddress.street3 ?? null,
-    city: baseAddress.city,
-    state: baseAddress.state,
-    postalCode: baseAddress.postalCode,
-    country: baseAddress.country ?? DEFAULT_COUNTRY,
-    phone,
+    name: input.facilityContact ?? input.facilityName,
+    company: input.facilityName,
+    street1: input.address_line_1,
+    street2: input.address_line_2 ?? null,
+    street3: null,
+    city: input.city,
+    state: resolveStateCode(input.state, input.country),
+    postalCode: input.postal_code,
+    country: normalizeCountry(input.country),
+    phone: input.recipientPhone ?? null,
     residential: false,
   };
 }
@@ -401,26 +369,20 @@ function getUnitPrice(input: ExtendedShipStationOrderInput): number {
   return roundMoney(amount / quantity);
 }
 
-function buildCreateOrUpdateOrderPayload(input: ExtendedShipStationOrderInput) {
+function buildCreateOrUpdateOrderPayload(input: ShipStationOrderInput) {
   const shipTo = buildShipStationAddress(input);
   const billTo = { ...shipTo };
-
-  const quantity = Math.max(1, Number(input.quantity ?? 1));
-  const unitPrice = getUnitPrice(input);
-  const amountPaid = getAmountPaid(input);
 
   return {
     orderNumber: input.orderNumber,
     ...(input.existingShipStationOrderKey
       ? { orderKey: input.existingShipStationOrderKey }
       : {}),
-    orderDate: toShipStationDateTime(input.createdAt),
+    orderDate: new Date(input.createdAt).toISOString(),
     orderStatus: DEFAULT_ORDER_STATUS,
     paymentMethod: input.paymentMode === "net_30" ? "Net 30 Invoice" : "Stripe",
-    amountPaid,
-    taxAmount: 0,
-    shippingAmount: 0,
-    customerEmail: toNullableString(input.receiptEmail),
+    amountPaid: input.paymentStatus === "paid" ? input.amount : 0,
+    customerEmail: input.receiptEmail ?? null,
     billTo,
     shipTo,
     items: [
@@ -428,14 +390,12 @@ function buildCreateOrUpdateOrderPayload(input: ExtendedShipStationOrderInput) {
         lineItemKey: input.localOrderId,
         sku: input.productName,
         name: input.productName,
-        quantity,
-        unitPrice,
+        quantity: Math.max(1, input.quantity),
+        unitPrice: input.amount / Math.max(1, input.quantity),
       },
     ],
     advancedOptions: {
       customField1: input.localOrderId,
-      customField2: input.facilityId,
-      customField3: input.paymentMode ?? "",
       source: "HB Medical Portal",
     },
   };
@@ -534,22 +494,34 @@ export const productionShipStationClient: ShipStationClient = {
   async syncOrder(
     input: ShipStationOrderInput,
   ): Promise<ShipStationOrderResult> {
-    const response = await createOrUpdateOrder(input);
+    const apiKey = process.env.SHIPSTATION_API_KEY;
+    const apiSecret = process.env.SHIPSTATION_API_SECRET;
+    const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString("base64");
+
+    const response = await fetch(
+      `${SHIPSTATION_BASE_URL}${SHIPSTATION_CREATE_ORDER_ENDPOINT}`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${auth}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(buildCreateOrUpdateOrderPayload(input)),
+      },
+    );
+
+    const result = await response.json();
+    if (!response.ok)
+      throw new Error(result.message || "ShipStation sync failed");
 
     return {
-      externalOrderId: String(
-        response.orderId ?? response.orderNumber ?? input.orderNumber,
-      ),
-      orderKey: toNullableString(response.orderKey),
-      status: toNullableString(response.orderStatus) ?? DEFAULT_ORDER_STATUS,
+      externalOrderId: String(result.orderId),
+      orderKey: result.orderKey || null,
+      status: result.orderStatus || DEFAULT_ORDER_STATUS,
     };
   },
 
-  async purchaseLabel(
-    _input: ShipStationLabelInput,
-  ): Promise<ShipStationLabelResult> {
-    throw new Error(
-      "ShipStation label purchase is disabled in sync-only mode.",
-    );
+  async purchaseLabel() {
+    throw new Error("Label purchase not implemented in real client yet.");
   },
 };

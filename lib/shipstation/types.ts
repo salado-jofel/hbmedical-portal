@@ -17,8 +17,14 @@ export type ShipStationOrderInput = {
   quantity: number;
   facilityId: string;
   facilityName: string;
+  // Individual address fields instead of facilityLocation string
+  address_line_1: string;
+  address_line_2?: string | null;
+  city: string;
+  state: string;
+  postal_code: string;
+  country: string;
   facilityContact?: string | null;
-  facilityLocation?: string | null;
   recipientPhone?: string | null;
   receiptEmail?: string | null;
   productName: string;

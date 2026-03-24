@@ -47,7 +47,12 @@ type AdminShipStationOrderRow = {
   facilities: {
     name: string | null;
     phone: string | null;
-    location: string | null;
+    address_line_1: string | null;
+    address_line_2: string | null;
+    city: string | null;
+    state: string | null;
+    postal_code: string | null;
+    country: string | null;
   } | null;
 
   products: {
@@ -58,9 +63,7 @@ type AdminShipStationOrderRow = {
 
 function isMockLikeValue(value: string | null | undefined) {
   if (!value) return false;
-
   const normalized = value.trim().toLowerCase();
-
   return (
     normalized.startsWith("mock-") ||
     normalized.includes("/mock-label/") ||
@@ -84,7 +87,6 @@ function getNextLocalStatus(order: AdminShipStationOrderRow) {
   if (hasLegacyMockArtifacts(order) && order.status === "Shipped") {
     return DEFAULT_LOCAL_STATUS;
   }
-
   return order.status ?? DEFAULT_LOCAL_STATUS;
 }
 
@@ -117,7 +119,16 @@ export async function syncOrderToShipStation(
       shipstation_sync_status,
       shipstation_label_url,
       shipped_at,
-      facilities(name, phone, location),
+      facilities(
+        name, 
+        phone, 
+        address_line_1, 
+        address_line_2, 
+        city, 
+        state, 
+        postal_code, 
+        country
+      ),
       products(name, price)
     `,
     )
@@ -154,20 +165,25 @@ export async function syncOrderToShipStation(
     };
   }
 
-  const { error: markSyncingError } = await supabaseAdmin
+  await supabaseAdmin
     .from("orders")
-    .update({
-      shipstation_sync_status: "syncing",
-    })
+    .update({ shipstation_sync_status: "syncing" })
     .eq("id", order.id);
-
-  if (markSyncingError) {
-    throw new Error(markSyncingError.message);
-  }
 
   try {
     const shipstation = getShipStationClient();
+    const facility = order.facilities;
 
+    if (
+      !facility?.address_line_1 ||
+      !facility?.city ||
+      !facility?.state ||
+      !facility?.postal_code
+    ) {
+      throw new Error("Facility address is incomplete in the database.");
+    }
+
+    // PASS FIELDS DIRECTLY
     const syncedOrder = await shipstation.syncOrder({
       localOrderId: order.id,
       orderNumber: order.order_id,
@@ -175,16 +191,22 @@ export async function syncOrderToShipStation(
       amount: Number(order.amount ?? 0),
       quantity: Number(order.quantity ?? 1),
       facilityId: order.facility_id,
-      facilityName: order.facilities?.name ?? "Unknown Facility",
-      facilityContact: order.facilities?.name ?? null,
-      facilityLocation: order.facilities?.location ?? null,
-      recipientPhone: order.facilities?.phone ?? null,
+      facilityName: facility.name ?? "Unknown Facility",
+      facilityContact: facility.name ?? null,
+
+      // The Fix: Direct mapping
+      address_line_1: facility.address_line_1,
+      address_line_2: facility.address_line_2,
+      city: facility.city,
+      state: facility.state,
+      postal_code: facility.postal_code,
+      country: facility.country || "US",
+
+      recipientPhone: facility.phone ?? null,
       receiptEmail: order.receipt_email ?? null,
       productName: order.products?.name ?? `Order ${order.order_id}`,
       paymentMode: order.payment_mode,
       paymentStatus: order.payment_status,
-      existingShipStationOrderId: null,
-      existingShipStationOrderKey: null,
     });
 
     const clearLegacyMockFields = hasLegacyMockArtifacts(order);
@@ -195,7 +217,6 @@ export async function syncOrderToShipStation(
         shipstation_order_id: syncedOrder.externalOrderId,
         shipstation_status: syncedOrder.status ?? DEFAULT_ORDER_STATUS,
         shipstation_sync_status: "sent",
-
         tracking_number: clearLegacyMockFields ? null : order.tracking_number,
         carrier_code: clearLegacyMockFields ? null : order.carrier_code,
         shipstation_shipment_id: clearLegacyMockFields
@@ -205,14 +226,11 @@ export async function syncOrderToShipStation(
           ? null
           : order.shipstation_label_url,
         shipped_at: clearLegacyMockFields ? null : order.shipped_at,
-
         status: getNextLocalStatus(order),
       })
       .eq("id", order.id);
 
-    if (updateError) {
-      throw new Error(updateError.message);
-    }
+    if (updateError) throw new Error(updateError.message);
 
     revalidatePath(ORDERS_PATH);
 
@@ -224,15 +242,10 @@ export async function syncOrderToShipStation(
     };
   } catch (error) {
     const message =
-      error instanceof Error
-        ? error.message
-        : "Failed to sync order to ShipStation";
-
+      error instanceof Error ? error.message : "Failed to sync to ShipStation";
     await supabaseAdmin
       .from("orders")
-      .update({
-        shipstation_sync_status: "failed",
-      })
+      .update({ shipstation_sync_status: "failed" })
       .eq("id", order.id);
 
     revalidatePath(ORDERS_PATH);
@@ -244,17 +257,13 @@ export const syncPaidOrderToShipStation = syncOrderToShipStation;
 
 export async function markOrderDeliveredViaShipStation(orderId: string) {
   const supabaseAdmin = createAdminClient();
-
   const { data: order, error } = await supabaseAdmin
     .from("orders")
     .select("id, status, shipstation_order_id")
     .eq("id", orderId)
     .single();
 
-  if (error || !order) {
-    throw new Error("Order not found");
-  }
-
+  if (error || !order) throw new Error("Order not found");
   if (
     !order.shipstation_order_id ||
     isMockLikeValue(order.shipstation_order_id)
@@ -262,25 +271,15 @@ export async function markOrderDeliveredViaShipStation(orderId: string) {
     throw new Error("Missing valid ShipStation order ID");
   }
 
-  const now = new Date().toISOString();
-
   const { error: updateError } = await supabaseAdmin
     .from("orders")
     .update({
       status: "Delivered",
-      delivered_at: now,
+      delivered_at: new Date().toISOString(),
     })
     .eq("id", order.id);
 
-  if (updateError) {
-    throw new Error(updateError.message);
-  }
-
+  if (updateError) throw new Error(updateError.message);
   revalidatePath(ORDERS_PATH);
-
-  return {
-    success: true,
-    orderId: order.id,
-    status: "Delivered",
-  };
+  return { success: true, orderId: order.id, status: "Delivered" };
 }
