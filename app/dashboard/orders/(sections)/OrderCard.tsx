@@ -38,7 +38,7 @@ import {
 import { Button } from "@/components/ui/button";
 import ConfirmModal from "@/app/(components)/ConfirmModal";
 import { OrderInfoRow } from "./OrderInfoRow";
-import { getFulfillmentLabel } from "./kanban-config";
+import { getFulfillmentLabel, mapOrderToBoardStatus } from "./kanban-config";
 import toast from "react-hot-toast";
 import { formatStatus } from "@/utils/formatter";
 
@@ -83,11 +83,20 @@ function PaymentBadge({
     );
   }
 
-  if (status === "pending") {
+  if ((status as string | null) === "pending") {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">
         <Clock3 className="h-3.5 w-3.5" />
         Pending
+      </span>
+    );
+  }
+
+  if (status === "unpaid") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+        <Clock3 className="h-3.5 w-3.5" />
+        Unpaid
       </span>
     );
   }
@@ -172,13 +181,13 @@ function DevModeBadge({ show }: { show: boolean }) {
   );
 }
 
-function getNet30DueMeta(invoiceDueDate?: string | null) {
+function getNet30DueMeta(invoiceDueDate?: string | null, nowMs = Date.now()) {
   if (!invoiceDueDate) return null;
 
   const due = new Date(invoiceDueDate);
   if (Number.isNaN(due.getTime())) return null;
 
-  const now = new Date();
+  const now = new Date(nowMs);
 
   const today = new Date(
     now.getFullYear(),
@@ -232,6 +241,7 @@ function getNet30DueMeta(invoiceDueDate?: string | null) {
 
 export function OrderCard({ order }: { order: Order }) {
   const dispatch = useAppDispatch();
+  const boardStatus = mapOrderToBoardStatus(order);
 
   const [isDeleting, setIsDeleting] = useState(false);
   const [isPayingNow, setIsPayingNow] = useState(false);
@@ -239,8 +249,17 @@ export function OrderCard({ order }: { order: Order }) {
   const [isFulfilling, setIsFulfilling] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [paymentMenuOpen, setPaymentMenuOpen] = useState(false);
+  const [nowMs, setNowMs] = useState(Date.now());
 
   const paymentMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 60_000);
+
+    return () => window.clearInterval(timer);
+  }, []);
 
   const isPaid = order.payment_status === "paid";
   const hasCheckout = Boolean(order.stripe_checkout_url);
@@ -248,7 +267,7 @@ export function OrderCard({ order }: { order: Order }) {
   const isNet30 = order.payment_mode === "net_30";
   const isPayNowMode = order.payment_mode === "pay_now";
 
-  const isDelivered = order.status === "Delivered";
+  const isDelivered = boardStatus === "Delivered";
   const fulfillmentLabel = getFulfillmentLabel(order);
 
   const quantity = Number(order.quantity ?? 1);
@@ -265,12 +284,13 @@ export function OrderCard({ order }: { order: Order }) {
   const isBusy = isPayingNow || isPayingLater || isFulfilling || isDeleting;
 
   const net30DueMeta = useMemo(
-    () => getNet30DueMeta(order.invoice_due_date),
-    [order.invoice_due_date],
+    () => getNet30DueMeta(order.invoice_due_date, nowMs),
+    [order.invoice_due_date, nowMs],
   );
 
   const shouldShowNet30DueDate =
     isNet30 &&
+    !isPaid &&
     !!net30DueMeta &&
     (order.payment_status === "invoice_sent" ||
       order.payment_status === "overdue");
@@ -556,6 +576,7 @@ export function OrderCard({ order }: { order: Order }) {
     if (order.payment_status === "overdue") return "Overdue";
     if (order.payment_status === "payment_failed") return "Payment Failed";
     if ((order.payment_status as string | null) === "pending") return "Pending";
+    if (order.payment_status === "unpaid") return "Unpaid";
     return "Unpaid";
   }
 
