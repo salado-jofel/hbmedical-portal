@@ -59,6 +59,17 @@ async function getFreshInvoiceFromEvent(event: Stripe.Event) {
   return stripe.invoices.retrieve(invoiceFromEvent.id);
 }
 
+function resolveCheckoutOrderId(
+  session: Stripe.Checkout.Session,
+): string | null {
+  return (
+    session.metadata?.order_id ??
+    session.metadata?.order_db_id ??
+    session.client_reference_id ??
+    null
+  );
+}
+
 async function registerStripeEvent(
   event: Stripe.Event,
   options?: {
@@ -135,11 +146,11 @@ async function getReceiptDetails(session: Stripe.Checkout.Session) {
 async function markOrderPaid(
   session: Stripe.Checkout.Session,
 ): Promise<MarkOrderPaidResult> {
-  const orderId = session.metadata?.order_id;
+  const orderId = resolveCheckoutOrderId(session);
 
   if (!orderId) {
     throw new Error(
-      `[stripe webhook] Missing metadata.order_id for checkout session ${session.id}`,
+      `[stripe webhook] Missing order identifier for checkout session ${session.id}`,
     );
   }
 
@@ -237,10 +248,11 @@ async function markCheckoutOrderStatus(
   session: Stripe.Checkout.Session,
   paymentStatus: PersistedPaymentStatus,
 ) {
-  const orderId = session.metadata?.order_id;
+  const orderId = resolveCheckoutOrderId(session);
+
   if (!orderId) {
     throw new Error(
-      `[stripe webhook] Missing metadata.order_id for checkout session ${session.id}`,
+      `[stripe webhook] Missing order identifier for checkout session ${session.id}`,
     );
   }
 
@@ -381,10 +393,12 @@ async function handleSuccessfulCheckoutSession(
   event: Stripe.Event,
   session: Stripe.Checkout.Session,
 ) {
+  const resolvedOrderId = resolveCheckoutOrderId(session);
+
   const isNewEvent = await registerStripeEvent(event, {
     stripeObjectId: session.id,
     checkoutSessionId: session.id,
-    orderId: session.metadata?.order_id ?? null,
+    orderId: resolvedOrderId,
   });
 
   if (!isNewEvent) {
@@ -425,7 +439,6 @@ async function findOrderForInvoice(
 
   const selectColumns = "id, order_id, stripe_invoice_id, payment_status";
 
-  // 1) Best match: invoice already persisted on the order row.
   {
     const { data, error } = await supabaseAdmin
       .from("orders")
@@ -442,7 +455,6 @@ async function findOrderForInvoice(
     if (data) return data as InvoiceOrderLookup;
   }
 
-  // 2) Preferred metadata going forward.
   const orderDbId = invoice.metadata?.order_db_id ?? null;
   if (orderDbId) {
     const { data, error } = await supabaseAdmin
@@ -477,7 +489,6 @@ async function findOrderForInvoice(
     if (data) return data as InvoiceOrderLookup;
   }
 
-  // 3) Legacy compatibility: metadata.order_id may hold order number.
   const legacyOrderId = invoice.metadata?.order_id ?? null;
   if (legacyOrderId) {
     const { data: byId, error: idError } = await supabaseAdmin
@@ -545,7 +556,9 @@ async function syncStripeInvoiceToOrder(
         invoice_paid_at,
         paid_at,
         invoice_amount_due,
-        invoice_amount_remaining
+        invoice_amount_remaining,
+        shipstation_sync_status,
+        shipstation_shipment_id
       `,
     )
     .eq("id", order.id)
@@ -625,6 +638,15 @@ async function syncStripeInvoiceToOrder(
     updatePayload.invoice_overdue_at = null;
     updatePayload.invoice_amount_remaining = 0;
     updatePayload.stripe_invoice_status = "paid";
+
+    const alreadySynced =
+      existing.shipstation_sync_status === "sent" ||
+      existing.shipstation_sync_status === "fulfilled" ||
+      !!existing.shipstation_shipment_id;
+
+    if (!alreadySynced) {
+      updatePayload.shipstation_sync_status = "ready";
+    }
   } else if (nextPaymentStatus === "overdue") {
     updatePayload.invoice_overdue_at =
       existing.invoice_overdue_at ?? new Date().toISOString();
@@ -636,7 +658,9 @@ async function syncStripeInvoiceToOrder(
     .from("orders")
     .update(updatePayload)
     .eq("id", order.id)
-    .select("id, order_id, payment_status, stripe_invoice_status")
+    .select(
+      "id, order_id, payment_status, stripe_invoice_status, shipstation_sync_status",
+    )
     .maybeSingle();
 
   if (updateError) {
@@ -657,6 +681,7 @@ async function syncStripeInvoiceToOrder(
     orderNumber: updated.order_id,
     paymentStatus: updated.payment_status,
     stripeInvoiceStatus: updated.stripe_invoice_status,
+    shipstationSyncStatus: updated.shipstation_sync_status,
   });
 
   return {
@@ -712,6 +737,7 @@ export async function POST(request: Request) {
           await handleSuccessfulCheckoutSession(event, session);
           debug.checkoutSessionId = session.id;
           debug.checkoutPaymentStatus = session.payment_status;
+          debug.resolvedOrderId = resolveCheckoutOrderId(session);
         }
 
         return NextResponse.json({ received: true, debug });
@@ -725,6 +751,7 @@ export async function POST(request: Request) {
 
         debug.checkoutSessionId = session.id;
         debug.checkoutPaymentStatus = session.payment_status;
+        debug.resolvedOrderId = resolveCheckoutOrderId(session);
 
         return NextResponse.json({ received: true, debug });
       }
@@ -733,14 +760,17 @@ export async function POST(request: Request) {
         debug.branch = "checkout.session.async_payment_failed";
 
         const session = event.data.object as Stripe.Checkout.Session;
+        const resolvedOrderId = resolveCheckoutOrderId(session);
+
         const isNewEvent = await registerStripeEvent(event, {
           stripeObjectId: session.id,
           checkoutSessionId: session.id,
-          orderId: session.metadata?.order_id ?? null,
+          orderId: resolvedOrderId,
         });
 
         debug.checkoutSessionId = session.id;
         debug.isNewEvent = isNewEvent;
+        debug.resolvedOrderId = resolvedOrderId;
 
         if (isNewEvent) {
           await markCheckoutOrderStatus(session, "payment_failed");
@@ -754,14 +784,17 @@ export async function POST(request: Request) {
         debug.branch = "checkout.session.expired";
 
         const session = event.data.object as Stripe.Checkout.Session;
+        const resolvedOrderId = resolveCheckoutOrderId(session);
+
         const isNewEvent = await registerStripeEvent(event, {
           stripeObjectId: session.id,
           checkoutSessionId: session.id,
-          orderId: session.metadata?.order_id ?? null,
+          orderId: resolvedOrderId,
         });
 
         debug.checkoutSessionId = session.id;
         debug.isNewEvent = isNewEvent;
+        debug.resolvedOrderId = resolvedOrderId;
 
         if (isNewEvent) {
           await markCheckoutOrderStatus(session, "unpaid");
@@ -854,6 +887,27 @@ export async function POST(request: Request) {
           });
 
           debug.syncResult = result;
+
+          if (result.resolvedOrderId) {
+            try {
+              await syncPaidOrderToShipStation(result.resolvedOrderId);
+            } catch (shipstationError) {
+              console.error(
+                "[stripe webhook] ShipStation sync failed for invoice.paid:",
+                shipstationError,
+              );
+
+              const supabaseAdmin = createAdminClient();
+
+              await supabaseAdmin
+                .from("orders")
+                .update({
+                  shipstation_sync_status: "failed",
+                })
+                .eq("id", result.resolvedOrderId);
+            }
+          }
+
           revalidatePath("/dashboard/orders");
         }
 

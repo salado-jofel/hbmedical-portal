@@ -14,6 +14,7 @@ type Net30OrderRow = {
   product_id: string;
   amount: number | string;
   quantity: number;
+  user_id: string | null;
   payment_mode: string | null;
   payment_provider: string | null;
   payment_status: PersistedPaymentStatus | null;
@@ -91,6 +92,7 @@ async function getNet30Order(orderId: string): Promise<Net30OrderRow> {
         product_id,
         amount,
         quantity,
+        user_id,
         payment_mode,
         payment_provider,
         payment_status,
@@ -117,8 +119,57 @@ async function getNet30Order(orderId: string): Promise<Net30OrderRow> {
   return data as Net30OrderRow;
 }
 
+async function resolveOrderReceiptEmail(order: Net30OrderRow): Promise<string> {
+  const existingEmail = order.receipt_email?.trim() ?? "";
+
+  if (existingEmail) {
+    return existingEmail;
+  }
+
+  if (!order.user_id) {
+    throw new Error(
+      `[createStripeNet30Invoice] Order ${order.order_id} has no receipt_email and no user_id to resolve a fallback email.`,
+    );
+  }
+
+  const supabaseAdmin = createAdminClient();
+
+  const { data: userResult, error: userError } =
+    await supabaseAdmin.auth.admin.getUserById(order.user_id);
+
+  if (userError) {
+    throw new Error(
+      `[createStripeNet30Invoice] Failed to resolve user email for order ${order.order_id}: ${userError.message}`,
+    );
+  }
+
+  const fallbackEmail = userResult?.user?.email?.trim() ?? "";
+
+  if (!fallbackEmail) {
+    throw new Error(
+      `Missing email. Please add an email address for this order or account before sending a Net 30 invoice.`,
+    );
+  }
+
+  const { error: updateError } = await supabaseAdmin
+    .from("orders")
+    .update({
+      receipt_email: fallbackEmail,
+    })
+    .eq("id", order.id);
+
+  if (updateError) {
+    throw new Error(
+      `[createStripeNet30Invoice] Failed to save fallback receipt_email for order ${order.order_id}: ${updateError.message}`,
+    );
+  }
+
+  return fallbackEmail;
+}
+
 async function ensureStripeCustomerForOrder(
   order: Net30OrderRow,
+  customerEmail: string,
 ): Promise<string> {
   const customerMetadata = {
     order_db_id: order.id,
@@ -126,8 +177,6 @@ async function ensureStripeCustomerForOrder(
     facility_id: order.facility_id,
     payment_mode: "net_30",
   };
-
-  const customerEmail = order.receipt_email ?? undefined;
 
   if (order.stripe_customer_id) {
     try {
@@ -291,7 +340,11 @@ export async function createStripeNet30Invoice(
   }
 
   const amountCents = parseAmountToCents(order.amount);
-  const stripeCustomerId = await ensureStripeCustomerForOrder(order);
+  const receiptEmail = await resolveOrderReceiptEmail(order);
+  const stripeCustomerId = await ensureStripeCustomerForOrder(
+    order,
+    receiptEmail,
+  );
 
   if (order.stripe_invoice_id) {
     const existingInvoice = await stripe.invoices.retrieve(
@@ -313,6 +366,7 @@ export async function createStripeNet30Invoice(
       payment_mode: "net_30",
       payment_status: "unpaid",
       stripe_customer_id: stripeCustomerId,
+      receipt_email: receiptEmail,
     })
     .eq("id", order.id);
 

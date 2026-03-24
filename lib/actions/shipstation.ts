@@ -14,14 +14,15 @@ type AdminShipStationOrderRow = {
   product_id: string;
   amount: number | string;
   quantity: number;
+  payment_mode: "pay_now" | "net_30" | null;
   payment_status:
     | "unpaid"
-    | "pending"
+    | "invoice_sent"
+    | "overdue"
+    | "payment_failed"
     | "paid"
-    | "failed"
-    | "canceled"
-    | "refunded"
     | null;
+  stripe_invoice_id: string | null;
   status: string;
   tracking_number: string | null;
   carrier_code: string | null;
@@ -54,7 +55,9 @@ export async function syncPaidOrderToShipStation(orderId: string) {
       product_id,
       amount,
       quantity,
+      payment_mode,
       payment_status,
+      stripe_invoice_id,
       status,
       tracking_number,
       carrier_code,
@@ -76,8 +79,14 @@ export async function syncPaidOrderToShipStation(orderId: string) {
 
   const order = rawOrder as unknown as AdminShipStationOrderRow;
 
-  if (order.payment_status !== "paid") {
-    throw new Error("Order must be paid before syncing to ShipStation");
+  const canSyncToShipStation =
+    order.payment_status === "paid" ||
+    (order.payment_mode === "net_30" && !!order.stripe_invoice_id);
+
+  if (!canSyncToShipStation) {
+    throw new Error(
+      "Order must be paid or have a Net 30 invoice before syncing to ShipStation",
+    );
   }
 
   if (

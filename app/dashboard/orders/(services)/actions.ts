@@ -10,6 +10,7 @@ import type { Facility } from "@/app/(interfaces)/facility";
 import type { Product } from "@/app/(interfaces)/product";
 import { requireUser } from "@/utils/auth-guard";
 import { createStripeNet30Invoice as createStripeNet30InvoiceService } from "./create-stripe-net30-invoice";
+import { syncPaidOrderToShipStation } from "@/lib/actions/shipstation";
 
 const ORDER_TABLE = "orders";
 const ORDERS_PATH = "/dashboard/orders";
@@ -300,7 +301,6 @@ export async function addOrder(formData: FormData): Promise<Order> {
     throw new Error("Selected product not found.");
   }
 
-  // Always compute server-side.
   const amount = Number(product.price) * quantity;
 
   const { data: insertedRow, error: insertError } = await supabase
@@ -314,7 +314,6 @@ export async function addOrder(formData: FormData): Promise<Order> {
       status: "Processing",
       user_id: user.id,
 
-      // payment choice now happens later from OrderCard
       payment_provider: "stripe",
       payment_mode: null,
       payment_status: "unpaid",
@@ -324,6 +323,7 @@ export async function addOrder(formData: FormData): Promise<Order> {
       stripe_invoice_id: null,
       stripe_checkout_url: null,
       paid_at: null,
+      receipt_email: user.email ?? null,
     })
     .select("id")
     .single();
@@ -473,7 +473,6 @@ export async function createStripeCheckoutSession(
     );
   }
 
-  // Resume existing Stripe Checkout session if one already exists for pay_now
   if (
     order.payment_mode === "pay_now" &&
     order.stripe_checkout_url &&
@@ -510,6 +509,7 @@ export async function createStripeCheckoutSession(
             name: order.products?.name ?? `Order ${order.order_id}`,
             description: `Order ${order.order_id} • Qty ${order.quantity}`,
             metadata: {
+              order_id: order.id,
               order_db_id: order.id,
               order_number: order.order_id,
               product_id: order.product_id,
@@ -520,6 +520,7 @@ export async function createStripeCheckoutSession(
       },
     ],
     metadata: {
+      order_id: order.id,
       order_db_id: order.id,
       order_number: order.order_id,
       facility_id: order.facility_id,
@@ -538,10 +539,7 @@ export async function createStripeCheckoutSession(
     .update({
       payment_provider: "stripe",
       payment_mode: "pay_now",
-
-      // keep it unpaid until Stripe webhook marks it paid
       payment_status: "unpaid",
-
       stripe_checkout_session_id: session.id,
       stripe_checkout_url: session.url,
       stripe_customer_id: stripeCustomerId,
@@ -578,7 +576,7 @@ export async function createStripeNet30Invoice(
 
   await createStripeNet30InvoiceService(orderId);
 
-  const { data: rawOrder, error: orderError } = await supabase
+  let { data: rawOrder, error: orderError } = await supabase
     .from(ORDER_TABLE)
     .select(ORDER_COLUMNS)
     .eq("id", orderId)
@@ -602,8 +600,49 @@ export async function createStripeNet30Invoice(
     throw new Error("You do not have permission to access this order.");
   }
 
+  if (
+    order.payment_mode === "net_30" &&
+    order.stripe_invoice_id &&
+    !order.shipstation_shipment_id
+  ) {
+    try {
+      await syncPaidOrderToShipStation(order.id);
+    } catch (shipstationError) {
+      console.error(
+        "[createStripeNet30Invoice] ShipStation sync failed:",
+        shipstationError,
+      );
+
+      await supabase
+        .from(ORDER_TABLE)
+        .update({
+          shipstation_sync_status: "failed",
+        })
+        .eq("id", order.id);
+    }
+
+    const refetch = await supabase
+      .from(ORDER_TABLE)
+      .select(ORDER_COLUMNS)
+      .eq("id", orderId)
+      .single();
+
+    rawOrder = refetch.data ?? rawOrder;
+    orderError = refetch.error ?? null;
+
+    if (orderError || !rawOrder) {
+      console.error(
+        "[createStripeNet30Invoice] Refetch after ShipStation sync failed:",
+        orderError?.message,
+      );
+      throw new Error(
+        "Invoice created, but final order state could not be retrieved.",
+      );
+    }
+  }
+
   revalidatePath(ORDERS_PATH);
-  return flattenOrder(order);
+  return flattenOrder(rawOrder as unknown as RawOrder);
 }
 
 export type ShipOrderWithShipStationResult = {
@@ -633,7 +672,9 @@ export async function shipOrderWithShipStation(
       id,
       order_id,
       facility_id,
+      payment_mode,
       payment_status,
+      stripe_invoice_id,
       tracking_number,
       carrier_code,
       shipstation_sync_status,
@@ -657,8 +698,14 @@ export async function shipOrderWithShipStation(
     throw new Error("You do not have permission to access this order.");
   }
 
-  if (current.payment_status !== "paid") {
-    throw new Error("Only paid orders can be synced to ShipStation.");
+  const canShip =
+    current.payment_status === "paid" ||
+    (current.payment_mode === "net_30" && !!current.stripe_invoice_id);
+
+  if (!canShip) {
+    throw new Error(
+      "Only paid orders or Net 30 invoiced orders can be synced to ShipStation.",
+    );
   }
 
   if (current.shipstation_shipment_id && current.tracking_number) {
@@ -679,6 +726,7 @@ export async function shipOrderWithShipStation(
   const { error: updateErr } = await supabase
     .from(ORDER_TABLE)
     .update({
+      status: "Shipped",
       shipstation_sync_status: "sent",
       shipstation_order_id: mockOrderId,
       shipstation_shipment_id: mockShipmentId,
