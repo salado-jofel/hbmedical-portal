@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useAppDispatch } from "@/store/hooks";
 import {
@@ -33,6 +33,7 @@ import {
   FileText,
   RefreshCcw,
   ChevronDown,
+  CalendarClock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ConfirmModal from "@/app/(components)/ConfirmModal";
@@ -130,10 +131,7 @@ function ShipStationSyncBadge({
 }) {
   if (!syncStatus) return null;
 
-  const map: Record<
-    string,
-    { text: string; className: string }
-  > = {
+  const map: Record<string, { text: string; className: string }> = {
     ready: {
       text: "ShipStation Ready",
       className: "bg-sky-100 text-sky-700",
@@ -174,6 +172,64 @@ function DevModeBadge({ show }: { show: boolean }) {
   );
 }
 
+function getNet30DueMeta(invoiceDueDate?: string | null) {
+  if (!invoiceDueDate) return null;
+
+  const due = new Date(invoiceDueDate);
+  if (Number.isNaN(due.getTime())) return null;
+
+  const now = new Date();
+
+  const today = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+  ).getTime();
+
+  const dueDay = new Date(
+    due.getFullYear(),
+    due.getMonth(),
+    due.getDate(),
+  ).getTime();
+
+  const diffDays = Math.round((dueDay - today) / (1000 * 60 * 60 * 24));
+
+  let relativeText = "";
+  let toneClasses = "border-amber-100 bg-amber-50 text-amber-700";
+  let subToneClasses = "text-amber-600";
+
+  if (diffDays > 1) {
+    relativeText = `${diffDays} days left`;
+  } else if (diffDays === 1) {
+    relativeText = "1 day left";
+  } else if (diffDays === 0) {
+    relativeText = "Due today";
+    toneClasses = "border-orange-100 bg-orange-50 text-orange-700";
+    subToneClasses = "text-orange-600";
+  } else if (diffDays === -1) {
+    relativeText = "Overdue by 1 day";
+    toneClasses = "border-red-100 bg-red-50 text-red-700";
+    subToneClasses = "text-red-600";
+  } else {
+    relativeText = `Overdue by ${Math.abs(diffDays)} days`;
+    toneClasses = "border-red-100 bg-red-50 text-red-700";
+    subToneClasses = "text-red-600";
+  }
+
+  const formattedDate = due.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+
+  return {
+    formattedDate,
+    relativeText,
+    toneClasses,
+    subToneClasses,
+  };
+}
+
 export function OrderCard({ order }: { order: Order }) {
   const dispatch = useAppDispatch();
 
@@ -191,10 +247,6 @@ export function OrderCard({ order }: { order: Order }) {
   const hasInvoice = Boolean(order.stripe_invoice_hosted_url);
   const isNet30 = order.payment_mode === "net_30";
   const isPayNowMode = order.payment_mode === "pay_now";
-  const isPaymentPending =
-    !isPaid &&
-    ((order.payment_status as string | null) === "pending" ||
-      (isPayNowMode && hasCheckout));
 
   const isDelivered = order.status === "Delivered";
   const fulfillmentLabel = getFulfillmentLabel(order);
@@ -211,6 +263,17 @@ export function OrderCard({ order }: { order: Order }) {
   const isMockCarrier = (order.carrier_code ?? "").startsWith("mock-");
 
   const isBusy = isPayingNow || isPayingLater || isFulfilling || isDeleting;
+
+  const net30DueMeta = useMemo(
+    () => getNet30DueMeta(order.invoice_due_date),
+    [order.invoice_due_date],
+  );
+
+  const shouldShowNet30DueDate =
+    isNet30 &&
+    !!net30DueMeta &&
+    (order.payment_status === "invoice_sent" ||
+      order.payment_status === "overdue");
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -577,6 +640,27 @@ export function OrderCard({ order }: { order: Order }) {
               </div>
             </div>
           </div>
+
+          {shouldShowNet30DueDate && net30DueMeta && (
+            <div
+              className={`rounded-xl border px-3 py-2 ${net30DueMeta.toneClasses}`}
+            >
+              <p className="text-[11px] font-medium uppercase tracking-wide">
+                Invoice Due
+              </p>
+
+              <div className="mt-1 flex items-center gap-2">
+                <CalendarClock className="h-4 w-4" />
+                <span className="text-sm font-semibold">
+                  {net30DueMeta.formattedDate}
+                </span>
+              </div>
+
+              <p className={`mt-1 text-xs ${net30DueMeta.subToneClasses}`}>
+                {net30DueMeta.relativeText}
+              </p>
+            </div>
+          )}
 
           {order.tracking_number && (
             <div className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2">
