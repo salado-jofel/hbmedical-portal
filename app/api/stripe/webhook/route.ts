@@ -313,6 +313,7 @@ async function markOrderPaid(
     stripe_customer_id: customerId,
     receipt_email: finalReceiptEmail,
     stripe_receipt_url: receiptUrl,
+    status: "Awaiting Shipment",
   };
 
   if (!alreadyPaid) {
