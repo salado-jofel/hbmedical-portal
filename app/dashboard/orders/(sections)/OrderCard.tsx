@@ -622,7 +622,7 @@ export function OrderCard({ order }: { order: Order }) {
         <div className="mt-3 flex flex-wrap gap-2">
           <PaymentBadge status={order.payment_status} />
           <FulfillmentBadge label={fulfillmentLabel} delivered={isDelivered} />
-          <ShipStationSyncBadge syncStatus={order.shipstation_sync_status} />
+          {/* <ShipStationSyncBadge syncStatus={order.shipstation_sync_status} /> */}
         </div>
 
         <div className="mt-4 space-y-2">

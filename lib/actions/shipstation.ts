@@ -226,7 +226,7 @@ export async function syncOrderToShipStation(
           ? null
           : order.shipstation_label_url,
         shipped_at: clearLegacyMockFields ? null : order.shipped_at,
-        status: getNextLocalStatus(order),
+        status: "Awaiting Shipment",
       })
       .eq("id", order.id);
 
