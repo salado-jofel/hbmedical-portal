@@ -1,14 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useAppDispatch } from "@/store/hooks";
-import { removeOrderFromStore } from "../(redux)/orders-slice";
+import {
+  updateOrderInStore,
+  removeOrderFromStore,
+} from "../(redux)/orders-slice";
 import {
   deleteOrder,
   createStripeCheckoutSession,
+  createStripeNet30Invoice,
   shipOrderWithShipStation,
 } from "../(services)/actions";
+
 import type { Order } from "@/app/(interfaces)/order";
 import {
   Trash2,
@@ -24,10 +29,10 @@ import {
   BadgeCheck,
   Clock3,
   MapPin,
+  FlaskConical,
   FileText,
   RefreshCcw,
-  AlertTriangle,
-  CalendarClock,
+  ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ConfirmModal from "@/app/(components)/ConfirmModal";
@@ -37,11 +42,11 @@ import toast from "react-hot-toast";
 import { formatStatus } from "@/utils/formatter";
 
 function PaymentBadge({
-  paymentStatus,
+  status,
 }: {
-  paymentStatus: Order["payment_status"];
+  status?: string | null;
 }) {
-  if (paymentStatus === "paid") {
+  if (status === "paid") {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
         <CheckCircle2 className="h-3.5 w-3.5" />
@@ -50,34 +55,34 @@ function PaymentBadge({
     );
   }
 
-  if (paymentStatus === "invoice_sent") {
+  if (status === "invoice_sent") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold text-sky-700">
+      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">
         <FileText className="h-3.5 w-3.5" />
         Invoice Sent
       </span>
     );
   }
 
-  if (paymentStatus === "overdue") {
+  if (status === "overdue") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2.5 py-1 text-xs font-semibold text-orange-700">
-        <AlertTriangle className="h-3.5 w-3.5" />
+      <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-700">
+        <Clock3 className="h-3.5 w-3.5" />
         Overdue
       </span>
     );
   }
 
-  if (paymentStatus === "payment_failed") {
+  if (status === "payment_failed") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-700">
+      <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2.5 py-1 text-xs font-semibold text-rose-700">
         <RefreshCcw className="h-3.5 w-3.5" />
         Payment Failed
       </span>
     );
   }
 
-  if (paymentStatus === "pending") {
+  if (status === "pending") {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">
         <Clock3 className="h-3.5 w-3.5" />
@@ -125,7 +130,10 @@ function ShipStationSyncBadge({
 }) {
   if (!syncStatus) return null;
 
-  const map: Record<string, { text: string; className: string }> = {
+  const map: Record<
+    string,
+    { text: string; className: string }
+  > = {
     ready: {
       text: "ShipStation Ready",
       className: "bg-sky-100 text-sky-700",
@@ -138,14 +146,10 @@ function ShipStationSyncBadge({
       text: "ShipStation Failed",
       className: "bg-red-100 text-red-700",
     },
-    not_sent: {
-      text: "ShipStation Pending",
-      className: "bg-slate-100 text-slate-700",
-    },
   };
 
   const display = map[syncStatus] ?? {
-    text: syncStatus,
+    text: formatStatus(syncStatus),
     className: "bg-slate-100 text-slate-700",
   };
 
@@ -159,15 +163,39 @@ function ShipStationSyncBadge({
   );
 }
 
+function DevModeBadge({ show }: { show: boolean }) {
+  if (!show) return null;
+
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2.5 py-1 text-xs font-semibold text-orange-700">
+      <FlaskConical className="h-3.5 w-3.5" />
+      Dev Mode
+    </span>
+  );
+}
+
 export function OrderCard({ order }: { order: Order }) {
   const dispatch = useAppDispatch();
+
   const [isDeleting, setIsDeleting] = useState(false);
-  const [isPaying, setIsPaying] = useState(false);
+  const [isPayingNow, setIsPayingNow] = useState(false);
+  const [isPayingLater, setIsPayingLater] = useState(false);
   const [isFulfilling, setIsFulfilling] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [paymentMenuOpen, setPaymentMenuOpen] = useState(false);
+
+  const paymentMenuRef = useRef<HTMLDivElement | null>(null);
 
   const isPaid = order.payment_status === "paid";
+  const hasCheckout = Boolean(order.stripe_checkout_url);
+  const hasInvoice = Boolean(order.stripe_invoice_hosted_url);
   const isNet30 = order.payment_mode === "net_30";
+  const isPayNowMode = order.payment_mode === "pay_now";
+  const isPaymentPending =
+    !isPaid &&
+    ((order.payment_status as string | null) === "pending" ||
+      (isPayNowMode && hasCheckout));
+
   const isDelivered = order.status === "Delivered";
   const fulfillmentLabel = getFulfillmentLabel(order);
 
@@ -179,10 +207,26 @@ export function OrderCard({ order }: { order: Order }) {
   const syncFailed = order.shipstation_sync_status === "failed";
   const syncReady =
     order.shipstation_sync_status === "ready" ||
-    ((order.shipstation_sync_status === "not_sent" ||
-      !order.shipstation_sync_status) &&
-      (isPaid || isNet30) &&
-      !hasMockShipment);
+    (!order.shipstation_sync_status && isPaid && !hasMockShipment);
+  const isMockCarrier = (order.carrier_code ?? "").startsWith("mock-");
+
+  const isBusy = isPayingNow || isPayingLater || isFulfilling || isDeleting;
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        paymentMenuRef.current &&
+        !paymentMenuRef.current.contains(event.target as Node)
+      ) {
+        setPaymentMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
 
   async function handleDelete() {
     if (!order.id) return;
@@ -202,25 +246,45 @@ export function OrderCard({ order }: { order: Order }) {
   }
 
   async function handlePayNow() {
-    if (!order.id || isPaying || isPaid || isNet30) return;
+    if (!order.id || isPayingNow || isPaid) return;
 
-    setIsPaying(true);
+    setPaymentMenuOpen(false);
+    setIsPayingNow(true);
+
     try {
       const checkoutUrl = await createStripeCheckoutSession(order.id);
       window.location.href = checkoutUrl;
     } catch (err) {
       console.error("[handlePayNow]", err);
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : "Failed to start payment. Please try again.",
-      );
-      setIsPaying(false);
+      toast.error("Failed to start payment. Please try again.");
+      setIsPayingNow(false);
+    }
+  }
+
+  async function handlePayLater() {
+    if (!order.id || isPayingLater || isPaid) return;
+
+    setPaymentMenuOpen(false);
+    setIsPayingLater(true);
+
+    try {
+      const updatedOrder = await createStripeNet30Invoice(order.id);
+      dispatch(updateOrderInStore(updatedOrder));
+      toast.success("Net 30 invoice created.");
+
+      if (updatedOrder.stripe_invoice_hosted_url) {
+        window.open(updatedOrder.stripe_invoice_hosted_url, "_blank");
+      }
+    } catch (err) {
+      console.error("[handlePayLater]", err);
+      toast.error("Failed to create Net 30 invoice. Please try again.");
+    } finally {
+      setIsPayingLater(false);
     }
   }
 
   async function handleMockShipStationSync() {
-    if (!order.id || isFulfilling || (!isPaid && !isNet30)) return;
+    if (!order.id || isFulfilling || !isPaid) return;
 
     setIsFulfilling(true);
 
@@ -229,11 +293,11 @@ export function OrderCard({ order }: { order: Order }) {
 
       if (result.alreadyShipped) {
         toast.success(
-          `Existing mock shipment loaded: ${result.carrierCode} ${result.trackingNumber}`,
+          `Existing mock shipment loaded: ${result.carrierCode} • ${result.trackingNumber}`,
         );
       } else {
         toast.success(
-          `Mock shipment synced: ${result.carrierCode} ${result.trackingNumber}`,
+          `Mock shipment synced: ${result.carrierCode} • ${result.trackingNumber}`,
         );
       }
     } catch (err) {
@@ -248,7 +312,189 @@ export function OrderCard({ order }: { order: Order }) {
     }
   }
 
-  const paymentModeLabel = isNet30 ? "Net 30" : "Pay Now";
+  function renderPrimaryAction() {
+    if (!isPaid) {
+      if (isNet30 && hasInvoice) {
+        return (
+          <Link href={order.stripe_invoice_hosted_url!} target="_blank">
+            <Button
+              type="button"
+              size="sm"
+              className="h-9 bg-[#15689E] text-white hover:bg-[#0f4f7a] cursor-pointer"
+            >
+              <FileText className="mr-1 h-4 w-4" />
+              View Invoice
+            </Button>
+          </Link>
+        );
+      }
+
+      if (isPayNowMode && hasCheckout) {
+        return (
+          <Button
+            type="button"
+            size="sm"
+            onClick={handlePayNow}
+            disabled={isPayingNow}
+            className="h-9 bg-[#15689E] text-white hover:bg-[#0f4f7a] cursor-pointer"
+          >
+            {isPayingNow ? (
+              <>
+                <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                Redirecting...
+              </>
+            ) : (
+              <>
+                <CreditCard className="mr-1 h-4 w-4" />
+                Resume Payment
+              </>
+            )}
+          </Button>
+        );
+      }
+
+      return (
+        <div className="relative" ref={paymentMenuRef}>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => setPaymentMenuOpen((prev) => !prev)}
+            disabled={isBusy}
+            className="h-9 bg-[#15689E] text-white hover:bg-[#0f4f7a] cursor-pointer"
+          >
+            {isPayingNow || isPayingLater ? (
+              <>
+                <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                Processing...
+              </>
+            ) : (
+              <>
+                <CreditCard className="mr-1 h-4 w-4" />
+                Choose Payment
+                <ChevronDown className="ml-1 h-4 w-4" />
+              </>
+            )}
+          </Button>
+
+          {paymentMenuOpen && !isBusy && (
+            <div className="absolute right-0 top-full z-20 mt-2 w-52 overflow-hidden rounded-md border border-slate-200 bg-white shadow-lg">
+              <button
+                type="button"
+                onClick={handlePayNow}
+                className="flex w-full items-center px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+              >
+                <CreditCard className="mr-2 h-4 w-4" />
+                Pay Now
+              </button>
+
+              <button
+                type="button"
+                onClick={handlePayLater}
+                className="flex w-full items-center px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+              >
+                <Clock3 className="mr-2 h-4 w-4" />
+                Pay Later (Net 30)
+              </button>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (syncFailed) {
+      return (
+        <Button
+          type="button"
+          size="sm"
+          onClick={handleMockShipStationSync}
+          disabled={isFulfilling}
+          className="h-9 bg-red-600 text-white hover:bg-red-700 cursor-pointer"
+        >
+          {isFulfilling ? (
+            <>
+              <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+              Retrying...
+            </>
+          ) : (
+            <>
+              <RefreshCcw className="mr-1 h-4 w-4" />
+              Retry Mock Sync
+            </>
+          )}
+        </Button>
+      );
+    }
+
+    if (syncReady) {
+      return (
+        <Button
+          type="button"
+          size="sm"
+          onClick={handleMockShipStationSync}
+          disabled={isFulfilling}
+          className="h-9 bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer"
+        >
+          {isFulfilling ? (
+            <>
+              <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+              Syncing...
+            </>
+          ) : (
+            <>
+              <Truck className="mr-1 h-4 w-4" />
+              Sync Mock Shipment
+            </>
+          )}
+        </Button>
+      );
+    }
+
+    if (hasMockShipment && order.shipstation_label_url) {
+      return (
+        <Link href={order.shipstation_label_url} target="_blank">
+          <Button
+            type="button"
+            size="sm"
+            className="h-9 bg-violet-600 text-white hover:bg-violet-700 cursor-pointer"
+          >
+            <FileText className="mr-1 h-4 w-4" />
+            View Mock Shipment
+          </Button>
+        </Link>
+      );
+    }
+
+    return (
+      <Button
+        type="button"
+        size="sm"
+        onClick={handleMockShipStationSync}
+        disabled={isFulfilling}
+        className="h-9 bg-violet-600 text-white hover:bg-violet-700 cursor-pointer"
+      >
+        {isFulfilling ? (
+          <>
+            <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+            Loading...
+          </>
+        ) : (
+          <>
+            <Truck className="mr-1 h-4 w-4" />
+            View Mock Shipment
+          </>
+        )}
+      </Button>
+    );
+  }
+
+  function renderPaymentText() {
+    if (order.payment_status === "paid") return "Paid";
+    if (order.payment_status === "invoice_sent") return "Invoice Sent";
+    if (order.payment_status === "overdue") return "Overdue";
+    if (order.payment_status === "payment_failed") return "Payment Failed";
+    if ((order.payment_status as string | null) === "pending") return "Pending";
+    return "Unpaid";
+  }
 
   return (
     <>
@@ -286,29 +532,22 @@ export function OrderCard({ order }: { order: Order }) {
         </div>
 
         <div className="mt-3 flex flex-wrap gap-2">
-          <PaymentBadge paymentStatus={order.payment_status} />
+          <PaymentBadge status={order.payment_status} />
           <FulfillmentBadge label={fulfillmentLabel} delivered={isDelivered} />
-          <ShipStationSyncBadge
-            syncStatus={formatStatus(order.shipstation_sync_status)}
-          />
-          {isNet30 ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-semibold text-indigo-700">
-              <CalendarClock className="h-3.5 w-3.5" />
-              Net 30
-            </span>
-          ) : null}
+          <ShipStationSyncBadge syncStatus={order.shipstation_sync_status} />
+          {/* <DevModeBadge show={isMockCarrier || hasMockShipment} /> */}
         </div>
 
         <div className="mt-4 space-y-2">
           <OrderInfoRow
             icon={Package}
-            text={`Product: ${order.product_name ?? ""}`}
+            text={`Product: ${order.product_name ?? "—"}`}
             primary
           />
 
           <OrderInfoRow
             icon={Building2}
-            text={`Facility: ${order.facility_name ?? ""}`}
+            text={`Facility: ${order.facility_name ?? "—"}`}
           />
 
           {order.created_by_email && (
@@ -338,20 +577,6 @@ export function OrderCard({ order }: { order: Order }) {
               </div>
             </div>
           </div>
-
-          {order.invoice_due_date && isNet30 && (
-            <div className="rounded-xl border border-sky-100 bg-sky-50 px-3 py-2">
-              <p className="text-[11px] font-medium uppercase tracking-wide text-sky-500">
-                Invoice Due Date
-              </p>
-              <div className="mt-1 flex items-center gap-2 text-sky-800">
-                <CalendarClock className="h-4 w-4" />
-                <span className="text-sm font-semibold">
-                  {new Date(order.invoice_due_date).toLocaleDateString()}
-                </span>
-              </div>
-            </div>
-          )}
 
           {order.tracking_number && (
             <div className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2">
@@ -399,124 +624,7 @@ export function OrderCard({ order }: { order: Order }) {
               </span>
             </div>
 
-            {!isPaid && isNet30 ? (
-              order.stripe_invoice_hosted_url ? (
-                <Link href={order.stripe_invoice_hosted_url} target="_blank">
-                  <Button
-                    type="button"
-                    size="sm"
-                    className={`h-9 text-white cursor-pointer ${order.payment_status === "overdue"
-                      ? "bg-orange-600 hover:bg-orange-700"
-                      : "bg-[#15689E] hover:bg-[#0f4f7a]"
-                      }`}
-                  >
-                    <FileText className="mr-1 h-4 w-4" />
-                    View Invoice
-                  </Button>
-                </Link>
-              ) : (
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled
-                  className="h-9 bg-slate-300 text-white cursor-not-allowed"
-                >
-                  <Clock3 className="mr-1 h-4 w-4" />
-                  Invoice Pending
-                </Button>
-              )
-            ) : !isPaid ? (
-              <Button
-                type="button"
-                size="sm"
-                onClick={handlePayNow}
-                disabled={isPaying}
-                className="h-9 bg-[#15689E] text-white hover:bg-[#0f4f7a] cursor-pointer"
-              >
-                {isPaying ? (
-                  <>
-                    <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-                    Redirecting...
-                  </>
-                ) : (
-                  <>
-                    <CreditCard className="mr-1 h-4 w-4" />
-                    Pay Now
-                  </>
-                )}
-              </Button>
-            ) : syncFailed ? (
-              <Button
-                type="button"
-                size="sm"
-                onClick={handleMockShipStationSync}
-                disabled={isFulfilling}
-                className="h-9 bg-red-600 text-white hover:bg-red-700 cursor-pointer"
-              >
-                {isFulfilling ? (
-                  <>
-                    <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-                    Retrying...
-                  </>
-                ) : (
-                  <>
-                    <RefreshCcw className="mr-1 h-4 w-4" />
-                    Retry Mock Sync
-                  </>
-                )}
-              </Button>
-            ) : syncReady ? (
-              <Button
-                type="button"
-                size="sm"
-                onClick={handleMockShipStationSync}
-                disabled={isFulfilling}
-                className="h-9 bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer"
-              >
-                {isFulfilling ? (
-                  <>
-                    <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-                    Syncing...
-                  </>
-                ) : (
-                  <>
-                    <Truck className="mr-1 h-4 w-4" />
-                    Sync Mock Shipment
-                  </>
-                )}
-              </Button>
-            ) : hasMockShipment && order.shipstation_label_url ? (
-              <Link href={order.shipstation_label_url} target="_blank">
-                <Button
-                  type="button"
-                  size="sm"
-                  className="h-9 bg-violet-600 text-white hover:bg-violet-700 cursor-pointer"
-                >
-                  <FileText className="mr-1 h-4 w-4" />
-                  View Mock Shipment
-                </Button>
-              </Link>
-            ) : (
-              <Button
-                type="button"
-                size="sm"
-                onClick={handleMockShipStationSync}
-                disabled={isFulfilling}
-                className="h-9 bg-violet-600 text-white hover:bg-violet-700 cursor-pointer"
-              >
-                {isFulfilling ? (
-                  <>
-                    <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-                    Loading...
-                  </>
-                ) : (
-                  <>
-                    <Truck className="mr-1 h-4 w-4" />
-                    View Mock Shipment
-                  </>
-                )}
-              </Button>
-            )}
+            {renderPrimaryAction()}
           </div>
         </div>
 
@@ -524,7 +632,7 @@ export function OrderCard({ order }: { order: Order }) {
           <span className="text-slate-500">
             Payment:{" "}
             <span className="font-semibold text-slate-700">
-              {paymentModeLabel} • {order.payment_status ?? "unpaid"}
+              {renderPaymentText()}
             </span>
           </span>
 

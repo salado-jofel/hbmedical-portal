@@ -1,3 +1,6 @@
+"use server";
+
+import "server-only";
 import type Stripe from "stripe";
 
 import { stripe } from "@/utils/stripe/server";
@@ -46,13 +49,13 @@ function parseAmountToCents(value: number | string): number {
     typeof value === "number" ? value : Number.parseFloat(String(value));
 
   if (!Number.isFinite(numericValue) || numericValue <= 0) {
-    throw new Error(`Invalid Net30 invoice amount: ${value}`);
+    throw new Error(`Invalid Net 30 invoice amount: ${value}`);
   }
 
   const amountCents = Math.round(numericValue * 100);
 
   if (!Number.isFinite(amountCents) || amountCents <= 0) {
-    throw new Error(`Invalid Net30 invoice amount in cents: ${amountCents}`);
+    throw new Error(`Invalid Net 30 invoice amount in cents: ${amountCents}`);
   }
 
   return amountCents;
@@ -281,17 +284,15 @@ export async function createStripeNet30Invoice(
 ): Promise<CreateStripeNet30InvoiceResult> {
   const order = await getNet30Order(orderId);
 
-  if (order.payment_mode !== "net_30") {
+  if (order.payment_mode && order.payment_mode !== "net_30") {
     throw new Error(
-      `[createStripeNet30Invoice] Order ${order.order_id} is not a net_30 order.`,
+      `[createStripeNet30Invoice] Order ${order.order_id} is already assigned to ${order.payment_mode}.`,
     );
   }
 
   const amountCents = parseAmountToCents(order.amount);
   const stripeCustomerId = await ensureStripeCustomerForOrder(order);
 
-  // If an invoice already exists, retrieve and re-persist its latest state
-  // instead of creating a duplicate invoice.
   if (order.stripe_invoice_id) {
     const existingInvoice = await stripe.invoices.retrieve(
       order.stripe_invoice_id,
@@ -303,10 +304,22 @@ export async function createStripeNet30Invoice(
     );
   }
 
+  const supabaseAdmin = createAdminClient();
+
+  await supabaseAdmin
+    .from("orders")
+    .update({
+      payment_provider: "stripe",
+      payment_mode: "net_30",
+      payment_status: "unpaid",
+      stripe_customer_id: stripeCustomerId,
+    })
+    .eq("id", order.id);
+
   const stripeMetadata = {
     order_db_id: order.id,
     order_number: order.order_id,
-    order_id: order.order_id, // backward compatibility for legacy webhook logic
+    order_id: order.order_id,
     facility_id: order.facility_id,
     product_id: order.product_id,
     payment_mode: "net_30",

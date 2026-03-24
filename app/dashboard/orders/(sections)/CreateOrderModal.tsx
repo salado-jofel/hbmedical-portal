@@ -16,8 +16,6 @@ import {
   Package,
   DollarSign,
   Layers,
-  CreditCard,
-  CalendarClock,
 } from "lucide-react";
 import {
   addOrder,
@@ -28,7 +26,6 @@ import { useAppDispatch } from "@/store/hooks";
 import { addOrderToStore } from "../(redux)/orders-slice";
 import type { Facility } from "@/app/(interfaces)/facility";
 import type { Product } from "@/app/(interfaces)/product";
-import type { PaymentMode } from "@/app/(interfaces)/payment";
 import SubmitButton from "@/app/(components)/SubmitButton";
 import toast from "react-hot-toast";
 
@@ -42,7 +39,6 @@ export function CreateOrderModal() {
   const [productId, setProductId] = useState("");
   const [orderId, setOrderId] = useState("");
   const [quantity, setQuantity] = useState(1);
-  const [paymentMode, setPaymentMode] = useState<PaymentMode>("pay_now");
   const [isPending, setIsPending] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -92,14 +88,12 @@ export function CreateOrderModal() {
     !!facility &&
     !isLoadingData &&
     !!selectedProduct &&
-    quantity >= 1 &&
-    !!paymentMode;
+    quantity >= 1;
 
   function resetForm() {
     setFacilityId(facility?.id ?? "");
     setProductId("");
     setQuantity(1);
-    setPaymentMode("pay_now");
     setError(null);
   }
 
@@ -117,16 +111,13 @@ export function CreateOrderModal() {
     formData.set("product_id", productId);
     formData.set("quantity", String(quantity));
     formData.set("amount", String(totalAmount));
-    formData.set("payment_mode", paymentMode);
 
     try {
       const createdOrder = await addOrder(formData);
       dispatch(addOrderToStore(createdOrder));
 
       toast.success(
-        paymentMode === "net_30"
-          ? "Order created with Net 30 billing."
-          : "Order created successfully!",
+        "Order created successfully. Choose a payment option from the order card.",
       );
 
       resetForm();
@@ -243,57 +234,6 @@ export function CreateOrderModal() {
                 </option>
               ))}
             </select>
-          </div>
-
-          <div className="space-y-2">
-            <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-              {paymentMode === "pay_now" ? (
-                <CreditCard className="w-4 h-4 text-[#15689E]" />
-              ) : (
-                <CalendarClock className="w-4 h-4 text-[#15689E]" />
-              )}
-              Billing Terms
-            </label>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setPaymentMode("pay_now")}
-                disabled={isPending}
-                className={`rounded-xl border px-3 py-3 text-left transition ${paymentMode === "pay_now"
-                  ? "border-[#15689E] bg-[#15689E]/5 ring-1 ring-[#15689E]/20"
-                  : "border-slate-200 bg-white hover:border-slate-300"
-                  }`}
-              >
-                <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
-                  <CreditCard className="w-4 h-4 text-[#15689E]" />
-                  Pay Now
-                </div>
-                <p className="mt-1 text-xs text-slate-500">
-                  Customer pays by card through Stripe checkout.
-                </p>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setPaymentMode("net_30")}
-                disabled={isPending}
-                className={`rounded-xl border px-3 py-3 text-left transition ${paymentMode === "net_30"
-                  ? "border-[#15689E] bg-[#15689E]/5 ring-1 ring-[#15689E]/20"
-                  : "border-slate-200 bg-white hover:border-slate-300"
-                  }`}
-              >
-                <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
-                  <CalendarClock className="w-4 h-4 text-[#15689E]" />
-                  Pay Later (Net 30)
-                </div>
-                <p className="mt-1 text-xs text-slate-500">
-                  Marks the order for invoice-based billing terms.
-                </p>
-              </button>
-            </div>
-
-            <input type="hidden" name="payment_mode" value={paymentMode} />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
