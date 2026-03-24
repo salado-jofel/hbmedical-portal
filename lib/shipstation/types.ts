@@ -1,5 +1,14 @@
 export type ShipStationMode = "mock" | "production";
 
+export type ShipStationPaymentMode = "pay_now" | "net_30";
+
+export type ShipStationPaymentStatus =
+  | "unpaid"
+  | "invoice_sent"
+  | "paid"
+  | "overdue"
+  | "payment_failed";
+
 export type ShipStationOrderInput = {
   localOrderId: string;
   orderNumber: string;
@@ -8,13 +17,20 @@ export type ShipStationOrderInput = {
   quantity: number;
   facilityId: string;
   facilityName: string;
+  facilityContact?: string | null;
+  facilityLocation?: string | null;
   recipientPhone?: string | null;
+  receiptEmail?: string | null;
   productName: string;
+  paymentMode?: ShipStationPaymentMode | null;
+  paymentStatus?: ShipStationPaymentStatus | null;
+  existingShipStationOrderKey?: string | null;
+  existingShipStationOrderId?: string | null;
 };
 
 export type ShipStationOrderResult = {
   externalOrderId: string;
-  orderKey: string;
+  orderKey: string | null;
   status: string;
 };
 

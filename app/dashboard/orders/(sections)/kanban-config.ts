@@ -46,6 +46,22 @@ export function getFulfillmentLabel(order: Order): string {
     return "Awaiting payment";
   }
 
+  if (order.shipstation_sync_status === "failed") {
+    return "ShipStation sync failed";
+  }
+
+  if (order.shipstation_sync_status === "syncing") {
+    return "Syncing to ShipStation";
+  }
+
+  if (order.shipstation_sync_status === "sent") {
+    return "Synced to ShipStation";
+  }
+
+  if (order.shipstation_sync_status === "ready") {
+    return "Ready for ShipStation sync";
+  }
+
   switch (order.status) {
     case "Delivered":
       return "Delivered";
@@ -62,6 +78,6 @@ export function getFulfillmentLabel(order: Order): string {
     default:
       return order.payment_mode === "net_30"
         ? "Ready for fulfillment"
-        : "Awaiting ShipStation";
+        : "Ready for ShipStation sync";
   }
 }
