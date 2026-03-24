@@ -44,8 +44,8 @@ export interface Order {
   invoice_due_date?: string | null;
   invoice_sent_at?: string | null;
   invoice_paid_at?: string | null;
-  invoice_amount_due?: number | null; // UI-facing dollars
-  invoice_amount_remaining?: number | null; // UI-facing dollars
+  invoice_amount_due?: number | null;
+  invoice_amount_remaining?: number | null;
   invoice_overdue_at?: string | null;
 
   tracking_number?: string | null;

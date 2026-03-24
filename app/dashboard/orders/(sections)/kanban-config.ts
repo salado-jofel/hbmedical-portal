@@ -29,6 +29,7 @@ function isFulfillmentEligible(order: Order): boolean {
 // For net_30 => can move through fulfillment without requiring payment first
 export function mapOrderToBoardStatus(order: Order): BoardStatus {
   const isDelivered = order.status === "Delivered";
+
   return isDelivered && isFulfillmentEligible(order)
     ? "Delivered"
     : "New Orders";

@@ -3,24 +3,18 @@ export type PaymentProvider = "stripe" | "legacy_qb";
 export type PaymentMode = "pay_now" | "net_30";
 
 /**
- * These are the payment statuses that match the current DB constraint on orders.payment_status.
+ * Canonical payment statuses that match the current orders.payment_status values
+ * used by the Stripe + Net30 flow.
  */
 export type PersistedPaymentStatus =
+  | "paid"
   | "unpaid"
   | "invoice_sent"
-  | "paid"
   | "overdue"
   | "payment_failed";
 
 /**
- * Transitional legacy statuses still referenced by older UI/webhook code.
- * We keep them here temporarily so the app can be migrated in stages without
- * breaking TypeScript immediately. New writes should use PersistedPaymentStatus only.
+ * Shared UI/app payment status type.
+ * Null is allowed for transitional or unset records.
  */
-export type LegacyPaymentStatus =
-  | "pending"
-  | "failed"
-  | "canceled"
-  | "refunded";
-
-export type PaymentStatus = PersistedPaymentStatus | LegacyPaymentStatus | null;
+export type PaymentStatus = PersistedPaymentStatus | null;
