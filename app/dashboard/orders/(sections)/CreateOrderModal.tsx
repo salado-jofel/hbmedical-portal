@@ -24,7 +24,6 @@ import {
 } from "../(services)/actions";
 import { useAppDispatch } from "@/store/hooks";
 import { addOrderToStore } from "../(redux)/orders-slice";
-import type { Order } from "@/app/(interfaces)/order";
 import type { Facility } from "@/app/(interfaces)/facility";
 import type { Product } from "@/app/(interfaces)/product";
 import SubmitButton from "@/app/(components)/SubmitButton";
@@ -32,6 +31,7 @@ import toast from "react-hot-toast";
 
 export function CreateOrderModal() {
   const dispatch = useAppDispatch();
+
   const [open, setOpen] = useState(false);
   const [facility, setFacility] = useState<Facility | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
@@ -44,10 +44,14 @@ export function CreateOrderModal() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!open) setError(null);
+    if (!open) {
+      setError(null);
+    }
   }, [open]);
 
   useEffect(() => {
+    if (!open) return;
+
     const pad = (n: number) => String(n).padStart(3, "0");
     setOrderId(`ORD-${pad(Math.floor(Math.random() * 999) + 1)}`);
   }, [open]);
@@ -58,39 +62,45 @@ export function CreateOrderModal() {
     async function fetchData() {
       setIsLoadingData(true);
 
-      const [fetchedFacility, fetchedProducts] = await Promise.all([
-        getUserFacility(),
-        getAllProducts(),
-      ]);
+      try {
+        const [fetchedFacility, fetchedProducts] = await Promise.all([
+          getUserFacility(),
+          getAllProducts(),
+        ]);
 
-      setFacility(fetchedFacility);
-      setFacilityId(fetchedFacility?.id ?? "");
-      setProducts(fetchedProducts);
-      setIsLoadingData(false);
+        setFacility(fetchedFacility);
+        setFacilityId(fetchedFacility?.id ?? "");
+        setProducts(fetchedProducts);
+      } finally {
+        setIsLoadingData(false);
+      }
     }
 
     fetchData();
   }, [open]);
 
   const selectedProduct = products.find((p) => p.id === productId);
-  const unitPrice = selectedProduct?.price ?? 0;
+  const unitPrice = Number(selectedProduct?.price ?? 0);
   const totalAmount = unitPrice * quantity;
 
   const isFormValid =
     orderId.trim() !== "" &&
     !!facility &&
     !isLoadingData &&
-    !!selectedProduct;
+    !!selectedProduct &&
+    quantity >= 1;
 
   function resetForm() {
     setFacilityId(facility?.id ?? "");
     setProductId("");
     setQuantity(1);
+    setError(null);
   }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!facility) return;
+
+    if (!facility || !selectedProduct) return;
 
     setIsPending(true);
     setError(null);
@@ -99,26 +109,17 @@ export function CreateOrderModal() {
     formData.set("order_id", orderId);
     formData.set("facility_id", facilityId);
     formData.set("product_id", productId);
+    formData.set("quantity", String(quantity));
     formData.set("amount", String(totalAmount));
 
-    const optimistic: Order = {
-      id: crypto.randomUUID(),
-      created_at: new Date().toISOString(),
-      order_id: orderId,
-      facility_id: facilityId,
-      product_id: productId,
-      amount: totalAmount,
-      quantity,
-      status: "Processing", // stays a backend/internal status
-      facility_name: facility?.name ?? "—",
-      product_name: selectedProduct?.name ?? "—",
-      payment_status: "pending",
-    };
-
     try {
-      await addOrder(formData);
-      dispatch(addOrderToStore(optimistic));
-      toast.success("Order created successfully!");
+      const createdOrder = await addOrder(formData);
+      dispatch(addOrderToStore(createdOrder));
+
+      toast.success(
+        "Order created successfully. Choose a payment option from the order card.",
+      );
+
       resetForm();
       setOpen(false);
     } catch (err) {
@@ -135,8 +136,8 @@ export function CreateOrderModal() {
   return (
     <Dialog
       open={open}
-      onOpenChange={(val) => {
-        if (!isPending) setOpen(val);
+      onOpenChange={(value) => {
+        if (!isPending) setOpen(value);
       }}
     >
       <DialogTrigger asChild>
@@ -248,7 +249,7 @@ export function CreateOrderModal() {
                 step="1"
                 value={quantity}
                 onChange={(e) =>
-                  setQuantity(Math.max(1, parseInt(e.target.value) || 1))
+                  setQuantity(Math.max(1, parseInt(e.target.value, 10) || 1))
                 }
                 disabled={isPending || !selectedProduct}
                 required
@@ -262,7 +263,7 @@ export function CreateOrderModal() {
               </label>
               <div className="flex items-center w-full border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 min-h-[38px]">
                 <span className="text-sm text-slate-500">
-                  {selectedProduct ? `$${Number(unitPrice).toFixed(2)}` : "—"}
+                  {selectedProduct ? `$${unitPrice.toFixed(2)}` : "—"}
                 </span>
               </div>
             </div>
@@ -280,9 +281,10 @@ export function CreateOrderModal() {
               >
                 {totalAmount > 0 ? `$${totalAmount.toFixed(2)}` : "—"}
               </span>
+
               {selectedProduct && quantity > 1 && (
                 <span className="text-xs text-slate-400 ml-2">
-                  ${Number(unitPrice).toFixed(2)} × {quantity}
+                  ${unitPrice.toFixed(2)} × {quantity}
                 </span>
               )}
             </div>

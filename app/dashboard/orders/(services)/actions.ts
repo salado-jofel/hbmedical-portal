@@ -1,5 +1,7 @@
 "use server";
 
+import "server-only";
+
 import { revalidatePath } from "next/cache";
 import { getSupabaseClient, dbSelect } from "@/utils/supabase/db";
 import { stripe } from "@/utils/stripe/server";
@@ -7,9 +9,11 @@ import type { Order } from "@/app/(interfaces)/order";
 import type { Facility } from "@/app/(interfaces)/facility";
 import type { Product } from "@/app/(interfaces)/product";
 import { requireUser } from "@/utils/auth-guard";
-import { getShipStationClient } from "@/lib/shipstation/server";
+import { createStripeNet30Invoice as createStripeNet30InvoiceService } from "./create-stripe-net30-invoice";
+import { syncPaidOrderToShipStation } from "@/lib/actions/shipstation";
 
 const ORDER_TABLE = "orders";
+const ORDERS_PATH = "/dashboard/orders";
 
 const ORDER_COLUMNS = `
   id,
@@ -20,27 +24,37 @@ const ORDER_COLUMNS = `
   amount,
   quantity,
   status,
+  user_id,
   payment_provider,
+  payment_mode,
   payment_status,
   stripe_checkout_session_id,
   stripe_payment_intent_id,
   stripe_invoice_id,
   stripe_checkout_url,
   stripe_customer_id,
+  stripe_invoice_number,
+  stripe_invoice_status,
+  stripe_invoice_hosted_url,
+  receipt_email,
+  stripe_receipt_url,
   paid_at,
+  invoice_due_date,
+  invoice_sent_at,
+  invoice_paid_at,
+  invoice_amount_due,
+  invoice_amount_remaining,
   tracking_number,
   carrier_code,
+  shipstation_sync_status,
   shipstation_order_id,
   shipstation_shipment_id,
   shipstation_status,
-  shipstation_sync_status,
   shipstation_label_url,
   shipped_at,
   facilities(name, stripe_customer_id, phone),
   products(name, price)
 `;
-
-const ORDERS_PATH = "/dashboard/orders";
 
 type RawOrder = {
   id: string;
@@ -51,37 +65,87 @@ type RawOrder = {
   amount: number | string;
   quantity: number;
   status: string;
-  payment_provider: "stripe" | "legacy_qb" | null;
-  payment_status:
-    | "unpaid"
-    | "pending"
+  user_id?: string | null;
+
+  payment_provider?: "stripe" | null;
+  payment_mode?: "pay_now" | "net_30" | null;
+  payment_status?:
     | "paid"
-    | "failed"
-    | "canceled"
-    | "refunded"
+    | "unpaid"
+    | "invoice_sent"
+    | "overdue"
+    | "payment_failed"
+    | null;
+
+  stripe_checkout_session_id?: string | null;
+  stripe_payment_intent_id?: string | null;
+  stripe_invoice_id?: string | null;
+  stripe_checkout_url?: string | null;
+  stripe_customer_id?: string | null;
+
+  stripe_invoice_number?: string | null;
+  stripe_invoice_status?: string | null;
+  stripe_invoice_hosted_url?: string | null;
+
+  receipt_email?: string | null;
+  stripe_receipt_url?: string | null;
+
+  paid_at?: string | null;
+  invoice_due_date?: string | null;
+  invoice_sent_at?: string | null;
+  invoice_paid_at?: string | null;
+  invoice_amount_due?: number | null;
+  invoice_amount_remaining?: number | null;
+
+  tracking_number?: string | null;
+  carrier_code?: string | null;
+  shipstation_sync_status?: string | null;
+  shipstation_order_id?: string | null;
+  shipstation_shipment_id?: string | null;
+  shipstation_status?: string | null;
+  shipstation_label_url?: string | null;
+  shipped_at?: string | null;
+
+  facilities?: {
+    name?: string | null;
+    stripe_customer_id?: string | null;
+    phone?: string | null;
+  } | null;
+
+  products?: {
+    name?: string | null;
+    price?: number | string | null;
+  } | null;
+};
+
+type RawCheckoutOrder = {
+  id: string;
+  order_id: string;
+  facility_id: string;
+  product_id: string;
+  amount: number | string;
+  quantity: number;
+  payment_mode: "pay_now" | "net_30" | null;
+  payment_status:
+    | "paid"
+    | "unpaid"
+    | "invoice_sent"
+    | "overdue"
+    | "payment_failed"
     | null;
   stripe_checkout_session_id: string | null;
-  stripe_payment_intent_id: string | null;
-  stripe_invoice_id: string | null;
   stripe_checkout_url: string | null;
-  stripe_customer_id: string | null;
-  paid_at: string | null;
-  tracking_number: string | null;
-  shipstation_sync_status: string | null;
-  carrier_code: string | null;
-  shipstation_order_id: string | null;
-  shipstation_shipment_id: string | null;
-  shipstation_status: string | null;
-  shipstation_label_url: string | null;
-  shipped_at: string | null;
+  stripe_invoice_id: string | null;
   facilities: {
-    name: string;
-    stripe_customer_id: string | null;
-    phone: string | null;
+    id?: string;
+    name?: string | null;
+    stripe_customer_id?: string | null;
+    phone?: string | null;
   } | null;
   products: {
-    name: string;
-    price: number | string;
+    id?: string;
+    name?: string | null;
+    price?: number | string | null;
   } | null;
 };
 
@@ -92,27 +156,44 @@ function flattenOrder(row: RawOrder): Order {
     order_id: row.order_id,
     facility_id: row.facility_id,
     product_id: row.product_id,
-    amount: Number(row.amount),
-    quantity: row.quantity,
+    amount: Number(row.amount ?? 0),
+    quantity: row.quantity ?? 1,
     status: row.status as Order["status"],
     facility_name: row.facilities?.name ?? "—",
     product_name: row.products?.name ?? "—",
+
     payment_provider: row.payment_provider ?? "stripe",
+    payment_mode: row.payment_mode ?? null,
     payment_status: row.payment_status ?? "unpaid",
-    stripe_checkout_session_id: row.stripe_checkout_session_id,
-    stripe_payment_intent_id: row.stripe_payment_intent_id,
-    stripe_invoice_id: row.stripe_invoice_id,
-    stripe_checkout_url: row.stripe_checkout_url,
-    stripe_customer_id: row.stripe_customer_id,
-    paid_at: row.paid_at,
-    shipstation_sync_status: row.shipstation_sync_status,
-    tracking_number: row.tracking_number,
-    carrier_code: row.carrier_code,
-    shipstation_order_id: row.shipstation_order_id,
-    shipstation_shipment_id: row.shipstation_shipment_id,
-    shipstation_status: row.shipstation_status,
-    shipstation_label_url: row.shipstation_label_url,
-    shipped_at: row.shipped_at,
+
+    stripe_checkout_session_id: row.stripe_checkout_session_id ?? null,
+    stripe_payment_intent_id: row.stripe_payment_intent_id ?? null,
+    stripe_invoice_id: row.stripe_invoice_id ?? null,
+    stripe_checkout_url: row.stripe_checkout_url ?? null,
+    stripe_customer_id: row.stripe_customer_id ?? null,
+
+    stripe_invoice_number: row.stripe_invoice_number ?? null,
+    stripe_invoice_status: row.stripe_invoice_status ?? null,
+    stripe_invoice_hosted_url: row.stripe_invoice_hosted_url ?? null,
+
+    receipt_email: row.receipt_email ?? null,
+    stripe_receipt_url: row.stripe_receipt_url ?? null,
+
+    paid_at: row.paid_at ?? null,
+    invoice_due_date: row.invoice_due_date ?? null,
+    invoice_sent_at: row.invoice_sent_at ?? null,
+    invoice_paid_at: row.invoice_paid_at ?? null,
+    invoice_amount_due: row.invoice_amount_due ?? null,
+    invoice_amount_remaining: row.invoice_amount_remaining ?? null,
+
+    tracking_number: row.tracking_number ?? null,
+    carrier_code: row.carrier_code ?? null,
+    shipstation_sync_status: row.shipstation_sync_status ?? null,
+    shipstation_order_id: row.shipstation_order_id ?? null,
+    shipstation_shipment_id: row.shipstation_shipment_id ?? null,
+    shipstation_status: row.shipstation_status ?? null,
+    shipstation_label_url: row.shipstation_label_url ?? null,
+    shipped_at: row.shipped_at ?? null,
   };
 }
 
@@ -130,7 +211,7 @@ async function getCurrentUserFacilityIds(
     return [];
   }
 
-  return (data ?? []).map((f) => f.id);
+  return (data ?? []).map((row) => row.id);
 }
 
 function toCents(amount: number) {
@@ -189,13 +270,17 @@ export async function addOrder(formData: FormData): Promise<Order> {
 
   if (authError || !user) throw new Error("Not authenticated.");
 
-  const order_id = formData.get("order_id") as string;
-  const facility_id = formData.get("facility_id") as string;
-  const product_id = formData.get("product_id") as string;
+  const order_id = String(formData.get("order_id") ?? "").trim();
+  const facility_id = String(formData.get("facility_id") ?? "").trim();
+  const product_id = String(formData.get("product_id") ?? "").trim();
   const quantity = Math.max(
     1,
     parseInt(String(formData.get("quantity") ?? "1"), 10) || 1,
   );
+
+  if (!order_id) throw new Error("Order number is required.");
+  if (!facility_id) throw new Error("Facility is required.");
+  if (!product_id) throw new Error("Product is required.");
 
   const facilityIds = await getCurrentUserFacilityIds(supabase, user.id);
 
@@ -227,9 +312,18 @@ export async function addOrder(formData: FormData): Promise<Order> {
       amount,
       quantity,
       status: "Processing",
-      payment_provider: "stripe",
-      payment_status: "unpaid",
       user_id: user.id,
+
+      payment_provider: "stripe",
+      payment_mode: null,
+      payment_status: "unpaid",
+
+      stripe_checkout_session_id: null,
+      stripe_payment_intent_id: null,
+      stripe_invoice_id: null,
+      stripe_checkout_url: null,
+      paid_at: null,
+      receipt_email: user.email ?? null,
     })
     .select("id")
     .single();
@@ -321,54 +415,6 @@ export async function ensureStripeCustomerForFacility(
 
 // ── CREATE CHECKOUT SESSION ───────────────────────────────────────────────────
 
-type RawCheckoutOrder = {
-  id: string;
-  order_id: string;
-  facility_id: string;
-  product_id: string;
-  amount: number | string;
-  quantity: number;
-  payment_status: string | null;
-  facilities: {
-    id?: string;
-    name: string;
-    stripe_customer_id: string | null;
-    phone: string | null;
-  } | null;
-  products: {
-    id?: string;
-    name: string;
-    price: number | string;
-  } | null;
-};
-
-type RawShipStationOrder = {
-  id: string;
-  created_at: string;
-  order_id: string;
-  facility_id: string;
-  product_id: string;
-  amount: number | string;
-  quantity: number;
-  payment_status: string | null;
-  status: string;
-  tracking_number: string | null;
-  shipstation_sync_status: string | null;
-  carrier_code: string | null;
-  shipstation_order_id: string | null;
-  shipstation_shipment_id: string | null;
-  shipstation_status: string | null;
-  shipstation_label_url: string | null;
-  facilities: {
-    name: string;
-    phone: string | null;
-  } | null;
-  products: {
-    name: string;
-    price: number | string;
-  } | null;
-};
-
 export async function createStripeCheckoutSession(
   orderId: string,
 ): Promise<string> {
@@ -381,12 +427,10 @@ export async function createStripeCheckoutSession(
     error: authError,
   } = await supabase.auth.getUser();
 
-  if (authError || !user || !user.email) {
-    throw new Error("Not authenticated.");
-  }
+  if (authError || !user) throw new Error("Not authenticated.");
 
   const { data: rawOrder, error: orderError } = await supabase
-    .from("orders")
+    .from(ORDER_TABLE)
     .select(
       `
       id,
@@ -395,7 +439,11 @@ export async function createStripeCheckoutSession(
       product_id,
       amount,
       quantity,
+      payment_mode,
       payment_status,
+      stripe_checkout_session_id,
+      stripe_checkout_url,
+      stripe_invoice_id,
       facilities(id, name, stripe_customer_id, phone),
       products(id, name, price)
     `,
@@ -419,19 +467,23 @@ export async function createStripeCheckoutSession(
     throw new Error("This order has already been paid.");
   }
 
+  if (order.payment_mode === "net_30" && order.stripe_invoice_id) {
+    throw new Error(
+      "This order already has a Net 30 invoice. Use the invoice link instead.",
+    );
+  }
+
+  if (
+    order.payment_mode === "pay_now" &&
+    order.stripe_checkout_url &&
+    order.stripe_checkout_session_id
+  ) {
+    return order.stripe_checkout_url;
+  }
+
   const stripeCustomerId = await ensureStripeCustomerForFacility(
     order.facility_id,
   );
-
-  // Keep Stripe customer email in sync with logged-in user email
-  await stripe.customers.update(stripeCustomerId, {
-    email: user.email,
-    phone: order.facilities?.phone ?? undefined,
-    metadata: {
-      facility_id: order.facility_id,
-      user_id: user.id,
-    },
-  });
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL;
   if (!appUrl) {
@@ -458,6 +510,8 @@ export async function createStripeCheckoutSession(
             description: `Order ${order.order_id} • Qty ${order.quantity}`,
             metadata: {
               order_id: order.id,
+              order_db_id: order.id,
+              order_number: order.order_id,
               product_id: order.product_id,
               facility_id: order.facility_id,
             },
@@ -467,11 +521,12 @@ export async function createStripeCheckoutSession(
     ],
     metadata: {
       order_id: order.id,
-      order_doc_number: order.order_id,
+      order_db_id: order.id,
+      order_number: order.order_id,
       facility_id: order.facility_id,
       product_id: order.product_id,
       user_id: user.id,
-      user_email: user.email,
+      payment_mode: "pay_now",
     },
   });
 
@@ -480,14 +535,14 @@ export async function createStripeCheckoutSession(
   }
 
   const { error: updateError } = await supabase
-    .from("orders")
+    .from(ORDER_TABLE)
     .update({
       payment_provider: "stripe",
-      payment_status: "pending",
+      payment_mode: "pay_now",
+      payment_status: "unpaid",
       stripe_checkout_session_id: session.id,
       stripe_checkout_url: session.url,
       stripe_customer_id: stripeCustomerId,
-      receipt_email: user.email,
     })
     .eq("id", order.id);
 
@@ -503,15 +558,11 @@ export async function createStripeCheckoutSession(
   return session.url;
 }
 
-// ── SHIPSTATION MOCK / DEV INTEGRATION ───────────────────────────────────────
+// ── NET 30 WRAPPER ────────────────────────────────────────────────────────────
 
-export async function shipOrderWithShipStation(orderId: string): Promise<{
-  trackingNumber: string;
-  carrierCode: string;
-  labelUrl: string | null;
-  status: string;
-  alreadyShipped: boolean;
-}> {
+export async function createStripeNet30Invoice(
+  orderId: string,
+): Promise<Order> {
   await requireUser();
 
   const supabase = await getSupabaseClient();
@@ -523,115 +574,181 @@ export async function shipOrderWithShipStation(orderId: string): Promise<{
 
   if (authError || !user) throw new Error("Not authenticated.");
 
-  const { data: rawOrder, error: fetchErr } = await supabase
+  await createStripeNet30InvoiceService(orderId);
+
+  let { data: rawOrder, error: orderError } = await supabase
+    .from(ORDER_TABLE)
+    .select(ORDER_COLUMNS)
+    .eq("id", orderId)
+    .single();
+
+  if (orderError || !rawOrder) {
+    console.error(
+      "[createStripeNet30Invoice] Fetch updated order error:",
+      orderError?.message,
+    );
+    throw new Error(
+      "Invoice created but updated order could not be retrieved.",
+    );
+  }
+
+  const order = rawOrder as unknown as RawOrder;
+
+  const facilityIds = await getCurrentUserFacilityIds(supabase, user.id);
+
+  if (!facilityIds.includes(order.facility_id)) {
+    throw new Error("You do not have permission to access this order.");
+  }
+
+  if (
+    order.payment_mode === "net_30" &&
+    order.stripe_invoice_id &&
+    !order.shipstation_shipment_id
+  ) {
+    try {
+      await syncPaidOrderToShipStation(order.id);
+    } catch (shipstationError) {
+      console.error(
+        "[createStripeNet30Invoice] ShipStation sync failed:",
+        shipstationError,
+      );
+
+      await supabase
+        .from(ORDER_TABLE)
+        .update({
+          shipstation_sync_status: "failed",
+        })
+        .eq("id", order.id);
+    }
+
+    const refetch = await supabase
+      .from(ORDER_TABLE)
+      .select(ORDER_COLUMNS)
+      .eq("id", orderId)
+      .single();
+
+    rawOrder = refetch.data ?? rawOrder;
+    orderError = refetch.error ?? null;
+
+    if (orderError || !rawOrder) {
+      console.error(
+        "[createStripeNet30Invoice] Refetch after ShipStation sync failed:",
+        orderError?.message,
+      );
+      throw new Error(
+        "Invoice created, but final order state could not be retrieved.",
+      );
+    }
+  }
+
+  revalidatePath(ORDERS_PATH);
+  return flattenOrder(rawOrder as unknown as RawOrder);
+}
+
+export type ShipOrderWithShipStationResult = {
+  alreadyShipped: boolean;
+  carrierCode: string;
+  trackingNumber: string;
+};
+
+export async function shipOrderWithShipStation(
+  orderId: string,
+): Promise<ShipOrderWithShipStationResult> {
+  await requireUser();
+
+  const supabase = await getSupabaseClient();
+
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) throw new Error("Not authenticated.");
+
+  const { data: current, error: fetchErr } = await supabase
     .from(ORDER_TABLE)
     .select(
       `
       id,
-      created_at,
       order_id,
       facility_id,
-      product_id,
-      amount,
-      quantity,
+      payment_mode,
       payment_status,
-      status,
+      stripe_invoice_id,
       tracking_number,
       carrier_code,
+      shipstation_sync_status,
       shipstation_order_id,
       shipstation_shipment_id,
       shipstation_status,
-      shipstation_sync_status,
       shipstation_label_url,
-      facilities(name, phone),
-      products(name, price)
+      shipped_at
     `,
     )
     .eq("id", orderId)
     .single();
 
-  if (fetchErr || !rawOrder) {
+  if (fetchErr || !current) {
     throw new Error("Order not found.");
   }
 
-  const order = rawOrder as unknown as RawShipStationOrder;
-
   const facilityIds = await getCurrentUserFacilityIds(supabase, user.id);
 
-  if (!facilityIds.includes(order.facility_id)) {
-    throw new Error("You do not have permission to update this order.");
+  if (!facilityIds.includes(current.facility_id)) {
+    throw new Error("You do not have permission to access this order.");
   }
 
-  if (order.payment_status !== "paid") {
-    throw new Error("Only paid orders can be fulfilled.");
+  const canShip =
+    current.payment_status === "paid" ||
+    (current.payment_mode === "net_30" && !!current.stripe_invoice_id);
+
+  if (!canShip) {
+    throw new Error(
+      "Only paid orders or Net 30 invoiced orders can be synced to ShipStation.",
+    );
   }
 
-  if (
-    order.shipstation_shipment_id &&
-    order.tracking_number &&
-    order.carrier_code
-  ) {
+  if (current.shipstation_shipment_id && current.tracking_number) {
     return {
-      trackingNumber: order.tracking_number,
-      carrierCode: order.carrier_code,
-      labelUrl: order.shipstation_label_url,
-      status: order.shipstation_status ?? "label_purchased_mock",
       alreadyShipped: true,
+      carrierCode: current.carrier_code ?? "mock-ups",
+      trackingNumber: current.tracking_number,
     };
   }
 
-  const shipstation = getShipStationClient();
-
-  const syncedOrder = await shipstation.syncOrder({
-    localOrderId: order.id,
-    orderNumber: order.order_id,
-    createdAt: order.created_at,
-    amount: Number(order.amount),
-    quantity: Number(order.quantity),
-    facilityId: order.facility_id,
-    facilityName: order.facilities?.name ?? "Unknown Facility",
-    recipientPhone: order.facilities?.phone ?? null,
-    productName: order.products?.name ?? `Order ${order.order_id}`,
-  });
-
-  const label = await shipstation.purchaseLabel({
-    localOrderId: order.id,
-    orderNumber: order.order_id,
-    amount: Number(order.amount),
-    quantity: Number(order.quantity),
-    facilityId: order.facility_id,
-    facilityName: order.facilities?.name ?? "Unknown Facility",
-    productName: order.products?.name ?? `Order ${order.order_id}`,
-  });
+  const trackingNumber = `MOCK-${current.order_id}-${Date.now().toString().slice(-6)}`;
+  const carrierCode = "mock-ups";
+  const shippedAt = new Date().toISOString();
+  const mockShipmentId = `mock-shipment-${current.id}`;
+  const mockOrderId = `mock-order-${current.id}`;
+  const mockLabelUrl = `https://example.com/mock-label/${current.order_id}`;
 
   const { error: updateErr } = await supabase
     .from(ORDER_TABLE)
     .update({
       status: "Shipped",
-      tracking_number: label.trackingNumber,
-      carrier_code: label.carrierCode,
-      shipstation_order_id: syncedOrder.externalOrderId,
-      shipstation_shipment_id: label.shipmentId,
-      shipstation_status: label.status,
       shipstation_sync_status: "sent",
-      shipstation_label_url: label.labelUrl,
-      shipped_at: new Date().toISOString(),
+      shipstation_order_id: mockOrderId,
+      shipstation_shipment_id: mockShipmentId,
+      shipstation_status: "label_purchased",
+      tracking_number: trackingNumber,
+      carrier_code: carrierCode,
+      shipstation_label_url: mockLabelUrl,
+      shipped_at: shippedAt,
     })
-    .eq("id", order.id);
+    .eq("id", orderId);
 
   if (updateErr) {
     console.error("[shipOrderWithShipStation] DB error:", updateErr.message);
-    throw new Error("Failed to save ShipStation fulfillment data.");
+    throw new Error("Failed to sync mock ShipStation shipment.");
   }
 
   revalidatePath(ORDERS_PATH);
 
   return {
-    trackingNumber: label.trackingNumber,
-    carrierCode: label.carrierCode,
-    labelUrl: label.labelUrl,
-    status: label.status,
     alreadyShipped: false,
+    carrierCode,
+    trackingNumber,
   };
 }
 
@@ -722,7 +839,7 @@ export async function deleteOrder(orderId: string): Promise<void> {
   revalidatePath(ORDERS_PATH);
 }
 
-// ── Dropdown helpers ──────────────────────────────────────────────────────────
+// ── DROPDOWN HELPERS ──────────────────────────────────────────────────────────
 
 export async function getUserFacility(): Promise<Facility | null> {
   try {
@@ -756,7 +873,7 @@ export async function getUserFacility(): Promise<Facility | null> {
       return null;
     }
 
-    return data;
+    return data as Facility;
   } catch (err) {
     console.error("[getUserFacility] Unexpected error:", err);
     return null;
