@@ -20,20 +20,30 @@ export const STATUS_CONFIG: Record<
   },
 };
 
-// Move to Delivered column ONLY if paid + delivered
-export function mapOrderToBoardStatus(order: Order): BoardStatus {
-  const isPaid = order.payment_status === "paid";
-  const isDelivered = order.status === "Delivered";
+function isFulfillmentEligible(order: Order): boolean {
+  return order.payment_status === "paid" || order.payment_mode === "net_30";
+}
 
-  return isPaid && isDelivered ? "Delivered" : "New Orders";
+// Move to Delivered column when the order is delivered and is eligible for fulfillment.
+// For pay_now => must be paid
+// For net_30 => can move through fulfillment without requiring payment first
+export function mapOrderToBoardStatus(order: Order): BoardStatus {
+  const isDelivered = order.status === "Delivered";
+  return isDelivered && isFulfillmentEligible(order)
+    ? "Delivered"
+    : "New Orders";
 }
 
 // What to show on the right side of the card footer
 export function getFulfillmentLabel(order: Order): string {
-  const isPaid = order.payment_status === "paid";
+  const eligible = isFulfillmentEligible(order);
 
-  // Unpaid orders should never show shipstation progress
-  if (!isPaid) return "Awaiting payment";
+  if (!eligible) {
+    if (order.payment_status === "payment_failed") return "Payment failed";
+    if (order.payment_status === "overdue") return "Invoice overdue";
+    if (order.payment_status === "invoice_sent") return "Invoice sent";
+    return "Awaiting payment";
+  }
 
   switch (order.status) {
     case "Delivered":
@@ -49,6 +59,8 @@ export function getFulfillmentLabel(order: Order): string {
     case "Draft":
       return "Draft";
     default:
-      return "Awaiting ShipStation";
+      return order.payment_mode === "net_30"
+        ? "Ready for fulfillment"
+        : "Awaiting ShipStation";
   }
 }

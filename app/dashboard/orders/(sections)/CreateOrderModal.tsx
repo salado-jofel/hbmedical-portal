@@ -16,6 +16,8 @@ import {
   Package,
   DollarSign,
   Layers,
+  CreditCard,
+  CalendarClock,
 } from "lucide-react";
 import {
   addOrder,
@@ -24,14 +26,15 @@ import {
 } from "../(services)/actions";
 import { useAppDispatch } from "@/store/hooks";
 import { addOrderToStore } from "../(redux)/orders-slice";
-import type { Order } from "@/app/(interfaces)/order";
 import type { Facility } from "@/app/(interfaces)/facility";
 import type { Product } from "@/app/(interfaces)/product";
+import type { PaymentMode } from "@/app/(interfaces)/payment";
 import SubmitButton from "@/app/(components)/SubmitButton";
 import toast from "react-hot-toast";
 
 export function CreateOrderModal() {
   const dispatch = useAppDispatch();
+
   const [open, setOpen] = useState(false);
   const [facility, setFacility] = useState<Facility | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
@@ -39,15 +42,20 @@ export function CreateOrderModal() {
   const [productId, setProductId] = useState("");
   const [orderId, setOrderId] = useState("");
   const [quantity, setQuantity] = useState(1);
+  const [paymentMode, setPaymentMode] = useState<PaymentMode>("pay_now");
   const [isPending, setIsPending] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!open) setError(null);
+    if (!open) {
+      setError(null);
+    }
   }, [open]);
 
   useEffect(() => {
+    if (!open) return;
+
     const pad = (n: number) => String(n).padStart(3, "0");
     setOrderId(`ORD-${pad(Math.floor(Math.random() * 999) + 1)}`);
   }, [open]);
@@ -58,39 +66,47 @@ export function CreateOrderModal() {
     async function fetchData() {
       setIsLoadingData(true);
 
-      const [fetchedFacility, fetchedProducts] = await Promise.all([
-        getUserFacility(),
-        getAllProducts(),
-      ]);
+      try {
+        const [fetchedFacility, fetchedProducts] = await Promise.all([
+          getUserFacility(),
+          getAllProducts(),
+        ]);
 
-      setFacility(fetchedFacility);
-      setFacilityId(fetchedFacility?.id ?? "");
-      setProducts(fetchedProducts);
-      setIsLoadingData(false);
+        setFacility(fetchedFacility);
+        setFacilityId(fetchedFacility?.id ?? "");
+        setProducts(fetchedProducts);
+      } finally {
+        setIsLoadingData(false);
+      }
     }
 
     fetchData();
   }, [open]);
 
   const selectedProduct = products.find((p) => p.id === productId);
-  const unitPrice = selectedProduct?.price ?? 0;
+  const unitPrice = Number(selectedProduct?.price ?? 0);
   const totalAmount = unitPrice * quantity;
 
   const isFormValid =
     orderId.trim() !== "" &&
     !!facility &&
     !isLoadingData &&
-    !!selectedProduct;
+    !!selectedProduct &&
+    quantity >= 1 &&
+    !!paymentMode;
 
   function resetForm() {
     setFacilityId(facility?.id ?? "");
     setProductId("");
     setQuantity(1);
+    setPaymentMode("pay_now");
+    setError(null);
   }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!facility) return;
+
+    if (!facility || !selectedProduct) return;
 
     setIsPending(true);
     setError(null);
@@ -99,26 +115,20 @@ export function CreateOrderModal() {
     formData.set("order_id", orderId);
     formData.set("facility_id", facilityId);
     formData.set("product_id", productId);
+    formData.set("quantity", String(quantity));
     formData.set("amount", String(totalAmount));
-
-    const optimistic: Order = {
-      id: crypto.randomUUID(),
-      created_at: new Date().toISOString(),
-      order_id: orderId,
-      facility_id: facilityId,
-      product_id: productId,
-      amount: totalAmount,
-      quantity,
-      status: "Processing", // stays a backend/internal status
-      facility_name: facility?.name ?? "—",
-      product_name: selectedProduct?.name ?? "—",
-      payment_status: "pending",
-    };
+    formData.set("payment_mode", paymentMode);
 
     try {
-      await addOrder(formData);
-      dispatch(addOrderToStore(optimistic));
-      toast.success("Order created successfully!");
+      const createdOrder = await addOrder(formData);
+      dispatch(addOrderToStore(createdOrder));
+
+      toast.success(
+        paymentMode === "net_30"
+          ? "Order created with Net 30 billing."
+          : "Order created successfully!",
+      );
+
       resetForm();
       setOpen(false);
     } catch (err) {
@@ -135,8 +145,8 @@ export function CreateOrderModal() {
   return (
     <Dialog
       open={open}
-      onOpenChange={(val) => {
-        if (!isPending) setOpen(val);
+      onOpenChange={(value) => {
+        if (!isPending) setOpen(value);
       }}
     >
       <DialogTrigger asChild>
@@ -235,6 +245,57 @@ export function CreateOrderModal() {
             </select>
           </div>
 
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+              {paymentMode === "pay_now" ? (
+                <CreditCard className="w-4 h-4 text-[#15689E]" />
+              ) : (
+                <CalendarClock className="w-4 h-4 text-[#15689E]" />
+              )}
+              Billing Terms
+            </label>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setPaymentMode("pay_now")}
+                disabled={isPending}
+                className={`rounded-xl border px-3 py-3 text-left transition ${paymentMode === "pay_now"
+                  ? "border-[#15689E] bg-[#15689E]/5 ring-1 ring-[#15689E]/20"
+                  : "border-slate-200 bg-white hover:border-slate-300"
+                  }`}
+              >
+                <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                  <CreditCard className="w-4 h-4 text-[#15689E]" />
+                  Pay Now
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  Customer pays by card through Stripe checkout.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPaymentMode("net_30")}
+                disabled={isPending}
+                className={`rounded-xl border px-3 py-3 text-left transition ${paymentMode === "net_30"
+                  ? "border-[#15689E] bg-[#15689E]/5 ring-1 ring-[#15689E]/20"
+                  : "border-slate-200 bg-white hover:border-slate-300"
+                  }`}
+              >
+                <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                  <CalendarClock className="w-4 h-4 text-[#15689E]" />
+                  Pay Later (Net 30)
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  Marks the order for invoice-based billing terms.
+                </p>
+              </button>
+            </div>
+
+            <input type="hidden" name="payment_mode" value={paymentMode} />
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
@@ -248,7 +309,7 @@ export function CreateOrderModal() {
                 step="1"
                 value={quantity}
                 onChange={(e) =>
-                  setQuantity(Math.max(1, parseInt(e.target.value) || 1))
+                  setQuantity(Math.max(1, parseInt(e.target.value, 10) || 1))
                 }
                 disabled={isPending || !selectedProduct}
                 required
@@ -262,7 +323,7 @@ export function CreateOrderModal() {
               </label>
               <div className="flex items-center w-full border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 min-h-[38px]">
                 <span className="text-sm text-slate-500">
-                  {selectedProduct ? `$${Number(unitPrice).toFixed(2)}` : "—"}
+                  {selectedProduct ? `$${unitPrice.toFixed(2)}` : "—"}
                 </span>
               </div>
             </div>
@@ -280,9 +341,10 @@ export function CreateOrderModal() {
               >
                 {totalAmount > 0 ? `$${totalAmount.toFixed(2)}` : "—"}
               </span>
+
               {selectedProduct && quantity > 1 && (
                 <span className="text-xs text-slate-400 ml-2">
-                  ${Number(unitPrice).toFixed(2)} × {quantity}
+                  ${unitPrice.toFixed(2)} × {quantity}
                 </span>
               )}
             </div>

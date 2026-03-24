@@ -6,8 +6,10 @@ import { stripe } from "@/utils/stripe/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { syncPaidOrderToShipStation } from "@/lib/actions/shipstation";
 import { sendPaymentReceiptEmail } from "@/utils/emails/send-payment-receipt";
+import type { PersistedPaymentStatus } from "@/app/(interfaces)/payment";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 type MarkOrderPaidResult = {
   orderId: string | null;
@@ -19,24 +21,66 @@ type MarkOrderPaidResult = {
   currency: string | null;
 };
 
+type InvoiceOrderLookup = {
+  id: string;
+  order_id: string | null;
+  stripe_invoice_id: string | null;
+  payment_status: PersistedPaymentStatus | null;
+};
+
+function toNullableString(value: string | null | undefined): string | null {
+  return value ?? null;
+}
+
+function toIsoFromUnix(value: number | null | undefined): string | null {
+  if (typeof value !== "number") return null;
+  return new Date(value * 1000).toISOString();
+}
+
+function isInvoiceOverdue(invoice: Stripe.Invoice): boolean {
+  if (invoice.status === "paid") return false;
+  if (typeof invoice.due_date !== "number") return false;
+  if ((invoice.amount_remaining ?? 0) <= 0) return false;
+  return invoice.due_date * 1000 < Date.now();
+}
+
+function deriveInvoicePaymentStatus(
+  invoice: Stripe.Invoice,
+): PersistedPaymentStatus {
+  if (invoice.status === "paid") return "paid";
+  if (invoice.status === "uncollectible") return "payment_failed";
+  if (invoice.status === "void") return "unpaid";
+  if (isInvoiceOverdue(invoice)) return "overdue";
+  return "invoice_sent";
+}
+
+async function getFreshInvoiceFromEvent(event: Stripe.Event) {
+  const invoiceFromEvent = event.data.object as Stripe.Invoice;
+  return stripe.invoices.retrieve(invoiceFromEvent.id);
+}
+
 async function registerStripeEvent(
   event: Stripe.Event,
-  session?: Stripe.Checkout.Session,
+  options?: {
+    stripeObjectId?: string | null;
+    checkoutSessionId?: string | null;
+    orderId?: string | null;
+  },
 ) {
   const supabaseAdmin = createAdminClient();
 
   const { error } = await supabaseAdmin.from("stripe_webhook_events").insert({
     event_id: event.id,
     event_type: event.type,
-    checkout_session_id: session?.id ?? null,
-    order_id: session?.metadata?.order_id ?? null,
+    stripe_object_id: options?.stripeObjectId ?? null,
+    checkout_session_id: options?.checkoutSessionId ?? null,
+    order_id: options?.orderId ?? null,
   });
 
   if (!error) {
     return true;
   }
 
-  // Postgres unique violation => already processed
   if (error.code === "23505") {
     console.log("[stripe webhook] Duplicate event ignored:", event.id);
     return false;
@@ -94,15 +138,9 @@ async function markOrderPaid(
   const orderId = session.metadata?.order_id;
 
   if (!orderId) {
-    return {
-      orderId: null,
-      orderNumber: null,
-      shouldSyncShipStation: false,
-      receiptEmail: null,
-      receiptUrl: null,
-      amountTotal: session.amount_total ?? null,
-      currency: session.currency ?? null,
-    };
+    throw new Error(
+      `[stripe webhook] Missing metadata.order_id for checkout session ${session.id}`,
+    );
   }
 
   const supabaseAdmin = createAdminClient();
@@ -122,17 +160,16 @@ async function markOrderPaid(
     .eq("id", orderId)
     .maybeSingle();
 
-  if (fetchError || !existing) {
-    console.error("[stripe webhook] Order lookup failed:", fetchError?.message);
-    return {
-      orderId: null,
-      orderNumber: null,
-      shouldSyncShipStation: false,
-      receiptEmail: null,
-      receiptUrl: null,
-      amountTotal: session.amount_total ?? null,
-      currency: session.currency ?? null,
-    };
+  if (fetchError) {
+    throw new Error(
+      `[stripe webhook] Order lookup failed for checkout session ${session.id}: ${fetchError.message}`,
+    );
+  }
+
+  if (!existing) {
+    throw new Error(
+      `[stripe webhook] No order found for checkout session ${session.id} and order id ${orderId}`,
+    );
   }
 
   const { receiptEmail, receiptUrl, paymentIntentId, customerId } =
@@ -152,6 +189,8 @@ async function markOrderPaid(
     !!existing.shipstation_shipment_id;
 
   const updatePayload: Record<string, unknown> = {
+    payment_provider: "stripe",
+    payment_mode: "pay_now",
     payment_status: "paid",
     stripe_checkout_session_id: session.id,
     stripe_payment_intent_id: paymentIntentId,
@@ -165,17 +204,22 @@ async function markOrderPaid(
     updatePayload.shipstation_sync_status = "ready";
   }
 
-  const { error: updateError } = await supabaseAdmin
+  const { data: updatedRows, error: updateError } = await supabaseAdmin
     .from("orders")
     .update(updatePayload)
-    .eq("id", orderId);
+    .eq("id", orderId)
+    .select("id");
 
   if (updateError) {
-    console.error(
-      "[stripe webhook] Failed to update paid order:",
-      updateError.message,
+    throw new Error(
+      `[stripe webhook] Failed to update paid checkout order ${orderId}: ${updateError.message}`,
     );
-    throw new Error(updateError.message);
+  }
+
+  if (!updatedRows || updatedRows.length === 0) {
+    throw new Error(
+      `[stripe webhook] No pay_now order row updated for order id ${orderId}`,
+    );
   }
 
   return {
@@ -189,27 +233,45 @@ async function markOrderPaid(
   };
 }
 
-async function markOrderFailedOrCanceled(
+async function markCheckoutOrderStatus(
   session: Stripe.Checkout.Session,
-  status: "failed" | "canceled",
+  paymentStatus: PersistedPaymentStatus,
 ) {
   const orderId = session.metadata?.order_id;
-  if (!orderId) return;
+  if (!orderId) {
+    throw new Error(
+      `[stripe webhook] Missing metadata.order_id for checkout session ${session.id}`,
+    );
+  }
 
   const supabaseAdmin = createAdminClient();
 
-  const { error } = await supabaseAdmin
+  const updatePayload: Record<string, unknown> = {
+    payment_status: paymentStatus,
+    stripe_checkout_session_id: session.id,
+    payment_mode: "pay_now",
+    payment_provider: "stripe",
+  };
+
+  if (paymentStatus === "payment_failed") {
+    updatePayload.receipt_email_error = "Stripe checkout payment failed.";
+  }
+
+  const { data: updatedRows, error } = await supabaseAdmin
     .from("orders")
-    .update({
-      payment_status: status,
-      stripe_checkout_session_id: session.id,
-    })
-    .eq("id", orderId);
+    .update(updatePayload)
+    .eq("id", orderId)
+    .select("id");
 
   if (error) {
-    console.error(
-      `[stripe webhook] Failed to mark order ${status}:`,
-      error.message,
+    throw new Error(
+      `[stripe webhook] Failed to mark checkout order ${orderId} as ${paymentStatus}: ${error.message}`,
+    );
+  }
+
+  if (!updatedRows || updatedRows.length === 0) {
+    throw new Error(
+      `[stripe webhook] No checkout order row updated for order id ${orderId}`,
     );
   }
 }
@@ -252,7 +314,6 @@ async function maybeSendReceiptEmail(result: MarkOrderPaidResult) {
   const supabaseAdmin = createAdminClient();
   const lockId = await claimReceiptEmailLock(result.orderId);
 
-  // Another request already sent it or is currently sending it.
   if (!lockId) {
     console.log(
       "[stripe webhook] Receipt email skipped; already locked or sent:",
@@ -313,8 +374,6 @@ async function maybeSendReceiptEmail(result: MarkOrderPaidResult) {
         dbError.message,
       );
     }
-
-    // Do not throw. Payment already succeeded.
   }
 }
 
@@ -322,7 +381,11 @@ async function handleSuccessfulCheckoutSession(
   event: Stripe.Event,
   session: Stripe.Checkout.Session,
 ) {
-  const isNewEvent = await registerStripeEvent(event, session);
+  const isNewEvent = await registerStripeEvent(event, {
+    stripeObjectId: session.id,
+    checkoutSessionId: session.id,
+    orderId: session.metadata?.order_id ?? null,
+  });
 
   if (!isNewEvent) {
     return;
@@ -349,12 +412,258 @@ async function handleSuccessfulCheckoutSession(
           shipstation_sync_status: "failed",
         })
         .eq("id", result.orderId);
-
-      // Do not throw here, otherwise Stripe may retry the webhook.
     }
   }
 
   revalidatePath("/dashboard/orders");
+}
+
+async function findOrderForInvoice(
+  invoice: Stripe.Invoice,
+): Promise<InvoiceOrderLookup | null> {
+  const supabaseAdmin = createAdminClient();
+
+  const selectColumns = "id, order_id, stripe_invoice_id, payment_status";
+
+  // 1) Best match: invoice already persisted on the order row.
+  {
+    const { data, error } = await supabaseAdmin
+      .from("orders")
+      .select(selectColumns)
+      .eq("stripe_invoice_id", invoice.id)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(
+        `[stripe webhook] Failed lookup by stripe_invoice_id (${invoice.id}): ${error.message}`,
+      );
+    }
+
+    if (data) return data as InvoiceOrderLookup;
+  }
+
+  // 2) Preferred metadata going forward.
+  const orderDbId = invoice.metadata?.order_db_id ?? null;
+  if (orderDbId) {
+    const { data, error } = await supabaseAdmin
+      .from("orders")
+      .select(selectColumns)
+      .eq("id", orderDbId)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(
+        `[stripe webhook] Failed lookup by metadata.order_db_id (${orderDbId}): ${error.message}`,
+      );
+    }
+
+    if (data) return data as InvoiceOrderLookup;
+  }
+
+  const orderNumber = invoice.metadata?.order_number ?? null;
+  if (orderNumber) {
+    const { data, error } = await supabaseAdmin
+      .from("orders")
+      .select(selectColumns)
+      .eq("order_id", orderNumber)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(
+        `[stripe webhook] Failed lookup by metadata.order_number (${orderNumber}): ${error.message}`,
+      );
+    }
+
+    if (data) return data as InvoiceOrderLookup;
+  }
+
+  // 3) Legacy compatibility: metadata.order_id may hold order number.
+  const legacyOrderId = invoice.metadata?.order_id ?? null;
+  if (legacyOrderId) {
+    const { data: byId, error: idError } = await supabaseAdmin
+      .from("orders")
+      .select(selectColumns)
+      .eq("id", legacyOrderId)
+      .maybeSingle();
+
+    if (idError) {
+      throw new Error(
+        `[stripe webhook] Failed lookup by legacy metadata.order_id as id (${legacyOrderId}): ${idError.message}`,
+      );
+    }
+
+    if (byId) return byId as InvoiceOrderLookup;
+
+    const { data: byOrderNumber, error: orderNumberError } = await supabaseAdmin
+      .from("orders")
+      .select(selectColumns)
+      .eq("order_id", legacyOrderId)
+      .maybeSingle();
+
+    if (orderNumberError) {
+      throw new Error(
+        `[stripe webhook] Failed lookup by legacy metadata.order_id as order_id (${legacyOrderId}): ${orderNumberError.message}`,
+      );
+    }
+
+    if (byOrderNumber) return byOrderNumber as InvoiceOrderLookup;
+  }
+
+  return null;
+}
+
+async function syncStripeInvoiceToOrder(
+  invoice: Stripe.Invoice,
+  options?: {
+    forcePaymentStatus?: PersistedPaymentStatus;
+    markInvoiceSentAt?: boolean;
+    markInvoicePaidAt?: boolean;
+  },
+) {
+  const supabaseAdmin = createAdminClient();
+
+  const order = await findOrderForInvoice(invoice);
+
+  if (!order) {
+    throw new Error(
+      `[stripe webhook] No order found for invoice ${invoice.id} with metadata ${JSON.stringify(
+        invoice.metadata ?? {},
+      )}`,
+    );
+  }
+
+  const { data: existing, error: existingError } = await supabaseAdmin
+    .from("orders")
+    .select(
+      `
+        id,
+        order_id,
+        payment_status,
+        stripe_invoice_status,
+        invoice_overdue_at,
+        invoice_sent_at,
+        invoice_paid_at,
+        paid_at,
+        invoice_amount_due,
+        invoice_amount_remaining
+      `,
+    )
+    .eq("id", order.id)
+    .maybeSingle();
+
+  if (existingError) {
+    throw new Error(
+      `[stripe webhook] Failed fetching existing order ${order.id}: ${existingError.message}`,
+    );
+  }
+
+  if (!existing) {
+    throw new Error(
+      `[stripe webhook] Resolved order ${order.id} but no matching row was returned.`,
+    );
+  }
+
+  let nextPaymentStatus =
+    options?.forcePaymentStatus ?? deriveInvoicePaymentStatus(invoice);
+
+  if (existing.payment_status === "paid" && nextPaymentStatus !== "paid") {
+    nextPaymentStatus = "paid";
+  }
+
+  if (
+    nextPaymentStatus === "invoice_sent" &&
+    existing.payment_status === "payment_failed"
+  ) {
+    nextPaymentStatus = "payment_failed";
+  }
+
+  if (
+    nextPaymentStatus === "invoice_sent" &&
+    existing.payment_status === "overdue"
+  ) {
+    nextPaymentStatus = "overdue";
+  }
+
+  const customerId =
+    typeof invoice.customer === "string"
+      ? invoice.customer
+      : (invoice.customer?.id ?? null);
+
+  const paidAt =
+    toIsoFromUnix(invoice.status_transitions?.paid_at) ??
+    existing.invoice_paid_at ??
+    existing.paid_at ??
+    (options?.markInvoicePaidAt ? new Date().toISOString() : null);
+
+  const updatePayload: Record<string, unknown> = {
+    payment_provider: "stripe",
+    payment_mode: "net_30",
+    payment_status: nextPaymentStatus,
+    stripe_customer_id: customerId,
+    stripe_invoice_id: invoice.id,
+    stripe_invoice_number: toNullableString(invoice.number),
+    stripe_invoice_status: toNullableString(invoice.status),
+    stripe_invoice_hosted_url: toNullableString(invoice.hosted_invoice_url),
+    receipt_email: toNullableString(invoice.customer_email),
+    invoice_due_date: toIsoFromUnix(invoice.due_date),
+    invoice_amount_due:
+      typeof invoice.amount_due === "number" ? invoice.amount_due : null,
+    invoice_amount_remaining:
+      typeof invoice.amount_remaining === "number"
+        ? invoice.amount_remaining
+        : null,
+  };
+
+  if (options?.markInvoiceSentAt) {
+    updatePayload.invoice_sent_at =
+      existing.invoice_sent_at ?? new Date().toISOString();
+  }
+
+  if (nextPaymentStatus === "paid") {
+    updatePayload.invoice_paid_at = paidAt;
+    updatePayload.paid_at = paidAt;
+    updatePayload.invoice_overdue_at = null;
+    updatePayload.invoice_amount_remaining = 0;
+    updatePayload.stripe_invoice_status = "paid";
+  } else if (nextPaymentStatus === "overdue") {
+    updatePayload.invoice_overdue_at =
+      existing.invoice_overdue_at ?? new Date().toISOString();
+  } else {
+    updatePayload.invoice_overdue_at = null;
+  }
+
+  const { data: updated, error: updateError } = await supabaseAdmin
+    .from("orders")
+    .update(updatePayload)
+    .eq("id", order.id)
+    .select("id, order_id, payment_status, stripe_invoice_status")
+    .maybeSingle();
+
+  if (updateError) {
+    throw new Error(
+      `[stripe webhook] Failed updating invoice-backed order ${order.id}: ${updateError.message}`,
+    );
+  }
+
+  if (!updated) {
+    throw new Error(
+      `[stripe webhook] No invoice-backed order row updated for invoice ${invoice.id}`,
+    );
+  }
+
+  console.log("[stripe webhook] invoice synced to order", {
+    invoiceId: invoice.id,
+    orderId: updated.id,
+    orderNumber: updated.order_id,
+    paymentStatus: updated.payment_status,
+    stripeInvoiceStatus: updated.stripe_invoice_status,
+  });
+
+  return {
+    resolvedOrderId: order.id,
+    resolvedOrderNumber: order.order_id,
+    updatedOrder: updated,
+  };
 }
 
 export async function POST(request: Request) {
@@ -374,59 +683,293 @@ export async function POST(request: Request) {
 
   try {
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
-  } catch (err) {
+  } catch (error) {
     const message =
-      err instanceof Error ? err.message : "Invalid webhook signature.";
+      error instanceof Error ? error.message : "Invalid webhook signature.";
     return NextResponse.json({ error: message }, { status: 400 });
   }
 
-  console.log("[stripe webhook] received", {
+  const debug: Record<string, unknown> = {
+    build: "orders-net30-webhook-v2",
     eventId: event.id,
     eventType: event.type,
-  });
+    branch: "start",
+    vercelEnv: process.env.VERCEL_ENV ?? null,
+    siteUrl: process.env.NEXT_PUBLIC_SITE_URL ?? null,
+    supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL ?? null,
+  };
+
+  console.log("[stripe webhook] received", debug);
 
   try {
     switch (event.type) {
       case "checkout.session.completed": {
+        debug.branch = "checkout.session.completed";
+
         const session = event.data.object as Stripe.Checkout.Session;
 
-        // Only fulfill immediately if the Checkout Session is actually paid.
         if (session.payment_status === "paid") {
           await handleSuccessfulCheckoutSession(event, session);
+          debug.checkoutSessionId = session.id;
+          debug.checkoutPaymentStatus = session.payment_status;
         }
 
-        break;
+        return NextResponse.json({ received: true, debug });
       }
 
       case "checkout.session.async_payment_succeeded": {
+        debug.branch = "checkout.session.async_payment_succeeded";
+
         const session = event.data.object as Stripe.Checkout.Session;
         await handleSuccessfulCheckoutSession(event, session);
-        break;
+
+        debug.checkoutSessionId = session.id;
+        debug.checkoutPaymentStatus = session.payment_status;
+
+        return NextResponse.json({ received: true, debug });
       }
 
       case "checkout.session.async_payment_failed": {
+        debug.branch = "checkout.session.async_payment_failed";
+
         const session = event.data.object as Stripe.Checkout.Session;
-        await markOrderFailedOrCanceled(session, "failed");
-        revalidatePath("/dashboard/orders");
-        break;
+        const isNewEvent = await registerStripeEvent(event, {
+          stripeObjectId: session.id,
+          checkoutSessionId: session.id,
+          orderId: session.metadata?.order_id ?? null,
+        });
+
+        debug.checkoutSessionId = session.id;
+        debug.isNewEvent = isNewEvent;
+
+        if (isNewEvent) {
+          await markCheckoutOrderStatus(session, "payment_failed");
+          revalidatePath("/dashboard/orders");
+        }
+
+        return NextResponse.json({ received: true, debug });
       }
 
       case "checkout.session.expired": {
+        debug.branch = "checkout.session.expired";
+
         const session = event.data.object as Stripe.Checkout.Session;
-        await markOrderFailedOrCanceled(session, "canceled");
-        revalidatePath("/dashboard/orders");
-        break;
+        const isNewEvent = await registerStripeEvent(event, {
+          stripeObjectId: session.id,
+          checkoutSessionId: session.id,
+          orderId: session.metadata?.order_id ?? null,
+        });
+
+        debug.checkoutSessionId = session.id;
+        debug.isNewEvent = isNewEvent;
+
+        if (isNewEvent) {
+          await markCheckoutOrderStatus(session, "unpaid");
+          revalidatePath("/dashboard/orders");
+        }
+
+        return NextResponse.json({ received: true, debug });
       }
 
-      default:
-        break;
-    }
+      case "invoice.finalized": {
+        debug.branch = "invoice.finalized";
 
-    return NextResponse.json({ received: true });
-  } catch (err) {
+        const invoice = await getFreshInvoiceFromEvent(event);
+        debug.invoiceId = invoice.id;
+        debug.invoiceStatus = invoice.status;
+        debug.invoiceMetadata = invoice.metadata ?? {};
+
+        const order = await findOrderForInvoice(invoice);
+        debug.resolvedOrder = order ?? null;
+
+        const isNewEvent = await registerStripeEvent(event, {
+          stripeObjectId: invoice.id,
+          orderId: order?.id ?? null,
+        });
+
+        debug.isNewEvent = isNewEvent;
+
+        if (isNewEvent) {
+          const result = await syncStripeInvoiceToOrder(invoice, {
+            forcePaymentStatus: "invoice_sent",
+            markInvoiceSentAt: true,
+          });
+
+          debug.syncResult = result;
+          revalidatePath("/dashboard/orders");
+        }
+
+        return NextResponse.json({ received: true, debug });
+      }
+
+      case "invoice.updated": {
+        debug.branch = "invoice.updated";
+
+        const invoice = await getFreshInvoiceFromEvent(event);
+        debug.invoiceId = invoice.id;
+        debug.invoiceStatus = invoice.status;
+        debug.invoiceMetadata = invoice.metadata ?? {};
+
+        const order = await findOrderForInvoice(invoice);
+        debug.resolvedOrder = order ?? null;
+
+        const isNewEvent = await registerStripeEvent(event, {
+          stripeObjectId: invoice.id,
+          orderId: order?.id ?? null,
+        });
+
+        debug.isNewEvent = isNewEvent;
+
+        if (isNewEvent) {
+          const result = await syncStripeInvoiceToOrder(invoice);
+          debug.syncResult = result;
+          revalidatePath("/dashboard/orders");
+        }
+
+        return NextResponse.json({ received: true, debug });
+      }
+
+      case "invoice.paid": {
+        debug.branch = "invoice.paid";
+
+        const invoice = await getFreshInvoiceFromEvent(event);
+        debug.invoiceId = invoice.id;
+        debug.invoiceStatus = invoice.status;
+        debug.invoiceMetadata = invoice.metadata ?? {};
+
+        const order = await findOrderForInvoice(invoice);
+        debug.resolvedOrder = order ?? null;
+
+        const isNewEvent = await registerStripeEvent(event, {
+          stripeObjectId: invoice.id,
+          orderId: order?.id ?? null,
+        });
+
+        debug.isNewEvent = isNewEvent;
+
+        if (isNewEvent) {
+          const result = await syncStripeInvoiceToOrder(invoice, {
+            forcePaymentStatus: "paid",
+            markInvoicePaidAt: true,
+          });
+
+          debug.syncResult = result;
+          revalidatePath("/dashboard/orders");
+        }
+
+        return NextResponse.json({ received: true, debug });
+      }
+
+      case "invoice.payment_failed": {
+        debug.branch = "invoice.payment_failed";
+
+        const invoice = await getFreshInvoiceFromEvent(event);
+        debug.invoiceId = invoice.id;
+        debug.invoiceStatus = invoice.status;
+        debug.invoiceMetadata = invoice.metadata ?? {};
+
+        const order = await findOrderForInvoice(invoice);
+        debug.resolvedOrder = order ?? null;
+
+        const isNewEvent = await registerStripeEvent(event, {
+          stripeObjectId: invoice.id,
+          orderId: order?.id ?? null,
+        });
+
+        debug.isNewEvent = isNewEvent;
+
+        if (isNewEvent) {
+          const result = await syncStripeInvoiceToOrder(invoice, {
+            forcePaymentStatus: "payment_failed",
+          });
+
+          debug.syncResult = result;
+          revalidatePath("/dashboard/orders");
+        }
+
+        return NextResponse.json({ received: true, debug });
+      }
+
+      case "invoice.marked_uncollectible": {
+        debug.branch = "invoice.marked_uncollectible";
+
+        const invoice = await getFreshInvoiceFromEvent(event);
+        debug.invoiceId = invoice.id;
+        debug.invoiceStatus = invoice.status;
+        debug.invoiceMetadata = invoice.metadata ?? {};
+
+        const order = await findOrderForInvoice(invoice);
+        debug.resolvedOrder = order ?? null;
+
+        const isNewEvent = await registerStripeEvent(event, {
+          stripeObjectId: invoice.id,
+          orderId: order?.id ?? null,
+        });
+
+        debug.isNewEvent = isNewEvent;
+
+        if (isNewEvent) {
+          const result = await syncStripeInvoiceToOrder(invoice, {
+            forcePaymentStatus: "payment_failed",
+          });
+
+          debug.syncResult = result;
+          revalidatePath("/dashboard/orders");
+        }
+
+        return NextResponse.json({ received: true, debug });
+      }
+
+      case "invoice.voided": {
+        debug.branch = "invoice.voided";
+
+        const invoice = await getFreshInvoiceFromEvent(event);
+        debug.invoiceId = invoice.id;
+        debug.invoiceStatus = invoice.status;
+        debug.invoiceMetadata = invoice.metadata ?? {};
+
+        const order = await findOrderForInvoice(invoice);
+        debug.resolvedOrder = order ?? null;
+
+        const isNewEvent = await registerStripeEvent(event, {
+          stripeObjectId: invoice.id,
+          orderId: order?.id ?? null,
+        });
+
+        debug.isNewEvent = isNewEvent;
+
+        if (isNewEvent) {
+          const result = await syncStripeInvoiceToOrder(invoice, {
+            forcePaymentStatus: "unpaid",
+          });
+
+          debug.syncResult = result;
+          revalidatePath("/dashboard/orders");
+        }
+
+        return NextResponse.json({ received: true, debug });
+      }
+
+      default: {
+        debug.branch = `default:${event.type}`;
+        return NextResponse.json({ received: true, debug });
+      }
+    }
+  } catch (error) {
     const message =
-      err instanceof Error ? err.message : "Webhook processing failed.";
-    console.error("[stripe webhook]", message);
-    return NextResponse.json({ error: message }, { status: 500 });
+      error instanceof Error ? error.message : "Webhook processing failed.";
+
+    console.error("[stripe webhook] error", {
+      message,
+      debug,
+    });
+
+    return NextResponse.json(
+      {
+        error: message,
+        debug,
+      },
+      { status: 500 },
+    );
   }
 }

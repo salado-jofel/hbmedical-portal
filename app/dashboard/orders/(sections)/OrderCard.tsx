@@ -24,9 +24,10 @@ import {
   BadgeCheck,
   Clock3,
   MapPin,
-  FlaskConical,
   FileText,
   RefreshCcw,
+  AlertTriangle,
+  CalendarClock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ConfirmModal from "@/app/(components)/ConfirmModal";
@@ -36,13 +37,11 @@ import toast from "react-hot-toast";
 import { formatStatus } from "@/utils/formatter";
 
 function PaymentBadge({
-  isPaid,
-  isPending,
+  paymentStatus,
 }: {
-  isPaid: boolean;
-  isPending: boolean;
+  paymentStatus: Order["payment_status"];
 }) {
-  if (isPaid) {
+  if (paymentStatus === "paid") {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
         <CheckCircle2 className="h-3.5 w-3.5" />
@@ -51,7 +50,34 @@ function PaymentBadge({
     );
   }
 
-  if (isPending) {
+  if (paymentStatus === "invoice_sent") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold text-sky-700">
+        <FileText className="h-3.5 w-3.5" />
+        Invoice Sent
+      </span>
+    );
+  }
+
+  if (paymentStatus === "overdue") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2.5 py-1 text-xs font-semibold text-orange-700">
+        <AlertTriangle className="h-3.5 w-3.5" />
+        Overdue
+      </span>
+    );
+  }
+
+  if (paymentStatus === "payment_failed") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-700">
+        <RefreshCcw className="h-3.5 w-3.5" />
+        Payment Failed
+      </span>
+    );
+  }
+
+  if (paymentStatus === "pending") {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">
         <Clock3 className="h-3.5 w-3.5" />
@@ -99,10 +125,7 @@ function ShipStationSyncBadge({
 }) {
   if (!syncStatus) return null;
 
-  const map: Record<
-    string,
-    { text: string; className: string }
-  > = {
+  const map: Record<string, { text: string; className: string }> = {
     ready: {
       text: "ShipStation Ready",
       className: "bg-sky-100 text-sky-700",
@@ -114,6 +137,10 @@ function ShipStationSyncBadge({
     failed: {
       text: "ShipStation Failed",
       className: "bg-red-100 text-red-700",
+    },
+    not_sent: {
+      text: "ShipStation Pending",
+      className: "bg-slate-100 text-slate-700",
     },
   };
 
@@ -132,17 +159,6 @@ function ShipStationSyncBadge({
   );
 }
 
-function DevModeBadge({ show }: { show: boolean }) {
-  if (!show) return null;
-
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2.5 py-1 text-xs font-semibold text-orange-700">
-      <FlaskConical className="h-3.5 w-3.5" />
-      Dev Mode
-    </span>
-  );
-}
-
 export function OrderCard({ order }: { order: Order }) {
   const dispatch = useAppDispatch();
   const [isDeleting, setIsDeleting] = useState(false);
@@ -151,7 +167,7 @@ export function OrderCard({ order }: { order: Order }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   const isPaid = order.payment_status === "paid";
-  const isPaymentPending = order.payment_status === "pending";
+  const isNet30 = order.payment_mode === "net_30";
   const isDelivered = order.status === "Delivered";
   const fulfillmentLabel = getFulfillmentLabel(order);
 
@@ -163,8 +179,10 @@ export function OrderCard({ order }: { order: Order }) {
   const syncFailed = order.shipstation_sync_status === "failed";
   const syncReady =
     order.shipstation_sync_status === "ready" ||
-    (!order.shipstation_sync_status && isPaid && !hasMockShipment);
-  const isMockCarrier = (order.carrier_code ?? "").startsWith("mock-");
+    ((order.shipstation_sync_status === "not_sent" ||
+      !order.shipstation_sync_status) &&
+      (isPaid || isNet30) &&
+      !hasMockShipment);
 
   async function handleDelete() {
     if (!order.id) return;
@@ -184,7 +202,7 @@ export function OrderCard({ order }: { order: Order }) {
   }
 
   async function handlePayNow() {
-    if (!order.id || isPaying || isPaid) return;
+    if (!order.id || isPaying || isPaid || isNet30) return;
 
     setIsPaying(true);
     try {
@@ -192,13 +210,17 @@ export function OrderCard({ order }: { order: Order }) {
       window.location.href = checkoutUrl;
     } catch (err) {
       console.error("[handlePayNow]", err);
-      toast.error("Failed to start payment. Please try again.");
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Failed to start payment. Please try again.",
+      );
       setIsPaying(false);
     }
   }
 
   async function handleMockShipStationSync() {
-    if (!order.id || isFulfilling || !isPaid) return;
+    if (!order.id || isFulfilling || (!isPaid && !isNet30)) return;
 
     setIsFulfilling(true);
 
@@ -207,11 +229,11 @@ export function OrderCard({ order }: { order: Order }) {
 
       if (result.alreadyShipped) {
         toast.success(
-          `Existing mock shipment loaded: ${result.carrierCode} • ${result.trackingNumber}`,
+          `Existing mock shipment loaded: ${result.carrierCode} ${result.trackingNumber}`,
         );
       } else {
         toast.success(
-          `Mock shipment synced: ${result.carrierCode} • ${result.trackingNumber}`,
+          `Mock shipment synced: ${result.carrierCode} ${result.trackingNumber}`,
         );
       }
     } catch (err) {
@@ -225,6 +247,8 @@ export function OrderCard({ order }: { order: Order }) {
       setIsFulfilling(false);
     }
   }
+
+  const paymentModeLabel = isNet30 ? "Net 30" : "Pay Now";
 
   return (
     <>
@@ -262,22 +286,29 @@ export function OrderCard({ order }: { order: Order }) {
         </div>
 
         <div className="mt-3 flex flex-wrap gap-2">
-          <PaymentBadge isPaid={isPaid} isPending={isPaymentPending} />
+          <PaymentBadge paymentStatus={order.payment_status} />
           <FulfillmentBadge label={fulfillmentLabel} delivered={isDelivered} />
-          <ShipStationSyncBadge syncStatus={formatStatus(order.shipstation_sync_status)} />
-          {/* <DevModeBadge show={isMockCarrier || hasMockShipment} /> */}
+          <ShipStationSyncBadge
+            syncStatus={formatStatus(order.shipstation_sync_status)}
+          />
+          {isNet30 ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-semibold text-indigo-700">
+              <CalendarClock className="h-3.5 w-3.5" />
+              Net 30
+            </span>
+          ) : null}
         </div>
 
         <div className="mt-4 space-y-2">
           <OrderInfoRow
             icon={Package}
-            text={`Product: ${order.product_name ?? "—"}`}
+            text={`Product: ${order.product_name ?? ""}`}
             primary
           />
 
           <OrderInfoRow
             icon={Building2}
-            text={`Facility: ${order.facility_name ?? "—"}`}
+            text={`Facility: ${order.facility_name ?? ""}`}
           />
 
           {order.created_by_email && (
@@ -307,6 +338,20 @@ export function OrderCard({ order }: { order: Order }) {
               </div>
             </div>
           </div>
+
+          {order.invoice_due_date && isNet30 && (
+            <div className="rounded-xl border border-sky-100 bg-sky-50 px-3 py-2">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-sky-500">
+                Invoice Due Date
+              </p>
+              <div className="mt-1 flex items-center gap-2 text-sky-800">
+                <CalendarClock className="h-4 w-4" />
+                <span className="text-sm font-semibold">
+                  {new Date(order.invoice_due_date).toLocaleDateString()}
+                </span>
+              </div>
+            </div>
+          )}
 
           {order.tracking_number && (
             <div className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2">
@@ -354,7 +399,33 @@ export function OrderCard({ order }: { order: Order }) {
               </span>
             </div>
 
-            {!isPaid ? (
+            {!isPaid && isNet30 ? (
+              order.stripe_invoice_hosted_url ? (
+                <Link href={order.stripe_invoice_hosted_url} target="_blank">
+                  <Button
+                    type="button"
+                    size="sm"
+                    className={`h-9 text-white cursor-pointer ${order.payment_status === "overdue"
+                      ? "bg-orange-600 hover:bg-orange-700"
+                      : "bg-[#15689E] hover:bg-[#0f4f7a]"
+                      }`}
+                  >
+                    <FileText className="mr-1 h-4 w-4" />
+                    View Invoice
+                  </Button>
+                </Link>
+              ) : (
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled
+                  className="h-9 bg-slate-300 text-white cursor-not-allowed"
+                >
+                  <Clock3 className="mr-1 h-4 w-4" />
+                  Invoice Pending
+                </Button>
+              )
+            ) : !isPaid ? (
               <Button
                 type="button"
                 size="sm"
@@ -370,7 +441,7 @@ export function OrderCard({ order }: { order: Order }) {
                 ) : (
                   <>
                     <CreditCard className="mr-1 h-4 w-4" />
-                    {isPaymentPending ? "Resume Payment" : "Pay Now"}
+                    Pay Now
                   </>
                 )}
               </Button>
@@ -453,7 +524,7 @@ export function OrderCard({ order }: { order: Order }) {
           <span className="text-slate-500">
             Payment:{" "}
             <span className="font-semibold text-slate-700">
-              {order.payment_status ?? "unpaid"}
+              {paymentModeLabel} • {order.payment_status ?? "unpaid"}
             </span>
           </span>
 
