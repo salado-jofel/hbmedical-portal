@@ -9,6 +9,7 @@ import {
   ScrollText,
   BookOpen,
   LogOut,
+  Hospital,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
@@ -21,13 +22,54 @@ import { signOut } from "../(services)/actions";
 import { closeSidebar } from "../(redux)/dashboard-slice";
 
 const navItems = [
-  { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard", doctorHidden: false },
-  { icon: ShoppingCart, label: "Orders", href: "/dashboard/orders", doctorHidden: false },
-  { icon: Package, label: "Products", href: "/dashboard/products", doctorHidden: false },
-  { icon: UserCircle, label: "Profile", href: "/dashboard/profile", doctorHidden: false },
-  { icon: Megaphone, label: "Marketing", href: "/dashboard/marketing", doctorHidden: true },
-  { icon: ScrollText, label: "Contracts", href: "/dashboard/contracts", doctorHidden: false },
-  { icon: BookOpen, label: "Trainings", href: "/dashboard/trainings", doctorHidden: true },
+  {
+    icon: LayoutDashboard,
+    label: "Dashboard",
+    href: "/dashboard",
+    doctorHidden: false,
+  },
+  {
+    icon: ShoppingCart,
+    label: "Orders",
+    href: "/dashboard/orders",
+    doctorHidden: false,
+  },
+  {
+    icon: Package,
+    label: "Products",
+    href: "/dashboard/products",
+    doctorHidden: false,
+  },
+  {
+    icon: UserCircle,
+    label: "Profile",
+    href: "/dashboard/profile",
+    doctorHidden: false,
+  },
+  {
+    icon: Megaphone,
+    label: "Marketing",
+    href: "/dashboard/marketing",
+    doctorHidden: true,
+  },
+  {
+    icon: ScrollText,
+    label: "Contracts",
+    href: "/dashboard/contracts",
+    doctorHidden: false,
+  },
+  {
+    icon: BookOpen,
+    label: "Trainings",
+    href: "/dashboard/trainings",
+    doctorHidden: true,
+  },
+  {
+    icon: Hospital,
+    label: "Hospital Onboarding",
+    href: "/dashboard/hospital-onboarding",
+    doctorHidden: true,
+  },
 ];
 
 export function Sidebar() {
