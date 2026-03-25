@@ -7,7 +7,7 @@ import { createAdminClient } from "@/utils/supabase/admin";
 import { syncPaidOrderToShipStation } from "@/lib/actions/shipstation";
 import { sendPaymentReceiptEmail } from "@/utils/emails/send-payment-receipt";
 import { sendNet30ReceiptEmail } from "@/utils/emails/send-net30-receipt";
-import type { PersistedPaymentStatus } from "@/app/(interfaces)/payment";
+import type { PersistedPaymentStatus } from "@/lib/interfaces/payment";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

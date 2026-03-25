@@ -2,7 +2,7 @@ import { useAppDispatch } from "@/store/hooks";
 import { useState } from "react";
 import { addProduct } from "../(services)/actions";
 import { addProductToStore } from "../(redux)/products-slice";
-import { Product } from "@/app/(interfaces)/product";
+import { Product } from "@/lib/interfaces/product";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import SubmitButton from "@/app/(components)/SubmitButton";
 import { Input } from "@/components/ui/input";

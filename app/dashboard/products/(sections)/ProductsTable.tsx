@@ -8,8 +8,8 @@ import {
   setSearch,
 } from "../(redux)/products-slice";
 import { editProduct, deleteProduct } from "../(services)/actions";
-import type { Product } from "@/app/(interfaces)/product";
-import type { TableColumn } from "@/app/(interfaces)/table-column";
+import type { Product } from "@/lib/interfaces/product";
+import type { TableColumn } from "@/lib/interfaces/table-column";
 import { Input } from "@/components/ui/input";
 import SubmitButton from "@/app/(components)/SubmitButton";
 import ConfirmModal from "@/app/(components)/ConfirmModal";

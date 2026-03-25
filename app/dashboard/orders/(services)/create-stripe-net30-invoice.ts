@@ -5,7 +5,7 @@ import type Stripe from "stripe";
 
 import { stripe } from "@/utils/stripe/server";
 import { createAdminClient } from "@/utils/supabase/admin";
-import type { PersistedPaymentStatus } from "@/app/(interfaces)/payment";
+import type { PersistedPaymentStatus } from "@/lib/interfaces/payment";
 import { sendNet30InvoiceCreatedEmail } from "@/utils/emails/send-net30-invoice-created";
 
 type Net30OrderRow = {

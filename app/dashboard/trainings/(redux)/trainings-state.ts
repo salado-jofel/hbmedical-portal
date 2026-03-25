@@ -1,4 +1,4 @@
-import { TrainingMaterial } from "@/app/(interfaces)/trainings";
+import { TrainingMaterial } from "@/lib/interfaces/trainings";
 
 export interface TrainingsState {
   items: TrainingMaterial[];

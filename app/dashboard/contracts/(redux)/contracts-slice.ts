@@ -1,8 +1,6 @@
-import { ContractMaterial } from "@/app/(interfaces)/contracts";
+import { ContractMaterial } from "@/lib/interfaces/contracts";
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 import { initialState } from "./contracts-state";
-
-
 
 const contractsSlice = createSlice({
   name: "contracts",

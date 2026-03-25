@@ -1,4 +1,4 @@
-import { Product } from "@/app/(interfaces)/product";
+import { Product } from "@/lib/interfaces/product";
 import { useAppDispatch } from "@/store/hooks";
 import { useState } from "react";
 import {

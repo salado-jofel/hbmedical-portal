@@ -1,4 +1,4 @@
-import type { Order } from "@/app/(interfaces)/order";
+import type { Order } from "@/lib/interfaces/order";
 import { BOARD_STATUSES } from "./kanban-config";
 import { KanbanColumn } from "./KanbanColumn";
 import { groupOrdersByBoardStatus } from "@/utils/group-orders-by-status";

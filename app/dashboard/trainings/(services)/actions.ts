@@ -1,6 +1,6 @@
 "use server";
 
-import { TrainingMaterial } from "@/app/(interfaces)/trainings";
+import { TrainingMaterial } from "@/lib/interfaces/trainings";
 import { getSupabaseClient } from "@/utils/supabase/db";
 
 const TRAINING_TABLE = "training_materials";

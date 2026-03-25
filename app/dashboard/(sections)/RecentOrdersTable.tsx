@@ -6,8 +6,8 @@ import { TableCard } from "@/app/(components)/TableCard";
 import { DataTable } from "@/app/(components)/DataTable";
 import { OrderMobileCard } from "@/app/(components)/OrderMobileCard";
 import { formatAmount, formatDate } from "@/utils/formatter";
-import { TableColumn } from "@/app/(interfaces)/table-column";
-import { Order } from "@/app/(interfaces)/order";
+import { TableColumn } from "@/lib/interfaces/table-column";
+import { Order } from "@/lib/interfaces/order";
 
 const columns: TableColumn<Order>[] = [
   {

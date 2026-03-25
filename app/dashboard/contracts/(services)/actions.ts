@@ -1,6 +1,6 @@
 "use server";
 
-import { ContractMaterial } from "@/app/(interfaces)/contracts";
+import { ContractMaterial } from "@/lib/interfaces/contracts";
 import { getSupabaseClient } from "@/utils/supabase/db";
 
 const CONTRACT_TABLE = "contracts_materials";

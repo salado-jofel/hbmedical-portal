@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
-import type { Order } from "@/app/(interfaces)/order";
+import type { Order } from "@/lib/interfaces/order";
 import { createClient } from "@/utils/supabase/client";
 import { CreateOrderModal } from "./CreateOrderModal";
 import { KanbanColumn } from "./KanbanColumn";

@@ -1,6 +1,6 @@
 "use client";
 
-import type { Order } from "@/app/(interfaces)/order";
+import type { Order } from "@/lib/interfaces/order";
 import { useAppDispatch } from "@/store/hooks";
 import { type ReactNode, useEffect } from "react";
 import { setOrders } from "../(redux)/orders-slice";

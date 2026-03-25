@@ -1,4 +1,4 @@
-import type { MarketingMaterial } from "@/app/(interfaces)/marketing";
+import type { MarketingMaterial } from "@/lib/interfaces/marketing";
 
 export interface MarketingState {
   items: MarketingMaterial[];

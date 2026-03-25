@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Package } from "lucide-react";
-import type { Order } from "@/app/(interfaces)/order";
+import type { Order } from "@/lib/interfaces/order";
 import { EmptyState } from "@/app/(components)/EmptyState";
 import { OrderCard } from "./OrderCard";
 import {

@@ -3,7 +3,7 @@
 import { useAppDispatch } from "@/store/hooks";
 import { ReactNode, useEffect } from "react";
 import { setProfile } from "../(redux)/profile-slice";
-import { Profile } from "@/app/(interfaces)/profiles";
+import { Profile } from "@/lib/interfaces/profiles";
 
 export default function Providers({
   children,

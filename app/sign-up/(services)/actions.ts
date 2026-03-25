@@ -1,143 +1,98 @@
-// "use server";
-
-// import { createClient } from "@/utils/supabase/server";
-// import { createAdminClient } from "@/utils/supabase/admin";
-// import { redirect } from "next/navigation";
-
-// export async function signUp(
-//   prevState: unknown,
-//   formData: FormData,
-// ): Promise<{ error: string } | undefined> {
-//   const supabase = await createClient();
-//   const supabaseAdmin = createAdminClient();
-
-//   const email = formData.get("email") as string;
-//   const password = formData.get("password") as string;
-//   const firstName = formData.get("first_name") as string;
-//   const lastName = formData.get("last_name") as string;
-//   const phone = formData.get("phone") as string;
-//   const role = (formData.get("role") as string) || "sales_representative";
-//   const facilityName = formData.get("facility_name") as string;
-//   const facilityLocation = formData.get("facility_location") as string;
-
-//   // Step 1: Create Supabase auth user
-//   const { data, error } = await supabase.auth.signUp({
-//     email,
-//     password,
-//     options: {
-//       data: {
-//         first_name: firstName,
-//         last_name: lastName,
-//         full_name: `${firstName} ${lastName}`.trim(),
-//         role,
-//         phone,
-//       },
-//     },
-//   });
-
-//   if (error) {
-//     console.error("[signup] Auth error:", error.message);
-//     return { error: error.message };
-//   }
-
-//   if (data.user && data.user.identities?.length === 0) {
-//     return { error: "An account with this email already exists." };
-//   }
-
-//   if (!data.user) {
-//     return { error: "Failed to create account. Please try again." };
-//   }
-
-//   // Step 2: Insert facility in DB
-//   const { error: facilityError } = await supabaseAdmin
-//     .from("facilities")
-//     .insert({
-//       name: facilityName,
-//       location: facilityLocation || null,
-//       user_id: data.user.id,
-//       status: "Active",
-//     });
-
-//   if (facilityError) {
-//     console.error("[signup] Facility DB error:", facilityError.message);
-//     return {
-//       error:
-//         "Account created but facility setup failed. Please contact support.",
-//     };
-//   }
-
-//   redirect("/verify-email");
-// }
-
 "use server";
 
+import { redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
-import { redirect } from "next/navigation";
+
+import {
+  buildSignUpFormValues,
+  buildProfileInsert,
+  buildFacilityInsert,
+  formatMessage,
+} from "@/lib/helpers/signup";
+import { SignUpState } from "@/lib/interfaces/auth";
+import {
+  validateEmail,
+  validatePassword,
+  validateRole,
+  validatePhone,
+  validateCountry,
+} from "@/lib/validators/signup";
 
 export async function signUp(
-  prevState: unknown,
+  _prevState: SignUpState,
   formData: FormData,
-): Promise<{ error: string } | undefined> {
-  const supabase = await createClient();
-  const supabaseAdmin = createAdminClient();
+): Promise<SignUpState> {
+  let createdUserId: string | null = null;
 
-  // Extract all fields from the form
-  const email = formData.get("email") as string;
-  const password = formData.get("password") as string;
-  const firstName = formData.get("first_name") as string;
-  const lastName = formData.get("last_name") as string;
-  const phone = formData.get("phone") as string;
-  const role = (formData.get("role") as string) || "sales_representative";
+  try {
+    const values = buildSignUpFormValues(formData);
 
-  // Facility & Shipping Fields
-  const facilityName = formData.get("facility_name") as string;
-  const address1 = formData.get("address_line_1") as string;
-  const address2 = formData.get("address_line_2") as string;
-  const city = formData.get("city") as string;
-  const state = formData.get("state") as string;
-  const zip = formData.get("postal_code") as string;
+    validateEmail(values.email);
+    validatePassword(values.password);
+    validateRole(values.role);
+    validatePhone(values.phone, "Phone");
+    validateCountry(values.facilityCountry);
 
-  // Step 1: Create Supabase Auth User
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password,
-    options: {
-      data: {
-        first_name: firstName,
-        last_name: lastName,
-        full_name: `${firstName} ${lastName}`.trim(),
-        role,
-        phone,
+    const supabase = await createClient();
+    const supabaseAdmin = createAdminClient();
+
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email: values.email,
+      password: values.password,
+      options: {
+        data: {
+          first_name: values.firstName,
+          last_name: values.lastName,
+          full_name: `${values.firstName} ${values.lastName}`.trim(),
+          role: values.role,
+          phone: values.phone,
+        },
       },
-    },
-  });
-
-  if (error) return { error: error.message };
-  if (!data.user) return { error: "Failed to create account." };
-
-  // Step 2: Insert into 'facilities' table using Admin Client (to bypass RLS if needed)
-  const { error: facilityError } = await supabaseAdmin
-    .from("facilities")
-    .insert({
-      user_id: data.user.id,
-      name: facilityName,
-      contact: `${firstName} ${lastName}`.trim(),
-      phone: phone,
-      address_line_1: address1,
-      address_line_2: address2 || null,
-      city: city,
-      state: state,
-      postal_code: zip,
-      country: "US", // Defaulting as per your schema
-      status: "Active",
     });
 
-  if (facilityError) {
-    console.error("[signup] DB Error:", facilityError.message);
+    if (authError) {
+      return { error: formatMessage(authError.message) };
+    }
+
+    if (!authData.user) {
+      return { error: "Failed to create account." };
+    }
+
+    createdUserId = authData.user.id;
+
+    const { error: profileError } = await supabaseAdmin
+      .from("profiles")
+      .insert(buildProfileInsert(createdUserId, values));
+
+    if (profileError) {
+      await supabaseAdmin.auth.admin.deleteUser(createdUserId);
+      return { error: formatMessage(profileError.message) };
+    }
+
+    const { error: facilityError } = await supabaseAdmin
+      .from("facilities")
+      .insert(buildFacilityInsert(createdUserId, values));
+
+    if (facilityError) {
+      await supabaseAdmin.auth.admin.deleteUser(createdUserId);
+      return { error: formatMessage(facilityError.message) };
+    }
+  } catch (error) {
+    if (createdUserId) {
+      try {
+        const supabaseAdmin = createAdminClient();
+        await supabaseAdmin.auth.admin.deleteUser(createdUserId);
+      } catch {
+        // noop
+      }
+    }
+
     return {
       error:
-        "Auth successful, but facility record failed. Please contact support.",
+        error instanceof Error
+          ? error.message
+          : "Unable to create account. Please try again.",
     };
   }
 

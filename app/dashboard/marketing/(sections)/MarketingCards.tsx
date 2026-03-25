@@ -1,7 +1,7 @@
 "use client";
 
 import { useAppSelector } from "@/store/hooks";
-import type { MarketingMaterial } from "@/app/(interfaces)/marketing";
+import type { MarketingMaterial } from "@/lib/interfaces/marketing";
 import {
   FileText,
   Presentation,

@@ -5,9 +5,9 @@ import "server-only";
 import { revalidatePath } from "next/cache";
 import { getSupabaseClient, dbSelect } from "@/utils/supabase/db";
 import { stripe } from "@/utils/stripe/server";
-import type { Order } from "@/app/(interfaces)/order";
-import type { Facility } from "@/app/(interfaces)/facility";
-import type { Product } from "@/app/(interfaces)/product";
+import type { Order } from "@/lib/interfaces/order";
+import type { Facility } from "@/lib/interfaces/facility";
+import type { Product } from "@/lib/interfaces/product";
 import { requireUser } from "@/utils/auth-guard";
 import { createStripeNet30Invoice as createStripeNet30InvoiceService } from "./create-stripe-net30-invoice";
 import {

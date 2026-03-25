@@ -1,6 +1,6 @@
 "use client";
 
-import type { Product } from "@/app/(interfaces)/product";
+import type { Product } from "@/lib/interfaces/product";
 import { useAppDispatch } from "@/store/hooks";
 import { type ReactNode, useEffect } from "react";
 import { setProducts } from "../(redux)/products-slice";

@@ -24,8 +24,8 @@ import {
 } from "../(services)/actions";
 import { useAppDispatch } from "@/store/hooks";
 import { addOrderToStore } from "../(redux)/orders-slice";
-import type { Facility } from "@/app/(interfaces)/facility";
-import type { Product } from "@/app/(interfaces)/product";
+import type { Facility } from "@/lib/interfaces/facility";
+import type { Product } from "@/lib/interfaces/product";
 import SubmitButton from "@/app/(components)/SubmitButton";
 import toast from "react-hot-toast";
 

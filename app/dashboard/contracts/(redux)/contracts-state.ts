@@ -1,4 +1,4 @@
-import { ContractMaterial } from "@/app/(interfaces)/contracts";
+import { ContractMaterial } from "@/lib/interfaces/contracts";
 
 export interface ContractsState {
   items: ContractMaterial[];
@@ -7,5 +7,3 @@ export interface ContractsState {
 export const initialState: ContractsState = {
   items: [],
 };
-
-

@@ -1,7 +1,7 @@
 "use server";
 
 import { getSupabaseClient } from "@/utils/supabase/db";
-import type { MarketingMaterial } from "@/app/(interfaces)/marketing";
+import type { MarketingMaterial } from "@/lib/interfaces/marketing";
 
 // ── Parse bucket + file path from any Supabase public storage URL ─────────────
 // URL format: https://<project>.supabase.co/storage/v1/object/public/<bucket>/<path>

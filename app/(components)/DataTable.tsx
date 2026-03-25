@@ -1,7 +1,7 @@
 import { ReactNode } from "react";
 import { EmptyState } from "./EmptyState";
 import { Inbox } from "lucide-react";
-import { TableColumn } from "../(interfaces)/table-column";
+import { TableColumn } from "../../lib/interfaces/table-column";
 
 interface DataTableProps<T> {
   columns: TableColumn<T>[];

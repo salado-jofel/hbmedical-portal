@@ -1,5 +1,5 @@
 import { formatDate, formatAmount } from "@/utils/formatter";
-import { Order } from "@/app/(interfaces)/order";
+import { Order } from "@/lib/interfaces/order";
 import { StatusBadge } from "./StatusBadge";
 
 interface OrderMobileCardProps {

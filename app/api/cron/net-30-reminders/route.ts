@@ -6,7 +6,7 @@ import {
   sendNet30ReminderEmail,
   type Net30ReminderStage,
 } from "@/utils/emails/send-net30-reminder";
-import type { PersistedPaymentStatus } from "@/app/(interfaces)/payment";
+import type { PersistedPaymentStatus } from "@/lib/interfaces/payment";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

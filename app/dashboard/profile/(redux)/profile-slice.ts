@@ -1,6 +1,6 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 import { initialState } from "./profile-state";
-import { Profile } from "@/app/(interfaces)/profiles";
+import { Profile } from "@/lib/interfaces/profiles";
 
 const profileSlice = createSlice({
   name: "profile",

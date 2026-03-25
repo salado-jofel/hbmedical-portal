@@ -1,4 +1,4 @@
-import type { Order } from "@/app/(interfaces)/order";
+import type { Order } from "@/lib/interfaces/order";
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
 import { initialState } from "./orders-state";
 

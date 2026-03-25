@@ -1,4 +1,4 @@
-import type { Order } from "@/app/(interfaces)/order";
+import type { Order } from "@/lib/interfaces/order";
 
 // The board only shows fulfillment buckets
 export const BOARD_STATUSES = ["New Orders", "Delivered"] as const;

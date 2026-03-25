@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { dbSelect, getSupabaseClient } from "@/utils/supabase/db";
-import type { Product } from "@/app/(interfaces)/product";
+import type { Product } from "@/lib/interfaces/product";
 import { requireUser } from "@/utils/auth-guard";
 
 const PRODUCT_TABLE = "products";
