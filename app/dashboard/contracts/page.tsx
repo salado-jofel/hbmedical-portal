@@ -1,8 +1,8 @@
 import { getContractMaterials } from "./(services)/actions";
 import Providers from "./(sections)/Providers";
-import ContractCards from "./(sections)/ContractCards";
 import { DashboardHeader } from "@/app/(components)/DashboardHeader";
 import { Metadata } from "next";
+import ContractCards from "./(sections)/ContractCards";
 
 export const metadata: Metadata = {
   title: "Contracts",
