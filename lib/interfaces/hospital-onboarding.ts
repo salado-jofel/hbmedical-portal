@@ -1,9 +1,18 @@
-export interface HospitalOnboardingMaterial {
+export interface HospitalOnboardingMaterialRow {
   id: string;
-  created_at: string;
   title: string;
+  description: string | null;
   tag: string;
-  description: string;
-  file_url: string;
+  bucket: string;
+  file_path: string;
+  file_name: string;
+  mime_type: string;
   sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HospitalOnboardingMaterial extends HospitalOnboardingMaterialRow {
+  file_url: string;
 }
