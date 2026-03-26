@@ -1,9 +1,9 @@
 "use server";
 
-import { TrainingMaterial } from "@/lib/interfaces/trainings";
 import { getSupabaseClient } from "@/utils/supabase/db";
+import type { HospitalOnboardingMaterial } from "@/app/(interfaces)/hospital-onboarding";
 
-const TRAINING_TABLE = "training_materials";
+const HOSPITAL_ONBOARDING_TABLE = "hospital_onboarding_materials";
 
 // URL format:
 // https://<project>.supabase.co/storage/v1/object/public/<bucket>/<path>
@@ -26,23 +26,31 @@ function parseStorageUrl(
   };
 }
 
-export async function getTrainingMaterials(): Promise<TrainingMaterial[]> {
+export async function getHospitalOnboardingMaterials(): Promise<
+  HospitalOnboardingMaterial[]
+> {
   try {
     const supabase = await getSupabaseClient();
 
     const { data, error } = await supabase
-      .from(TRAINING_TABLE)
+      .from(HOSPITAL_ONBOARDING_TABLE)
       .select("*")
       .order("sort_order", { ascending: true });
 
+    console.log("hospitalOnboardings: ", data);
+    console.log("error: ", error);
+
     if (error) {
-      console.error("[getTrainingMaterials] error:", error.message);
+      console.error(
+        "[getHospitalOnboardingMaterials] Supabase error:",
+        error.message,
+      );
       return [];
     }
 
     return data ?? [];
   } catch (err) {
-    console.error("[getTrainingMaterials] Unexpected error:", err);
+    console.error("[getHospitalOnboardingMaterials] Unexpected error:", err);
     return [];
   }
 }
@@ -52,7 +60,7 @@ export async function getSignedDownloadUrl(fileUrl: string): Promise<string> {
 
   if (!parsed) {
     console.error("[getSignedDownloadUrl] Could not parse URL:", fileUrl);
-    return fileUrl; // fallback to public URL
+    return fileUrl;
   }
 
   try {
@@ -64,12 +72,12 @@ export async function getSignedDownloadUrl(fileUrl: string): Promise<string> {
 
     if (error || !data) {
       console.error("[getSignedDownloadUrl] Supabase error:", error?.message);
-      return fileUrl; // fallback to public URL
+      return fileUrl;
     }
 
     return data.signedUrl;
   } catch (err) {
     console.error("[getSignedDownloadUrl] Unexpected error:", err);
-    return fileUrl; // fallback to public URL
+    return fileUrl;
   }
 }

@@ -1,5 +1,6 @@
 import dashboardSlice from "@/app/dashboard/(redux)/dashboard-slice";
 import contractsSlice from "@/app/dashboard/contracts/(redux)/contracts-slice";
+import hospitalOnboardingSlice from "@/app/dashboard/hospital-onboarding/(redux)/hospital-onboarding-slice";
 import marketingSlice from "@/app/dashboard/marketing/(redux)/marketing-slice";
 import ordersSlice from "@/app/dashboard/orders/(redux)/orders-slice";
 import productsSlice from "@/app/dashboard/products/(redux)/products-slice";
@@ -15,6 +16,7 @@ export const store = configureStore({
     marketing: marketingSlice,
     contracts: contractsSlice,
     trainings: trainingsSlice,
+    hospitalOnboarding: hospitalOnboardingSlice,
     dashboard: dashboardSlice,
   },
 });
