@@ -1,123 +1,106 @@
 "use client";
 
-import { useState } from "react";
-import { ReactNode } from "react";
-import { Button } from "@/components/ui/button";
-import {
-  FileText,
-  ScrollText,
-  FileCheck2,
-  Receipt,
-  ArrowDownToLine,
-  Loader2,
-} from "lucide-react";
-
-function getDefaultIcon(tag?: string | null) {
-  const t = tag?.toLowerCase() ?? "";
-  if (t.includes("agreement") || t.includes("contract"))
-    return <ScrollText className="w-6 h-6 text-white" />;
-  if (t.includes("tax") || t.includes("w-9"))
-    return <Receipt className="w-6 h-6 text-white" />;
-  if (t.includes("i-9") || t.includes("verification"))
-    return <FileCheck2 className="w-6 h-6 text-white" />;
-  return <FileText className="w-6 h-6 text-white" />;
-}
+import { ReactNode, useState } from "react";
+import { Download } from "lucide-react";
 
 interface MaterialCardProps {
   title: string;
   description?: string | null;
   tag?: string | null;
-  category?: string | null;
   fileUrl: string;
   onDownload: (fileUrl: string) => Promise<string>;
   icon?: ReactNode;
   tagSeparator?: string;
 }
 
+function splitTag(tag?: string | null, separator = " - ") {
+  if (!tag) {
+    return { prefix: "", label: "" };
+  }
+
+  if (!separator || !tag.includes(separator)) {
+    return { prefix: "", label: tag };
+  }
+
+  const [prefix, ...rest] = tag.split(separator);
+  return {
+    prefix: prefix?.trim() ?? "",
+    label: rest.join(separator).trim(),
+  };
+}
+
 export function MaterialCard({
   title,
   description,
   tag,
-  category,
   fileUrl,
   onDownload,
   icon,
-  tagSeparator = "•",
+  tagSeparator = " - ",
 }: MaterialCardProps) {
   const [isDownloading, setIsDownloading] = useState(false);
 
-  async function handleDownload() {
-    setIsDownloading(true);
+  const { prefix, label } = splitTag(tag, tagSeparator);
+
+  async function handleDownloadClick() {
     try {
+      setIsDownloading(true);
       const signedUrl = await onDownload(fileUrl);
-      const link = document.createElement("a");
-      link.href = signedUrl;
-      link.target = "_blank";
-      link.rel = "noreferrer";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } catch (err) {
-      console.error("[MaterialCard handleDownload]", err);
+
+      if (!signedUrl) {
+        throw new Error("Missing download URL");
+      }
+
+      window.open(signedUrl, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      console.error("Download failed:", error);
     } finally {
       setIsDownloading(false);
     }
   }
 
-  const badgeLabel = tag?.split(tagSeparator)[0]?.trim() ?? "PDF";
-  const tagSubtitle = tag?.includes(tagSeparator)
-    ? tag.split(tagSeparator)[1]?.trim()
-    : null;
-
   return (
-    <div className="group bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300 flex flex-col w-full">
-      <div className="bg-linear-to-br from-[#15689E] to-[#0f4f7a] p-5 relative overflow-hidden">
-        <div className="absolute -top-4 -right-4 w-24 h-24 rounded-full bg-white/10" />
-        <div className="absolute -bottom-6 -left-4 w-20 h-20 rounded-full bg-white/10" />
-
-        <div className="relative z-10 flex items-start justify-between">
-          <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-sm">
-            {icon ?? getDefaultIcon(tag)}
-          </div>
-          <span className="text-xs font-semibold bg-white/20 text-white px-2.5 py-1 rounded-full backdrop-blur-sm">
-            {badgeLabel}
-          </span>
+    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_4px_14px_rgba(15,23,42,0.08)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_10px_24px_rgba(15,23,42,0.12)]">
+      <div className="relative min-h-[144px] bg-gradient-to-br from-[#1f6da1] to-[#155b8f] px-5 pb-5 pt-5">
+        <div className="absolute right-0 top-0 h-20 w-20 rounded-bl-[999px] bg-white/8" />
+        <div className="absolute right-5 top-5 z-10 flex max-w-[65%] justify-end">
+          {(prefix || label) && (
+            <div className="inline-flex max-w-full items-center gap-1 rounded-full bg-white/18 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.02em] text-white backdrop-blur-sm">
+              {prefix ? <span className="shrink-0">{prefix}</span> : null}
+              {label ? (
+                <span className="truncate normal-case text-[10px] font-semibold tracking-normal">
+                  {label}
+                </span>
+              ) : null}
+            </div>
+          )}
         </div>
 
-        <div className="relative z-10 mt-4">
-          <h3 className="text-sm font-bold text-white leading-snug line-clamp-2">
+        <div className="relative z-10 flex h-full flex-col">
+          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-white/14 text-white shadow-inner shadow-white/10">
+            {icon}
+          </div>
+
+          <h3 className="pr-28 text-[18px] font-semibold leading-[1.25] text-white">
             {title}
           </h3>
-          {(tagSubtitle || category) && (
-            <p className="text-xs text-white/70 mt-1">
-              {tagSubtitle ?? category}
-            </p>
-          )}
         </div>
       </div>
 
-      <div className="p-4 flex flex-col flex-1 justify-between gap-4">
-        <p className="text-sm text-slate-500 leading-relaxed line-clamp-3">
-          {description}
+      <div className="px-5 pb-5 pt-4">
+        <p className="min-h-[72px] text-[14px] leading-6 text-slate-600">
+          {description || "No description available."}
         </p>
-        <Button
+
+        <button
           type="button"
-          onClick={handleDownload}
+          onClick={handleDownloadClick}
           disabled={isDownloading}
-          className="w-full bg-[#15689E] hover:bg-[#0f4f7a] text-white text-sm font-medium cursor-pointer shadow-sm transition-all duration-200 disabled:opacity-70"
+          className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#1f6da1] px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#155b8f] disabled:cursor-not-allowed disabled:opacity-70"
         >
-          {isDownloading ? (
-            <>
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              Preparing...
-            </>
-          ) : (
-            <>
-              <ArrowDownToLine className="w-4 h-4 mr-2" />
-              Download
-            </>
-          )}
-        </Button>
+          <Download className="h-4 w-4" />
+          <span>{isDownloading ? "Preparing..." : "Download"}</span>
+        </button>
       </div>
     </div>
   );
