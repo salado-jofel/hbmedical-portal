@@ -1,7 +1,7 @@
 "use client";
 
 import { Package } from "lucide-react";
-import type { Order } from "@/lib/interfaces/order";
+import type { DashboardOrder } from "@/lib/interfaces/orders";
 import { EmptyState } from "@/app/(components)/EmptyState";
 import { OrderCard } from "./OrderCard";
 import { STATUS_CONFIG, type BoardStatus } from "./kanban-config";
@@ -11,7 +11,7 @@ export function KanbanColumn({
   orders,
 }: {
   status: BoardStatus;
-  orders: Order[];
+  orders: DashboardOrder[];
 }) {
   const config = STATUS_CONFIG[status];
 

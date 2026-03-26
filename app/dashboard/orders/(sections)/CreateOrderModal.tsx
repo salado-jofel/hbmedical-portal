@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -11,21 +11,20 @@ import {
 import { Input } from "@/components/ui/input";
 import {
   Plus,
-  Hash,
   Building2,
   Package,
   DollarSign,
   Layers,
+  FileText,
 } from "lucide-react";
 import {
-  addOrder,
+  createOrder,
   getUserFacility,
-  getAllProducts,
+  getActiveProducts,
 } from "../(services)/actions";
 import { useAppDispatch } from "@/store/hooks";
 import { addOrderToStore } from "../(redux)/orders-slice";
-import type { Facility } from "@/lib/interfaces/facility";
-import type { Product } from "@/lib/interfaces/product";
+import type { FacilityRecord, ProductRecord } from "@/lib/interfaces/orders";
 import SubmitButton from "@/app/(components)/SubmitButton";
 import toast from "react-hot-toast";
 
@@ -33,12 +32,12 @@ export function CreateOrderModal() {
   const dispatch = useAppDispatch();
 
   const [open, setOpen] = useState(false);
-  const [facility, setFacility] = useState<Facility | null>(null);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [facilityId, setFacilityId] = useState("");
+  const [facility, setFacility] = useState<FacilityRecord | null>(null);
+  const [products, setProducts] = useState<ProductRecord[]>([]);
+
   const [productId, setProductId] = useState("");
-  const [orderId, setOrderId] = useState("");
   const [quantity, setQuantity] = useState(1);
+
   const [isPending, setIsPending] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,25 +51,24 @@ export function CreateOrderModal() {
   useEffect(() => {
     if (!open) return;
 
-    const pad = (n: number) => String(n).padStart(3, "0");
-    setOrderId(`ORD-${pad(Math.floor(Math.random() * 999) + 1)}`);
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-
     async function fetchData() {
       setIsLoadingData(true);
+      setError(null);
 
       try {
         const [fetchedFacility, fetchedProducts] = await Promise.all([
           getUserFacility(),
-          getAllProducts(),
+          getActiveProducts(),
         ]);
 
         setFacility(fetchedFacility);
-        setFacilityId(fetchedFacility?.id ?? "");
         setProducts(fetchedProducts);
+      } catch (err) {
+        console.error("[CreateOrderModal.fetchData]", err);
+        const message =
+          err instanceof Error ? err.message : "Failed to load order data.";
+        setError(message);
+        toast.error(message);
       } finally {
         setIsLoadingData(false);
       }
@@ -79,19 +77,18 @@ export function CreateOrderModal() {
     fetchData();
   }, [open]);
 
-  const selectedProduct = products.find((p) => p.id === productId);
-  const unitPrice = Number(selectedProduct?.price ?? 0);
+  const selectedProduct = useMemo(
+    () => products.find((p) => p.id === productId),
+    [products, productId],
+  );
+
+  const unitPrice = Number(selectedProduct?.unit_price ?? 0);
   const totalAmount = unitPrice * quantity;
 
   const isFormValid =
-    orderId.trim() !== "" &&
-    !!facility &&
-    !isLoadingData &&
-    !!selectedProduct &&
-    quantity >= 1;
+    !!facility && !!selectedProduct && quantity >= 1 && !isLoadingData;
 
   function resetForm() {
-    setFacilityId(facility?.id ?? "");
     setProductId("");
     setQuantity(1);
     setError(null);
@@ -105,27 +102,21 @@ export function CreateOrderModal() {
     setIsPending(true);
     setError(null);
 
-    const formData = new FormData(e.currentTarget);
-    formData.set("order_id", orderId);
-    formData.set("facility_id", facilityId);
-    formData.set("product_id", productId);
+    const formData = new FormData();
+    formData.set("product_id", selectedProduct.id);
     formData.set("quantity", String(quantity));
-    formData.set("amount", String(totalAmount));
 
     try {
-      const createdOrder = await addOrder(formData);
+      const createdOrder = await createOrder(formData);
       dispatch(addOrderToStore(createdOrder));
 
-      toast.success(
-        "Order created successfully. Choose a payment option from the order card.",
-      );
-
+      toast.success("Draft order created successfully.");
       resetForm();
       setOpen(false);
     } catch (err) {
-      console.error("[CreateOrderModal]", err);
+      console.error("[CreateOrderModal.handleSubmit]", err);
       const message =
-        err instanceof Error ? err.message : "Failed to create order.";
+        err instanceof Error ? err.message : "Failed to create draft order.";
       setError(message);
       toast.error(message);
     } finally {
@@ -158,46 +149,35 @@ export function CreateOrderModal() {
       <DialogContent className="w-[calc(100%-2rem)] sm:max-w-md rounded-xl max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-lg font-semibold text-slate-800">
-            Create New Order
+            Create Draft Order
           </DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 pt-2">
           <div className="space-y-1.5">
             <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-              <Hash className="w-4 h-4 text-[#15689E]" />
-              Order ID
-            </label>
-            <Input
-              name="order_id"
-              value={orderId}
-              onChange={(e) => setOrderId(e.target.value)}
-              placeholder="ORD-001"
-              required
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
               <Building2 className="w-4 h-4 text-[#15689E]" />
               Facility
             </label>
-            <div className="flex items-center gap-2 w-full border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 min-h-[38px]">
+            <div className="flex items-center gap-2 w-full border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 min-h-[42px]">
               {isLoadingData ? (
                 <span className="text-sm text-slate-400 animate-pulse">
                   Loading facility...
                 </span>
               ) : facility ? (
-                <>
-                  <span className="text-sm text-slate-700 flex-1 truncate font-medium">
+                <div className="flex flex-col min-w-0">
+                  <span className="text-sm text-slate-700 font-medium truncate">
                     {facility.name}
                   </span>
-                  {facility.location && (
-                    <span className="text-xs text-slate-400 shrink-0">
-                      {facility.location as string}
+                  {[facility.contact, facility.phone].filter(Boolean).length >
+                    0 && (
+                    <span className="text-xs text-slate-400 truncate">
+                      {[facility.contact, facility.phone]
+                        .filter(Boolean)
+                        .join(" • ")}
                     </span>
                   )}
-                </>
+                </div>
               ) : (
                 <span className="text-sm text-red-500">
                   ⚠ No facility found — contact support
@@ -228,12 +208,23 @@ export function CreateOrderModal() {
                     ? "No products available"
                     : "Select product"}
               </option>
-              {products.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
+
+              {products.map((product) => (
+                <option key={product.id} value={product.id}>
+                  {product.sku
+                    ? `${product.name} (${product.sku})`
+                    : product.name}
                 </option>
               ))}
             </select>
+
+            {selectedProduct && (
+              <div className="text-xs text-slate-500 px-1">
+                {[selectedProduct.category, selectedProduct.sku]
+                  .filter(Boolean)
+                  .join(" • ")}
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -261,7 +252,7 @@ export function CreateOrderModal() {
                 <DollarSign className="w-4 h-4 text-[#15689E]" />
                 Unit Price
               </label>
-              <div className="flex items-center w-full border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 min-h-[38px]">
+              <div className="flex items-center w-full border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 min-h-[42px]">
                 <span className="text-sm text-slate-500">
                   {selectedProduct ? `$${unitPrice.toFixed(2)}` : "—"}
                 </span>
@@ -272,12 +263,13 @@ export function CreateOrderModal() {
           <div className="space-y-1.5">
             <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
               <DollarSign className="w-4 h-4 text-[#15689E]" />
-              Total Amount
+              Estimated Total
             </label>
-            <div className="flex items-center w-full border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 min-h-[38px]">
+            <div className="flex items-center w-full border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 min-h-[42px]">
               <span
-                className={`text-sm font-semibold ${totalAmount > 0 ? "text-[#f5a255]" : "text-slate-400"
-                  }`}
+                className={`text-sm font-semibold ${
+                  totalAmount > 0 ? "text-[#f5a255]" : "text-slate-400"
+                }`}
               >
                 {totalAmount > 0 ? `$${totalAmount.toFixed(2)}` : "—"}
               </span>
@@ -314,10 +306,10 @@ export function CreateOrderModal() {
               cta={
                 <>
                   <Plus className="w-4 h-4 mr-1.5" />
-                  Create Order
+                  Save Draft
                 </>
               }
-              isPendingMesssage="Creating..."
+              isPendingMesssage="Saving..."
               variant="default"
               size="default"
               classname="bg-[#15689E] hover:bg-[#0f4f7a] text-white w-full sm:w-auto cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"

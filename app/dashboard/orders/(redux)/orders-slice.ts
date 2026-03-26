@@ -1,4 +1,4 @@
-import type { Order } from "@/lib/interfaces/order";
+import type { DashboardOrder } from "@/lib/interfaces/orders";
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
 import { initialState } from "./orders-state";
 
@@ -6,13 +6,13 @@ const ordersSlice = createSlice({
   name: "orders",
   initialState,
   reducers: {
-    setOrders(state, action: PayloadAction<Order[]>) {
+    setOrders(state, action: PayloadAction<DashboardOrder[]>) {
       state.items = action.payload;
     },
-    addOrderToStore(state, action: PayloadAction<Order>) {
+    addOrderToStore(state, action: PayloadAction<DashboardOrder>) {
       state.items.unshift(action.payload);
     },
-    updateOrderInStore(state, action: PayloadAction<Order>) {
+    updateOrderInStore(state, action: PayloadAction<DashboardOrder>) {
       const index = state.items.findIndex((o) => o.id === action.payload.id);
       if (index !== -1) {
         state.items[index] = action.payload;

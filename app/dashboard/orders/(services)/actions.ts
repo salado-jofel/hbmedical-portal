@@ -1,850 +1,542 @@
 "use server";
 
-import "server-only";
-
 import { revalidatePath } from "next/cache";
-import { getSupabaseClient, dbSelect } from "@/utils/supabase/db";
-import { stripe } from "@/utils/stripe/server";
-import type { Order } from "@/lib/interfaces/order";
-import type { Facility } from "@/lib/interfaces/facility";
-import type { Product } from "@/lib/interfaces/product";
-import { requireUser } from "@/utils/auth-guard";
-import { createStripeNet30Invoice as createStripeNet30InvoiceService } from "./create-stripe-net30-invoice";
+import { createClient } from "@/utils/supabase/server";
+
 import {
-  syncPaidOrderToShipStation,
-  type SyncPaidOrderToShipStationResult,
-} from "@/lib/actions/shipstation";
+  FACILITY_SELECT,
+  FACILITY_TABLE,
+  ORDER_TABLE,
+  ORDER_WITH_RELATIONS_SELECT,
+  ORDERS_PATH,
+  PRODUCT_SELECT,
+  PRODUCT_TABLE,
+  DEFAULT_DELIVERY_STATUS,
+  DEFAULT_FULFILLMENT_STATUS,
+  DEFAULT_INVOICE_STATUS,
+  DEFAULT_ORDER_STATUS,
+  DEFAULT_PAYMENT_STATUS,
+} from "@/lib/constants/orders";
 
-const ORDER_TABLE = "orders";
-const ORDERS_PATH = "/dashboard/orders";
+import {
+  calculateOrderAmounts,
+  generateOrderNumber,
+  getDeliveredAtForStatus,
+  getInvoiceStatusForSubmittedPaymentMethod,
+  getPaidAtForStatus,
+  mapDashboardOrder,
+  mapDashboardOrders,
+  parseCancelOrderInput,
+  parseCreateOrderInput,
+  parseEditOrderInput,
+  parseSubmitOrderPaymentChoiceInput,
+  parseUpdateOrderStatusInput,
+  toNullableString,
+} from "@/lib/helpers/orders";
 
-const ORDER_COLUMNS = `
-  id,
-  created_at,
-  order_id,
-  facility_id,
-  product_id,
-  amount,
-  quantity,
-  status,
-  user_id,
-  payment_provider,
-  payment_mode,
-  payment_status,
-  stripe_checkout_session_id,
-  stripe_payment_intent_id,
-  stripe_invoice_id,
-  stripe_checkout_url,
-  stripe_customer_id,
-  stripe_invoice_number,
-  stripe_invoice_status,
-  stripe_invoice_hosted_url,
-  receipt_email,
-  stripe_receipt_url,
-  paid_at,
-  invoice_due_date,
-  invoice_sent_at,
-  invoice_paid_at,
-  invoice_amount_due,
-  invoice_amount_remaining,
-  tracking_number,
-  carrier_code,
-  shipstation_sync_status,
-  shipstation_order_id,
-  shipstation_shipment_id,
-  shipstation_status,
-  shipstation_label_url,
-  shipped_at,
-  facilities(name, stripe_customer_id, phone, location),
-  products(name, price)
-`;
+import type {
+  CancelOrderInput,
+  CancelOrderPayload,
+  CreateOrderInput,
+  DashboardOrder,
+  EditOrderInput,
+  EditOrderPayload,
+  ExistingOrderRecord,
+  FacilityRecord,
+  InsertOrderPayload,
+  ProductRecord,
+  RawOrderRecord,
+  SubmitOrderPaymentChoiceInput,
+  SubmitOrderPaymentChoicePayload,
+  UpdateOrderStatusInput,
+  UpdateOrderStatusPayload,
+} from "@/lib/interfaces/orders";
 
-type RawOrder = {
-  id: string;
-  created_at: string;
-  order_id: string;
-  facility_id: string;
-  product_id: string;
-  amount: number | string;
-  quantity: number;
-  status: string;
-  user_id?: string | null;
+/* -------------------------------------------------------------------------- */
+/* Private helpers                                                            */
+/* -------------------------------------------------------------------------- */
 
-  payment_provider?: "stripe" | null;
-  payment_mode?: "pay_now" | "net_30" | null;
-  payment_status?:
-    | "paid"
-    | "unpaid"
-    | "invoice_sent"
-    | "overdue"
-    | "payment_failed"
-    | null;
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
-  stripe_checkout_session_id?: string | null;
-  stripe_payment_intent_id?: string | null;
-  stripe_invoice_id?: string | null;
-  stripe_checkout_url?: string | null;
-  stripe_customer_id?: string | null;
+async function getCurrentUserOrThrow(supabase: SupabaseServerClient) {
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
 
-  stripe_invoice_number?: string | null;
-  stripe_invoice_status?: string | null;
-  stripe_invoice_hosted_url?: string | null;
+  if (error || !user) {
+    console.error("[orders.getCurrentUserOrThrow] Error:", error);
+    throw new Error("You must be signed in to access orders.");
+  }
 
-  receipt_email?: string | null;
-  stripe_receipt_url?: string | null;
-
-  paid_at?: string | null;
-  invoice_due_date?: string | null;
-  invoice_sent_at?: string | null;
-  invoice_paid_at?: string | null;
-  invoice_amount_due?: number | null;
-  invoice_amount_remaining?: number | null;
-
-  tracking_number?: string | null;
-  carrier_code?: string | null;
-  shipstation_sync_status?: string | null;
-  shipstation_order_id?: string | null;
-  shipstation_shipment_id?: string | null;
-  shipstation_status?: string | null;
-  shipstation_label_url?: string | null;
-  shipped_at?: string | null;
-
-  facilities?: {
-    name?: string | null;
-    stripe_customer_id?: string | null;
-    phone?: string | null;
-    location?: string | null;
-  } | null;
-
-  products?: {
-    name?: string | null;
-    price?: number | string | null;
-  } | null;
-};
-
-type RawCheckoutOrder = {
-  id: string;
-  order_id: string;
-  facility_id: string;
-  product_id: string;
-  amount: number | string;
-  quantity: number;
-  payment_mode: "pay_now" | "net_30" | null;
-  payment_status:
-    | "paid"
-    | "unpaid"
-    | "invoice_sent"
-    | "overdue"
-    | "payment_failed"
-    | null;
-  stripe_checkout_session_id: string | null;
-  stripe_checkout_url: string | null;
-  stripe_invoice_id: string | null;
-  facilities: {
-    id?: string;
-    name?: string | null;
-    stripe_customer_id?: string | null;
-    phone?: string | null;
-  } | null;
-  products: {
-    id?: string;
-    name?: string | null;
-    price?: number | string | null;
-  } | null;
-};
-
-function flattenOrder(row: RawOrder): Order {
-  return {
-    id: row.id,
-    created_at: row.created_at,
-    order_id: row.order_id,
-    facility_id: row.facility_id,
-    product_id: row.product_id,
-    amount: Number(row.amount ?? 0),
-    quantity: row.quantity ?? 1,
-    status: row.status as Order["status"],
-    facility_name: row.facilities?.name ?? "—",
-    product_name: row.products?.name ?? "—",
-
-    payment_provider: row.payment_provider ?? "stripe",
-    payment_mode: row.payment_mode ?? null,
-    payment_status: row.payment_status ?? "unpaid",
-
-    stripe_checkout_session_id: row.stripe_checkout_session_id ?? null,
-    stripe_payment_intent_id: row.stripe_payment_intent_id ?? null,
-    stripe_invoice_id: row.stripe_invoice_id ?? null,
-    stripe_checkout_url: row.stripe_checkout_url ?? null,
-    stripe_customer_id: row.stripe_customer_id ?? null,
-
-    stripe_invoice_number: row.stripe_invoice_number ?? null,
-    stripe_invoice_status: row.stripe_invoice_status ?? null,
-    stripe_invoice_hosted_url: row.stripe_invoice_hosted_url ?? null,
-
-    receipt_email: row.receipt_email ?? null,
-    stripe_receipt_url: row.stripe_receipt_url ?? null,
-
-    paid_at: row.paid_at ?? null,
-    invoice_due_date: row.invoice_due_date ?? null,
-    invoice_sent_at: row.invoice_sent_at ?? null,
-    invoice_paid_at: row.invoice_paid_at ?? null,
-    invoice_amount_due: row.invoice_amount_due ?? null,
-    invoice_amount_remaining: row.invoice_amount_remaining ?? null,
-
-    tracking_number: row.tracking_number ?? null,
-    carrier_code: row.carrier_code ?? null,
-    shipstation_sync_status: row.shipstation_sync_status ?? null,
-    shipstation_order_id: row.shipstation_order_id ?? null,
-    shipstation_shipment_id: row.shipstation_shipment_id ?? null,
-    shipstation_status: row.shipstation_status ?? null,
-    shipstation_label_url: row.shipstation_label_url ?? null,
-    shipped_at: row.shipped_at ?? null,
-  };
+  return user;
 }
 
-async function getCurrentUserFacilityIds(
-  supabase: Awaited<ReturnType<typeof getSupabaseClient>>,
+async function getUserFacilityRecord(
+  supabase: SupabaseServerClient,
   userId: string,
-): Promise<string[]> {
+): Promise<FacilityRecord | null> {
   const { data, error } = await supabase
-    .from("facilities")
-    .select("id")
-    .eq("user_id", userId);
+    .from(FACILITY_TABLE)
+    .select(FACILITY_SELECT)
+    .eq("user_id", userId)
+    .maybeSingle();
 
   if (error) {
-    console.error("[getCurrentUserFacilityIds] Supabase error:", error.message);
-    return [];
+    console.error("[orders.getUserFacilityRecord] Error:", error);
+    throw new Error(error.message || "Failed to fetch your facility.");
   }
 
-  return (data ?? []).map((row) => row.id);
+  return (data as FacilityRecord | null) ?? null;
 }
 
-function toCents(amount: number) {
-  return Math.round(amount * 100);
-}
+async function getUserFacilityOrThrow(
+  supabase: SupabaseServerClient,
+  userId: string,
+): Promise<FacilityRecord> {
+  const facility = await getUserFacilityRecord(supabase, userId);
 
-// ── READ ──────────────────────────────────────────────────────────────────────
-
-export async function getAllOrders(): Promise<Order[]> {
-  try {
-    const supabase = await getSupabaseClient();
-
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      console.error("[getAllOrders] Auth error:", authError?.message);
-      return [];
-    }
-
-    const facilityIds = await getCurrentUserFacilityIds(supabase, user.id);
-
-    if (facilityIds.length === 0) return [];
-
-    const { data, error } = await supabase
-      .from(ORDER_TABLE)
-      .select(ORDER_COLUMNS)
-      .in("facility_id", facilityIds)
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      console.error("[getAllOrders] Supabase error:", error.message);
-      return [];
-    }
-
-    return (data ?? []).map((row) => flattenOrder(row as unknown as RawOrder));
-  } catch (err) {
-    console.error("[getAllOrders] Unexpected error:", err);
-    return [];
-  }
-}
-
-// ── ADD ───────────────────────────────────────────────────────────────────────
-
-export async function addOrder(formData: FormData): Promise<Order> {
-  await requireUser();
-
-  const supabase = await getSupabaseClient();
-
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-
-  if (authError || !user) throw new Error("Not authenticated.");
-
-  const order_id = String(formData.get("order_id") ?? "").trim();
-  const facility_id = String(formData.get("facility_id") ?? "").trim();
-  const product_id = String(formData.get("product_id") ?? "").trim();
-  const quantity = Math.max(
-    1,
-    parseInt(String(formData.get("quantity") ?? "1"), 10) || 1,
-  );
-
-  if (!order_id) throw new Error("Order number is required.");
-  if (!facility_id) throw new Error("Facility is required.");
-  if (!product_id) throw new Error("Product is required.");
-
-  const facilityIds = await getCurrentUserFacilityIds(supabase, user.id);
-
-  if (!facilityIds.includes(facility_id)) {
-    throw new Error(
-      "You do not have permission to create orders for this facility.",
-    );
+  if (!facility) {
+    throw new Error("No facility is assigned to your account.");
   }
 
-  const { data: product, error: productError } = await supabase
-    .from("products")
-    .select("id, name, price")
-    .eq("id", product_id)
+  if (facility.status !== "active") {
+    throw new Error("Your facility is inactive.");
+  }
+
+  return facility;
+}
+
+async function getProductByIdOrThrow(
+  supabase: SupabaseServerClient,
+  productId: string,
+): Promise<ProductRecord> {
+  const { data, error } = await supabase
+    .from(PRODUCT_TABLE)
+    .select(PRODUCT_SELECT)
+    .eq("id", productId)
     .single();
 
-  if (productError || !product) {
-    console.error("[addOrder] Product lookup error:", productError?.message);
-    throw new Error("Selected product not found.");
+  if (error || !data) {
+    console.error("[orders.getProductByIdOrThrow] Error:", error);
+    throw new Error("Selected product was not found.");
   }
 
-  const amount = Number(product.price) * quantity;
+  const product = data as ProductRecord;
 
-  const { data: insertedRow, error: insertError } = await supabase
-    .from(ORDER_TABLE)
-    .insert({
-      order_id,
-      facility_id,
-      product_id,
-      amount,
-      quantity,
-      status: "Processing",
-      user_id: user.id,
-
-      payment_provider: "stripe",
-      payment_mode: null,
-      payment_status: "unpaid",
-
-      stripe_checkout_session_id: null,
-      stripe_payment_intent_id: null,
-      stripe_invoice_id: null,
-      stripe_checkout_url: null,
-      paid_at: null,
-      receipt_email: user.email ?? null,
-    })
-    .select("id")
-    .single();
-
-  if (insertError || !insertedRow) {
-    console.error("[addOrder] DB insert error:", insertError?.message);
-    throw new Error("Failed to save order to database.");
+  if (!product.is_active) {
+    throw new Error("Selected product is inactive.");
   }
 
-  const { data: row, error: fetchError } = await supabase
-    .from(ORDER_TABLE)
-    .select(ORDER_COLUMNS)
-    .eq("id", insertedRow.id)
-    .single();
-
-  if (fetchError || !row) {
-    console.error("[addOrder] Fetch after insert failed:", fetchError?.message);
-    throw new Error("Order saved but could not be retrieved.");
+  if (!product.sku?.trim()) {
+    throw new Error("Selected product is missing a SKU.");
   }
 
-  revalidatePath(ORDERS_PATH);
-  return flattenOrder(row as unknown as RawOrder);
+  return product;
 }
 
-// ── STRIPE CUSTOMER ───────────────────────────────────────────────────────────
-
-export async function ensureStripeCustomerForFacility(
-  facilityId: string,
-): Promise<string> {
-  await requireUser();
-
-  const supabase = await getSupabaseClient();
-
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-
-  if (authError || !user) throw new Error("Not authenticated.");
-
-  const facilityIds = await getCurrentUserFacilityIds(supabase, user.id);
-
-  if (!facilityIds.includes(facilityId)) {
-    throw new Error("You do not have permission to access this facility.");
-  }
-
-  const { data: facility, error: facilityError } = await supabase
-    .from("facilities")
-    .select("id, name, phone, stripe_customer_id")
-    .eq("id", facilityId)
-    .single();
-
-  if (facilityError || !facility) {
-    throw new Error("Facility not found.");
-  }
-
-  if (facility.stripe_customer_id) {
-    return facility.stripe_customer_id;
-  }
-
-  const customer = await stripe.customers.create({
-    name: facility.name,
-    email: user.email ?? undefined,
-    phone: facility.phone ?? undefined,
-    metadata: {
-      facility_id: facility.id,
-      user_id: user.id,
-    },
-  });
-
-  const { error: updateError } = await supabase
-    .from("facilities")
-    .update({
-      stripe_customer_id: customer.id,
-      stripe_synced_at: new Date().toISOString(),
-    })
-    .eq("id", facility.id);
-
-  if (updateError) {
-    console.error(
-      "[ensureStripeCustomerForFacility] DB update error:",
-      updateError.message,
-    );
-    throw new Error("Failed to save Stripe customer.");
-  }
-
-  return customer.id;
-}
-
-// ── CREATE CHECKOUT SESSION ───────────────────────────────────────────────────
-
-export async function createStripeCheckoutSession(
+async function getFacilityOwnedOrderByIdOrThrow(
+  supabase: SupabaseServerClient,
   orderId: string,
-): Promise<string> {
-  await requireUser();
-
-  const supabase = await getSupabaseClient();
-
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-
-  if (authError || !user) throw new Error("Not authenticated.");
-
-  const { data: rawOrder, error: orderError } = await supabase
+  facilityId: string,
+): Promise<ExistingOrderRecord> {
+  const { data, error } = await supabase
     .from(ORDER_TABLE)
     .select(
       `
       id,
-      order_id,
       facility_id,
+      order_status,
       product_id,
-      amount,
       quantity,
-      payment_mode,
+      payment_method,
       payment_status,
-      stripe_checkout_session_id,
-      stripe_checkout_url,
-      stripe_invoice_id,
-      facilities(id, name, stripe_customer_id, phone),
-      products(id, name, price)
+      invoice_status,
+      fulfillment_status,
+      delivery_status,
+      tracking_number,
+      notes,
+      paid_at,
+      delivered_at
     `,
     )
     .eq("id", orderId)
+    .eq("facility_id", facilityId)
     .single();
 
-  if (orderError || !rawOrder) {
-    throw new Error("Order not found.");
+  if (error || !data) {
+    console.error("[orders.getFacilityOwnedOrderByIdOrThrow] Error:", error);
+    throw new Error("Order was not found.");
   }
 
-  const order = rawOrder as unknown as RawCheckoutOrder;
+  return data as ExistingOrderRecord;
+}
 
-  const facilityIds = await getCurrentUserFacilityIds(supabase, user.id);
+async function getFacilityOwnedDashboardOrderByIdOrThrow(
+  supabase: SupabaseServerClient,
+  orderId: string,
+  facilityId: string,
+): Promise<DashboardOrder> {
+  const { data, error } = await supabase
+    .from(ORDER_TABLE)
+    .select(ORDER_WITH_RELATIONS_SELECT)
+    .eq("id", orderId)
+    .eq("facility_id", facilityId)
+    .single();
 
-  if (!facilityIds.includes(order.facility_id)) {
-    throw new Error("You do not have permission to access this order.");
-  }
-
-  if (order.payment_status === "paid") {
-    throw new Error("This order has already been paid.");
-  }
-
-  if (order.payment_mode === "net_30" && order.stripe_invoice_id) {
-    throw new Error(
-      "This order already has a Net 30 invoice. Use the invoice link instead.",
+  if (error || !data) {
+    console.error(
+      "[orders.getFacilityOwnedDashboardOrderByIdOrThrow] Error:",
+      error,
     );
+    throw new Error("Order was not found.");
+  }
+
+  return mapDashboardOrder(data as unknown as RawOrderRecord);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Public reads                                                               */
+/* -------------------------------------------------------------------------- */
+
+export async function getUserFacility(): Promise<FacilityRecord | null> {
+  const supabase = await createClient();
+  const user = await getCurrentUserOrThrow(supabase);
+
+  return getUserFacilityRecord(supabase, user.id);
+}
+
+export async function getActiveProducts(): Promise<ProductRecord[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from(PRODUCT_TABLE)
+    .select(PRODUCT_SELECT)
+    .eq("is_active", true)
+    .order("sort_order", { ascending: true })
+    .order("name", { ascending: true });
+
+  if (error) {
+    console.error("[getActiveProducts] Error:", error);
+    throw new Error(error.message || "Failed to fetch products.");
+  }
+
+  return (data ?? []) as ProductRecord[];
+}
+
+export async function getAllOrders(): Promise<DashboardOrder[]> {
+  const supabase = await createClient();
+  const user = await getCurrentUserOrThrow(supabase);
+  const facility = await getUserFacilityRecord(supabase, user.id);
+
+  if (!facility) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from(ORDER_TABLE)
+    .select(ORDER_WITH_RELATIONS_SELECT)
+    .eq("facility_id", facility.id)
+    .order("placed_at", { ascending: false });
+
+  if (error) {
+    console.error("[getAllOrders] Error:", error);
+    throw new Error(error.message || "Failed to fetch orders.");
+  }
+
+  return mapDashboardOrders((data ?? []) as unknown as RawOrderRecord[]);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Public mutations                                                           */
+/* -------------------------------------------------------------------------- */
+
+export async function createOrder(
+  input: FormData | CreateOrderInput,
+): Promise<DashboardOrder> {
+  const supabase = await createClient();
+  const user = await getCurrentUserOrThrow(supabase);
+  const parsed = parseCreateOrderInput(input);
+
+  const facility = await getUserFacilityOrThrow(supabase, user.id);
+  const product = await getProductByIdOrThrow(supabase, parsed.product_id);
+  const amounts = calculateOrderAmounts(product.unit_price, parsed.quantity);
+
+  const payload: InsertOrderPayload = {
+    order_number: generateOrderNumber(),
+    facility_id: facility.id,
+    product_id: product.id,
+    product_name: product.name,
+    product_sku: product.sku,
+    quantity: parsed.quantity,
+    unit_price: amounts.unit_price,
+    shipping_amount: amounts.shipping_amount,
+    tax_amount: amounts.tax_amount,
+    order_status: DEFAULT_ORDER_STATUS,
+    payment_method: null,
+    payment_status: DEFAULT_PAYMENT_STATUS,
+    invoice_status: DEFAULT_INVOICE_STATUS,
+    fulfillment_status: DEFAULT_FULFILLMENT_STATUS,
+    delivery_status: DEFAULT_DELIVERY_STATUS,
+    tracking_number: null,
+    notes: toNullableString(parsed.notes),
+    placed_at: new Date().toISOString(),
+    paid_at: null,
+    delivered_at: null,
+  };
+
+  const { data, error } = await supabase
+    .from(ORDER_TABLE)
+    .insert(payload)
+    .select("id")
+    .single();
+
+  if (error || !data) {
+    console.error("[createOrder] Error:", error);
+    throw new Error(error?.message || "Failed to create draft order.");
+  }
+
+  revalidatePath(ORDERS_PATH);
+
+  return getFacilityOwnedDashboardOrderByIdOrThrow(
+    supabase,
+    data.id,
+    facility.id,
+  );
+}
+
+export async function deleteOrder(orderId: string): Promise<void> {
+  const supabase = await createClient();
+  const user = await getCurrentUserOrThrow(supabase);
+
+  const facility = await getUserFacilityOrThrow(supabase, user.id);
+  const existing = await getFacilityOwnedOrderByIdOrThrow(
+    supabase,
+    orderId,
+    facility.id,
+  );
+
+  if (existing.order_status === "canceled") {
+    throw new Error("Canceled orders cannot be deleted.");
   }
 
   if (
-    order.payment_mode === "pay_now" &&
-    order.stripe_checkout_url &&
-    order.stripe_checkout_session_id
+    existing.payment_status === "paid" ||
+    existing.payment_status === "refunded" ||
+    existing.payment_status === "partially_refunded"
   ) {
-    return order.stripe_checkout_url;
+    throw new Error("Paid or refunded orders cannot be deleted.");
   }
 
-  const stripeCustomerId = await ensureStripeCustomerForFacility(
-    order.facility_id,
-  );
-
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
-  if (!appUrl) {
-    throw new Error("NEXT_PUBLIC_APP_URL is not configured.");
+  if (existing.invoice_status !== "not_applicable") {
+    throw new Error("Orders with invoices cannot be deleted.");
   }
 
-  const totalAmount = Number(order.amount);
-
-  const session = await stripe.checkout.sessions.create({
-    mode: "payment",
-    customer: stripeCustomerId,
-    client_reference_id: order.id,
-    success_url: `${appUrl}/dashboard/orders?payment=success&session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${appUrl}/dashboard/orders?payment=cancelled`,
-    payment_method_types: ["card"],
-    line_items: [
-      {
-        quantity: 1,
-        price_data: {
-          currency: "usd",
-          unit_amount: toCents(totalAmount),
-          product_data: {
-            name: order.products?.name ?? `Order ${order.order_id}`,
-            description: `Order ${order.order_id} • Qty ${order.quantity}`,
-            metadata: {
-              order_id: order.id,
-              order_db_id: order.id,
-              order_number: order.order_id,
-              product_id: order.product_id,
-              facility_id: order.facility_id,
-            },
-          },
-        },
-      },
-    ],
-    metadata: {
-      order_id: order.id,
-      order_db_id: order.id,
-      order_number: order.order_id,
-      facility_id: order.facility_id,
-      product_id: order.product_id,
-      user_id: user.id,
-      payment_mode: "pay_now",
-    },
-  });
-
-  if (!session.url) {
-    throw new Error("Stripe did not return a checkout URL.");
-  }
-
-  const { error: updateError } = await supabase
-    .from(ORDER_TABLE)
-    .update({
-      payment_provider: "stripe",
-      payment_mode: "pay_now",
-      payment_status: "unpaid",
-      stripe_checkout_session_id: session.id,
-      stripe_checkout_url: session.url,
-      stripe_customer_id: stripeCustomerId,
-    })
-    .eq("id", order.id);
-
-  if (updateError) {
-    console.error(
-      "[createStripeCheckoutSession] DB update error:",
-      updateError.message,
-    );
-    throw new Error("Failed to save Stripe checkout session.");
-  }
-
-  revalidatePath(ORDERS_PATH);
-  return session.url;
-}
-
-// ── NET 30 WRAPPER ────────────────────────────────────────────────────────────
-
-export async function createStripeNet30Invoice(
-  orderId: string,
-): Promise<Order> {
-  await requireUser();
-
-  const supabase = await getSupabaseClient();
-
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-
-  if (authError || !user) throw new Error("Not authenticated.");
-
-  await createStripeNet30InvoiceService(orderId);
-
-  let { data: rawOrder, error: orderError } = await supabase
-    .from(ORDER_TABLE)
-    .select(ORDER_COLUMNS)
-    .eq("id", orderId)
-    .single();
-
-  if (orderError || !rawOrder) {
-    console.error(
-      "[createStripeNet30Invoice] Fetch updated order error:",
-      orderError?.message,
-    );
-    throw new Error(
-      "Invoice created but updated order could not be retrieved.",
-    );
-  }
-
-  const order = rawOrder as unknown as RawOrder;
-
-  const facilityIds = await getCurrentUserFacilityIds(supabase, user.id);
-
-  if (!facilityIds.includes(order.facility_id)) {
-    throw new Error("You do not have permission to access this order.");
-  }
-
-  const shouldSyncNet30ToShipStation =
-    order.payment_mode === "net_30" &&
-    !!order.stripe_invoice_id &&
-    (!order.shipstation_order_id || order.shipstation_sync_status !== "sent");
-
-  if (shouldSyncNet30ToShipStation) {
-    try {
-      await syncPaidOrderToShipStation(order.id);
-    } catch (shipstationError) {
-      console.error(
-        "[createStripeNet30Invoice] ShipStation sync failed:",
-        shipstationError,
-      );
-
-      await supabase
-        .from(ORDER_TABLE)
-        .update({
-          shipstation_sync_status: "failed",
-        })
-        .eq("id", order.id);
-    }
-
-    const refetch = await supabase
-      .from(ORDER_TABLE)
-      .select(ORDER_COLUMNS)
-      .eq("id", orderId)
-      .single();
-
-    rawOrder = refetch.data ?? rawOrder;
-    orderError = refetch.error ?? null;
-
-    if (orderError || !rawOrder) {
-      console.error(
-        "[createStripeNet30Invoice] Refetch after ShipStation sync failed:",
-        orderError?.message,
-      );
-      throw new Error(
-        "Invoice created, but final order state could not be retrieved.",
-      );
-    }
-  }
-
-  revalidatePath(ORDERS_PATH);
-  return flattenOrder(rawOrder as unknown as RawOrder);
-}
-
-export type ShipOrderWithShipStationResult = SyncPaidOrderToShipStationResult;
-
-export async function shipOrderWithShipStation(
-  orderId: string,
-): Promise<ShipOrderWithShipStationResult> {
-  await requireUser();
-
-  const supabase = await getSupabaseClient();
-
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-
-  if (authError || !user) throw new Error("Not authenticated.");
-
-  const { data: current, error: fetchErr } = await supabase
-    .from(ORDER_TABLE)
-    .select(
-      `
-      id,
-      order_id,
-      facility_id,
-      payment_mode,
-      payment_status,
-      stripe_invoice_id,
-      shipstation_sync_status,
-      shipstation_order_id
-    `,
-    )
-    .eq("id", orderId)
-    .single();
-
-  if (fetchErr || !current) {
-    throw new Error("Order not found.");
-  }
-
-  const facilityIds = await getCurrentUserFacilityIds(supabase, user.id);
-
-  if (!facilityIds.includes(current.facility_id)) {
-    throw new Error("You do not have permission to access this order.");
-  }
-
-  const canSyncToShipStation =
-    current.payment_status === "paid" ||
-    (current.payment_mode === "net_30" && !!current.stripe_invoice_id);
-
-  if (!canSyncToShipStation) {
-    throw new Error(
-      "Only paid orders or Net 30 invoiced orders can be synced to ShipStation.",
-    );
-  }
-
-  return syncPaidOrderToShipStation(orderId);
-}
-
-// ── UPDATE STATUS ─────────────────────────────────────────────────────────────
-
-export async function updateOrderStatus(
-  orderId: string,
-  formData: FormData,
-): Promise<void> {
-  await requireUser();
-
-  const supabase = await getSupabaseClient();
-
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-
-  if (authError || !user) throw new Error("Not authenticated.");
-
-  const status = formData.get("status") as Order["status"];
-
-  const { data: current, error: fetchErr } = await supabase
-    .from(ORDER_TABLE)
-    .select("id, status, facility_id")
-    .eq("id", orderId)
-    .single();
-
-  if (fetchErr || !current) throw new Error("Order not found.");
-
-  const facilityIds = await getCurrentUserFacilityIds(supabase, user.id);
-
-  if (!facilityIds.includes(current.facility_id)) {
-    throw new Error("You do not have permission to update this order.");
-  }
-
-  const { error: updateErr } = await supabase
-    .from(ORDER_TABLE)
-    .update({ status })
-    .eq("id", orderId);
-
-  if (updateErr) {
-    console.error("[updateOrderStatus] DB error:", updateErr.message);
-    throw new Error("Failed to update order status.");
-  }
-
-  revalidatePath(ORDERS_PATH);
-}
-
-// ── DELETE ────────────────────────────────────────────────────────────────────
-
-export async function deleteOrder(orderId: string): Promise<void> {
-  await requireUser();
-
-  const supabase = await getSupabaseClient();
-
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-
-  if (authError || !user) throw new Error("Not authenticated.");
-
-  const { data: current, error: fetchErr } = await supabase
-    .from(ORDER_TABLE)
-    .select("id, order_id, facility_id")
-    .eq("id", orderId)
-    .single();
-
-  if (fetchErr || !current) throw new Error("Order not found.");
-
-  const facilityIds = await getCurrentUserFacilityIds(supabase, user.id);
-
-  if (!facilityIds.includes(current.facility_id)) {
-    throw new Error("You do not have permission to delete this order.");
-  }
-
-  const { error: deleteErr } = await supabase
+  const { error } = await supabase
     .from(ORDER_TABLE)
     .delete()
-    .eq("id", orderId);
+    .eq("id", orderId)
+    .eq("facility_id", facility.id);
 
-  if (deleteErr) {
-    console.error("[deleteOrder] DB error:", deleteErr.message);
-    throw new Error("Failed to delete order from database.");
+  if (error) {
+    console.error("[deleteOrder] Error:", error);
+    throw new Error(error.message || "Failed to delete order.");
   }
 
   revalidatePath(ORDERS_PATH);
 }
 
-// ── DROPDOWN HELPERS ──────────────────────────────────────────────────────────
+export async function submitOrderPaymentChoice(
+  input: FormData | SubmitOrderPaymentChoiceInput,
+): Promise<DashboardOrder> {
+  const supabase = await createClient();
+  const user = await getCurrentUserOrThrow(supabase);
+  const parsed = parseSubmitOrderPaymentChoiceInput(input);
 
-export async function getUserFacility(): Promise<Facility | null> {
-  try {
-    const supabase = await getSupabaseClient();
+  const facility = await getUserFacilityOrThrow(supabase, user.id);
+  const existing = await getFacilityOwnedOrderByIdOrThrow(
+    supabase,
+    parsed.id,
+    facility.id,
+  );
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      console.error("[getUserFacility] Auth error:", authError?.message);
-      return null;
-    }
-
-    const { data, error } = await supabase
-      .from("facilities")
-      .select(
-        "id, name, location, status, stripe_customer_id, stripe_synced_at",
-      )
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (error) {
-      console.error("[getUserFacility] Supabase error:", error.message);
-      return null;
-    }
-
-    if (!data) {
-      console.warn("[getUserFacility] No facility found for user:", user.id);
-      return null;
-    }
-
-    return data as Facility;
-  } catch (err) {
-    console.error("[getUserFacility] Unexpected error:", err);
-    return null;
+  if (existing.order_status === "canceled") {
+    throw new Error("Canceled orders cannot be submitted.");
   }
-}
 
-export async function getAllProducts(): Promise<Product[]> {
-  const { data, error } = await dbSelect<Product>({
-    table: "products",
-    columns: "id, name, price",
-    order: { column: "name", ascending: true },
-  });
+  if (existing.order_status === "submitted") {
+    if (existing.payment_method === parsed.payment_method) {
+      return getFacilityOwnedDashboardOrderByIdOrThrow(
+        supabase,
+        parsed.id,
+        facility.id,
+      );
+    }
+
+    throw new Error("This order has already been submitted.");
+  }
+
+  const payload: SubmitOrderPaymentChoicePayload = {
+    order_status: "submitted",
+    payment_method: parsed.payment_method,
+    payment_status: "pending",
+    invoice_status: getInvoiceStatusForSubmittedPaymentMethod(
+      parsed.payment_method,
+    ),
+  };
+
+  const { error } = await supabase
+    .from(ORDER_TABLE)
+    .update(payload)
+    .eq("id", parsed.id)
+    .eq("facility_id", facility.id);
 
   if (error) {
-    console.error("[getAllProducts] Supabase error:", error.message);
-    return [];
+    console.error("[submitOrderPaymentChoice] Error:", error);
+    throw new Error(error.message || "Failed to submit payment choice.");
   }
 
-  return data ?? [];
+  revalidatePath(ORDERS_PATH);
+
+  return getFacilityOwnedDashboardOrderByIdOrThrow(
+    supabase,
+    parsed.id,
+    facility.id,
+  );
+}
+
+export async function updateOrderStatus(
+  input: FormData | UpdateOrderStatusInput,
+): Promise<DashboardOrder> {
+  const supabase = await createClient();
+  const user = await getCurrentUserOrThrow(supabase);
+  const parsed = parseUpdateOrderStatusInput(input);
+
+  const facility = await getUserFacilityOrThrow(supabase, user.id);
+  const existing = await getFacilityOwnedOrderByIdOrThrow(
+    supabase,
+    parsed.id,
+    facility.id,
+  );
+
+  if (existing.order_status === "draft") {
+    throw new Error(
+      "Draft orders must be submitted before their statuses can be updated.",
+    );
+  }
+
+  if (existing.order_status === "canceled") {
+    throw new Error("Canceled orders cannot be updated.");
+  }
+
+  const nextPaymentStatus = parsed.payment_status ?? existing.payment_status;
+  const nextInvoiceStatus = parsed.invoice_status ?? existing.invoice_status;
+  const nextFulfillmentStatus =
+    parsed.fulfillment_status ?? existing.fulfillment_status;
+  const nextDeliveryStatus = parsed.delivery_status ?? existing.delivery_status;
+  const nextTrackingNumber =
+    parsed.tracking_number !== undefined
+      ? toNullableString(parsed.tracking_number)
+      : existing.tracking_number;
+
+  const payload: UpdateOrderStatusPayload = {
+    payment_status: nextPaymentStatus,
+    invoice_status: nextInvoiceStatus,
+    fulfillment_status: nextFulfillmentStatus,
+    delivery_status: nextDeliveryStatus,
+    tracking_number: nextTrackingNumber,
+    paid_at:
+      parsed.payment_status !== undefined
+        ? getPaidAtForStatus(nextPaymentStatus, existing.paid_at)
+        : existing.paid_at,
+    delivered_at:
+      parsed.delivery_status !== undefined
+        ? getDeliveredAtForStatus(nextDeliveryStatus, existing.delivered_at)
+        : existing.delivered_at,
+    ...(Object.prototype.hasOwnProperty.call(parsed, "notes")
+      ? { notes: toNullableString(parsed.notes) }
+      : {}),
+  };
+
+  const { error } = await supabase
+    .from(ORDER_TABLE)
+    .update(payload)
+    .eq("id", parsed.id)
+    .eq("facility_id", facility.id);
+
+  if (error) {
+    console.error("[updateOrderStatus] Error:", error);
+    throw new Error(error.message || "Failed to update order status.");
+  }
+
+  revalidatePath(ORDERS_PATH);
+
+  return getFacilityOwnedDashboardOrderByIdOrThrow(
+    supabase,
+    parsed.id,
+    facility.id,
+  );
+}
+
+export async function editOrder(
+  input: FormData | EditOrderInput,
+): Promise<DashboardOrder> {
+  const supabase = await createClient();
+  const user = await getCurrentUserOrThrow(supabase);
+  const parsed = parseEditOrderInput(input);
+
+  const facility = await getUserFacilityOrThrow(supabase, user.id);
+  const existing = await getFacilityOwnedOrderByIdOrThrow(
+    supabase,
+    parsed.id,
+    facility.id,
+  );
+
+  if (existing.order_status === "canceled") {
+    throw new Error("Canceled orders cannot be edited.");
+  }
+
+  if (
+    existing.payment_status === "paid" ||
+    existing.payment_status === "refunded" ||
+    existing.payment_status === "partially_refunded"
+  ) {
+    throw new Error("Paid or refunded orders cannot be edited.");
+  }
+
+  if (existing.invoice_status !== "not_applicable") {
+    throw new Error("Orders with invoices cannot be edited.");
+  }
+
+  const product = await getProductByIdOrThrow(supabase, parsed.product_id);
+  const amounts = calculateOrderAmounts(product.unit_price, parsed.quantity);
+
+  const payload: EditOrderPayload = {
+    product_id: product.id,
+    product_name: product.name,
+    product_sku: product.sku,
+    quantity: parsed.quantity,
+    unit_price: amounts.unit_price,
+    shipping_amount: amounts.shipping_amount,
+    tax_amount: amounts.tax_amount,
+  };
+
+  const { error } = await supabase
+    .from(ORDER_TABLE)
+    .update(payload)
+    .eq("id", parsed.id)
+    .eq("facility_id", facility.id);
+
+  if (error) {
+    console.error("[editOrder] Error:", error);
+    throw new Error(error.message || "Failed to edit order.");
+  }
+
+  revalidatePath(ORDERS_PATH);
+
+  return getFacilityOwnedDashboardOrderByIdOrThrow(
+    supabase,
+    parsed.id,
+    facility.id,
+  );
 }

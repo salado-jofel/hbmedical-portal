@@ -1,8 +1,9 @@
 "use client";
 
-import type { Order } from "@/lib/interfaces/order";
+import type { ReactNode } from "react";
+import { useEffect } from "react";
+import type { DashboardOrder } from "@/lib/interfaces/orders";
 import { useAppDispatch } from "@/store/hooks";
-import { type ReactNode, useEffect } from "react";
 import { setOrders } from "../(redux)/orders-slice";
 
 export default function Providers({
@@ -10,7 +11,7 @@ export default function Providers({
   orders,
 }: {
   children: ReactNode;
-  orders: Order[];
+  orders: DashboardOrder[];
 }) {
   const dispatch = useAppDispatch();
 

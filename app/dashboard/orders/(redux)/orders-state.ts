@@ -1,7 +1,7 @@
-import type { Order } from "@/lib/interfaces/order";
+import type { DashboardOrder } from "@/lib/interfaces/orders";
 
 export interface OrdersState {
-  items: Order[];
+  items: DashboardOrder[];
 }
 
 export const initialState: OrdersState = {

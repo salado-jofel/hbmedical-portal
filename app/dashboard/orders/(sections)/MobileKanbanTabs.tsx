@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Package } from "lucide-react";
-import type { Order } from "@/lib/interfaces/order";
+import type { DashboardOrder } from "@/lib/interfaces/orders";
 import { EmptyState } from "@/app/(components)/EmptyState";
 import { OrderCard } from "./OrderCard";
 import {
@@ -14,7 +14,7 @@ import {
 export function MobileKanbanTabs({
   grouped,
 }: {
-  grouped: Record<BoardStatus, Order[]>;
+  grouped: Record<BoardStatus, DashboardOrder[]>;
 }) {
   const [activeTab, setActiveTab] = useState<BoardStatus>("New Orders");
   const config = STATUS_CONFIG[activeTab];
@@ -34,9 +34,10 @@ export function MobileKanbanTabs({
                 flex flex-1 items-center justify-center gap-1.5
                 py-2 px-2 rounded-lg text-xs font-semibold
                 transition-all duration-200
-                ${isActive
-                  ? "bg-white shadow-sm text-slate-800"
-                  : "text-slate-400 hover:text-slate-600"
+                ${
+                  isActive
+                    ? "bg-white shadow-sm text-slate-800"
+                    : "text-slate-400 hover:text-slate-600"
                 }
               `}
             >
@@ -46,9 +47,10 @@ export function MobileKanbanTabs({
                 className={`
                   shrink-0 min-w-4.5 h-4.5 flex items-center justify-center
                   rounded-full text-[10px] font-bold px-1
-                  ${isActive
-                    ? "bg-[#15689E] text-white"
-                    : "bg-slate-200 text-slate-500"
+                  ${
+                    isActive
+                      ? "bg-[#15689E] text-white"
+                      : "bg-slate-200 text-slate-500"
                   }
                 `}
               >

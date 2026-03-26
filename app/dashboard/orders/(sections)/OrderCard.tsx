@@ -1,182 +1,107 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { useAppDispatch } from "@/store/hooks";
 import {
   updateOrderInStore,
   removeOrderFromStore,
 } from "../(redux)/orders-slice";
-import {
-  deleteOrder,
-  createStripeCheckoutSession,
-  createStripeNet30Invoice,
-  shipOrderWithShipStation,
-} from "../(services)/actions";
+import { deleteOrder, submitOrderPaymentChoice } from "../(services)/actions";
 
-import type { Order } from "@/lib/interfaces/order";
+import type {
+  DashboardOrder,
+  OrderPaymentMethod,
+} from "@/lib/interfaces/orders";
+import {
+  canChoosePaymentMethod,
+  canDeleteOrder,
+  canEditOrder,
+  getOrderLockReason,
+} from "@/lib/helpers/orders";
+import { DEFAULT_INVOICE_STATUS } from "@/lib/constants/orders";
+
 import {
   Trash2,
   Package,
   Building2,
-  User,
   Loader2,
   CreditCard,
   CheckCircle2,
   Boxes,
   DollarSign,
   Truck,
-  BadgeCheck,
   Clock3,
-  FileText,
-  RefreshCcw,
   ChevronDown,
   CalendarClock,
+  Edit3,
+  ReceiptText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ConfirmModal from "@/app/(components)/ConfirmModal";
 import { OrderInfoRow } from "./OrderInfoRow";
-import { getFulfillmentLabel, mapOrderToBoardStatus } from "./kanban-config";
+import { EditOrderModal } from "./EditOrderModal";
 import toast from "react-hot-toast";
-import { formatStatus } from "@/utils/formatter";
+import { PaymentBadge } from "@/app/(components)/PaymentBadge";
+import { FulfillmentBadge } from "@/app/(components)/FulfillmentBadge";
 
-function PaymentBadge({
-  status,
-}: {
-  status?: string | null;
-}) {
-  if (status === "paid") {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-        <CheckCircle2 className="h-3.5 w-3.5" />
-        Paid
-      </span>
-    );
-  }
+function formatCurrency(value: number | string | null | undefined) {
+  const amount =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number(value)
+        : 0;
 
-  if (status === "invoice_sent") {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">
-        <FileText className="h-3.5 w-3.5" />
-        Invoice Sent
-      </span>
-    );
-  }
-
-  if (status === "overdue") {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-700">
-        <Clock3 className="h-3.5 w-3.5" />
-        Overdue
-      </span>
-    );
-  }
-
-  if (status === "payment_failed") {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2.5 py-1 text-xs font-semibold text-rose-700">
-        <RefreshCcw className="h-3.5 w-3.5" />
-        Payment Failed
-      </span>
-    );
-  }
-
-  if ((status as string | null) === "pending") {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">
-        <Clock3 className="h-3.5 w-3.5" />
-        Pending
-      </span>
-    );
-  }
-
-  if (status === "unpaid") {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
-        <Clock3 className="h-3.5 w-3.5" />
-        Unpaid
-      </span>
-    );
-  }
-
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
-      <Clock3 className="h-3.5 w-3.5" />
-      Unpaid
-    </span>
-  );
+  return `$${(Number.isFinite(amount) ? amount : 0).toFixed(2)}`;
 }
 
-function FulfillmentBadge({
-  label,
-  delivered,
-}: {
-  label: string;
-  delivered: boolean;
-}) {
-  if (delivered) {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-700">
-        <BadgeCheck className="h-3.5 w-3.5" />
-        Delivered
-      </span>
-    );
+function getPaymentDisplayStatus(order: DashboardOrder) {
+  if (order.payment_status === "paid") return "paid";
+  if (order.payment_status === "failed") return "payment_failed";
+  if (order.payment_status === "canceled") return "canceled";
+  if (order.invoice_status === "overdue") return "overdue";
+  if (order.invoice_status === "sent") return "invoice_sent";
+  if (order.invoice_status === "partially_paid") return "partially_paid";
+  if (order.payment_status === "pending") return "pending";
+  return "unpaid";
+}
+
+function getFulfillmentLabel(order: DashboardOrder) {
+  if (order.delivery_status === "delivered") return "Delivered";
+  if (order.delivery_status === "in_transit") return "In Transit";
+  if (order.delivery_status === "label_created") return "Label Created";
+  if (order.delivery_status === "returned") return "Returned";
+  if (order.delivery_status === "exception") return "Delivery Issue";
+  if (order.delivery_status === "canceled") return "Canceled";
+
+  if (
+    order.payment_status === "paid" ||
+    (order.payment_method === "net_30" &&
+      order.invoice_status !== DEFAULT_INVOICE_STATUS)
+  ) {
+    return "Awaiting Shipment";
   }
 
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
-      <Truck className="h-3.5 w-3.5" />
-      {label}
-    </span>
-  );
+  if (order.order_status === "draft") return "Draft";
+  return "Awaiting Payment";
 }
 
-function ShipStationSyncBadge({
-  syncStatus,
-}: {
-  syncStatus?: string | null;
-}) {
-  if (!syncStatus) return null;
-
-  const map: Record<string, { text: string; className: string }> = {
-    ready: {
-      text: "ShipStation Ready",
-      className: "bg-sky-100 text-sky-700",
-    },
-    syncing: {
-      text: "ShipStation Syncing",
-      className: "bg-amber-100 text-amber-700",
-    },
-    sent: {
-      text: "ShipStation Synced",
-      className: "bg-violet-100 text-violet-700",
-    },
-    failed: {
-      text: "ShipStation Failed",
-      className: "bg-red-100 text-red-700",
-    },
-  };
-
-  const display = map[syncStatus] ?? {
-    text: formatStatus(syncStatus),
-    className: "bg-slate-100 text-slate-700",
-  };
-
-  return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${display.className}`}
-    >
-      <Truck className="h-3.5 w-3.5" />
-      {display.text}
-    </span>
-  );
+function getPaymentMethodLabel(method: DashboardOrder["payment_method"]) {
+  if (method === "pay_now") return "Pay Now";
+  if (method === "net_30") return "Pay Later (Net 30)";
+  return "Not selected";
 }
 
-function getNet30DueMeta(invoiceDueDate?: string | null, nowMs = Date.now()) {
-  if (!invoiceDueDate) return null;
+function getNet30DueMeta(order: DashboardOrder, nowMs = Date.now()) {
+  if (order.payment_method !== "net_30") return null;
+  if (order.invoice_status === DEFAULT_INVOICE_STATUS) return null;
+  if (!order.placed_at) return null;
 
-  const due = new Date(invoiceDueDate);
-  if (Number.isNaN(due.getTime())) return null;
+  const placedAt = new Date(order.placed_at);
+  if (Number.isNaN(placedAt.getTime())) return null;
+
+  const due = new Date(placedAt);
+  due.setDate(due.getDate() + 30);
 
   const now = new Date(nowMs);
 
@@ -230,16 +155,15 @@ function getNet30DueMeta(invoiceDueDate?: string | null, nowMs = Date.now()) {
   };
 }
 
-export function OrderCard({ order }: { order: Order }) {
+export function OrderCard({ order }: { order: DashboardOrder }) {
   const dispatch = useAppDispatch();
-  const boardStatus = mapOrderToBoardStatus(order);
 
   const [isDeleting, setIsDeleting] = useState(false);
   const [isPayingNow, setIsPayingNow] = useState(false);
   const [isPayingLater, setIsPayingLater] = useState(false);
-  const [isFulfilling, setIsFulfilling] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [paymentMenuOpen, setPaymentMenuOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [nowMs, setNowMs] = useState(Date.now());
 
   const paymentMenuRef = useRef<HTMLDivElement | null>(null);
@@ -251,48 +175,6 @@ export function OrderCard({ order }: { order: Order }) {
 
     return () => window.clearInterval(timer);
   }, []);
-
-  const isPaid = order.payment_status === "paid";
-  const hasCheckout = Boolean(order.stripe_checkout_url);
-  const hasInvoice = Boolean(order.stripe_invoice_hosted_url);
-  const isNet30 = order.payment_mode === "net_30";
-  const isPayNowMode = order.payment_mode === "pay_now";
-
-  const isDelivered = boardStatus === "Delivered";
-  const fulfillmentLabel = getFulfillmentLabel(order);
-
-  const quantity = Number(order.quantity ?? 1);
-  const totalAmount = Number(order.amount ?? 0);
-  const unitPrice = quantity > 0 ? totalAmount / quantity : totalAmount;
-
-  const canSyncToShipStation =
-    isPaid || (isNet30 && Boolean(order.stripe_invoice_id));
-
-  const syncing = order.shipstation_sync_status === "syncing";
-  const syncSent = order.shipstation_sync_status === "sent";
-  const syncFailed = order.shipstation_sync_status === "failed";
-  const syncReady =
-    order.shipstation_sync_status === "ready" ||
-    (!order.shipstation_sync_status && canSyncToShipStation && !syncSent);
-
-  const hasLegacyMockShipment = !!order.shipstation_shipment_id;
-  const isLegacyMockCarrier = (order.carrier_code ?? "").startsWith("mock-");
-  const shouldHideLegacyShipmentDetails =
-    hasLegacyMockShipment || isLegacyMockCarrier;
-
-  const isBusy = isPayingNow || isPayingLater || isFulfilling || isDeleting;
-
-  const net30DueMeta = useMemo(
-    () => getNet30DueMeta(order.invoice_due_date, nowMs),
-    [order.invoice_due_date, nowMs],
-  );
-
-  const shouldShowNet30DueDate =
-    isNet30 &&
-    !isPaid &&
-    !!net30DueMeta &&
-    (order.payment_status === "invoice_sent" ||
-      order.payment_status === "overdue");
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -310,6 +192,36 @@ export function OrderCard({ order }: { order: Order }) {
     };
   }, []);
 
+  const isPaid = order.payment_status === "paid";
+  const hasInvoice =
+    order.payment_method === "net_30" &&
+    order.invoice_status !== DEFAULT_INVOICE_STATUS;
+
+  const isDelivered = order.delivery_status === "delivered";
+  const fulfillmentLabel = getFulfillmentLabel(order);
+
+  const quantity = Number(order.quantity ?? 1);
+  const totalAmount = Number(order.total_amount ?? 0);
+  const unitPrice = Number(order.unit_price ?? 0);
+
+  const canDelete = canDeleteOrder(order);
+  const canEdit = canEditOrder(order);
+  const canChoosePayment = canChoosePaymentMethod(order);
+  const lockReason = getOrderLockReason(order);
+
+  const isBusy = isPayingNow || isPayingLater || isDeleting;
+
+  const net30DueMeta = useMemo(
+    () => getNet30DueMeta(order, nowMs),
+    [order, nowMs],
+  );
+
+  const shouldShowNet30DueDate =
+    order.payment_method === "net_30" &&
+    !isPaid &&
+    !!net30DueMeta &&
+    order.invoice_status !== DEFAULT_INVOICE_STATUS;
+
   async function handleDelete() {
     if (!order.id) return;
 
@@ -317,120 +229,63 @@ export function OrderCard({ order }: { order: Order }) {
     try {
       await deleteOrder(order.id);
       dispatch(removeOrderFromStore(order.id));
-      toast.success(`Order ${order.order_id} deleted successfully.`);
+      toast.success(`Order ${order.order_number} deleted successfully.`);
     } catch (err) {
       console.error("[handleDelete]", err);
-      toast.error("Failed to delete order. Please try again.");
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Failed to delete order. Please try again.",
+      );
     } finally {
       setIsDeleting(false);
       setConfirmOpen(false);
     }
   }
 
-  async function handlePayNow() {
-    if (!order.id || isPayingNow || isPaid) return;
+  async function handlePaymentChoice(method: OrderPaymentMethod) {
+    if (!order.id || isPaid) return;
 
     setPaymentMenuOpen(false);
-    setIsPayingNow(true);
 
-    try {
-      const checkoutUrl = await createStripeCheckoutSession(order.id);
-      window.location.href = checkoutUrl;
-    } catch (err) {
-      console.error("[handlePayNow]", err);
-      toast.error("Failed to start payment. Please try again.");
-      setIsPayingNow(false);
+    if (method === "pay_now") {
+      setIsPayingNow(true);
+    } else {
+      setIsPayingLater(true);
     }
-  }
-
-  async function handlePayLater() {
-    if (!order.id || isPayingLater || isPaid) return;
-
-    setPaymentMenuOpen(false);
-    setIsPayingLater(true);
 
     try {
-      const updatedOrder = await createStripeNet30Invoice(order.id);
-      dispatch(updateOrderInStore(updatedOrder));
-      toast.success("Net 30 invoice created.");
+      const updatedOrder = await submitOrderPaymentChoice({
+        id: order.id,
+        payment_method: method,
+      });
 
-      if (updatedOrder.stripe_invoice_hosted_url) {
-        window.open(updatedOrder.stripe_invoice_hosted_url, "_blank");
-      }
+      dispatch(updateOrderInStore(updatedOrder));
+      toast.success(
+        method === "pay_now"
+          ? "Payment choice updated to Pay Now."
+          : "Net 30 payment choice selected.",
+      );
     } catch (err) {
-      console.error("[handlePayLater]", err);
-      toast.error("Failed to create Net 30 invoice. Please try again.");
+      console.error("[handlePaymentChoice]", err);
+      toast.error("Failed to update payment choice. Please try again.");
     } finally {
+      setIsPayingNow(false);
       setIsPayingLater(false);
     }
   }
 
-  async function handleShipStationSync() {
-    if (!order.id || isFulfilling || !canSyncToShipStation) return;
-
-    setIsFulfilling(true);
-
-    try {
-      const result = await shipOrderWithShipStation(order.id);
-
-      if (result.alreadySynced) {
-        toast.success("Order already synced to ShipStation.");
-      } else {
-        toast.success("Order synced to ShipStation successfully.");
-      }
-    } catch (err) {
-      console.error("[handleShipStationSync]", err);
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : "Failed to sync order to ShipStation. Please try again.",
-      );
-    } finally {
-      setIsFulfilling(false);
+  function handleEditClick() {
+    if (!canEdit) {
+      toast.error(lockReason || "This order cannot be edited.");
+      return;
     }
+
+    setEditOpen(true);
   }
 
   function renderPrimaryAction() {
-    if (!isPaid) {
-      if (isNet30 && hasInvoice) {
-        return (
-          <Link href={order.stripe_invoice_hosted_url!} target="_blank">
-            <Button
-              type="button"
-              size="sm"
-              className="h-9 bg-[#15689E] text-white hover:bg-[#0f4f7a] cursor-pointer"
-            >
-              <FileText className="mr-1 h-4 w-4" />
-              View Invoice
-            </Button>
-          </Link>
-        );
-      }
-
-      if (isPayNowMode && hasCheckout) {
-        return (
-          <Button
-            type="button"
-            size="sm"
-            onClick={handlePayNow}
-            disabled={isPayingNow}
-            className="h-9 bg-[#15689E] text-white hover:bg-[#0f4f7a] cursor-pointer"
-          >
-            {isPayingNow ? (
-              <>
-                <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-                Redirecting...
-              </>
-            ) : (
-              <>
-                <CreditCard className="mr-1 h-4 w-4" />
-                Resume Payment
-              </>
-            )}
-          </Button>
-        );
-      }
-
+    if (canChoosePayment) {
       return (
         <div className="relative" ref={paymentMenuRef}>
           <Button
@@ -458,7 +313,7 @@ export function OrderCard({ order }: { order: Order }) {
             <div className="absolute right-0 top-full z-20 mt-2 w-52 overflow-hidden rounded-md border border-slate-200 bg-white shadow-lg">
               <button
                 type="button"
-                onClick={handlePayNow}
+                onClick={() => handlePaymentChoice("pay_now")}
                 className="flex w-full items-center px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
               >
                 <CreditCard className="mr-2 h-4 w-4" />
@@ -467,7 +322,7 @@ export function OrderCard({ order }: { order: Order }) {
 
               <button
                 type="button"
-                onClick={handlePayLater}
+                onClick={() => handlePaymentChoice("net_30")}
                 className="flex w-full items-center px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
               >
                 <Clock3 className="mr-2 h-4 w-4" />
@@ -479,31 +334,7 @@ export function OrderCard({ order }: { order: Order }) {
       );
     }
 
-    if (syncFailed) {
-      return (
-        <Button
-          type="button"
-          size="sm"
-          onClick={handleShipStationSync}
-          disabled={isFulfilling}
-          className="h-9 bg-red-600 text-white hover:bg-red-700 cursor-pointer"
-        >
-          {isFulfilling ? (
-            <>
-              <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-              Retrying...
-            </>
-          ) : (
-            <>
-              <RefreshCcw className="mr-1 h-4 w-4" />
-              Retry ShipStation Sync
-            </>
-          )}
-        </Button>
-      );
-    }
-
-    if (syncing || isFulfilling) {
+    if (hasInvoice) {
       return (
         <Button
           type="button"
@@ -511,37 +342,22 @@ export function OrderCard({ order }: { order: Order }) {
           disabled
           className="h-9 bg-amber-600 text-white hover:bg-amber-600"
         >
-          <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-          Syncing...
+          <ReceiptText className="mr-1 h-4 w-4" />
+          Invoice Created
         </Button>
       );
     }
 
-    if (syncReady) {
-      return (
-        <Button
-          type="button"
-          size="sm"
-          onClick={handleShipStationSync}
-          disabled={isFulfilling}
-          className="h-9 bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer"
-        >
-          <Truck className="mr-1 h-4 w-4" />
-          Sync to ShipStation
-        </Button>
-      );
-    }
-
-    if (syncSent) {
+    if (isPaid) {
       return (
         <Button
           type="button"
           size="sm"
           disabled
-          className="h-9 bg-violet-600 text-white hover:bg-violet-600"
+          className="h-9 bg-emerald-600 text-white hover:bg-emerald-600"
         >
-          <Truck className="mr-1 h-4 w-4" />
-          Synced to ShipStation
+          <CheckCircle2 className="mr-1 h-4 w-4" />
+          Awaiting Shipment
         </Button>
       );
     }
@@ -550,39 +366,31 @@ export function OrderCard({ order }: { order: Order }) {
       <Button
         type="button"
         size="sm"
-        onClick={handleShipStationSync}
-        disabled={!canSyncToShipStation || isFulfilling}
-        className="h-9 bg-violet-600 text-white hover:bg-violet-700 cursor-pointer"
+        disabled
+        className="h-9 bg-slate-600 text-white hover:bg-slate-600"
       >
-        {isFulfilling ? (
-          <>
-            <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-            Loading...
-          </>
-        ) : (
-          <>
-            <Truck className="mr-1 h-4 w-4" />
-            Sync to ShipStation
-          </>
-        )}
+        <Clock3 className="mr-1 h-4 w-4" />
+        Awaiting Payment
       </Button>
     );
   }
 
   function renderPaymentText() {
     if (order.payment_status === "paid") return "Paid";
-    if (order.payment_status === "invoice_sent") return "Invoice Sent";
-    if (order.payment_status === "overdue") return "Overdue";
-    if (order.payment_status === "payment_failed") return "Payment Failed";
-    if ((order.payment_status as string | null) === "pending") return "Pending";
-    if (order.payment_status === "unpaid") return "Unpaid";
+    if (order.invoice_status === "sent") return "Invoice Sent";
+    if (order.invoice_status === "overdue") return "Overdue";
+    if (order.invoice_status === "partially_paid") return "Partially Paid";
+    if (order.payment_status === "failed") return "Payment Failed";
+    if (order.payment_status === "pending") return "Pending";
+    if (order.payment_status === "canceled") return "Canceled";
     return "Unpaid";
   }
 
-  const displayStatus =
-    shouldHideLegacyShipmentDetails && order.status === "Shipped"
-      ? "Processing"
-      : order.status ?? "Processing";
+  const displayStatus = isDelivered
+    ? "Delivered"
+    : isPaid || hasInvoice
+      ? "Awaiting Shipment"
+      : "Awaiting Payment";
 
   return (
     <>
@@ -590,10 +398,16 @@ export function OrderCard({ order }: { order: Order }) {
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
         title="Delete Order?"
-        description={`Order ${order.order_id} will be permanently deleted and cannot be recovered.`}
+        description={`Order ${order.order_number} will be permanently deleted and cannot be recovered.`}
         confirmLabel="Delete"
         isLoading={isDeleting}
         onConfirm={handleDelete}
+      />
+
+      <EditOrderModal
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        order={order}
       />
 
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
@@ -603,26 +417,54 @@ export function OrderCard({ order }: { order: Order }) {
               Order
             </p>
             <h3 className="text-sm font-bold text-slate-800">
-              {order.order_id}
+              {order.order_number}
             </h3>
           </div>
 
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            onClick={() => setConfirmOpen(true)}
-            disabled={isDeleting}
-            className="h-7 w-7 text-slate-300 hover:bg-red-50 hover:text-red-500 cursor-pointer"
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={handleEditClick}
+              disabled={!canEdit || isBusy}
+              title={
+                canEdit
+                  ? "Edit order"
+                  : lockReason || "This order cannot be edited."
+              }
+              className="h-7 w-7 text-slate-300 hover:bg-slate-100 hover:text-slate-600 cursor-pointer"
+            >
+              <Edit3 className="h-4 w-4" />
+            </Button>
+
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                if (!canDelete) {
+                  toast.error(lockReason || "This order cannot be deleted.");
+                  return;
+                }
+                setConfirmOpen(true);
+              }}
+              disabled={isDeleting || !canDelete}
+              title={
+                canDelete
+                  ? "Delete order"
+                  : lockReason || "This order cannot be deleted."
+              }
+              className="h-7 w-7 text-slate-300 hover:bg-red-50 hover:text-red-500 cursor-pointer"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
         <div className="mt-3 flex flex-wrap gap-2">
-          <PaymentBadge status={order.payment_status} />
+          <PaymentBadge status={getPaymentDisplayStatus(order)} />
           <FulfillmentBadge label={fulfillmentLabel} delivered={isDelivered} />
-          {/* <ShipStationSyncBadge syncStatus={order.shipstation_sync_status} /> */}
         </div>
 
         <div className="mt-4 space-y-2">
@@ -636,10 +478,6 @@ export function OrderCard({ order }: { order: Order }) {
             icon={Building2}
             text={`Facility: ${order.facility_name ?? ""}`}
           />
-
-          {order.created_by_email && (
-            <OrderInfoRow icon={User} text={order.created_by_email} />
-          )}
 
           <div className="grid grid-cols-2 gap-2 pt-1">
             <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
@@ -659,13 +497,28 @@ export function OrderCard({ order }: { order: Order }) {
               <div className="mt-1 flex items-center gap-2 text-slate-800">
                 <DollarSign className="h-4 w-4 text-slate-500" />
                 <span className="text-sm font-semibold">
-                  ${unitPrice.toFixed(2)}
+                  {formatCurrency(unitPrice)}
                 </span>
               </div>
             </div>
           </div>
 
-          {shouldShowNet30DueDate && net30DueMeta && (
+          {order.payment_method === "net_30" &&
+          order.invoice_status !== DEFAULT_INVOICE_STATUS ? (
+            <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                Invoice Status
+              </p>
+              <div className="mt-1 flex items-center gap-2 text-slate-800">
+                <ReceiptText className="h-4 w-4 text-slate-500" />
+                <span className="text-sm font-semibold">
+                  {order.invoice_status.replace(/_/g, " ")}
+                </span>
+              </div>
+            </div>
+          ) : null}
+
+          {shouldShowNet30DueDate && net30DueMeta ? (
             <div
               className={`rounded-xl border px-3 py-2 ${net30DueMeta.toneClasses}`}
             >
@@ -684,9 +537,9 @@ export function OrderCard({ order }: { order: Order }) {
                 {net30DueMeta.relativeText}
               </p>
             </div>
-          )}
+          ) : null}
 
-          {order.tracking_number && !shouldHideLegacyShipmentDetails && (
+          {order.tracking_number ? (
             <div className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2">
               <p className="text-[11px] font-medium uppercase tracking-wide text-blue-500">
                 Tracking
@@ -697,25 +550,8 @@ export function OrderCard({ order }: { order: Order }) {
                   {order.tracking_number}
                 </span>
               </div>
-
-              {order.carrier_code ? (
-                <p className="mt-1 text-xs text-blue-600">
-                  Carrier: {order.carrier_code}
-                </p>
-              ) : null}
-
-              {order.shipstation_label_url ? (
-                <Link
-                  href={order.shipstation_label_url}
-                  target="_blank"
-                  className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-blue-700 underline underline-offset-2"
-                >
-                  <FileText className="h-3.5 w-3.5" />
-                  View Label
-                </Link>
-              ) : null}
             </div>
-          )}
+          ) : null}
         </div>
 
         <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50 px-3 py-3">
@@ -725,10 +561,10 @@ export function OrderCard({ order }: { order: Order }) {
                 Total Amount
               </span>
               <span className="mt-1 text-xl font-bold text-slate-800">
-                ${totalAmount.toFixed(2)}
+                {formatCurrency(totalAmount)}
               </span>
               <span className="text-xs text-slate-500">
-                {quantity} × ${unitPrice.toFixed(2)}
+                {quantity} × {formatCurrency(unitPrice)}
               </span>
             </div>
 

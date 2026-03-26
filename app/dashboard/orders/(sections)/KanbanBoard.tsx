@@ -1,16 +1,16 @@
-import type { Order } from "@/lib/interfaces/order";
+import type { DashboardOrder } from "@/lib/interfaces/orders";
 import { BOARD_STATUSES } from "./kanban-config";
 import { KanbanColumn } from "./KanbanColumn";
 import { groupOrdersByBoardStatus } from "@/utils/group-orders-by-status";
 
-export function KanbanBoard({ orders }: { orders: Order[] }) {
-    const grouped = groupOrdersByBoardStatus(orders);
+export function KanbanBoard({ orders }: { orders: DashboardOrder[] }) {
+  const grouped = groupOrdersByBoardStatus(orders);
 
-    return (
-        <div className="flex gap-4 overflow-x-auto">
-            {BOARD_STATUSES.map((status) => (
-                <KanbanColumn key={status} status={status} orders={grouped[status]} />
-            ))}
-        </div>
-    );
+  return (
+    <div className="flex gap-4 overflow-x-auto">
+      {BOARD_STATUSES.map((status) => (
+        <KanbanColumn key={status} status={status} orders={grouped[status]} />
+      ))}
+    </div>
+  );
 }
