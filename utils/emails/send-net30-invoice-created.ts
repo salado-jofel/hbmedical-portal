@@ -19,7 +19,9 @@ function formatAmount(amount?: number | null, currency?: string | null) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: currency.toUpperCase(),
-  }).format(amount / 100);
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount);
 }
 
 function formatDate(value?: string | null) {
