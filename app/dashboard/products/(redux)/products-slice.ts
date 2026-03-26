@@ -1,5 +1,5 @@
-import type { Product } from "@/lib/interfaces/product";
-import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
+import { createSlice, PayloadAction } from "@reduxjs/toolkit";
+import type { Product } from "@/lib/interfaces/products";
 import { initialState } from "./products-state";
 
 const productsSlice = createSlice({
@@ -13,19 +13,15 @@ const productsSlice = createSlice({
       state.items.unshift(action.payload);
     },
     updateProductInStore(state, action: PayloadAction<Product>) {
-      const index = state.items.findIndex((p) => p.id === action.payload.id);
-      if (index !== -1) {
-        state.items[index] = action.payload;
-      }
+      state.items = state.items.map((item) =>
+        item.id === action.payload.id ? action.payload : item,
+      );
     },
     removeProductFromStore(state, action: PayloadAction<string>) {
-      state.items = state.items.filter((p) => p.id !== action.payload);
+      state.items = state.items.filter((item) => item.id !== action.payload);
     },
     setSearch(state, action: PayloadAction<string>) {
       state.search = action.payload;
-    },
-    setFacilityFilter(state, action: PayloadAction<string>) {
-      state.facilityFilter = action.payload;
     },
   },
 });
@@ -36,7 +32,6 @@ export const {
   updateProductInStore,
   removeProductFromStore,
   setSearch,
-  setFacilityFilter,
 } = productsSlice.actions;
 
 export default productsSlice.reducer;
