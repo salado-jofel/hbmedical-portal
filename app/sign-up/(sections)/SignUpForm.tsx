@@ -80,11 +80,7 @@ export default function SignUpForm() {
       <form action={formAction} onSubmit={handleSubmit} className="space-y-4">
         <input type="hidden" name="role" value={role} />
         <input type="hidden" name="phone" value={phone} />
-        <input
-          type="hidden"
-          name="facility_country"
-          value={country.toUpperCase()}
-        />
+        <input type="hidden" name="country" value={country.toUpperCase()} />
 
         <div className="space-y-2">
           <label className="text-sm font-medium text-white/70">I am a</label>
