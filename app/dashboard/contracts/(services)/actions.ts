@@ -1,75 +1,83 @@
 "use server";
 
-import { ContractMaterial } from "@/lib/interfaces/contracts";
-import { getSupabaseClient } from "@/utils/supabase/db";
+import { STORAGE_SIGNED_URL_EXPIRES_IN } from "@/lib/constants/storage";
+import {
+  toStorageReference,
+  parseStorageReference,
+} from "@/lib/helpers/storage";
+import {
+  ContractMaterialRow,
+  ContractMaterial,
+} from "@/lib/interfaces/contracts";
+import { createClient } from "@/utils/supabase/server";
 
-const CONTRACT_TABLE = "contracts_materials";
+const CONTRACT_MATERIALS_SELECT = `
+  id,
+  title,
+  description,
+  tag,
+  bucket,
+  file_path,
+  file_name,
+  mime_type,
+  sort_order,
+  is_active,
+  created_at,
+  updated_at
+`;
 
-// URL format:
-// https://<project>.supabase.co/storage/v1/object/public/<bucket>/<path>
-function parseStorageUrl(
-  fileUrl: string,
-): { bucket: string; filePath: string } | null {
-  const marker = "/storage/v1/object/public/";
-  const idx = fileUrl.indexOf(marker);
-
-  if (idx === -1) return null;
-
-  const after = fileUrl.slice(idx + marker.length);
-  const slashIdx = after.indexOf("/");
-
-  if (slashIdx === -1) return null;
-
+function mapContractMaterial(row: ContractMaterialRow): ContractMaterial {
   return {
-    bucket: after.slice(0, slashIdx),
-    filePath: decodeURIComponent(after.slice(slashIdx + 1)),
+    ...row,
+    file_url: toStorageReference({
+      bucket: row.bucket,
+      file_path: row.file_path,
+    }),
   };
 }
 
 export async function getContractMaterials(): Promise<ContractMaterial[]> {
-  try {
-    const supabase = await getSupabaseClient();
+  const supabase = await createClient();
 
-    const { data, error } = await supabase
-      .from(CONTRACT_TABLE)
-      .select("*")
-      .order("sort_order", { ascending: true });
+  const { data, error } = await supabase
+    .from("contract_materials")
+    .select(CONTRACT_MATERIALS_SELECT)
+    .eq("is_active", true)
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: false });
 
-    if (error) {
-      console.error("[getContractMaterials] error:", error.message);
-      return [];
-    }
-
-    return data ?? [];
-  } catch (err) {
-    console.error("[getContractMaterials] Unexpected error:", err);
+  if (error) {
+    console.error("Failed to fetch contract materials:", error);
     return [];
   }
+
+  return ((data ?? []) as ContractMaterialRow[]).map(mapContractMaterial);
 }
 
-export async function getSignedDownloadUrl(fileUrl: string): Promise<string> {
-  const parsed = parseStorageUrl(fileUrl);
+export async function getSignedDownloadUrl(
+  storageRefOrUrl: string,
+  downloadFileName?: string,
+): Promise<string | null> {
+  const parsed = parseStorageReference(storageRefOrUrl);
 
   if (!parsed) {
-    console.error("[getSignedDownloadUrl] Could not parse URL:", fileUrl);
-    return fileUrl; // fallback to public URL
+    return null;
   }
 
-  try {
-    const supabase = await getSupabaseClient();
+  const supabase = await createClient();
 
-    const { data, error } = await supabase.storage
-      .from(parsed.bucket)
-      .createSignedUrl(parsed.filePath, 300);
+  const { data, error } = await supabase.storage
+    .from(parsed.bucket)
+    .createSignedUrl(
+      parsed.filePath,
+      STORAGE_SIGNED_URL_EXPIRES_IN,
+      downloadFileName ? { download: downloadFileName } : undefined,
+    );
 
-    if (error || !data) {
-      console.error("[getSignedDownloadUrl] Supabase error:", error?.message);
-      return fileUrl; // fallback to public URL
-    }
-
-    return data.signedUrl;
-  } catch (err) {
-    console.error("[getSignedDownloadUrl] Unexpected error:", err);
-    return fileUrl; // fallback to public URL
+  if (error) {
+    console.error("Failed to create signed URL:", error);
+    return null;
   }
+
+  return data?.signedUrl ?? null;
 }
