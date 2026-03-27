@@ -4,7 +4,10 @@
       "Bash(ls:*)",
       "Bash(head:*)",
       "Bash(wc:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(grep -r \"^export\\\\|^export default\\\\|^export class\\\\|^export function\\\\|^export const\\\\|^export type\\\\|^export interface\" /d/Documents/hbmedical-portal --include=\"*.ts\" --include=\"*.tsx\" ! -path \"*/node_modules/*\" ! -path \"*/.next/*\" ! -path \"*/public/*\")",
+      "Bash(grep:*)",
+      "Bash(done)"
     ]
   }
 }
