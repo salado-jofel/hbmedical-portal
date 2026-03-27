@@ -1,4 +1,4 @@
-import { PAYMENTS_FROM_EMAIL, resend } from "@/utils/resend";
+import { PAYMENTS_FROM_EMAIL, resend } from "@/lib/emails/resend";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";

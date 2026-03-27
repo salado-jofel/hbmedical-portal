@@ -1,6 +1,6 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
 import { initialState } from "./marketing-state";
-import type { MarketingMaterial } from "@/lib/interfaces/marketing";
+import type { MarketingMaterial } from "@/utils/interfaces/marketing";
 
 const marketingSlice = createSlice({
   name: "marketing",

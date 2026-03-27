@@ -3,10 +3,10 @@
 import "server-only";
 import type Stripe from "stripe";
 
-import { stripe } from "@/utils/stripe/server";
-import { createAdminClient } from "@/utils/supabase/admin";
+import { stripe } from "@/lib/stripe/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { PersistedPaymentStatus } from "@/lib/interfaces/payment";
-import { sendNet30InvoiceCreatedEmail } from "@/utils/emails/send-net30-invoice-created";
+import { sendNet30InvoiceCreatedEmail } from "@/lib/emails/send-net30-invoice-created";
 
 type Net30OrderRow = {
   id: string;

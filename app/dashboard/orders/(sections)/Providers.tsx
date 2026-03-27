@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useEffect } from "react";
-import type { DashboardOrder } from "@/lib/interfaces/orders";
+import type { DashboardOrder } from "@/utils/interfaces/orders";
 import { useAppDispatch } from "@/store/hooks";
 import { setOrders } from "../(redux)/orders-slice";
 

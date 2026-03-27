@@ -1,4 +1,4 @@
-import type { DashboardOrder } from "@/lib/interfaces/orders";
+import type { DashboardOrder } from "@/utils/interfaces/orders";
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
 import { initialState } from "./orders-state";
 

@@ -11,14 +11,14 @@ import { deleteOrder, submitOrderPaymentChoice } from "../(services)/actions";
 import type {
   DashboardOrder,
   OrderPaymentMethod,
-} from "@/lib/interfaces/orders";
+} from "@/utils/interfaces/orders";
 import {
   canChoosePaymentMethod,
   canDeleteOrder,
   canEditOrder,
   getOrderLockReason,
-} from "@/lib/helpers/orders";
-import { DEFAULT_INVOICE_STATUS } from "@/lib/constants/orders";
+} from "@/utils/helpers/orders";
+import { DEFAULT_INVOICE_STATUS } from "@/utils/constants/orders";
 
 import {
   Trash2,

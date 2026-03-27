@@ -4,7 +4,7 @@ import { useAppDispatch } from "@/store/hooks";
 import { useState } from "react";
 import { addProduct } from "../(services)/actions";
 import { addProductToStore } from "../(redux)/products-slice";
-import type { Product } from "@/lib/interfaces/products";
+import type { Product } from "@/utils/interfaces/products";
 import {
   Dialog,
   DialogContent,

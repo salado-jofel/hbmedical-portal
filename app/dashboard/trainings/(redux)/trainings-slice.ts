@@ -1,6 +1,6 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 import { initialState } from "./trainings-state";
-import { TrainingMaterial } from "@/lib/interfaces/trainings";
+import { TrainingMaterial } from "@/utils/interfaces/trainings";
 
 const trainingsSlice = createSlice({
   name: "trainings",

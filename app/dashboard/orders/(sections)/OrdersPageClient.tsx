@@ -2,9 +2,9 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/utils/supabase/client";
+import { createClient } from "@/lib/supabase/client";
 import { useAppSelector } from "@/store/hooks";
-import type { DashboardOrder } from "@/lib/interfaces/orders";
+import type { DashboardOrder } from "@/utils/interfaces/orders";
 import { CreateOrderModal } from "./CreateOrderModal";
 import { KanbanColumn } from "./KanbanColumn";
 import { MobileKanbanTabs } from "./MobileKanbanTabs";

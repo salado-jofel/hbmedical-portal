@@ -1,15 +1,15 @@
 "use server";
 
-import { STORAGE_SIGNED_URL_EXPIRES_IN } from "@/lib/constants/storage";
+import { STORAGE_SIGNED_URL_EXPIRES_IN } from "@/utils/constants/storage";
 import {
   toStorageReference,
   parseStorageReference,
-} from "@/lib/helpers/storage";
+} from "@/utils/helpers/storage";
 import {
   MarketingMaterialRow,
   MarketingMaterial,
-} from "@/lib/interfaces/marketing";
-import { createClient } from "@/utils/supabase/server";
+} from "@/utils/interfaces/marketing";
+import { createClient } from "@/lib/supabase/server";
 
 const MARKETING_MATERIALS_SELECT = `
   id,

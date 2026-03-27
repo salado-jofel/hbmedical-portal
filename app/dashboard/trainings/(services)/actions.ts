@@ -1,15 +1,15 @@
 "use server";
 
-import { STORAGE_SIGNED_URL_EXPIRES_IN } from "@/lib/constants/storage";
+import { STORAGE_SIGNED_URL_EXPIRES_IN } from "@/utils/constants/storage";
 import {
   toStorageReference,
   parseStorageReference,
-} from "@/lib/helpers/storage";
+} from "@/utils/helpers/storage";
 import {
   TrainingMaterialRow,
   TrainingMaterial,
-} from "@/lib/interfaces/trainings";
-import { createClient } from "@/utils/supabase/server";
+} from "@/utils/interfaces/trainings";
+import { createClient } from "@/lib/supabase/server";
 
 const TRAINING_MATERIALS_SELECT = `
   id,

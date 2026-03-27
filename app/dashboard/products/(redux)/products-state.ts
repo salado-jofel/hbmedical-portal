@@ -1,4 +1,4 @@
-import { Product } from "@/lib/interfaces/products";
+import { Product } from "@/utils/interfaces/products";
 
 export interface ProductsState {
   items: Product[];

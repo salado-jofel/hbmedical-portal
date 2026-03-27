@@ -1,4 +1,4 @@
-import type { DashboardOrder } from "@/lib/interfaces/orders";
+import type { DashboardOrder } from "@/utils/interfaces/orders";
 
 export const BOARD_STATUSES = ["New Orders", "Delivered"] as const;
 export type BoardStatus = (typeof BOARD_STATUSES)[number];

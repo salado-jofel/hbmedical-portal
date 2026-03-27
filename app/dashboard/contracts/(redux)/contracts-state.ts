@@ -1,4 +1,4 @@
-import { ContractMaterial } from "@/lib/interfaces/contracts";
+import { ContractMaterial } from "@/utils/interfaces/contracts";
 
 export interface ContractsState {
   items: ContractMaterial[];

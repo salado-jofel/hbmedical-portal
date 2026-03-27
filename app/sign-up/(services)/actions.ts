@@ -1,23 +1,23 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { createClient } from "@/utils/supabase/server";
-import { createAdminClient } from "@/utils/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 import {
   buildSignUpFormValues,
   buildProfileInsert,
   buildFacilityInsert,
   formatMessage,
-} from "@/lib/helpers/signup";
-import { SignUpState } from "@/lib/interfaces/auth";
+} from "@/utils/helpers/signup";
+import { SignUpState } from "@/utils/interfaces/auth";
 import {
   validateEmail,
   validatePassword,
   validateRole,
   validatePhone,
   validateCountry,
-} from "@/lib/validators/signup";
+} from "@/utils/validators/signup";
 
 export async function signUp(
   _prevState: SignUpState,

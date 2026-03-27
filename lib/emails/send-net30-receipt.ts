@@ -1,24 +1,17 @@
-import { resend, PAYMENTS_FROM_EMAIL } from "@/utils/resend";
+import { resend, PAYMENTS_FROM_EMAIL } from "@/lib/emails/resend";
 
-export type Net30ReminderStage =
-  | "upcoming"
-  | "tomorrow"
-  | "due_today"
-  | "overdue";
-
-type SendNet30ReminderEmailParams = {
+type SendNet30ReceiptEmailParams = {
   to: string;
   orderId: string;
   orderNumber?: string | null;
   facilityName?: string | null;
   productName?: string | null;
-  amountRemaining?: number | null; // cents
+  amountPaid?: number | null; // cents
   currency?: string | null;
-  dueDate?: string | null;
+  paidAt?: string | null;
+  receiptUrl?: string | null;
   hostedInvoiceUrl?: string | null;
   invoiceNumber?: string | null;
-  reminderStage: Net30ReminderStage;
-  overdueDays?: number | null;
 };
 
 function formatAmount(amount?: number | null, currency?: string | null) {
@@ -30,7 +23,7 @@ function formatAmount(amount?: number | null, currency?: string | null) {
   }).format(amount / 100);
 }
 
-function formatDate(value?: string | null) {
+function formatDateTime(value?: string | null) {
   if (!value) return null;
 
   const date = new Date(value);
@@ -40,6 +33,8 @@ function formatDate(value?: string | null) {
     month: "long",
     day: "numeric",
     year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
   }).format(date);
 }
 
@@ -52,83 +47,28 @@ function escapeHtml(value: string) {
     .replaceAll("'", "&#39;");
 }
 
-function getReminderContent(
-  reminderStage: Net30ReminderStage,
-  orderLabel: string,
-  overdueDays?: number | null,
-) {
-  switch (reminderStage) {
-    case "tomorrow":
-      return {
-        subjectPrefix: "Reminder: invoice due tomorrow",
-        heading: "Payment due tomorrow",
-        intro: `This is a friendly reminder that your Net 30 invoice for order #${orderLabel} is due tomorrow.`,
-        buttonColor: "#15689E",
-        statusLabel: "Due tomorrow",
-      };
-
-    case "due_today":
-      return {
-        subjectPrefix: "Reminder: invoice due today",
-        heading: "Payment due today",
-        intro: `Your Net 30 invoice for order #${orderLabel} is due today. Please submit payment as soon as possible.`,
-        buttonColor: "#f5a255",
-        statusLabel: "Due today",
-      };
-
-    case "overdue":
-      return {
-        subjectPrefix: "Invoice overdue",
-        heading: "Invoice overdue",
-        intro:
-          overdueDays && overdueDays > 0
-            ? `Your Net 30 invoice for order #${orderLabel} is now overdue by ${overdueDays} day${overdueDays === 1 ? "" : "s"}.`
-            : `Your Net 30 invoice for order #${orderLabel} is now overdue.`,
-        buttonColor: "#dc2626",
-        statusLabel: "Overdue",
-      };
-
-    case "upcoming":
-    default:
-      return {
-        subjectPrefix: "Reminder: upcoming invoice due date",
-        heading: "Upcoming payment reminder",
-        intro: `This is a reminder that your Net 30 invoice for order #${orderLabel} is coming due soon.`,
-        buttonColor: "#15689E",
-        statusLabel: "Payment reminder",
-      };
-  }
-}
-
-export async function sendNet30ReminderEmail({
+export async function sendNet30ReceiptEmail({
   to,
   orderId,
   orderNumber,
   facilityName,
   productName,
-  amountRemaining,
+  amountPaid,
   currency,
-  dueDate,
+  paidAt,
+  receiptUrl,
   hostedInvoiceUrl,
   invoiceNumber,
-  reminderStage,
-  overdueDays,
-}: SendNet30ReminderEmailParams) {
+}: SendNet30ReceiptEmailParams) {
   const displayOrder = escapeHtml(orderNumber || orderId);
   const displayFacility = facilityName ? escapeHtml(facilityName) : null;
   const displayProduct = productName ? escapeHtml(productName) : null;
   const displayInvoiceNumber = invoiceNumber ? escapeHtml(invoiceNumber) : null;
 
-  const formattedAmount = formatAmount(amountRemaining, currency);
-  const formattedDueDate = formatDate(dueDate);
+  const formattedAmount = formatAmount(amountPaid, currency);
+  const formattedPaidAt = formatDateTime(paidAt);
 
-  const content = getReminderContent(
-    reminderStage,
-    orderNumber || orderId,
-    overdueDays,
-  );
-
-  const subject = `${content.subjectPrefix} for order #${orderNumber || orderId}`;
+  const subject = `Net 30 payment receipt for order #${orderNumber || orderId}`;
 
   const logoUrl =
     "https://eyrefohymvvabazvmemq.supabase.co/storage/v1/object/public/spearhead-assets/assets/email/hb-logo-name-2.png";
@@ -197,19 +137,25 @@ export async function sendNet30ReminderEmail({
       font-size: 14px;
     }
 
-    .btn-container {
+    .btn-row {
       text-align: center;
       margin: 24px 0 22px;
     }
 
     .btn {
+      background-color: #15689E;
       color: #ffffff !important;
-      padding: 13px 28px;
+      padding: 13px 24px;
       text-decoration: none;
       border-radius: 8px;
       font-weight: 600;
       font-size: 15px;
       display: inline-block;
+      margin: 0 6px 10px;
+    }
+
+    .btn-secondary {
+      background-color: #0f172a;
     }
 
     .info-box {
@@ -264,8 +210,10 @@ export async function sendNet30ReminderEmail({
       }
 
       .btn {
+        display: block;
         width: auto;
         max-width: 100%;
+        margin: 0 0 10px;
       }
     }
   </style>
@@ -283,9 +231,12 @@ export async function sendNet30ReminderEmail({
       </div>
 
       <div class="content">
-        <h1 class="h1">${escapeHtml(content.heading)}</h1>
+        <h1 class="h1">Payment received</h1>
 
-        <p>${escapeHtml(content.intro)}</p>
+        <p>
+          Thank you for your payment. Your <strong>Net 30 invoice</strong> has been paid
+          successfully through <strong>HB Medical Portal</strong>.
+        </p>
 
         <div class="info-box">
           <div class="info-row"><strong>Order:</strong> #${displayOrder}</div>
@@ -306,41 +257,61 @@ export async function sendNet30ReminderEmail({
           }
           ${
             formattedAmount
-              ? `<div class="info-row"><strong>Amount remaining:</strong> ${escapeHtml(formattedAmount)}</div>`
+              ? `<div class="info-row"><strong>Amount paid:</strong> ${escapeHtml(formattedAmount)}</div>`
               : ""
           }
           ${
-            formattedDueDate
-              ? `<div class="info-row"><strong>Due date:</strong> ${escapeHtml(formattedDueDate)}</div>`
+            formattedPaidAt
+              ? `<div class="info-row"><strong>Paid on:</strong> ${escapeHtml(formattedPaidAt)}</div>`
               : ""
           }
-          <div class="info-row"><strong>Status:</strong> ${escapeHtml(content.statusLabel)}</div>
+          <div class="info-row"><strong>Status:</strong> Paid</div>
         </div>
 
         ${
-          hostedInvoiceUrl
+          receiptUrl || hostedInvoiceUrl
             ? `
-            <div class="btn-container">
-              <a
-                href="${hostedInvoiceUrl}"
-                class="btn"
-                style="background-color: ${content.buttonColor};"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Review & Pay Invoice
-              </a>
+            <div class="btn-row">
+              ${
+                receiptUrl
+                  ? `
+                    <a
+                      href="${receiptUrl}"
+                      class="btn"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      View Receipt
+                    </a>
+                  `
+                  : ""
+              }
+              ${
+                hostedInvoiceUrl
+                  ? `
+                    <a
+                      href="${hostedInvoiceUrl}"
+                      class="btn btn-secondary"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      View Invoice
+                    </a>
+                  `
+                  : ""
+              }
             </div>
           `
             : ""
         }
 
         <p>
-          If payment has already been submitted, you may disregard this reminder.
+          Please keep this email for your records. If you have any questions about
+          this payment or invoice, the HB Medical team will be happy to assist.
         </p>
 
         <p class="muted">
-          Thank you for choosing HB Medical Portal.
+          If you did not authorize this payment, please contact support immediately.
         </p>
       </div>
 

@@ -1,12 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/utils/supabase/server";
+import { createClient } from "@/lib/supabase/server";
 import {
   createProductSchema,
   updateProductSchema,
   type Product,
-} from "@/lib/interfaces/products";
+} from "@/utils/interfaces/products";
 
 const PRODUCTS_TABLE = "products";
 const PRODUCTS_SELECT = `

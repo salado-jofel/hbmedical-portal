@@ -1,7 +1,7 @@
 import { ReactNode } from "react";
 import { EmptyState } from "./EmptyState";
 import { Inbox } from "lucide-react";
-import { TableColumn } from "../../lib/interfaces/table-column";
+import { TableColumn } from "../../utils/interfaces/table-column";
 
 interface DataTableProps<T> {
   columns: TableColumn<T>[];
@@ -35,14 +35,17 @@ export function DataTable<T>({
     <div className="overflow-x-auto">
       <table className="w-full text-sm text-left">
         <thead>
-          <tr className={isBrand ? "bg-[#15689E]" : "border-b border-slate-100"}>
+          <tr
+            className={isBrand ? "bg-[#15689E]" : "border-b border-slate-100"}
+          >
             {columns.map((col) => (
               <th
                 key={col.key}
-                className={`px-5 py-3 font-medium text-xs tracking-wide ${isBrand
-                  ? "text-white font-semibold"
-                  : (col.headerClassName ?? "text-slate-400")
-                  }`}
+                className={`px-5 py-3 font-medium text-xs tracking-wide ${
+                  isBrand
+                    ? "text-white font-semibold"
+                    : (col.headerClassName ?? "text-slate-400")
+                }`}
               >
                 {col.label}
               </th>
@@ -54,8 +57,9 @@ export function DataTable<T>({
             <tr
               key={keyExtractor(row)}
               onClick={() => onRowClick?.(row)}
-              className={`hover:bg-slate-50 transition-colors ${onRowClick ? "cursor-pointer" : ""
-                }`}
+              className={`hover:bg-slate-50 transition-colors ${
+                onRowClick ? "cursor-pointer" : ""
+              }`}
             >
               {columns.map((col) => (
                 <td

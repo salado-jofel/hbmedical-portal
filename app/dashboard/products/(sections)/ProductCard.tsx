@@ -1,6 +1,6 @@
 "use client";
 
-import { Product } from "@/lib/interfaces/products";
+import { Product } from "@/utils/interfaces/products";
 import { useAppDispatch } from "@/store/hooks";
 import { useState } from "react";
 import {

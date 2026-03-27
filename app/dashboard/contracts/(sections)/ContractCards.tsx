@@ -11,7 +11,7 @@ import {
 import { MaterialCard } from "@/app/(components)/MaterialCard";
 import { EmptyState } from "@/app/(components)/EmptyState";
 import { MaterialsSection } from "@/app/(components)/MaterialSection";
-import { ContractMaterial } from "@/lib/interfaces/contracts";
+import { ContractMaterial } from "@/utils/interfaces/contracts";
 import { getSignedDownloadUrl } from "../(services)/actions";
 
 type DisplayKind =

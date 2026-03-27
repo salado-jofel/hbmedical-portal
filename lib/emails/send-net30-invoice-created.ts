@@ -1,21 +1,40 @@
-import { resend, PAYMENTS_FROM_EMAIL } from "@/utils/resend";
+import { resend, PAYMENTS_FROM_EMAIL } from "@/lib/emails/resend";
 
-type SendPaymentReceiptEmailParams = {
+type SendNet30InvoiceCreatedEmailParams = {
   to: string;
   orderId: string;
   orderNumber?: string | null;
-  amountTotal?: number | null;
+  facilityName?: string | null;
+  productName?: string | null;
+  amountDue?: number | null; // cents
   currency?: string | null;
-  receiptUrl?: string | null;
+  dueDate?: string | null;
+  hostedInvoiceUrl?: string | null;
+  invoiceNumber?: string | null;
 };
 
-function formatAmount(amountTotal?: number | null, currency?: string | null) {
-  if (amountTotal == null || !currency) return null;
+function formatAmount(amount?: number | null, currency?: string | null) {
+  if (amount == null || !currency) return null;
 
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: currency.toUpperCase(),
-  }).format(amountTotal / 100);
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount);
+}
+
+function formatDate(value?: string | null) {
+  if (!value) return null;
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
 }
 
 function escapeHtml(value: string) {
@@ -27,18 +46,27 @@ function escapeHtml(value: string) {
     .replaceAll("'", "&#39;");
 }
 
-export async function sendPaymentReceiptEmail({
+export async function sendNet30InvoiceCreatedEmail({
   to,
   orderId,
   orderNumber,
-  amountTotal,
+  facilityName,
+  productName,
+  amountDue,
   currency,
-  receiptUrl,
-}: SendPaymentReceiptEmailParams) {
+  dueDate,
+  hostedInvoiceUrl,
+  invoiceNumber,
+}: SendNet30InvoiceCreatedEmailParams) {
   const displayOrder = escapeHtml(orderNumber || orderId);
-  const formattedAmount = formatAmount(amountTotal, currency);
+  const displayFacility = facilityName ? escapeHtml(facilityName) : null;
+  const displayProduct = productName ? escapeHtml(productName) : null;
+  const displayInvoiceNumber = invoiceNumber ? escapeHtml(invoiceNumber) : null;
 
-  const subject = `Payment Receipt for Order #${orderNumber || orderId}`;
+  const formattedAmount = formatAmount(amountDue, currency);
+  const formattedDueDate = formatDate(dueDate);
+
+  const subject = `Net 30 invoice ready for order #${orderNumber || orderId}`;
 
   const logoUrl =
     "https://eyrefohymvvabazvmemq.supabase.co/storage/v1/object/public/spearhead-assets/assets/email/hb-logo-name-2.png";
@@ -47,7 +75,7 @@ export async function sendPaymentReceiptEmail({
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8">
+  <meta charset="utf-8" />
   <style>
     body {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -194,34 +222,54 @@ export async function sendPaymentReceiptEmail({
       </div>
 
       <div class="content">
-        <h1 class="h1">Payment received</h1>
+        <h1 class="h1">Your Net 30 invoice is ready</h1>
 
         <p>
-          Thank you for your payment to <strong>HB Medical Portal</strong>.
-          Your transaction was successfully processed and your receipt is now available.
+          A new <strong>Net 30 invoice</strong> has been created for your order with
+          <strong>HB Medical Portal</strong>.
         </p>
 
         <div class="info-box">
           <div class="info-row"><strong>Order:</strong> #${displayOrder}</div>
           ${
-            formattedAmount
-              ? `<div class="info-row"><strong>Amount paid:</strong> ${escapeHtml(formattedAmount)}</div>`
+            displayInvoiceNumber
+              ? `<div class="info-row"><strong>Invoice:</strong> ${displayInvoiceNumber}</div>`
               : ""
           }
-          <div class="info-row"><strong>Status:</strong> Paid</div>
+          ${
+            displayFacility
+              ? `<div class="info-row"><strong>Facility:</strong> ${displayFacility}</div>`
+              : ""
+          }
+          ${
+            displayProduct
+              ? `<div class="info-row"><strong>Product:</strong> ${displayProduct}</div>`
+              : ""
+          }
+          ${
+            formattedAmount
+              ? `<div class="info-row"><strong>Amount due:</strong> ${escapeHtml(formattedAmount)}</div>`
+              : ""
+          }
+          ${
+            formattedDueDate
+              ? `<div class="info-row"><strong>Due date:</strong> ${escapeHtml(formattedDueDate)}</div>`
+              : ""
+          }
+          <div class="info-row"><strong>Status:</strong> Invoice sent</div>
         </div>
 
         ${
-          receiptUrl
+          hostedInvoiceUrl
             ? `
             <div class="btn-container">
               <a
-                href="${receiptUrl}"
+                href="${hostedInvoiceUrl}"
                 class="btn"
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                View Receipt
+                View & Pay Invoice
               </a>
             </div>
           `
@@ -229,12 +277,12 @@ export async function sendPaymentReceiptEmail({
         }
 
         <p>
-          Please keep this email for your records. If you have any questions
-          regarding this payment, feel free to contact the HB Medical team.
+          Please review your invoice and complete payment by the due date to avoid
+          any interruption or delay in processing.
         </p>
 
         <p class="muted">
-          If you did not authorize this payment, please contact support immediately.
+          If you have any questions about this invoice, please contact the HB Medical team.
         </p>
       </div>
 

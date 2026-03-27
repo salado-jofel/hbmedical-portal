@@ -20,8 +20,8 @@ import type {
   DashboardOrder,
   FacilityRecord,
   ProductRecord,
-} from "@/lib/interfaces/orders";
-import { canEditOrder, getOrderLockReason } from "@/lib/helpers/orders";
+} from "@/utils/interfaces/orders";
+import { canEditOrder, getOrderLockReason } from "@/utils/helpers/orders";
 import SubmitButton from "@/app/(components)/SubmitButton";
 import toast from "react-hot-toast";
 

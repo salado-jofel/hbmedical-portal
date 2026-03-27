@@ -1,4 +1,4 @@
-import { StatusBadgeProps } from "@/lib/interfaces/status-badge";
+import { StatusBadgeProps } from "@/utils/interfaces/status-badge";
 
 export function StatusBadge({ status }: StatusBadgeProps) {
   const s: string = status?.toLowerCase() ?? "";

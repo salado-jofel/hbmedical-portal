@@ -1,7 +1,7 @@
-import type { DashboardOrder } from "@/lib/interfaces/orders";
+import type { DashboardOrder } from "@/utils/interfaces/orders";
 import { BOARD_STATUSES } from "./kanban-config";
 import { KanbanColumn } from "./KanbanColumn";
-import { groupOrdersByBoardStatus } from "@/utils/group-orders-by-status";
+import { groupOrdersByBoardStatus } from "@/utils/helpers/group-orders-by-status";
 
 export function KanbanBoard({ orders }: { orders: DashboardOrder[] }) {
   const grouped = groupOrdersByBoardStatus(orders);

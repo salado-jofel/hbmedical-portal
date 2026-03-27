@@ -5,8 +5,8 @@ import { StatusBadge } from "../../(components)/StatusBadge";
 import { TableCard } from "@/app/(components)/TableCard";
 import { DataTable } from "@/app/(components)/DataTable";
 import { OrderMobileCard } from "@/app/(components)/OrderMobileCard";
-import { formatAmount, formatDate } from "@/utils/formatter";
-import { TableColumn } from "@/lib/interfaces/table-column";
+import { formatAmount, formatDate } from "@/utils/helpers/formatter";
+import { TableColumn } from "@/utils/interfaces/table-column";
 import { Order } from "@/lib/interfaces/order";
 
 const columns: TableColumn<Order>[] = [
@@ -29,16 +29,12 @@ const columns: TableColumn<Order>[] = [
   {
     key: "amount",
     label: "Amount",
-    render: (order) => (
-      <span>{formatAmount(order.amount ?? 0)}</span>
-    ),
+    render: (order) => <span>{formatAmount(order.amount ?? 0)}</span>,
   },
   {
     key: "status",
     label: "Status",
-    render: (order) => (
-      <StatusBadge status={order.status ?? "Draft"} />
-    ),
+    render: (order) => <StatusBadge status={order.status ?? "Draft"} />,
   },
 ];
 

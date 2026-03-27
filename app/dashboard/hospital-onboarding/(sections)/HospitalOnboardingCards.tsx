@@ -12,7 +12,7 @@ import {
 import { MaterialCard } from "@/app/(components)/MaterialCard";
 import { EmptyState } from "@/app/(components)/EmptyState";
 import { MaterialsSection } from "@/app/(components)/MaterialSection";
-import { HospitalOnboardingMaterial } from "@/lib/interfaces/hospital-onboarding";
+import { HospitalOnboardingMaterial } from "@/utils/interfaces/hospital-onboarding";
 import { getSignedDownloadUrl } from "../(services)/actions";
 
 type DisplayKind =

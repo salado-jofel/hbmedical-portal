@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useAppDispatch } from "@/store/hooks";
 import { setContractMaterials } from "../(redux)/contracts-slice";
-import { ContractMaterial } from "@/lib/interfaces/contracts";
+import { ContractMaterial } from "@/utils/interfaces/contracts";
 
 export default function Providers({
   children,

@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useAppDispatch } from "@/store/hooks";
 import { setTrainingMaterials } from "../(redux)/trainings-slice";
-import { TrainingMaterial } from "@/lib/interfaces/trainings";
+import { TrainingMaterial } from "@/utils/interfaces/trainings";
 
 export default function Providers({
   children,

@@ -1,4 +1,4 @@
-import { Profile } from "@/lib/interfaces/profiles";
+import { Profile } from "@/utils/interfaces/profiles";
 
 export interface ProfileState {
   item: Profile | null;

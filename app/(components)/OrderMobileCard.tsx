@@ -1,4 +1,4 @@
-import { formatDate, formatAmount } from "@/utils/formatter";
+import { formatDate, formatAmount } from "@/utils/helpers/formatter";
 import { Order } from "@/lib/interfaces/order";
 import { StatusBadge } from "./StatusBadge";
 

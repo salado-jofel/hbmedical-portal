@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/utils/supabase/server";
+import { createClient } from "@/lib/supabase/server";
 
 import {
   FACILITY_SELECT,
@@ -16,7 +16,7 @@ import {
   DEFAULT_INVOICE_STATUS,
   DEFAULT_ORDER_STATUS,
   DEFAULT_PAYMENT_STATUS,
-} from "@/lib/constants/orders";
+} from "@/utils/constants/orders";
 
 import {
   calculateOrderAmounts,
@@ -32,7 +32,7 @@ import {
   parseSubmitOrderPaymentChoiceInput,
   parseUpdateOrderStatusInput,
   toNullableString,
-} from "@/lib/helpers/orders";
+} from "@/utils/helpers/orders";
 
 import type {
   CancelOrderInput,
@@ -50,7 +50,7 @@ import type {
   SubmitOrderPaymentChoicePayload,
   UpdateOrderStatusInput,
   UpdateOrderStatusPayload,
-} from "@/lib/interfaces/orders";
+} from "@/utils/interfaces/orders";
 
 /* -------------------------------------------------------------------------- */
 /* Private helpers                                                            */

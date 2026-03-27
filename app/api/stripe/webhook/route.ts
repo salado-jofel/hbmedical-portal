@@ -2,11 +2,11 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import type Stripe from "stripe";
 
-import { stripe } from "@/utils/stripe/server";
-import { createAdminClient } from "@/utils/supabase/admin";
+import { stripe } from "@/lib/stripe/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { syncPaidOrderToShipStation } from "@/lib/actions/shipstation";
-import { sendPaymentReceiptEmail } from "@/utils/emails/send-payment-receipt";
-import { sendNet30ReceiptEmail } from "@/utils/emails/send-net30-receipt";
+import { sendPaymentReceiptEmail } from "@/lib/emails/send-payment-receipt";
+import { sendNet30ReceiptEmail } from "@/lib/emails/send-net30-receipt";
 import type { PersistedPaymentStatus } from "@/lib/interfaces/payment";
 
 export const runtime = "nodejs";

@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useAppDispatch } from "@/store/hooks";
 import { setMarketingMaterials } from "../(redux)/marketing-slice";
-import type { MarketingMaterial } from "@/lib/interfaces/marketing";
+import type { MarketingMaterial } from "@/utils/interfaces/marketing";
 
 export default function Providers({
   materials,

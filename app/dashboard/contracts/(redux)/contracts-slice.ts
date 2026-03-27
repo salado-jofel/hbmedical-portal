@@ -1,4 +1,4 @@
-import { ContractMaterial } from "@/lib/interfaces/contracts";
+import { ContractMaterial } from "@/utils/interfaces/contracts";
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 import { initialState } from "./contracts-state";
 

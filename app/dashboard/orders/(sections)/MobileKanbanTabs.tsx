@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Package } from "lucide-react";
-import type { DashboardOrder } from "@/lib/interfaces/orders";
+import type { DashboardOrder } from "@/utils/interfaces/orders";
 import { EmptyState } from "@/app/(components)/EmptyState";
 import { OrderCard } from "./OrderCard";
 import {

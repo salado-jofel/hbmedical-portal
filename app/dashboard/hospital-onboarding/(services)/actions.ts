@@ -1,15 +1,15 @@
 "use server";
 
-import { STORAGE_SIGNED_URL_EXPIRES_IN } from "@/lib/constants/storage";
+import { STORAGE_SIGNED_URL_EXPIRES_IN } from "@/utils/constants/storage";
 import {
   toStorageReference,
   parseStorageReference,
-} from "@/lib/helpers/storage";
+} from "@/utils/helpers/storage";
 import {
   HospitalOnboardingMaterialRow,
   HospitalOnboardingMaterial,
-} from "@/lib/interfaces/hospital-onboarding";
-import { createClient } from "@/utils/supabase/server";
+} from "@/utils/interfaces/hospital-onboarding";
+import { createClient } from "@/lib/supabase/server";
 
 const HOSPITAL_ONBOARDING_MATERIALS_SELECT = `
   id,

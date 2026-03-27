@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 
-import { createAdminClient } from "@/utils/supabase/admin";
+import { createAdminClient } from "@/lib/supabase/admin";
 import {
   sendNet30ReminderEmail,
   type Net30ReminderStage,
-} from "@/utils/emails/send-net30-reminder";
+} from "@/lib/emails/send-net30-reminder";
 import type { PersistedPaymentStatus } from "@/lib/interfaces/payment";
 
 export const runtime = "nodejs";

@@ -3,7 +3,7 @@
 import { useAppDispatch } from "@/store/hooks";
 import { type ReactNode, useEffect } from "react";
 import { setProducts } from "../(redux)/products-slice";
-import { Product } from "@/lib/interfaces/products";
+import { Product } from "@/utils/interfaces/products";
 
 export default function Providers({
   children,

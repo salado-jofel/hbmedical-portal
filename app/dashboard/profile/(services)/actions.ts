@@ -1,9 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/utils/supabase/server";
-import { createAdminClient } from "@/utils/supabase/admin";
-import type { Profile, UpdateProfilePayload } from "@/lib/interfaces/profiles";
+import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import type {
+  Profile,
+  UpdateProfilePayload,
+} from "@/utils/interfaces/profiles";
 
 const PROFILE_PATH = "/dashboard/profile";
 

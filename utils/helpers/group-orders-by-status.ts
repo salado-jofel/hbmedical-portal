@@ -1,19 +1,19 @@
-import type { Order } from "@/lib/interfaces/order";
 import {
   BOARD_STATUSES,
   BoardStatus,
   mapOrderToBoardStatus,
 } from "@/app/dashboard/orders/(sections)/kanban-config";
+import { DashboardOrder } from "../interfaces/orders";
 
 export function groupOrdersByBoardStatus(
-  orders: Order[],
-): Record<BoardStatus, Order[]> {
+  orders: DashboardOrder[],
+): Record<BoardStatus, DashboardOrder[]> {
   const grouped = BOARD_STATUSES.reduce(
     (acc, status) => {
       acc[status] = [];
       return acc;
     },
-    {} as Record<BoardStatus, Order[]>,
+    {} as Record<BoardStatus, DashboardOrder[]>,
   );
 
   for (const order of orders) {
