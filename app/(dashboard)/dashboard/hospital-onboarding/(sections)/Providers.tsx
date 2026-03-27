@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useAppDispatch } from "@/store/hooks";
-import type { HospitalOnboardingMaterial } from "@/app/(interfaces)/hospital-onboarding";
+import type { HospitalOnboardingMaterial } from "@/utils/interfaces/hospital-onboarding";
 import { setHospitalOnboardingMaterials } from "../(redux)/hospital-onboarding-slice";
 
 export default function Providers({

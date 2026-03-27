@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { BackgroundDots } from "../(components)/BackgroundDots";
+import { BackgroundDots } from "../../(components)/BackgroundDots";
 import SignInForm from "./(sections)/SignInForm";
 import { Metadata } from "next";
 

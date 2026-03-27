@@ -1,4 +1,4 @@
-import { CreateOrderModal } from "./CreateOrderModal";
+import { CreateOrderModal } from "../(components)/CreateOrderModal";
 
 export default function Header() {
   return (

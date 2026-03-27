@@ -1,21 +1,21 @@
 "use client";
 
 import { useMemo } from "react";
-import { StatusBadge } from "../../(components)/StatusBadge";
+import { StatusBadge } from "@/app/(components)/StatusBadge";
 import { TableCard } from "@/app/(components)/TableCard";
 import { DataTable } from "@/app/(components)/DataTable";
 import { OrderMobileCard } from "@/app/(components)/OrderMobileCard";
 import { formatAmount, formatDate } from "@/utils/helpers/formatter";
 import { TableColumn } from "@/utils/interfaces/table-column";
-import { Order } from "@/lib/interfaces/order";
+import type { DashboardOrder } from "@/utils/interfaces/orders";
 
-const columns: TableColumn<Order>[] = [
+const columns: TableColumn<DashboardOrder>[] = [
   {
-    key: "order_id",
+    key: "order_number",
     label: "Order ID",
     render: (order) => (
       <span className="font-medium text-slate-700">
-        {order.order_id ?? "—"}
+        {order.order_number ?? "—"}
       </span>
     ),
   },
@@ -27,19 +27,19 @@ const columns: TableColumn<Order>[] = [
     ),
   },
   {
-    key: "amount",
+    key: "total_amount",
     label: "Amount",
-    render: (order) => <span>{formatAmount(order.amount ?? 0)}</span>,
+    render: (order) => <span>{formatAmount(order.total_amount ?? 0)}</span>,
   },
   {
-    key: "status",
+    key: "order_status",
     label: "Status",
-    render: (order) => <StatusBadge status={order.status ?? "Draft"} />,
+    render: (order) => <StatusBadge status={order.order_status ?? "draft"} />,
   },
 ];
 
 interface RecentOrdersTableProps {
-  initialOrders: Order[];
+  initialOrders: DashboardOrder[];
 }
 
 export default function RecentOrdersTable({
@@ -62,7 +62,7 @@ export default function RecentOrdersTable({
       <div className="divide-y divide-slate-100 md:hidden">
         {recent.length > 0 ? (
           recent.map((order) => (
-            <OrderMobileCard key={order.id ?? order.order_id} order={order} />
+            <OrderMobileCard key={order.id} order={order} />
           ))
         ) : (
           <div className="p-4 text-sm text-slate-500">No Orders Yet</div>
@@ -73,7 +73,7 @@ export default function RecentOrdersTable({
         <DataTable
           columns={columns}
           data={recent}
-          keyExtractor={(row) => String(row.id ?? row.order_id ?? "")}
+          keyExtractor={(row) => String(row.id ?? "")}
           emptyMessage="No Orders Yet"
           headerVariant="minimal"
         />

@@ -1,5 +1,5 @@
 import type { DashboardOrder } from "@/utils/interfaces/orders";
-import { BOARD_STATUSES } from "./kanban-config";
+import { BOARD_STATUSES } from "../(components)/kanban-config";
 import { KanbanColumn } from "./KanbanColumn";
 import { groupOrdersByBoardStatus } from "@/utils/helpers/group-orders-by-status";
 

@@ -4,12 +4,12 @@ import { useState } from "react";
 import { Package } from "lucide-react";
 import type { DashboardOrder } from "@/utils/interfaces/orders";
 import { EmptyState } from "@/app/(components)/EmptyState";
-import { OrderCard } from "./OrderCard";
+import { OrderCard } from "../(components)/OrderCard";
 import {
   BOARD_STATUSES,
   STATUS_CONFIG,
   type BoardStatus,
-} from "./kanban-config";
+} from "../(components)/kanban-config";
 
 export function MobileKanbanTabs({
   grouped,

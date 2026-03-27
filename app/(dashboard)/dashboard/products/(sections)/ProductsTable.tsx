@@ -16,8 +16,8 @@ import ConfirmModal from "@/app/(components)/ConfirmModal";
 import { EmptyState } from "@/app/(components)/EmptyState";
 import { TableToolbar } from "@/app/(components)/TableToolbar";
 import { DataTable } from "@/app/(components)/DataTable";
-import { AddProductModal } from "./AddProductModal";
-import { ProductCard } from "./ProductCard";
+import { AddProductModal } from "../(components)/AddProductModal";
+import { ProductCard } from "../(components)/ProductCard";
 import { Package, Trash2, Pencil, X, Check } from "lucide-react";
 import toast from "react-hot-toast";
 

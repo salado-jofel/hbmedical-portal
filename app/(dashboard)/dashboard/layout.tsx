@@ -1,8 +1,8 @@
 import { Sidebar } from "./(sections)/Sidebar";
 import { MobileTopBar } from "./(sections)/MobileTopBar";
 import NextTopLoader from "nextjs-toploader";
-import Providers from "./(sections)/Providers";
 import { getUserData } from "./(services)/actions";
+import Providers from "./(sections)/Providers";
 
 export const dynamic = "force-dynamic";
 

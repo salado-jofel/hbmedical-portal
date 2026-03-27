@@ -3,8 +3,8 @@
 import { Package } from "lucide-react";
 import type { DashboardOrder } from "@/utils/interfaces/orders";
 import { EmptyState } from "@/app/(components)/EmptyState";
-import { OrderCard } from "./OrderCard";
-import { STATUS_CONFIG, type BoardStatus } from "./kanban-config";
+import { OrderCard } from "../(components)/OrderCard";
+import { STATUS_CONFIG, type BoardStatus } from "../(components)/kanban-config";
 
 export function KanbanColumn({
   status,

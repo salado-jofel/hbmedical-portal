@@ -4,10 +4,10 @@ import { useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAppSelector } from "@/store/hooks";
 import type { DashboardOrder } from "@/utils/interfaces/orders";
-import { CreateOrderModal } from "./CreateOrderModal";
+import { CreateOrderModal } from "../(components)/CreateOrderModal";
 import { KanbanColumn } from "./KanbanColumn";
 import { MobileKanbanTabs } from "./MobileKanbanTabs";
-import { BOARD_STATUSES, type BoardStatus } from "./kanban-config";
+import { BOARD_STATUSES, type BoardStatus } from "../(components)/kanban-config";
 import Header from "./Header";
 import { createClient } from "@/lib/supabase/client";
 
