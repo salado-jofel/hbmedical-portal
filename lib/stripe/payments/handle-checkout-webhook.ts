@@ -2,6 +2,8 @@ import "server-only";
 
 import Stripe from "stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { sendPaymentReceiptEmail } from "@/lib/emails/send-payment-receipt";
+import { stripe } from "../server";
 
 type PaymentRecordLookup = {
   id: string;
@@ -24,6 +26,20 @@ type OrderRecordLookup = {
     | "refunded"
     | "partially_refunded"
     | "canceled";
+};
+
+type OrderReceiptLookup = {
+  id: string;
+  order_number: string;
+  facility_id: string;
+};
+
+type FacilityOwnerLookup = {
+  user_id: string;
+};
+
+type ProfileEmailLookup = {
+  email: string;
 };
 
 function getStripeObjectId(
@@ -84,6 +100,139 @@ async function getOrderById(orderId: string) {
   return data ?? null;
 }
 
+async function getOrderReceiptContext(orderId: string) {
+  const admin = await createAdminClient();
+
+  const { data: order, error: orderError } = await admin
+    .from("orders")
+    .select("id, order_number, facility_id")
+    .eq("id", orderId)
+    .maybeSingle<OrderReceiptLookup>();
+
+  if (orderError) {
+    console.error("[payments.getOrderReceiptContext] Order error:", orderError);
+    throw new Error(
+      orderError.message || "Failed to fetch order receipt context.",
+    );
+  }
+
+  if (!order) {
+    return null;
+  }
+
+  const { data: facility, error: facilityError } = await admin
+    .from("facilities")
+    .select("user_id")
+    .eq("id", order.facility_id)
+    .maybeSingle<FacilityOwnerLookup>();
+
+  if (facilityError) {
+    console.error(
+      "[payments.getOrderReceiptContext] Facility error:",
+      facilityError,
+    );
+    throw new Error(
+      facilityError.message || "Failed to fetch facility receipt context.",
+    );
+  }
+
+  if (!facility) {
+    return {
+      orderNumber: order.order_number,
+      email: null,
+    };
+  }
+
+  const { data: profile, error: profileError } = await admin
+    .from("profiles")
+    .select("email")
+    .eq("id", facility.user_id)
+    .maybeSingle<ProfileEmailLookup>();
+
+  if (profileError) {
+    console.error(
+      "[payments.getOrderReceiptContext] Profile error:",
+      profileError,
+    );
+    throw new Error(
+      profileError.message || "Failed to fetch profile receipt context.",
+    );
+  }
+
+  return {
+    orderNumber: order.order_number,
+    email: profile?.email ?? null,
+  };
+}
+
+async function getReceiptUrlFromSession(session: Stripe.Checkout.Session) {
+  const paymentIntentId = getStripeObjectId(session.payment_intent);
+
+  if (!paymentIntentId) {
+    return null;
+  }
+
+  try {
+    const paymentIntent = await stripe.paymentIntents.retrieve(
+      paymentIntentId,
+      {
+        expand: ["latest_charge"],
+      },
+    );
+
+    const latestCharge = paymentIntent.latest_charge;
+
+    if (!latestCharge || typeof latestCharge === "string") {
+      return null;
+    }
+
+    return latestCharge.receipt_url ?? null;
+  } catch (error) {
+    console.error("[payments.getReceiptUrlFromSession] Error:", error);
+    return null;
+  }
+}
+
+async function sendSuccessfulPaymentReceipt(
+  orderId: string,
+  session: Stripe.Checkout.Session,
+) {
+  try {
+    const receiptContext = await getOrderReceiptContext(orderId);
+
+    const recipientEmail =
+      receiptContext?.email ??
+      session.customer_details?.email ??
+      session.customer_email ??
+      null;
+
+    if (!recipientEmail) {
+      console.warn(
+        "[payments.sendSuccessfulPaymentReceipt] No recipient email found.",
+      );
+      return;
+    }
+
+    const receiptUrl = await getReceiptUrlFromSession(session);
+
+    await sendPaymentReceiptEmail({
+      to: recipientEmail,
+      orderId,
+      orderNumber:
+        receiptContext?.orderNumber ?? session.metadata?.order_number,
+      amountTotal: session.amount_total ?? null,
+      currency: session.currency ?? null,
+      receiptUrl,
+    });
+  } catch (error) {
+    console.error(
+      "[payments.sendSuccessfulPaymentReceipt] Failed to send receipt email:",
+      error,
+    );
+    // Do not throw here — payment was already successful and DB should remain source of truth.
+  }
+}
+
 async function ensurePaymentRecordForSession(
   session: Stripe.Checkout.Session,
   status:
@@ -122,7 +271,10 @@ async function ensurePaymentRecordForSession(
       throw new Error(error.message || "Failed to update payment record.");
     }
 
-    return existingPayment.order_id;
+    return {
+      orderId: existingPayment.order_id,
+      wasAlreadyPaid: existingPayment.status === "paid",
+    };
   }
 
   if (!metadataOrderId) {
@@ -152,11 +304,23 @@ async function ensurePaymentRecordForSession(
     throw new Error(error.message || "Failed to insert payment record.");
   }
 
-  return metadataOrderId;
+  return {
+    orderId: metadataOrderId,
+    wasAlreadyPaid: false,
+  };
 }
 
 async function markOrderPaid(orderId: string, paidAt: string) {
   const admin = await createAdminClient();
+  const order = await getOrderById(orderId);
+
+  if (!order) {
+    throw new Error("Order not found while marking paid.");
+  }
+
+  if (order.payment_status === "paid") {
+    return false;
+  }
 
   const { error } = await admin
     .from("orders")
@@ -170,6 +334,8 @@ async function markOrderPaid(orderId: string, paidAt: string) {
     console.error("[payments.markOrderPaid] Error:", error);
     throw new Error(error.message || "Failed to mark order as paid.");
   }
+
+  return true;
 }
 
 async function markOrderFailedIfNotPaid(orderId: string) {
@@ -201,22 +367,47 @@ async function handleCheckoutSessionCompleted(
   session: Stripe.Checkout.Session,
 ) {
   const paidAt = new Date().toISOString();
-  const orderId = await ensurePaymentRecordForSession(session, "paid", paidAt);
-  await markOrderPaid(orderId, paidAt);
+
+  const { orderId, wasAlreadyPaid } = await ensurePaymentRecordForSession(
+    session,
+    "paid",
+    paidAt,
+  );
+
+  const didMarkPaid = await markOrderPaid(orderId, paidAt);
+
+  if (!wasAlreadyPaid && didMarkPaid) {
+    await sendSuccessfulPaymentReceipt(orderId, session);
+  }
 }
 
 async function handleCheckoutSessionAsyncSucceeded(
   session: Stripe.Checkout.Session,
 ) {
   const paidAt = new Date().toISOString();
-  const orderId = await ensurePaymentRecordForSession(session, "paid", paidAt);
-  await markOrderPaid(orderId, paidAt);
+
+  const { orderId, wasAlreadyPaid } = await ensurePaymentRecordForSession(
+    session,
+    "paid",
+    paidAt,
+  );
+
+  const didMarkPaid = await markOrderPaid(orderId, paidAt);
+
+  if (!wasAlreadyPaid && didMarkPaid) {
+    await sendSuccessfulPaymentReceipt(orderId, session);
+  }
 }
 
 async function handleCheckoutSessionAsyncFailed(
   session: Stripe.Checkout.Session,
 ) {
-  const orderId = await ensurePaymentRecordForSession(session, "failed", null);
+  const { orderId } = await ensurePaymentRecordForSession(
+    session,
+    "failed",
+    null,
+  );
+
   await markOrderFailedIfNotPaid(orderId);
 }
 
