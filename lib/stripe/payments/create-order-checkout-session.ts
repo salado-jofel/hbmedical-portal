@@ -1,0 +1,231 @@
+import "server-only";
+
+import { createAdminClient } from "@/lib/supabase/admin";
+import { getCurrentUserOrThrow } from "@/lib/supabase/auth";
+import { createClient } from "@/lib/supabase/server";
+import { stripe, getAppUrl, toStripeAmount } from "../stripe";
+import {
+  CheckoutFacilityRecord,
+  CreateOrderCheckoutSessionResult,
+  CheckoutOrderRecord,
+} from "@/utils/interfaces/stripe";
+
+async function getOrCreateStripeCustomer(
+  facility: CheckoutFacilityRecord,
+  userEmail?: string | null,
+) {
+  if (facility.stripe_customer_id) {
+    return facility.stripe_customer_id;
+  }
+
+  const customer = await stripe.customers.create({
+    name: facility.name,
+    email: userEmail ?? undefined,
+    phone: facility.phone || undefined,
+    metadata: {
+      facility_id: facility.id,
+      facility_contact: facility.contact,
+    },
+    address: {
+      line1: facility.address_line_1,
+      line2: facility.address_line_2 ?? undefined,
+      city: facility.city,
+      state: facility.state,
+      postal_code: facility.postal_code,
+      country: facility.country,
+    },
+  });
+
+  const admin = await createAdminClient();
+
+  const { error: facilityUpdateError } = await admin
+    .from("facilities")
+    .update({
+      stripe_customer_id: customer.id,
+    })
+    .eq("id", facility.id);
+
+  if (facilityUpdateError) {
+    console.error(
+      "[payments.getOrCreateStripeCustomer] Facility update error:",
+      facilityUpdateError,
+    );
+    throw new Error("Failed to save Stripe customer to facility.");
+  }
+
+  return customer.id;
+}
+
+export async function createOrderCheckoutSession(
+  orderId: string,
+): Promise<CreateOrderCheckoutSessionResult> {
+  const supabase = await createClient();
+  const admin = await createAdminClient();
+  const user = await getCurrentUserOrThrow(supabase);
+
+  const { data: order, error: orderError } = await admin
+    .from("orders")
+    .select(
+      `
+        id,
+        order_number,
+        facility_id,
+        product_id,
+        product_name,
+        product_sku,
+        quantity,
+        unit_price,
+        shipping_amount,
+        tax_amount,
+        total_amount,
+        payment_method,
+        payment_status,
+        order_status
+      `,
+    )
+    .eq("id", orderId)
+    .single<CheckoutOrderRecord>();
+
+  if (orderError || !order) {
+    console.error(
+      "[payments.createOrderCheckoutSession] Order error:",
+      orderError,
+    );
+    throw new Error("Order not found.");
+  }
+
+  const { data: facility, error: facilityError } = await admin
+    .from("facilities")
+    .select(
+      `
+        id,
+        user_id,
+        name,
+        contact,
+        phone,
+        address_line_1,
+        address_line_2,
+        city,
+        state,
+        postal_code,
+        country,
+        stripe_customer_id
+      `,
+    )
+    .eq("id", order.facility_id)
+    .single<CheckoutFacilityRecord>();
+
+  if (facilityError || !facility) {
+    console.error(
+      "[payments.createOrderCheckoutSession] Facility error:",
+      facilityError,
+    );
+    throw new Error("Facility not found.");
+  }
+
+  if (facility.user_id !== user.id) {
+    throw new Error("You are not allowed to create checkout for this order.");
+  }
+
+  if (order.order_status === "canceled") {
+    throw new Error("Canceled orders cannot be paid.");
+  }
+
+  if (order.order_status !== "submitted") {
+    throw new Error("Order must be submitted before checkout.");
+  }
+
+  if (order.payment_method !== "pay_now") {
+    throw new Error("This order is not set to Pay Now.");
+  }
+
+  if (order.payment_status === "paid") {
+    throw new Error("This order is already paid.");
+  }
+
+  const stripeCustomerId = await getOrCreateStripeCustomer(
+    facility,
+    user.email,
+  );
+
+  const appUrl = getAppUrl();
+
+  const session = await stripe.checkout.sessions.create({
+    mode: "payment",
+    customer: stripeCustomerId,
+    client_reference_id: order.id,
+    success_url: `${appUrl}/dashboard/orders?payment=success&session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${appUrl}/dashboard/orders?payment=cancelled`,
+    payment_method_types: ["card"],
+    billing_address_collection: "auto",
+    metadata: {
+      order_id: order.id,
+      order_number: order.order_number,
+      facility_id: order.facility_id,
+      product_id: order.product_id,
+      user_id: user.id,
+    },
+    line_items: [
+      {
+        quantity: 1,
+        price_data: {
+          currency: "usd",
+          product_data: {
+            name: `${order.product_name} x ${order.quantity}`,
+            description: `Order ${order.order_number} • SKU: ${order.product_sku}`,
+          },
+          unit_amount: toStripeAmount(order.total_amount),
+        },
+      },
+    ],
+  });
+
+  if (!session.url) {
+    throw new Error("Stripe Checkout URL was not returned.");
+  }
+
+  const { error: paymentInsertError } = await admin.from("payments").insert({
+    order_id: order.id,
+    provider: "stripe",
+    payment_type: "checkout",
+    status: "pending",
+    amount: order.total_amount,
+    currency: "USD",
+    stripe_checkout_session_id: session.id,
+    stripe_payment_intent_id: null,
+    provider_payment_id: null,
+    paid_at: null,
+  });
+
+  if (paymentInsertError) {
+    console.error(
+      "[payments.createOrderCheckoutSession] Payment insert error:",
+      paymentInsertError,
+    );
+    throw new Error(
+      paymentInsertError.message || "Failed to create payment record.",
+    );
+  }
+
+  const { error: orderUpdateError } = await admin
+    .from("orders")
+    .update({
+      payment_status: "pending",
+    })
+    .eq("id", order.id);
+
+  if (orderUpdateError) {
+    console.error(
+      "[payments.createOrderCheckoutSession] Order update error:",
+      orderUpdateError,
+    );
+    throw new Error(
+      orderUpdateError.message || "Failed to update order payment status.",
+    );
+  }
+
+  return {
+    url: session.url,
+    sessionId: session.id,
+  };
+}

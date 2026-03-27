@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { useAppSelector } from "@/store/hooks";
 import type { DashboardOrder } from "@/utils/interfaces/orders";
 import { CreateOrderModal } from "./CreateOrderModal";
@@ -10,6 +9,7 @@ import { KanbanColumn } from "./KanbanColumn";
 import { MobileKanbanTabs } from "./MobileKanbanTabs";
 import { BOARD_STATUSES, type BoardStatus } from "./kanban-config";
 import Header from "./Header";
+import { createClient } from "@/lib/supabase/client";
 
 function sortOrdersDesc(orders: DashboardOrder[]) {
   return [...orders].sort((a, b) => {

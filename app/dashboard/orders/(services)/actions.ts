@@ -51,26 +51,12 @@ import type {
   UpdateOrderStatusInput,
   UpdateOrderStatusPayload,
 } from "@/utils/interfaces/orders";
-
-/* -------------------------------------------------------------------------- */
-/* Private helpers                                                            */
-/* -------------------------------------------------------------------------- */
-
-type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
-
-async function getCurrentUserOrThrow(supabase: SupabaseServerClient) {
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-
-  if (error || !user) {
-    console.error("[orders.getCurrentUserOrThrow] Error:", error);
-    throw new Error("You must be signed in to access orders.");
-  }
-
-  return user;
-}
+import {
+  SupabaseServerClient,
+  getCurrentUserOrThrow,
+} from "@/lib/supabase/auth";
+import { createOrderCheckoutSession } from "@/lib/stripe/payments/create-order-checkout-session";
+import { createStripeNet30Invoice } from "@/lib/stripe/invoices/create-order-net30-invoice";
 
 async function getUserFacilityRecord(
   supabase: SupabaseServerClient,
@@ -195,10 +181,6 @@ async function getFacilityOwnedDashboardOrderByIdOrThrow(
   return mapDashboardOrder(data as unknown as RawOrderRecord);
 }
 
-/* -------------------------------------------------------------------------- */
-/* Public reads                                                               */
-/* -------------------------------------------------------------------------- */
-
 export async function getUserFacility(): Promise<FacilityRecord | null> {
   const supabase = await createClient();
   const user = await getCurrentUserOrThrow(supabase);
@@ -246,10 +228,6 @@ export async function getAllOrders(): Promise<DashboardOrder[]> {
 
   return mapDashboardOrders((data ?? []) as unknown as RawOrderRecord[]);
 }
-
-/* -------------------------------------------------------------------------- */
-/* Public mutations                                                           */
-/* -------------------------------------------------------------------------- */
 
 export async function createOrder(
   input: FormData | CreateOrderInput,
@@ -539,4 +517,14 @@ export async function editOrder(
     parsed.id,
     facility.id,
   );
+}
+
+export async function createOrderCheckout(orderId: string) {
+  return createOrderCheckoutSession(orderId);
+}
+
+export async function startOrderNet30(
+  orderId: string,
+): Promise<DashboardOrder> {
+  return createStripeNet30Invoice(orderId);
 }

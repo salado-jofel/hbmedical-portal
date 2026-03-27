@@ -6,7 +6,12 @@ import {
   updateOrderInStore,
   removeOrderFromStore,
 } from "../(redux)/orders-slice";
-import { deleteOrder, submitOrderPaymentChoice } from "../(services)/actions";
+import {
+  createOrderCheckout,
+  deleteOrder,
+  startOrderNet30,
+  submitOrderPaymentChoice,
+} from "../(services)/actions";
 
 import type {
   DashboardOrder,
@@ -255,20 +260,31 @@ export function OrderCard({ order }: { order: DashboardOrder }) {
     }
 
     try {
+      if (method === "net_30") {
+        const updatedOrder = await startOrderNet30(order.id);
+        dispatch(updateOrderInStore(updatedOrder));
+        toast.success("Net 30 invoice created in Stripe.");
+        return;
+      }
+
       const updatedOrder = await submitOrderPaymentChoice({
         id: order.id,
         payment_method: method,
       });
 
       dispatch(updateOrderInStore(updatedOrder));
-      toast.success(
-        method === "pay_now"
-          ? "Payment choice updated to Pay Now."
-          : "Net 30 payment choice selected.",
-      );
+
+      toast.success("Redirecting to Stripe checkout...");
+
+      const { url } = await createOrderCheckout(order.id);
+      window.location.assign(url);
     } catch (err) {
       console.error("[handlePaymentChoice]", err);
-      toast.error("Failed to update payment choice. Please try again.");
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Failed to update payment choice. Please try again.",
+      );
     } finally {
       setIsPayingNow(false);
       setIsPayingLater(false);
@@ -293,7 +309,7 @@ export function OrderCard({ order }: { order: DashboardOrder }) {
             size="sm"
             onClick={() => setPaymentMenuOpen((prev) => !prev)}
             disabled={isBusy}
-            className="h-9 bg-[#15689E] text-white hover:bg-[#0f4f7a] cursor-pointer"
+            className="h-9 cursor-pointer bg-[#15689E] text-white hover:bg-[#0f4f7a]"
           >
             {isPayingNow || isPayingLater ? (
               <>
@@ -433,7 +449,7 @@ export function OrderCard({ order }: { order: DashboardOrder }) {
                   ? "Edit order"
                   : lockReason || "This order cannot be edited."
               }
-              className="h-7 w-7 text-slate-300 hover:bg-slate-100 hover:text-slate-600 cursor-pointer"
+              className="h-7 w-7 cursor-pointer text-slate-300 hover:bg-slate-100 hover:text-slate-600"
             >
               <Edit3 className="h-4 w-4" />
             </Button>
@@ -455,7 +471,7 @@ export function OrderCard({ order }: { order: DashboardOrder }) {
                   ? "Delete order"
                   : lockReason || "This order cannot be deleted."
               }
-              className="h-7 w-7 text-slate-300 hover:bg-red-50 hover:text-red-500 cursor-pointer"
+              className="h-7 w-7 cursor-pointer text-slate-300 hover:bg-red-50 hover:text-red-500"
             >
               <Trash2 className="h-4 w-4" />
             </Button>
@@ -500,6 +516,18 @@ export function OrderCard({ order }: { order: DashboardOrder }) {
                   {formatCurrency(unitPrice)}
                 </span>
               </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+              Payment Method
+            </p>
+            <div className="mt-1 flex items-center gap-2 text-slate-800">
+              <CreditCard className="h-4 w-4 text-slate-500" />
+              <span className="text-sm font-semibold">
+                {getPaymentMethodLabel(order.payment_method)}
+              </span>
             </div>
           </div>
 
