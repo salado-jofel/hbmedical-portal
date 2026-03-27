@@ -5,23 +5,31 @@ import type {
   OrderRow,
 } from "@/utils/interfaces/orders";
 
+export type OrderItemRecord = {
+  id: string;
+  order_id: string;
+  product_id: string | null;
+  product_name: string;
+  product_sku: string;
+  unit_price: number;
+  quantity: number;
+  shipping_amount: number;
+  tax_amount: number;
+  subtotal: number;
+  total_amount: number;
+};
+
 export type CheckoutOrderRecord = Pick<
   OrderRow,
   | "id"
   | "order_number"
   | "facility_id"
-  | "product_id"
-  | "product_name"
-  | "product_sku"
-  | "quantity"
-  | "unit_price"
-  | "shipping_amount"
-  | "tax_amount"
-  | "total_amount"
   | "payment_method"
   | "payment_status"
   | "order_status"
->;
+> & {
+  order_items: OrderItemRecord[];
+};
 
 export type CheckoutFacilityRecord = Pick<
   FacilityRecord,
@@ -49,17 +57,14 @@ export type Net30OrderRecord = Pick<
   | "id"
   | "order_number"
   | "facility_id"
-  | "product_id"
-  | "product_name"
-  | "product_sku"
-  | "quantity"
-  | "total_amount"
   | "payment_method"
   | "payment_status"
   | "invoice_status"
   | "order_status"
   | "placed_at"
->;
+> & {
+  order_items: OrderItemRecord[];
+};
 
 export type LocalInvoiceRecord = {
   id: string;

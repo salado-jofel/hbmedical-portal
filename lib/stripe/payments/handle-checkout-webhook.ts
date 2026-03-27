@@ -3,6 +3,7 @@ import "server-only";
 import Stripe from "stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendPaymentReceiptEmail } from "@/lib/emails/send-payment-receipt";
+import { syncOrderToShipStation } from "@/lib/actions/shipstation";
 import { stripe } from "../server";
 
 type PaymentRecordLookup = {
@@ -373,6 +374,8 @@ async function markOrderPaid(orderId: string, paidAt: string) {
     .from("orders")
     .update({
       payment_status: "paid",
+      order_status: "submitted",
+      fulfillment_status: "processing",
       paid_at: paidAt,
     })
     .eq("id", orderId)
@@ -413,6 +416,18 @@ async function markOrderFailedIfNotPaid(orderId: string) {
   }
 }
 
+async function syncToShipStationSafely(orderId: string) {
+  try {
+    await syncOrderToShipStation(orderId);
+  } catch (error) {
+    console.error(
+      "[payments.syncToShipStationSafely] ShipStation sync failed for order:",
+      orderId,
+      error,
+    );
+  }
+}
+
 async function handleCheckoutSessionCompleted(
   session: Stripe.Checkout.Session,
 ) {
@@ -428,6 +443,7 @@ async function handleCheckoutSessionCompleted(
 
   if (!wasAlreadyPaid && didMarkPaid) {
     await sendSuccessfulPaymentReceipt(orderId, session);
+    await syncToShipStationSafely(orderId);
   }
 }
 
@@ -446,6 +462,7 @@ async function handleCheckoutSessionAsyncSucceeded(
 
   if (!wasAlreadyPaid && didMarkPaid) {
     await sendSuccessfulPaymentReceipt(orderId, session);
+    await syncToShipStationSafely(orderId);
   }
 }
 

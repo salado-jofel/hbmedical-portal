@@ -9,8 +9,6 @@ import type {
 } from "../shipstation/types";
 
 const ORDERS_PATH = "/dashboard/orders";
-const DEFAULT_ORDER_STATUS = "awaiting_shipment";
-const DEFAULT_LOCAL_STATUS = "Processing";
 
 export type ShipStationSyncStatus = "ready" | "syncing" | "sent" | "failed";
 
@@ -21,29 +19,19 @@ export type SyncPaidOrderToShipStationResult = {
   syncStatus: ShipStationSyncStatus | null;
 };
 
-type AdminShipStationOrderRow = {
+type OrderForShipStation = {
   id: string;
+  order_number: string;
   created_at: string;
-  order_id: string;
   facility_id: string;
-  product_id: string;
-  amount: number | string;
-  quantity: number | null;
-  receipt_email: string | null;
-  payment_mode: ShipStationPaymentMode | null;
-  payment_status: ShipStationPaymentStatus | null;
-  stripe_invoice_id: string | null;
-  status: string | null;
-
-  tracking_number: string | null;
-  carrier_code: string | null;
-  shipstation_order_id: string | null;
-  shipstation_shipment_id: string | null;
-  shipstation_status: string | null;
-  shipstation_sync_status: string | null;
-  shipstation_label_url: string | null;
-  shipped_at: string | null;
-
+  payment_method: ShipStationPaymentMode | null;
+  payment_status: string;
+  invoice_status: string;
+  order_items: Array<{
+    product_name: string | null;
+    quantity: number;
+    total_amount: number;
+  }>;
   facilities: {
     name: string | null;
     phone: string | null;
@@ -54,11 +42,12 @@ type AdminShipStationOrderRow = {
     postal_code: string | null;
     country: string | null;
   } | null;
+};
 
-  products: {
-    name: string | null;
-    price: number | string | null;
-  } | null;
+type ShipmentRow = {
+  id: string;
+  shipstation_order_id: string | null;
+  status: string | null;
 };
 
 function isMockLikeValue(value: string | null | undefined) {
@@ -72,64 +61,52 @@ function isMockLikeValue(value: string | null | undefined) {
   );
 }
 
-function hasLegacyMockArtifacts(order: AdminShipStationOrderRow) {
-  return (
-    isMockLikeValue(order.tracking_number) ||
-    isMockLikeValue(order.carrier_code) ||
-    isMockLikeValue(order.shipstation_order_id) ||
-    isMockLikeValue(order.shipstation_shipment_id) ||
-    isMockLikeValue(order.shipstation_label_url) ||
-    (order.status ?? "").trim().toLowerCase() === "shipped"
-  );
-}
-
-function getNextLocalStatus(order: AdminShipStationOrderRow) {
-  if (hasLegacyMockArtifacts(order) && order.status === "Shipped") {
-    return DEFAULT_LOCAL_STATUS;
+function mapToShipStationPaymentStatus(
+  order: OrderForShipStation,
+): ShipStationPaymentStatus {
+  if (order.payment_status === "paid") return "paid";
+  if (order.payment_status === "failed") return "payment_failed";
+  if (
+    order.payment_method === "net_30" &&
+    order.invoice_status !== "not_applicable"
+  ) {
+    if (order.invoice_status === "overdue") return "overdue";
+    return "invoice_sent";
   }
-  return order.status ?? DEFAULT_LOCAL_STATUS;
+  return "unpaid";
 }
 
 export async function syncOrderToShipStation(
   orderId: string,
 ): Promise<SyncPaidOrderToShipStationResult> {
-  const supabaseAdmin = createAdminClient();
+  const admin = createAdminClient();
 
-  const { data: rawOrder, error } = await supabaseAdmin
+  const { data: rawOrder, error } = await admin
     .from("orders")
     .select(
       `
       id,
+      order_number,
       created_at,
-      order_id,
       facility_id,
-      product_id,
-      amount,
-      quantity,
-      receipt_email,
-      payment_mode,
+      payment_method,
       payment_status,
-      stripe_invoice_id,
-      status,
-      tracking_number,
-      carrier_code,
-      shipstation_order_id,
-      shipstation_shipment_id,
-      shipstation_status,
-      shipstation_sync_status,
-      shipstation_label_url,
-      shipped_at,
-      facilities(
-        name, 
-        phone, 
-        address_line_1, 
-        address_line_2, 
-        city, 
-        state, 
-        postal_code, 
-        country
+      invoice_status,
+      order_items (
+        product_name,
+        quantity,
+        total_amount
       ),
-      products(name, price)
+      facilities (
+        name,
+        phone,
+        address_line_1,
+        address_line_2,
+        city,
+        state,
+        postal_code,
+        country
+      )
     `,
     )
     .eq("id", orderId)
@@ -139,11 +116,12 @@ export async function syncOrderToShipStation(
     throw new Error("Order not found");
   }
 
-  const order = rawOrder as unknown as AdminShipStationOrderRow;
+  const order = rawOrder as unknown as OrderForShipStation;
 
   const canSyncToShipStation =
     order.payment_status === "paid" ||
-    (order.payment_mode === "net_30" && !!order.stripe_invoice_id);
+    (order.payment_method === "net_30" &&
+      order.invoice_status !== "not_applicable");
 
   if (!canSyncToShipStation) {
     throw new Error(
@@ -151,24 +129,24 @@ export async function syncOrderToShipStation(
     );
   }
 
-  const hasRealSyncedOrder =
-    !!order.shipstation_order_id &&
-    order.shipstation_sync_status === "sent" &&
-    !isMockLikeValue(order.shipstation_order_id);
+  // Check for existing shipment record
+  const { data: existingShipment } = await admin
+    .from("shipments")
+    .select("id, shipstation_order_id, status")
+    .eq("order_id", orderId)
+    .maybeSingle<ShipmentRow>();
 
-  if (hasRealSyncedOrder) {
+  if (
+    existingShipment?.shipstation_order_id &&
+    !isMockLikeValue(existingShipment.shipstation_order_id)
+  ) {
     return {
       alreadySynced: true,
-      shipstationOrderId: order.shipstation_order_id,
-      shipstationStatus: order.shipstation_status ?? DEFAULT_ORDER_STATUS,
+      shipstationOrderId: existingShipment.shipstation_order_id,
+      shipstationStatus: existingShipment.status ?? "awaiting_shipment",
       syncStatus: "sent",
     };
   }
-
-  await supabaseAdmin
-    .from("orders")
-    .update({ shipstation_sync_status: "syncing" })
-    .eq("id", order.id);
 
   try {
     const shipstation = getShipStationClient();
@@ -183,72 +161,58 @@ export async function syncOrderToShipStation(
       throw new Error("Facility address is incomplete in the database.");
     }
 
-    // PASS FIELDS DIRECTLY
+    const firstItem = order.order_items[0];
+
     const syncedOrder = await shipstation.syncOrder({
       localOrderId: order.id,
-      orderNumber: order.order_id,
+      orderNumber: order.order_number,
       createdAt: order.created_at,
-      amount: Number(order.amount ?? 0),
-      quantity: Number(order.quantity ?? 1),
+      amount: Number(firstItem?.total_amount ?? 0),
+      quantity: Number(firstItem?.quantity ?? 1),
       facilityId: order.facility_id,
       facilityName: facility.name ?? "Unknown Facility",
       facilityContact: facility.name ?? null,
-
-      // The Fix: Direct mapping
       address_line_1: facility.address_line_1,
       address_line_2: facility.address_line_2,
       city: facility.city,
       state: facility.state,
       postal_code: facility.postal_code,
       country: facility.country || "US",
-
       recipientPhone: facility.phone ?? null,
-      receiptEmail: order.receipt_email ?? null,
-      productName: order.products?.name ?? `Order ${order.order_id}`,
-      paymentMode: order.payment_mode,
-      paymentStatus: order.payment_status,
+      receiptEmail: null,
+      productName: firstItem?.product_name ?? `Order ${order.order_number}`,
+      paymentMode: order.payment_method,
+      paymentStatus: mapToShipStationPaymentStatus(order),
     });
 
-    const clearLegacyMockFields = hasLegacyMockArtifacts(order);
+    // Upsert shipment row (status: pending — label_created happens separately)
+    const { error: shipmentUpsertError } = await admin
+      .from("shipments")
+      .upsert(
+        {
+          order_id: orderId,
+          shipstation_order_id: syncedOrder.externalOrderId,
+          status: "pending",
+        },
+        { onConflict: "order_id" },
+      );
 
-    const { error: updateError } = await supabaseAdmin
-      .from("orders")
-      .update({
-        shipstation_order_id: syncedOrder.externalOrderId,
-        shipstation_status: syncedOrder.status ?? DEFAULT_ORDER_STATUS,
-        shipstation_sync_status: "sent",
-        tracking_number: clearLegacyMockFields ? null : order.tracking_number,
-        carrier_code: clearLegacyMockFields ? null : order.carrier_code,
-        shipstation_shipment_id: clearLegacyMockFields
-          ? null
-          : order.shipstation_shipment_id,
-        shipstation_label_url: clearLegacyMockFields
-          ? null
-          : order.shipstation_label_url,
-        shipped_at: clearLegacyMockFields ? null : order.shipped_at,
-        status: "Awaiting Shipment",
-      })
-      .eq("id", order.id);
-
-    if (updateError) throw new Error(updateError.message);
+    if (shipmentUpsertError) {
+      throw new Error(shipmentUpsertError.message);
+    }
 
     revalidatePath(ORDERS_PATH);
 
     return {
       alreadySynced: false,
       shipstationOrderId: syncedOrder.externalOrderId,
-      shipstationStatus: syncedOrder.status ?? DEFAULT_ORDER_STATUS,
+      shipstationStatus: syncedOrder.status ?? "awaiting_shipment",
       syncStatus: "sent",
     };
   } catch (error) {
+    revalidatePath(ORDERS_PATH);
     const message =
       error instanceof Error ? error.message : "Failed to sync to ShipStation";
-    await supabaseAdmin
-      .from("orders")
-      .update({ shipstation_sync_status: "failed" })
-      .eq("id", order.id);
-
-    revalidatePath(ORDERS_PATH);
     throw new Error(message);
   }
 }
@@ -256,30 +220,40 @@ export async function syncOrderToShipStation(
 export const syncPaidOrderToShipStation = syncOrderToShipStation;
 
 export async function markOrderDeliveredViaShipStation(orderId: string) {
-  const supabaseAdmin = createAdminClient();
-  const { data: order, error } = await supabaseAdmin
-    .from("orders")
-    .select("id, status, shipstation_order_id")
-    .eq("id", orderId)
-    .single();
+  const admin = createAdminClient();
 
-  if (error || !order) throw new Error("Order not found");
-  if (
-    !order.shipstation_order_id ||
-    isMockLikeValue(order.shipstation_order_id)
-  ) {
+  const { data: shipment, error: shipmentError } = await admin
+    .from("shipments")
+    .select("id, shipstation_order_id")
+    .eq("order_id", orderId)
+    .maybeSingle<{ id: string; shipstation_order_id: string | null }>();
+
+  if (shipmentError) throw new Error(shipmentError.message);
+
+  if (!shipment?.shipstation_order_id || isMockLikeValue(shipment.shipstation_order_id)) {
     throw new Error("Missing valid ShipStation order ID");
   }
 
-  const { error: updateError } = await supabaseAdmin
+  const deliveredAt = new Date().toISOString();
+
+  const { error: orderUpdateError } = await admin
     .from("orders")
     .update({
-      status: "Delivered",
-      delivered_at: new Date().toISOString(),
+      delivery_status: "delivered",
+      delivered_at: deliveredAt,
     })
-    .eq("id", order.id);
+    .eq("id", orderId);
 
-  if (updateError) throw new Error(updateError.message);
+  if (orderUpdateError) throw new Error(orderUpdateError.message);
+
+  await admin
+    .from("shipments")
+    .update({
+      status: "delivered",
+      delivered_at: deliveredAt,
+    })
+    .eq("id", shipment.id);
+
   revalidatePath(ORDERS_PATH);
-  return { success: true, orderId: order.id, status: "Delivered" };
+  return { success: true, orderId, status: "delivered" };
 }

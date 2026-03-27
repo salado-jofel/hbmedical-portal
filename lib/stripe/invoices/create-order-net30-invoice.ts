@@ -20,6 +20,7 @@ import {
   LocalInvoiceRecord,
   Net30OrderRecord,
 } from "@/utils/interfaces/stripe";
+import { syncOrderToShipStation } from "@/lib/actions/shipstation";
 import { stripe } from "../server";
 import { toStripeAmount } from "../stripe";
 
@@ -128,16 +129,24 @@ export async function createStripeNet30Invoice(
         id,
         order_number,
         facility_id,
-        product_id,
-        product_name,
-        product_sku,
-        quantity,
-        total_amount,
         payment_method,
         payment_status,
         invoice_status,
         order_status,
-        placed_at
+        placed_at,
+        order_items (
+          id,
+          order_id,
+          product_id,
+          product_name,
+          product_sku,
+          unit_price,
+          quantity,
+          shipping_amount,
+          tax_amount,
+          subtotal,
+          total_amount
+        )
       `,
     )
     .eq("id", orderId)
@@ -250,6 +259,7 @@ export async function createStripeNet30Invoice(
         payment_method: "net_30",
         payment_status: existingStatus === "paid" ? "paid" : "pending",
         invoice_status: existingStatus,
+        fulfillment_status: "processing",
       })
       .eq("id", order.id);
 
@@ -262,6 +272,17 @@ export async function createStripeNet30Invoice(
     }
 
     revalidatePath(ORDERS_PATH);
+
+    try {
+      await syncOrderToShipStation(order.id);
+    } catch (error) {
+      console.error(
+        "[invoices.createStripeNet30Invoice] ShipStation sync failed for existing invoice, order:",
+        order.id,
+        error,
+      );
+    }
+
     return getUpdatedDashboardOrder(order.id, facility.id);
   }
 
@@ -269,6 +290,11 @@ export async function createStripeNet30Invoice(
     facility,
     user.email,
   );
+
+  const firstItem = order.order_items[0];
+  if (!firstItem) {
+    throw new Error("Order has no items.");
+  }
 
   const draftInvoice = await stripe.invoices.create({
     customer: stripeCustomerId,
@@ -279,7 +305,6 @@ export async function createStripeNet30Invoice(
       order_id: order.id,
       order_number: order.order_number,
       facility_id: order.facility_id,
-      product_id: order.product_id,
       user_id: user.id,
     },
     description: `Net 30 invoice for order ${order.order_number}`,
@@ -288,14 +313,13 @@ export async function createStripeNet30Invoice(
   await stripe.invoiceItems.create({
     customer: stripeCustomerId,
     invoice: draftInvoice.id,
-    amount: toStripeAmount(order.total_amount),
+    amount: toStripeAmount(firstItem.total_amount),
     currency: "usd",
-    description: `${order.product_name} x ${order.quantity} • Order ${order.order_number} • SKU: ${order.product_sku}`,
+    description: `${firstItem.product_name} x ${firstItem.quantity} • Order ${order.order_number} • SKU: ${firstItem.product_sku}`,
     metadata: {
       order_id: order.id,
       order_number: order.order_number,
       facility_id: order.facility_id,
-      product_id: order.product_id,
       user_id: user.id,
     },
   });
@@ -347,6 +371,7 @@ export async function createStripeNet30Invoice(
       payment_method: "net_30",
       payment_status: "pending",
       invoice_status: localInvoiceStatus,
+      fulfillment_status: "processing",
     })
     .eq("id", order.id);
 
@@ -361,6 +386,16 @@ export async function createStripeNet30Invoice(
   }
 
   revalidatePath(ORDERS_PATH);
+
+  try {
+    await syncOrderToShipStation(order.id);
+  } catch (error) {
+    console.error(
+      "[invoices.createStripeNet30Invoice] ShipStation sync failed for order:",
+      order.id,
+      error,
+    );
+  }
 
   return getUpdatedDashboardOrder(order.id, facility.id);
 }

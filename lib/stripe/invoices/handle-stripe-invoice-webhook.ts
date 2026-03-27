@@ -286,11 +286,13 @@ async function getOrderEmailContext(
       `
         id,
         order_number,
-        product_name,
         facility_id,
         facilities (
           name,
           user_id
+        ),
+        order_items (
+          product_name
         )
       `,
     )
@@ -305,11 +307,14 @@ async function getOrderEmailContext(
   const order = data as {
     id: string;
     order_number?: string | null;
-    product_name?: string | null;
     facilities?: FacilityRelation | FacilityRelation[] | null;
+    order_items?: Array<{ product_name?: string | null }> | null;
   };
 
   const facility = getSingleRelation(order.facilities);
+  const firstItem = Array.isArray(order.order_items)
+    ? (order.order_items[0] ?? null)
+    : null;
   let to = invoice.customer_email ?? null;
 
   if (!to && facility?.user_id) {
@@ -340,7 +345,7 @@ async function getOrderEmailContext(
     orderId: order.id,
     orderNumber: order.order_number ?? invoice.metadata?.order_number ?? null,
     facilityName: facility?.name ?? null,
-    productName: order.product_name ?? null,
+    productName: firstItem?.product_name ?? null,
   };
 }
 

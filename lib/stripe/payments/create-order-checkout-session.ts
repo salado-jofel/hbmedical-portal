@@ -172,17 +172,22 @@ export async function createOrderCheckoutSession(
         id,
         order_number,
         facility_id,
-        product_id,
-        product_name,
-        product_sku,
-        quantity,
-        unit_price,
-        shipping_amount,
-        tax_amount,
-        total_amount,
         payment_method,
         payment_status,
-        order_status
+        order_status,
+        order_items (
+          id,
+          order_id,
+          product_id,
+          product_name,
+          product_sku,
+          unit_price,
+          quantity,
+          shipping_amount,
+          tax_amount,
+          subtotal,
+          total_amount
+        )
       `,
     )
     .eq("id", orderId)
@@ -245,6 +250,11 @@ export async function createOrderCheckoutSession(
     throw new Error("This order is already paid.");
   }
 
+  const firstItem = order.order_items[0];
+  if (!firstItem) {
+    throw new Error("Order has no items.");
+  }
+
   const stripeCustomerId = await getOrCreateStripeCustomer(
     facility,
     user.email,
@@ -264,7 +274,6 @@ export async function createOrderCheckoutSession(
       order_id: order.id,
       order_number: order.order_number,
       facility_id: order.facility_id,
-      product_id: order.product_id,
       user_id: user.id,
     },
     line_items: [
@@ -273,10 +282,10 @@ export async function createOrderCheckoutSession(
         price_data: {
           currency: "usd",
           product_data: {
-            name: `${order.product_name} x ${order.quantity}`,
-            description: `Order ${order.order_number} • SKU: ${order.product_sku}`,
+            name: `${firstItem.product_name} x ${firstItem.quantity}`,
+            description: `Order ${order.order_number} • SKU: ${firstItem.product_sku}`,
           },
-          unit_amount: toStripeAmount(order.total_amount),
+          unit_amount: toStripeAmount(firstItem.total_amount),
         },
       },
     ],
@@ -291,7 +300,7 @@ export async function createOrderCheckoutSession(
     provider: "stripe",
     payment_type: "checkout",
     status: "pending",
-    amount: order.total_amount,
+    amount: firstItem.total_amount,
     currency: "USD",
     stripe_checkout_session_id: session.id,
     stripe_payment_intent_id: null,

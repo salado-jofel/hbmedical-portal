@@ -8,6 +8,7 @@ import type {
 } from "../interfaces/orders";
 
 export const ORDER_TABLE = "orders";
+export const ORDER_ITEMS_TABLE = "order_items";
 export const FACILITY_TABLE = "facilities";
 export const PRODUCT_TABLE = "products";
 
@@ -59,15 +60,6 @@ export const ORDER_BASE_SELECT = `
   id,
   order_number,
   facility_id,
-  product_id,
-  product_name,
-  product_sku,
-  quantity,
-  unit_price,
-  shipping_amount,
-  tax_amount,
-  subtotal,
-  total_amount,
   order_status,
   payment_method,
   payment_status,
@@ -83,7 +75,23 @@ export const ORDER_BASE_SELECT = `
   updated_at
 `;
 
-export const PAYMENTS_SELECT = `    
+export const ORDER_ITEMS_SELECT = `
+  id,
+  order_id,
+  product_id,
+  product_name,
+  product_sku,
+  unit_price,
+  quantity,
+  shipping_amount,
+  tax_amount,
+  subtotal,
+  total_amount,
+  created_at,
+  updated_at
+`;
+
+export const PAYMENTS_SELECT = `
     id,
     order_id,
     provider,
@@ -122,7 +130,7 @@ export const INVOICES_SELECT = `
 export const ORDER_WITH_RELATIONS_SELECT = `
   ${ORDER_BASE_SELECT},
   facilities (${FACILITY_SELECT}),
-  products (${PRODUCT_SELECT}),
+  order_items (${ORDER_ITEMS_SELECT}),
   payments (${PAYMENTS_SELECT}),
   invoices (${INVOICES_SELECT})
 `;

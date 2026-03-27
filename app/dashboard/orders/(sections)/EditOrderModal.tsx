@@ -60,7 +60,7 @@ export function EditOrderModal({
   useEffect(() => {
     if (!open || !order) return;
 
-    setProductId(order.product_id);
+    setProductId(order.product_id ?? "");
     setQuantity(Number(order.quantity) || 1);
   }, [open, order]);
 
@@ -103,7 +103,7 @@ export function EditOrderModal({
 
   const hasChanges =
     !!order &&
-    (productId !== order.product_id || quantity !== Number(order.quantity));
+    (productId !== (order.product_id ?? "") || quantity !== Number(order.quantity));
 
   const isFormValid =
     !!facility &&
@@ -115,7 +115,7 @@ export function EditOrderModal({
 
   function resetForm() {
     if (order) {
-      setProductId(order.product_id);
+      setProductId(order.product_id ?? "");
       setQuantity(Number(order.quantity) || 1);
     } else {
       setProductId("");

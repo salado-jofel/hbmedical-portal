@@ -54,6 +54,26 @@ export const orderDeliveryStatusSchema = z.enum([
 export const orderBoardStatusSchema = z.enum(["New Orders", "Delivered"]);
 
 /* -------------------------------------------------------------------------- */
+/* order_items row schema                                                     */
+/* -------------------------------------------------------------------------- */
+
+export const orderItemRowSchema = z.object({
+  id: uuidSchema,
+  order_id: uuidSchema,
+  product_id: uuidSchema.nullable(),
+  product_name: z.string().trim().min(1, "Product name is required."),
+  product_sku: z.string().trim().min(1, "Product SKU is required."),
+  unit_price: z.coerce.number().min(0, "Unit price must be 0 or more."),
+  quantity: z.coerce.number().int().min(1, "Quantity must be at least 1."),
+  shipping_amount: z.coerce.number().min(0),
+  tax_amount: z.coerce.number().min(0),
+  subtotal: z.coerce.number().min(0),
+  total_amount: z.coerce.number().min(0),
+  created_at: timestampSchema,
+  updated_at: timestampSchema,
+});
+
+/* -------------------------------------------------------------------------- */
 /* Row + dashboard schemas                                                    */
 /* -------------------------------------------------------------------------- */
 
@@ -62,17 +82,6 @@ export const orderRowSchema = z.object({
 
   order_number: z.string().trim().min(1, "Order number is required."),
   facility_id: uuidSchema,
-  product_id: uuidSchema,
-
-  product_name: z.string().trim().min(1, "Product name is required."),
-  product_sku: z.string().trim().min(1, "Product SKU is required."),
-
-  quantity: z.coerce.number().int().min(1, "Quantity must be at least 1."),
-  unit_price: z.coerce.number().min(0, "Unit price must be 0 or more."),
-  shipping_amount: z.coerce.number().min(0),
-  tax_amount: z.coerce.number().min(0),
-  subtotal: z.coerce.number().min(0),
-  total_amount: z.coerce.number().min(0),
 
   order_status: orderStatusSchema,
   payment_method: orderPaymentMethodSchema.nullable(),
@@ -93,6 +102,18 @@ export const orderRowSchema = z.object({
 });
 
 export const dashboardOrderSchema = orderRowSchema.extend({
+  // flattened from order_items[0]
+  product_id: uuidSchema.nullable(),
+  product_name: z.string().trim().min(1, "Product name is required."),
+  product_sku: z.string().trim().min(1, "Product SKU is required."),
+  quantity: z.coerce.number().int().min(1, "Quantity must be at least 1."),
+  unit_price: z.coerce.number().min(0, "Unit price must be 0 or more."),
+  shipping_amount: z.coerce.number().min(0),
+  tax_amount: z.coerce.number().min(0),
+  subtotal: z.coerce.number().min(0),
+  total_amount: z.coerce.number().min(0),
+
+  // from facility relation
   facility_name: z.string().trim().min(1, "Facility name is required."),
   facility_contact_name: nullableStringSchema,
   facility_email: nullableStringSchema,
@@ -165,6 +186,7 @@ export type OrderFulfillmentStatus = z.infer<
 export type OrderDeliveryStatus = z.infer<typeof orderDeliveryStatusSchema>;
 export type OrderBoardStatus = z.infer<typeof orderBoardStatusSchema>;
 
+export type OrderItemRow = z.infer<typeof orderItemRowSchema>;
 export type OrderRow = z.infer<typeof orderRowSchema>;
 export type DashboardOrder = z.infer<typeof dashboardOrderSchema>;
 
@@ -263,16 +285,15 @@ export type InvoiceRecord = {
 
 export type RawOrderRecord = OrderRow & {
   facilities: MaybeRelation<FacilityRecord>;
-  products: MaybeRelation<ProductRecord>;
+  order_items: OrderItemRow[] | null;
   payments: PaymentRecord[] | null;
   invoices: InvoiceRecord[] | null;
 };
+
 export type ExistingOrderRecord = {
   id: string;
   facility_id: string;
   order_status: OrderStatus;
-  product_id: string;
-  quantity: number;
   payment_method: OrderPaymentMethod | null;
   payment_status: OrderPaymentStatus;
   invoice_status: OrderInvoiceStatus;
@@ -291,13 +312,6 @@ export type ExistingOrderRecord = {
 export type InsertOrderPayload = {
   order_number: string;
   facility_id: string;
-  product_id: string;
-  product_name: string;
-  product_sku: string;
-  quantity: number;
-  unit_price: number;
-  shipping_amount: number;
-  tax_amount: number;
   order_status: OrderStatus;
   payment_method: OrderPaymentMethod | null;
   payment_status: OrderPaymentStatus;
@@ -309,6 +323,17 @@ export type InsertOrderPayload = {
   placed_at: string;
   paid_at: string | null;
   delivered_at: string | null;
+};
+
+export type InsertOrderItemPayload = {
+  order_id: string;
+  product_id: string;
+  product_name: string;
+  product_sku: string;
+  unit_price: number;
+  quantity: number;
+  shipping_amount: number;
+  tax_amount: number;
 };
 
 export type EditOrderPayload = {

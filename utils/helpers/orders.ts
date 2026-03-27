@@ -22,9 +22,9 @@ import {
   OrderBoardStatus,
   OrderDeliveryStatus,
   OrderInvoiceStatus,
+  OrderItemRow,
   OrderPaymentStatus,
   PaymentRecord,
-  ProductRecord,
   RawOrderRecord,
   SubmitOrderPaymentChoiceInput,
   submitOrderPaymentChoiceSchema,
@@ -222,7 +222,8 @@ export function parseCancelOrderInput(
 
 export function mapDashboardOrder(row: RawOrderRecord): DashboardOrder {
   const facility = getSingleRelation(row.facilities);
-  const product = getSingleRelation(row.products) as ProductRecord | null;
+  const firstItem: OrderItemRow | null =
+    Array.isArray(row.order_items) ? (row.order_items[0] ?? null) : null;
 
   const payments = sortPaymentsNewestFirst(row.payments);
   const invoices = sortInvoicesNewestFirst(row.invoices);
@@ -242,17 +243,17 @@ export function mapDashboardOrder(row: RawOrderRecord): DashboardOrder {
     id: row.id,
     order_number: row.order_number,
     facility_id: row.facility_id,
-    product_id: row.product_id,
 
-    product_name: row.product_name,
-    product_sku: row.product_sku,
-
-    quantity: row.quantity,
-    unit_price: row.unit_price,
-    shipping_amount: row.shipping_amount,
-    tax_amount: row.tax_amount,
-    subtotal: row.subtotal,
-    total_amount: row.total_amount,
+    // flattened from order_items[0]
+    product_id: firstItem?.product_id ?? null,
+    product_name: firstItem?.product_name ?? "",
+    product_sku: firstItem?.product_sku ?? "",
+    quantity: firstItem?.quantity ?? 0,
+    unit_price: firstItem?.unit_price ?? 0,
+    shipping_amount: firstItem?.shipping_amount ?? 0,
+    tax_amount: firstItem?.tax_amount ?? 0,
+    subtotal: firstItem?.subtotal ?? 0,
+    total_amount: firstItem?.total_amount ?? 0,
 
     order_status: row.order_status,
     payment_method: row.payment_method,
@@ -277,7 +278,7 @@ export function mapDashboardOrder(row: RawOrderRecord): DashboardOrder {
     facility_email: null,
     facility_phone: toNullableString(facility?.phone),
 
-    product_category: toNullableString(product?.category),
+    product_category: null,
 
     board_status: getOrderBoardStatus(row.delivery_status),
 

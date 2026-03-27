@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import {
   FACILITY_SELECT,
   FACILITY_TABLE,
+  ORDER_ITEMS_TABLE,
   ORDER_TABLE,
   ORDER_WITH_RELATIONS_SELECT,
   ORDERS_PATH,
@@ -43,6 +44,7 @@ import type {
   EditOrderPayload,
   ExistingOrderRecord,
   FacilityRecord,
+  InsertOrderItemPayload,
   InsertOrderPayload,
   ProductRecord,
   RawOrderRecord,
@@ -136,8 +138,6 @@ async function getFacilityOwnedOrderByIdOrThrow(
       id,
       facility_id,
       order_status,
-      product_id,
-      quantity,
       payment_method,
       payment_status,
       invoice_status,
@@ -228,7 +228,7 @@ export async function getAllOrders(): Promise<DashboardOrder[]> {
     console.error("[getAllOrders] Error:", error);
     throw new Error(error.message || "Failed to fetch orders.");
   }
-  console.log("data: ", data);
+
   return mapDashboardOrders((data ?? []) as unknown as RawOrderRecord[]);
 }
 
@@ -243,16 +243,9 @@ export async function createOrder(
   const product = await getProductByIdOrThrow(supabase, parsed.product_id);
   const amounts = calculateOrderAmounts(product.unit_price, parsed.quantity);
 
-  const payload: InsertOrderPayload = {
+  const orderPayload: InsertOrderPayload = {
     order_number: generateOrderNumber(),
     facility_id: facility.id,
-    product_id: product.id,
-    product_name: product.name,
-    product_sku: product.sku,
-    quantity: parsed.quantity,
-    unit_price: amounts.unit_price,
-    shipping_amount: amounts.shipping_amount,
-    tax_amount: amounts.tax_amount,
     order_status: DEFAULT_ORDER_STATUS,
     payment_method: null,
     payment_status: DEFAULT_PAYMENT_STATUS,
@@ -268,13 +261,35 @@ export async function createOrder(
 
   const { data, error } = await supabase
     .from(ORDER_TABLE)
-    .insert(payload)
+    .insert(orderPayload)
     .select("id")
     .single();
 
   if (error || !data) {
-    console.error("[createOrder] Error:", error);
+    console.error("[createOrder] Order insert error:", error);
     throw new Error(error?.message || "Failed to create draft order.");
+  }
+
+  const itemPayload: InsertOrderItemPayload = {
+    order_id: data.id,
+    product_id: product.id,
+    product_name: product.name,
+    product_sku: product.sku,
+    unit_price: amounts.unit_price,
+    quantity: parsed.quantity,
+    shipping_amount: amounts.shipping_amount,
+    tax_amount: amounts.tax_amount,
+  };
+
+  const { error: itemError } = await supabase
+    .from(ORDER_ITEMS_TABLE)
+    .insert(itemPayload);
+
+  if (itemError) {
+    console.error("[createOrder] Order item insert error:", itemError);
+    // Roll back the order row so we don't leave orphaned records
+    await supabase.from(ORDER_TABLE).delete().eq("id", data.id);
+    throw new Error(itemError.message || "Failed to create order item.");
   }
 
   revalidatePath(ORDERS_PATH);
@@ -503,10 +518,9 @@ export async function editOrder(
   };
 
   const { error } = await supabase
-    .from(ORDER_TABLE)
+    .from(ORDER_ITEMS_TABLE)
     .update(payload)
-    .eq("id", parsed.id)
-    .eq("facility_id", facility.id);
+    .eq("order_id", parsed.id);
 
   if (error) {
     console.error("[editOrder] Error:", error);
