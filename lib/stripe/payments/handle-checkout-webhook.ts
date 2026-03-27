@@ -368,30 +368,24 @@ async function getChargeDetailsFromSession(session: Stripe.Checkout.Session) {
 
 async function markOrderPaid(orderId: string, paidAt: string) {
   const admin = await createAdminClient();
-  const order = await getOrderById(orderId);
 
-  if (!order) {
-    throw new Error("Order not found while marking paid.");
-  }
-
-  if (order.payment_status === "paid") {
-    return false;
-  }
-
-  const { error } = await admin
+  const { data, error } = await admin
     .from("orders")
     .update({
       payment_status: "paid",
       paid_at: paidAt,
     })
-    .eq("id", orderId);
+    .eq("id", orderId)
+    .neq("payment_status", "paid")
+    .select("id")
+    .maybeSingle();
 
   if (error) {
     console.error("[payments.markOrderPaid] Error:", error);
     throw new Error(error.message || "Failed to mark order as paid.");
   }
 
-  return true;
+  return Boolean(data);
 }
 
 async function markOrderFailedIfNotPaid(orderId: string) {
