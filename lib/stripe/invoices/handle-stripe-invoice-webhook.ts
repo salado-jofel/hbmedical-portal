@@ -131,6 +131,10 @@ async function upsertLocalInvoiceFromStripe(
   const orderId = getOrderIdFromInvoice(invoice);
 
   if (!orderId) {
+    console.warn(
+      "[invoices.upsertLocalInvoiceFromStripe] Missing order_id in invoice metadata:",
+      invoice.id,
+    );
     return null;
   }
 
@@ -158,6 +162,15 @@ async function upsertLocalInvoiceFromStripe(
     console.error("[invoices.upsertLocalInvoiceFromStripe] Error:", error);
     throw new Error(error.message || "Failed to upsert local invoice.");
   }
+
+  console.info(
+    "[invoices.upsertLocalInvoiceFromStripe] Synced invoice row:",
+    invoice.id,
+    "order:",
+    orderId,
+    "status:",
+    localStatus,
+  );
 
   return orderId;
 }
@@ -226,6 +239,17 @@ async function updateOrderFromInvoiceState(
       error.message || "Failed to sync order from invoice event.",
     );
   }
+
+  console.info(
+    "[invoices.updateOrderFromInvoiceState] Synced order:",
+    orderId,
+    "event:",
+    eventType,
+    "invoice_status:",
+    localStatus,
+    "payment_status:",
+    payload.payment_status,
+  );
 }
 
 async function syncInvoiceAndOrder(eventType: string, invoice: Stripe.Invoice) {
@@ -247,6 +271,10 @@ async function getOrderEmailContext(
   const orderId = getOrderIdFromInvoice(invoice);
 
   if (!orderId) {
+    console.warn(
+      "[invoices.getOrderEmailContext] Missing order_id in invoice metadata:",
+      invoice.id,
+    );
     return null;
   }
 
@@ -298,6 +326,15 @@ async function getOrderEmailContext(
     }
   }
 
+  console.info(
+    "[invoices.getOrderEmailContext] Email context resolved for invoice:",
+    invoice.id,
+    "order:",
+    order.id,
+    "recipient:",
+    to ?? "(none)",
+  );
+
   return {
     to,
     orderId: order.id,
@@ -308,37 +345,66 @@ async function getOrderEmailContext(
 }
 
 async function getReceiptUrlFromInvoice(invoice: Stripe.Invoice) {
-  const expandedInvoice = await stripe.invoices.retrieve(invoice.id, {
-    expand: ["payments.data.payment.payment_intent.latest_charge"],
-  });
+  try {
+    const expandedInvoice = await stripe.invoices.retrieve(invoice.id, {
+      expand: ["payments.data.payment.payment_intent.latest_charge"],
+    });
 
-  const invoicePayments = expandedInvoice.payments?.data ?? [];
+    const invoicePayments = expandedInvoice.payments?.data ?? [];
 
-  const paidInvoicePayment = invoicePayments.find(
-    (entry) =>
-      entry.status === "paid" && entry.payment?.type === "payment_intent",
-  );
+    const paidInvoicePayment = invoicePayments.find(
+      (entry) =>
+        entry.status === "paid" && entry.payment?.type === "payment_intent",
+    );
 
-  if (
-    !paidInvoicePayment ||
-    paidInvoicePayment.payment.type !== "payment_intent"
-  ) {
+    if (
+      !paidInvoicePayment ||
+      paidInvoicePayment.payment.type !== "payment_intent"
+    ) {
+      console.info(
+        "[invoices.getReceiptUrlFromInvoice] No paid payment_intent found for invoice:",
+        invoice.id,
+      );
+      return null;
+    }
+
+    const paymentIntent = paidInvoicePayment.payment.payment_intent;
+
+    if (!paymentIntent || typeof paymentIntent === "string") {
+      console.info(
+        "[invoices.getReceiptUrlFromInvoice] PaymentIntent not expanded for invoice:",
+        invoice.id,
+      );
+      return null;
+    }
+
+    const latestCharge = paymentIntent.latest_charge;
+
+    if (!latestCharge || typeof latestCharge === "string") {
+      console.info(
+        "[invoices.getReceiptUrlFromInvoice] latest_charge missing for invoice:",
+        invoice.id,
+      );
+      return null;
+    }
+
+    const receiptUrl = latestCharge.receipt_url ?? null;
+
+    console.info(
+      "[invoices.getReceiptUrlFromInvoice] Receipt lookup complete for invoice:",
+      invoice.id,
+      "hasReceiptUrl:",
+      Boolean(receiptUrl),
+    );
+
+    return receiptUrl;
+  } catch (error) {
+    console.error(
+      "[invoices.getReceiptUrlFromInvoice] Failed to retrieve receipt URL:",
+      error,
+    );
     return null;
   }
-
-  const paymentIntent = paidInvoicePayment.payment.payment_intent;
-
-  if (!paymentIntent || typeof paymentIntent === "string") {
-    return null;
-  }
-
-  const latestCharge = paymentIntent.latest_charge;
-
-  if (!latestCharge || typeof latestCharge === "string") {
-    return null;
-  }
-
-  return latestCharge.receipt_url ?? null;
 }
 
 async function runEmailHookSafely(
@@ -363,6 +429,13 @@ async function sendInvoiceFinalizedEmail(invoice: Stripe.Invoice) {
     return;
   }
 
+  console.info(
+    "[invoices.sendInvoiceFinalizedEmail] Sending invoice-created email:",
+    invoice.id,
+    "to:",
+    context.to,
+  );
+
   await sendNet30InvoiceCreatedEmail({
     to: context.to,
     orderId: context.orderId,
@@ -375,6 +448,11 @@ async function sendInvoiceFinalizedEmail(invoice: Stripe.Invoice) {
     hostedInvoiceUrl: invoice.hosted_invoice_url,
     invoiceNumber: getInvoiceNumber(invoice),
   });
+
+  console.info(
+    "[invoices.sendInvoiceFinalizedEmail] Invoice-created email sent:",
+    invoice.id,
+  );
 }
 
 async function sendInvoicePaidEmail(invoice: Stripe.Invoice) {
@@ -388,7 +466,26 @@ async function sendInvoicePaidEmail(invoice: Stripe.Invoice) {
     return;
   }
 
-  const receiptUrl = await getReceiptUrlFromInvoice(invoice);
+  let receiptUrl: string | null = null;
+
+  try {
+    receiptUrl = await getReceiptUrlFromInvoice(invoice);
+  } catch (error) {
+    console.error(
+      "[invoices.sendInvoicePaidEmail] Failed to resolve receipt URL:",
+      error,
+    );
+    receiptUrl = null;
+  }
+
+  console.info(
+    "[invoices.sendInvoicePaidEmail] Sending paid email:",
+    invoice.id,
+    "to:",
+    context.to,
+    "hasReceiptUrl:",
+    Boolean(receiptUrl),
+  );
 
   await sendNet30ReceiptEmail({
     to: context.to,
@@ -405,6 +502,8 @@ async function sendInvoicePaidEmail(invoice: Stripe.Invoice) {
     hostedInvoiceUrl: invoice.hosted_invoice_url,
     invoiceNumber: getInvoiceNumber(invoice),
   });
+
+  console.info("[invoices.sendInvoicePaidEmail] Paid email sent:", invoice.id);
 }
 
 async function sendInvoiceWillBeDueEmail(invoice: Stripe.Invoice) {
@@ -427,6 +526,15 @@ async function sendInvoiceWillBeDueEmail(invoice: Stripe.Invoice) {
   const reminderStage =
     diffDays === 1 ? "tomorrow" : diffDays === 0 ? "due_today" : "upcoming";
 
+  console.info(
+    "[invoices.sendInvoiceWillBeDueEmail] Sending reminder email:",
+    invoice.id,
+    "to:",
+    context.to,
+    "stage:",
+    reminderStage,
+  );
+
   await sendNet30ReminderEmail({
     to: context.to,
     orderId: context.orderId,
@@ -443,6 +551,13 @@ async function sendInvoiceWillBeDueEmail(invoice: Stripe.Invoice) {
     invoiceNumber: getInvoiceNumber(invoice),
     reminderStage,
   });
+
+  console.info(
+    "[invoices.sendInvoiceWillBeDueEmail] Reminder email sent:",
+    invoice.id,
+    "stage:",
+    reminderStage,
+  );
 }
 
 async function sendInvoiceOverdueEmail(invoice: Stripe.Invoice) {
@@ -455,6 +570,17 @@ async function sendInvoiceOverdueEmail(invoice: Stripe.Invoice) {
     );
     return;
   }
+
+  const overdueDays = getOverdueDays(invoice);
+
+  console.info(
+    "[invoices.sendInvoiceOverdueEmail] Sending overdue email:",
+    invoice.id,
+    "to:",
+    context.to,
+    "overdueDays:",
+    overdueDays,
+  );
 
   await sendNet30ReminderEmail({
     to: context.to,
@@ -471,14 +597,28 @@ async function sendInvoiceOverdueEmail(invoice: Stripe.Invoice) {
     hostedInvoiceUrl: invoice.hosted_invoice_url,
     invoiceNumber: getInvoiceNumber(invoice),
     reminderStage: "overdue",
-    overdueDays: getOverdueDays(invoice),
+    overdueDays,
   });
+
+  console.info(
+    "[invoices.sendInvoiceOverdueEmail] Overdue email sent:",
+    invoice.id,
+  );
 }
 
 async function handleInvoiceFinalized(invoice: Stripe.Invoice) {
+  console.info(
+    "[invoices.handleInvoiceFinalized] Received invoice.finalized:",
+    invoice.id,
+  );
+
   const orderId = await syncInvoiceAndOrder("invoice.finalized", invoice);
 
   if (!orderId) {
+    console.warn(
+      "[invoices.handleInvoiceFinalized] No order found for invoice:",
+      invoice.id,
+    );
     return;
   }
 
@@ -488,9 +628,18 @@ async function handleInvoiceFinalized(invoice: Stripe.Invoice) {
 }
 
 async function handleInvoicePaid(invoice: Stripe.Invoice) {
+  console.info(
+    "[invoices.handleInvoicePaid] Received invoice.paid:",
+    invoice.id,
+  );
+
   const orderId = await syncInvoiceAndOrder("invoice.paid", invoice);
 
   if (!orderId) {
+    console.warn(
+      "[invoices.handleInvoicePaid] No order found for invoice:",
+      invoice.id,
+    );
     return;
   }
 
@@ -499,10 +648,44 @@ async function handleInvoicePaid(invoice: Stripe.Invoice) {
   });
 }
 
+/**
+ * Stripe often sends both invoice.payment_succeeded and invoice.paid
+ * for the same successful invoice payment. To avoid duplicate paid emails,
+ * we only SEND the paid email from invoice.paid.
+ *
+ * This handler keeps local invoice/order state synced but intentionally
+ * skips sending the paid email.
+ */
+async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
+  console.info(
+    "[invoices.handleInvoicePaymentSucceeded] Received invoice.payment_succeeded:",
+    invoice.id,
+    "- syncing only, no email will be sent to avoid duplicates.",
+  );
+
+  const orderId = await syncInvoiceAndOrder("invoice.paid", invoice);
+
+  if (!orderId) {
+    console.warn(
+      "[invoices.handleInvoicePaymentSucceeded] No order found for invoice:",
+      invoice.id,
+    );
+  }
+}
+
 async function handleInvoiceWillBeDue(invoice: Stripe.Invoice) {
+  console.info(
+    "[invoices.handleInvoiceWillBeDue] Received invoice.will_be_due:",
+    invoice.id,
+  );
+
   const orderId = await syncInvoiceAndOrder("invoice.will_be_due", invoice);
 
   if (!orderId) {
+    console.warn(
+      "[invoices.handleInvoiceWillBeDue] No order found for invoice:",
+      invoice.id,
+    );
     return;
   }
 
@@ -512,9 +695,18 @@ async function handleInvoiceWillBeDue(invoice: Stripe.Invoice) {
 }
 
 async function handleInvoiceOverdue(invoice: Stripe.Invoice) {
+  console.info(
+    "[invoices.handleInvoiceOverdue] Received invoice.overdue:",
+    invoice.id,
+  );
+
   const orderId = await syncInvoiceAndOrder("invoice.overdue", invoice);
 
   if (!orderId) {
+    console.warn(
+      "[invoices.handleInvoiceOverdue] No order found for invoice:",
+      invoice.id,
+    );
     return;
   }
 
@@ -524,14 +716,26 @@ async function handleInvoiceOverdue(invoice: Stripe.Invoice) {
 }
 
 async function handleInvoiceSent(invoice: Stripe.Invoice) {
+  console.info(
+    "[invoices.handleInvoiceSent] Received invoice.sent:",
+    invoice.id,
+  );
   await syncInvoiceAndOrder("invoice.sent", invoice);
 }
 
 async function handleInvoiceVoided(invoice: Stripe.Invoice) {
+  console.info(
+    "[invoices.handleInvoiceVoided] Received invoice.voided:",
+    invoice.id,
+  );
   await syncInvoiceAndOrder("invoice.voided", invoice);
 }
 
 async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
+  console.info(
+    "[invoices.handleInvoicePaymentFailed] Received invoice.payment_failed:",
+    invoice.id,
+  );
   await syncInvoiceAndOrder("invoice.payment_failed", invoice);
 }
 
@@ -544,6 +748,11 @@ export async function handleStripeInvoiceWebhookEvent(event: Stripe.Event) {
 
     case "invoice.paid": {
       await handleInvoicePaid(event.data.object as Stripe.Invoice);
+      return;
+    }
+
+    case "invoice.payment_succeeded": {
+      await handleInvoicePaymentSucceeded(event.data.object as Stripe.Invoice);
       return;
     }
 
