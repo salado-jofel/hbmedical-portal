@@ -107,6 +107,12 @@ export const dashboardOrderSchema = orderRowSchema.extend({
   stripe_checkout_session_id: z.string().trim().nullable().optional(),
   stripe_payment_intent_id: z.string().trim().nullable().optional(),
   stripe_charge_id: z.string().trim().nullable().optional(),
+
+  hosted_invoice_url: z.string().trim().nullable().optional(),
+  provider_invoice_id: z.string().trim().nullable().optional(),
+  invoice_number: z.string().trim().nullable().optional(),
+  invoice_due_at: z.string().trim().nullable().optional(),
+  invoice_paid_at: z.string().trim().nullable().optional(),
 });
 
 /* -------------------------------------------------------------------------- */
@@ -230,12 +236,37 @@ export type PaymentRecord = {
   updated_at: string;
 };
 
+export type InvoiceRecord = {
+  id: string;
+  order_id: string;
+  invoice_number: string | null;
+  provider: string;
+  provider_invoice_id: string | null;
+  status:
+    | "draft"
+    | "issued"
+    | "sent"
+    | "paid"
+    | "overdue"
+    | "void"
+    | "not_applicable";
+  amount_due: number | string;
+  amount_paid: number | string;
+  currency: string | null;
+  due_at: string | null;
+  issued_at: string | null;
+  paid_at: string | null;
+  hosted_invoice_url: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type RawOrderRecord = OrderRow & {
   facilities: MaybeRelation<FacilityRecord>;
   products: MaybeRelation<ProductRecord>;
   payments: PaymentRecord[] | null;
+  invoices: InvoiceRecord[] | null;
 };
-
 export type ExistingOrderRecord = {
   id: string;
   facility_id: string;

@@ -101,10 +101,28 @@ export const PAYMENTS_SELECT = `
     updated_at
 `;
 
+export const INVOICES_SELECT = `
+  id,
+  order_id,
+  invoice_number,
+  provider,
+  provider_invoice_id,
+  status,
+  amount_due,
+  amount_paid,
+  currency,
+  due_at,
+  issued_at,
+  paid_at,
+  hosted_invoice_url,
+  created_at,
+  updated_at
+`;
+
 export const ORDER_WITH_RELATIONS_SELECT = `
   ${ORDER_BASE_SELECT},
   facilities (${FACILITY_SELECT}),
   products (${PRODUCT_SELECT}),
-  payments (${PAYMENTS_SELECT})
-
+  payments (${PAYMENTS_SELECT}),
+  invoices (${INVOICES_SELECT})
 `;

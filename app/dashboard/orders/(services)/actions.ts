@@ -228,7 +228,7 @@ export async function getAllOrders(): Promise<DashboardOrder[]> {
     console.error("[getAllOrders] Error:", error);
     throw new Error(error.message || "Failed to fetch orders.");
   }
-
+  console.log("data: ", data);
   return mapDashboardOrders((data ?? []) as unknown as RawOrderRecord[]);
 }
 

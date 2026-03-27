@@ -17,6 +17,7 @@ import {
   dashboardOrderSchema,
   EditOrderInput,
   editOrderSchema,
+  InvoiceRecord,
   MaybeRelation,
   OrderBoardStatus,
   OrderDeliveryStatus,
@@ -78,6 +79,14 @@ export function getSingleRelation<T>(value: MaybeRelation<T>): T | null {
 
 function sortPaymentsNewestFirst(payments: PaymentRecord[] | null | undefined) {
   return [...(payments ?? [])].sort((a, b) => {
+    const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
+    const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+    return bTime - aTime;
+  });
+}
+
+function sortInvoicesNewestFirst(invoices: InvoiceRecord[] | null | undefined) {
+  return [...(invoices ?? [])].sort((a, b) => {
     const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
     const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
     return bTime - aTime;
@@ -216,6 +225,7 @@ export function mapDashboardOrder(row: RawOrderRecord): DashboardOrder {
   const product = getSingleRelation(row.products) as ProductRecord | null;
 
   const payments = sortPaymentsNewestFirst(row.payments);
+  const invoices = sortInvoicesNewestFirst(row.invoices);
 
   const latestPaidPayment =
     payments.find((payment) => payment.status === "paid") ?? null;
@@ -225,6 +235,8 @@ export function mapDashboardOrder(row: RawOrderRecord): DashboardOrder {
 
   const latestRelevantPayment =
     latestPaidPayment ?? latestPendingPayment ?? payments[0] ?? null;
+
+  const latestInvoice = invoices[0] ?? null;
 
   return dashboardOrderSchema.parse({
     id: row.id,
@@ -245,7 +257,7 @@ export function mapDashboardOrder(row: RawOrderRecord): DashboardOrder {
     order_status: row.order_status,
     payment_method: row.payment_method,
     payment_status: latestRelevantPayment?.status ?? row.payment_status,
-    invoice_status: row.invoice_status,
+    invoice_status: latestInvoice?.status ?? row.invoice_status,
     fulfillment_status: row.fulfillment_status,
     delivery_status: row.delivery_status,
 
@@ -253,7 +265,8 @@ export function mapDashboardOrder(row: RawOrderRecord): DashboardOrder {
     notes: toNullableString(row.notes),
 
     placed_at: row.placed_at,
-    paid_at: latestPaidPayment?.paid_at ?? row.paid_at,
+    paid_at:
+      latestPaidPayment?.paid_at ?? latestInvoice?.paid_at ?? row.paid_at,
     delivered_at: row.delivered_at,
 
     created_at: row.created_at,
@@ -271,12 +284,21 @@ export function mapDashboardOrder(row: RawOrderRecord): DashboardOrder {
     receipt_url: latestPaidPayment?.receipt_url ?? null,
     stripe_receipt_url: latestPaidPayment?.receipt_url ?? null,
     stripe_checkout_session_id:
-      latestPendingPayment?.stripe_checkout_session_id ?? null,
+      latestPendingPayment?.stripe_checkout_session_id ??
+      latestRelevantPayment?.stripe_checkout_session_id ??
+      null,
     stripe_payment_intent_id:
       latestPaidPayment?.stripe_payment_intent_id ??
       latestPendingPayment?.stripe_payment_intent_id ??
+      latestRelevantPayment?.stripe_payment_intent_id ??
       null,
     stripe_charge_id: latestPaidPayment?.stripe_charge_id ?? null,
+
+    hosted_invoice_url: latestInvoice?.hosted_invoice_url ?? null,
+    provider_invoice_id: latestInvoice?.provider_invoice_id ?? null,
+    invoice_number: latestInvoice?.invoice_number ?? null,
+    invoice_due_at: latestInvoice?.due_at ?? null,
+    invoice_paid_at: latestInvoice?.paid_at ?? null,
   });
 }
 

@@ -51,9 +51,7 @@ import { FulfillmentBadge } from "@/app/(components)/FulfillmentBadge";
 import { mapOrderToBoardStatus } from "./kanban-config";
 
 type OrderCardActionMeta = DashboardOrder & {
-  stripe_checkout_url?: string | null;
-  stripe_invoice_hosted_url?: string | null;
-  stripe_receipt_url?: string | null;
+  hosted_invoice_url?: string | null;
   receipt_url?: string | null;
 };
 
@@ -215,7 +213,7 @@ export function OrderCard({ order }: { order: DashboardOrder }) {
     order.payment_method === "net_30" &&
     order.invoice_status !== DEFAULT_INVOICE_STATUS;
 
-  const hasInvoiceUrl = Boolean(actionOrder.stripe_invoice_hosted_url);
+  const hasInvoiceUrl = Boolean(actionOrder.hosted_invoice_url);
 
   const receiptUrl =
     actionOrder.stripe_receipt_url ?? actionOrder.receipt_url ?? null;
@@ -343,13 +341,13 @@ export function OrderCard({ order }: { order: DashboardOrder }) {
   }
 
   function handleViewInvoice() {
-    if (!actionOrder.stripe_invoice_hosted_url) {
+    if (!actionOrder.hosted_invoice_url) {
       toast.error("Invoice link is not available yet.");
       return;
     }
 
     window.open(
-      actionOrder.stripe_invoice_hosted_url,
+      actionOrder.hosted_invoice_url,
       "_blank",
       "noopener,noreferrer",
     );
