@@ -83,8 +83,28 @@ export const ORDER_BASE_SELECT = `
   updated_at
 `;
 
+export const PAYMENTS_SELECT = `    
+    id,
+    order_id,
+    provider,
+    payment_type,
+    status,
+    amount,
+    currency,
+    stripe_checkout_session_id,
+    stripe_payment_intent_id,
+    stripe_charge_id,
+    provider_payment_id,
+    receipt_url,
+    paid_at,
+    created_at,
+    updated_at
+`;
+
 export const ORDER_WITH_RELATIONS_SELECT = `
   ${ORDER_BASE_SELECT},
   facilities (${FACILITY_SELECT}),
-  products (${PRODUCT_SELECT})
+  products (${PRODUCT_SELECT}),
+  payments (${PAYMENTS_SELECT})
+
 `;

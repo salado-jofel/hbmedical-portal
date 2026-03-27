@@ -101,6 +101,12 @@ export const dashboardOrderSchema = orderRowSchema.extend({
   product_category: nullableStringSchema,
 
   board_status: orderBoardStatusSchema,
+
+  receipt_url: z.string().trim().nullable().optional(),
+  stripe_receipt_url: z.string().trim().nullable().optional(),
+  stripe_checkout_session_id: z.string().trim().nullable().optional(),
+  stripe_payment_intent_id: z.string().trim().nullable().optional(),
+  stripe_charge_id: z.string().trim().nullable().optional(),
 });
 
 /* -------------------------------------------------------------------------- */
@@ -200,9 +206,34 @@ export type ProductRecord = {
 
 export type MaybeRelation<T> = T | T[] | null;
 
+export type PaymentRecord = {
+  id: string;
+  order_id: string;
+  provider: string;
+  payment_type: string;
+  status:
+    | "pending"
+    | "paid"
+    | "failed"
+    | "refunded"
+    | "partially_refunded"
+    | "canceled";
+  amount: number | string;
+  currency: string;
+  stripe_checkout_session_id: string | null;
+  stripe_payment_intent_id: string | null;
+  stripe_charge_id: string | null;
+  provider_payment_id: string | null;
+  receipt_url: string | null;
+  paid_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type RawOrderRecord = OrderRow & {
   facilities: MaybeRelation<FacilityRecord>;
   products: MaybeRelation<ProductRecord>;
+  payments: PaymentRecord[] | null;
 };
 
 export type ExistingOrderRecord = {

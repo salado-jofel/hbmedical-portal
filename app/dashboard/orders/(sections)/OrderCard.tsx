@@ -48,6 +48,14 @@ import { EditOrderModal } from "./EditOrderModal";
 import toast from "react-hot-toast";
 import { PaymentBadge } from "@/app/(components)/PaymentBadge";
 import { FulfillmentBadge } from "@/app/(components)/FulfillmentBadge";
+import { mapOrderToBoardStatus } from "./kanban-config";
+
+type OrderCardActionMeta = DashboardOrder & {
+  stripe_checkout_url?: string | null;
+  stripe_invoice_hosted_url?: string | null;
+  stripe_receipt_url?: string | null;
+  receipt_url?: string | null;
+};
 
 function formatCurrency(value: number | string | null | undefined) {
   const amount =
@@ -71,7 +79,7 @@ function getPaymentDisplayStatus(order: DashboardOrder) {
   return "unpaid";
 }
 
-function getFulfillmentLabel(order: DashboardOrder) {
+function getOrderFulfillmentLabel(order: DashboardOrder) {
   if (order.delivery_status === "delivered") return "Delivered";
   if (order.delivery_status === "in_transit") return "In Transit";
   if (order.delivery_status === "label_created") return "Label Created";
@@ -161,7 +169,9 @@ function getNet30DueMeta(order: DashboardOrder, nowMs = Date.now()) {
 }
 
 export function OrderCard({ order }: { order: DashboardOrder }) {
+  console.log("order test: ", order);
   const dispatch = useAppDispatch();
+  const actionOrder = order as OrderCardActionMeta;
 
   const [isDeleting, setIsDeleting] = useState(false);
   const [isPayingNow, setIsPayingNow] = useState(false);
@@ -197,13 +207,29 @@ export function OrderCard({ order }: { order: DashboardOrder }) {
     };
   }, []);
 
+  const boardStatus = mapOrderToBoardStatus(order as never);
+
   const isPaid = order.payment_status === "paid";
+
   const hasInvoice =
     order.payment_method === "net_30" &&
     order.invoice_status !== DEFAULT_INVOICE_STATUS;
 
-  const isDelivered = order.delivery_status === "delivered";
-  const fulfillmentLabel = getFulfillmentLabel(order);
+  const hasInvoiceUrl = Boolean(actionOrder.stripe_invoice_hosted_url);
+
+  const receiptUrl =
+    actionOrder.stripe_receipt_url ?? actionOrder.receipt_url ?? null;
+
+  const showResumePayment =
+    order.payment_method === "pay_now" && order.payment_status === "pending";
+
+  const showViewInvoice =
+    order.payment_method === "net_30" &&
+    order.invoice_status !== DEFAULT_INVOICE_STATUS &&
+    order.payment_status !== "paid";
+
+  const isDelivered = boardStatus === "Delivered";
+  const fulfillmentLabel = getOrderFulfillmentLabel(order);
 
   const quantity = Number(order.quantity ?? 1);
   const totalAmount = Number(order.total_amount ?? 0);
@@ -277,7 +303,9 @@ export function OrderCard({ order }: { order: DashboardOrder }) {
       toast.success("Redirecting to Stripe checkout...");
 
       const { url } = await createOrderCheckout(order.id);
-      window.location.assign(url);
+      if (url) {
+        window.location.assign(url);
+      }
     } catch (err) {
       console.error("[handlePaymentChoice]", err);
       toast.error(
@@ -291,6 +319,55 @@ export function OrderCard({ order }: { order: DashboardOrder }) {
     }
   }
 
+  async function handleResumePayment() {
+    if (!order.id || isPayingNow || isPaid) return;
+
+    setIsPayingNow(true);
+
+    try {
+      toast.success("Redirecting to Stripe checkout...");
+      const { url } = await createOrderCheckout(order.id);
+      if (url) {
+        window.location.assign(url);
+      }
+    } catch (err) {
+      console.error("[handleResumePayment]", err);
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Failed to resume payment. Please try again.",
+      );
+    } finally {
+      setIsPayingNow(false);
+    }
+  }
+
+  function handleViewInvoice() {
+    if (!actionOrder.stripe_invoice_hosted_url) {
+      toast.error("Invoice link is not available yet.");
+      return;
+    }
+
+    window.open(
+      actionOrder.stripe_invoice_hosted_url,
+      "_blank",
+      "noopener,noreferrer",
+    );
+  }
+
+  function handleViewReceipt() {
+    if (!receiptUrl) {
+      toast.error("Receipt link is not available yet.");
+      return;
+    }
+
+    window.open(receiptUrl, "_blank", "noopener,noreferrer");
+  }
+
+  function handleTrackOrder() {
+    toast.success("Track Order will be wired with ShipStation next.");
+  }
+
   function handleEditClick() {
     if (!canEdit) {
       toast.error(lockReason || "This order cannot be edited.");
@@ -301,6 +378,85 @@ export function OrderCard({ order }: { order: DashboardOrder }) {
   }
 
   function renderPrimaryAction() {
+    if (showResumePayment) {
+      return (
+        <Button
+          type="button"
+          size="sm"
+          onClick={handleResumePayment}
+          disabled={isPayingNow}
+          className="h-9 cursor-pointer bg-[#15689E] text-white hover:bg-[#0f4f7a]"
+        >
+          {isPayingNow ? (
+            <>
+              <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+              Redirecting...
+            </>
+          ) : (
+            <>
+              <CreditCard className="mr-1 h-4 w-4" />
+              Resume Payment
+            </>
+          )}
+        </Button>
+      );
+    }
+
+    if (showViewInvoice) {
+      return (
+        <Button
+          type="button"
+          size="sm"
+          onClick={handleViewInvoice}
+          disabled={!hasInvoiceUrl}
+          className="h-9 cursor-pointer bg-[#15689E] text-white hover:bg-[#0f4f7a] disabled:cursor-not-allowed disabled:bg-slate-400"
+        >
+          <ReceiptText className="mr-1 h-4 w-4" />
+          View Invoice
+        </Button>
+      );
+    }
+
+    if (isPaid) {
+      return (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {order.payment_method === "pay_now" ? (
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleViewReceipt}
+              disabled={!receiptUrl}
+              className="h-9 cursor-pointer bg-[#15689E] text-white hover:bg-[#0f4f7a] disabled:cursor-not-allowed disabled:bg-slate-400"
+            >
+              <ReceiptText className="mr-1 h-4 w-4" />
+              View Receipt
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleViewInvoice}
+              disabled={!hasInvoiceUrl}
+              className="h-9 cursor-pointer bg-[#15689E] text-white hover:bg-[#0f4f7a] disabled:cursor-not-allowed disabled:bg-slate-400"
+            >
+              <ReceiptText className="mr-1 h-4 w-4" />
+              View Invoice
+            </Button>
+          )}
+
+          <Button
+            type="button"
+            size="sm"
+            onClick={handleTrackOrder}
+            className="h-9 cursor-pointer bg-emerald-600 text-white hover:bg-emerald-700"
+          >
+            <Truck className="mr-1 h-4 w-4" />
+            Track Order
+          </Button>
+        </div>
+      );
+    }
+
     if (canChoosePayment) {
       return (
         <div className="relative" ref={paymentMenuRef}>
@@ -360,20 +516,6 @@ export function OrderCard({ order }: { order: DashboardOrder }) {
         >
           <ReceiptText className="mr-1 h-4 w-4" />
           Invoice Created
-        </Button>
-      );
-    }
-
-    if (isPaid) {
-      return (
-        <Button
-          type="button"
-          size="sm"
-          disabled
-          className="h-9 bg-emerald-600 text-white hover:bg-emerald-600"
-        >
-          <CheckCircle2 className="mr-1 h-4 w-4" />
-          Awaiting Shipment
         </Button>
       );
     }

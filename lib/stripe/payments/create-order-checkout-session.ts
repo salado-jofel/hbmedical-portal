@@ -56,6 +56,108 @@ async function getOrCreateStripeCustomer(
   return customer.id;
 }
 
+type PendingCheckoutPaymentLookup = {
+  id: string;
+  stripe_checkout_session_id: string | null;
+  created_at: string;
+};
+
+async function getLatestPendingCheckoutPayment(orderId: string) {
+  const admin = await createAdminClient();
+
+  const { data, error } = await admin
+    .from("payments")
+    .select("id, stripe_checkout_session_id, created_at")
+    .eq("order_id", orderId)
+    .eq("provider", "stripe")
+    .eq("payment_type", "checkout")
+    .eq("status", "pending")
+    .not("stripe_checkout_session_id", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(1);
+
+  if (error) {
+    console.error("[payments.getLatestPendingCheckoutPayment] Error:", error);
+    throw new Error(error.message || "Failed to fetch latest pending payment.");
+  }
+
+  return (data?.[0] as PendingCheckoutPaymentLookup | undefined) ?? null;
+}
+
+export async function createOrResumeOrderCheckout(
+  orderId: string,
+): Promise<CreateOrderCheckoutSessionResult> {
+  const admin = await createAdminClient();
+
+  const pendingPayment = await getLatestPendingCheckoutPayment(orderId);
+
+  if (pendingPayment?.stripe_checkout_session_id) {
+    let existingSession: Awaited<
+      ReturnType<typeof stripe.checkout.sessions.retrieve>
+    > | null = null;
+
+    try {
+      existingSession = await stripe.checkout.sessions.retrieve(
+        pendingPayment.stripe_checkout_session_id,
+      );
+    } catch (error) {
+      console.warn(
+        "[payments.createOrResumeOrderCheckout] Failed to retrieve existing Checkout Session:",
+        error,
+      );
+    }
+
+    if (existingSession) {
+      const hasUrl =
+        typeof existingSession.url === "string" &&
+        existingSession.url.trim().length > 0;
+
+      const isOpen = existingSession.status === "open";
+      const isUnpaid = existingSession.payment_status === "unpaid";
+      const isNotExpired =
+        typeof existingSession.expires_at !== "number" ||
+        existingSession.expires_at * 1000 > Date.now();
+
+      if (isOpen && isUnpaid && isNotExpired && hasUrl) {
+        return {
+          url: existingSession.url,
+          sessionId: existingSession.id,
+        };
+      }
+
+      if (
+        existingSession.status === "complete" ||
+        existingSession.payment_status === "paid"
+      ) {
+        throw new Error(
+          "This payment has already been completed. Please refresh the portal.",
+        );
+      }
+
+      const { error: stalePaymentUpdateError } = await admin
+        .from("payments")
+        .update({
+          status: "canceled",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", pendingPayment.id);
+
+      if (stalePaymentUpdateError) {
+        console.error(
+          "[payments.createOrResumeOrderCheckout] Failed to cancel stale pending payment:",
+          stalePaymentUpdateError,
+        );
+        throw new Error(
+          stalePaymentUpdateError.message ||
+            "Failed to close stale payment attempt.",
+        );
+      }
+    }
+  }
+
+  return await createOrderCheckoutSession(orderId);
+}
+
 export async function createOrderCheckoutSession(
   orderId: string,
 ): Promise<CreateOrderCheckoutSessionResult> {

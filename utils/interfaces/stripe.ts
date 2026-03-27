@@ -40,7 +40,7 @@ export type CheckoutFacilityRecord = Pick<
 >;
 
 export type CreateOrderCheckoutSessionResult = {
-  url: string;
+  url: string | null;
   sessionId: string;
 };
 

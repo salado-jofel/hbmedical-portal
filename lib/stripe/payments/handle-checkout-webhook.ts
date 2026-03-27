@@ -252,14 +252,25 @@ async function ensurePaymentRecordForSession(
 
   const stripePaymentIntentId = getStripeObjectId(session.payment_intent);
 
+  const chargeDetails =
+    status === "paid"
+      ? await getChargeDetailsFromSession(session)
+      : {
+          stripePaymentIntentId: getStripeObjectId(session.payment_intent),
+          stripeChargeId: null,
+          receiptUrl: null,
+        };
+
   if (existingPayment) {
     const { error } = await admin
       .from("payments")
       .update({
-        status,
+        status: status,
         stripe_payment_intent_id: stripePaymentIntentId,
         provider_payment_id: stripePaymentIntentId,
         paid_at: paidAt,
+        stripe_charge_id: chargeDetails.stripeChargeId,
+        receipt_url: chargeDetails.receiptUrl,
       })
       .eq("id", existingPayment.id);
 
@@ -308,6 +319,51 @@ async function ensurePaymentRecordForSession(
     orderId: metadataOrderId,
     wasAlreadyPaid: false,
   };
+}
+
+async function getChargeDetailsFromSession(session: Stripe.Checkout.Session) {
+  const paymentIntentId = getStripeObjectId(session.payment_intent);
+
+  if (!paymentIntentId) {
+    return {
+      stripePaymentIntentId: null,
+      stripeChargeId: null,
+      receiptUrl: null,
+    };
+  }
+
+  try {
+    const paymentIntent = await stripe.paymentIntents.retrieve(
+      paymentIntentId,
+      {
+        expand: ["latest_charge"],
+      },
+    );
+
+    const latestCharge = paymentIntent.latest_charge;
+
+    if (!latestCharge || typeof latestCharge === "string") {
+      return {
+        stripePaymentIntentId: paymentIntent.id,
+        stripeChargeId: null,
+        receiptUrl: null,
+      };
+    }
+
+    return {
+      stripePaymentIntentId: paymentIntent.id,
+      stripeChargeId: latestCharge.id ?? null,
+      receiptUrl: latestCharge.receipt_url ?? null,
+    };
+  } catch (error) {
+    console.error("[payments.getChargeDetailsFromSession] Error:", error);
+
+    return {
+      stripePaymentIntentId: paymentIntentId,
+      stripeChargeId: null,
+      receiptUrl: null,
+    };
+  }
 }
 
 async function markOrderPaid(orderId: string, paidAt: string) {

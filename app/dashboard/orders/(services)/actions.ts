@@ -55,7 +55,10 @@ import {
   SupabaseServerClient,
   getCurrentUserOrThrow,
 } from "@/lib/supabase/auth";
-import { createOrderCheckoutSession } from "@/lib/stripe/payments/create-order-checkout-session";
+import {
+  createOrderCheckoutSession,
+  createOrResumeOrderCheckout,
+} from "@/lib/stripe/payments/create-order-checkout-session";
 import { createStripeNet30Invoice } from "@/lib/stripe/invoices/create-order-net30-invoice";
 
 async function getUserFacilityRecord(
@@ -520,7 +523,7 @@ export async function editOrder(
 }
 
 export async function createOrderCheckout(orderId: string) {
-  return createOrderCheckoutSession(orderId);
+  return createOrResumeOrderCheckout(orderId);
 }
 
 export async function startOrderNet30(
