@@ -1,15 +1,11 @@
 "use server";
 
-import { STORAGE_SIGNED_URL_EXPIRES_IN } from "@/utils/constants/storage";
-import {
-  toStorageReference,
-  parseStorageReference,
-} from "@/utils/helpers/storage";
-import {
-  TrainingMaterialRow,
-  TrainingMaterial,
-} from "@/utils/interfaces/trainings";
+import { revalidatePath } from "next/cache";
+import { STORAGE_BUCKETS, STORAGE_FOLDERS, STORAGE_SIGNED_URL_EXPIRES_IN } from "@/utils/constants/storage";
+import { toStorageReference, parseStorageReference, buildStoragePath } from "@/utils/helpers/storage";
+import { TrainingMaterialRow, TrainingMaterial } from "@/utils/interfaces/trainings";
 import { createClient } from "@/lib/supabase/server";
+import { requireAdminOrThrow, getUserRole } from "@/lib/supabase/auth";
 
 const TRAINING_MATERIALS_SELECT = `
   id,
@@ -26,25 +22,30 @@ const TRAINING_MATERIALS_SELECT = `
   updated_at
 `;
 
+const TRAININGS_PATH = "/dashboard/trainings";
+
 function mapTrainingMaterial(row: TrainingMaterialRow): TrainingMaterial {
   return {
     ...row,
-    file_url: toStorageReference({
-      bucket: row.bucket,
-      file_path: row.file_path,
-    }),
+    file_url: toStorageReference({ bucket: row.bucket, file_path: row.file_path }),
   };
 }
 
 export async function getTrainingMaterials(): Promise<TrainingMaterial[]> {
   const supabase = await createClient();
+  const role = await getUserRole(supabase);
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("training_materials")
     .select(TRAINING_MATERIALS_SELECT)
-    .eq("is_active", true)
     .order("sort_order", { ascending: true })
     .order("created_at", { ascending: false });
+
+  if (role !== "admin") {
+    query = query.eq("is_active", true);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     console.error("Failed to fetch training materials:", error);
@@ -59,13 +60,9 @@ export async function getSignedDownloadUrl(
   downloadFileName?: string,
 ): Promise<string | null> {
   const parsed = parseStorageReference(storageRefOrUrl);
-
-  if (!parsed) {
-    return null;
-  }
+  if (!parsed) return null;
 
   const supabase = await createClient();
-
   const { data, error } = await supabase.storage
     .from(parsed.bucket)
     .createSignedUrl(
@@ -80,4 +77,125 @@ export async function getSignedDownloadUrl(
   }
 
   return data?.signedUrl ?? null;
+}
+
+export async function uploadTrainingMaterial(formData: FormData): Promise<void> {
+  const supabase = await createClient();
+  await requireAdminOrThrow(supabase);
+
+  const file = formData.get("file") as File | null;
+  const title = (formData.get("title") as string | null)?.trim();
+  const tag = (formData.get("tag") as string | null)?.trim();
+  const sortOrder = parseInt((formData.get("sort_order") as string | null) ?? "0", 10);
+
+  if (!file || !title || !tag) {
+    throw new Error("File, title, and tag are required.");
+  }
+
+  if (file.type !== "application/pdf") {
+    throw new Error("Only PDF files are allowed.");
+  }
+
+  const fileName = file.name.trim();
+  const filePath = buildStoragePath(STORAGE_FOLDERS.trainings, fileName);
+  const bucket = STORAGE_BUCKETS.private;
+
+  const { error: uploadError } = await supabase.storage
+    .from(bucket)
+    .upload(filePath, file, { contentType: file.type, upsert: false });
+
+  if (uploadError) {
+    console.error("[uploadTrainingMaterial] Storage upload error:", uploadError);
+    throw new Error(uploadError.message || "Failed to upload file.");
+  }
+
+  const { error: insertError } = await supabase.from("training_materials").insert({
+    title,
+    tag,
+    bucket,
+    file_path: filePath,
+    file_name: fileName,
+    mime_type: file.type,
+    sort_order: isNaN(sortOrder) ? 0 : sortOrder,
+    is_active: true,
+  });
+
+  if (insertError) {
+    await supabase.storage.from(bucket).remove([filePath]);
+    console.error("[uploadTrainingMaterial] DB insert error:", insertError);
+    throw new Error(insertError.message || "Failed to save material record.");
+  }
+
+  revalidatePath(TRAININGS_PATH);
+}
+
+export async function deleteTrainingMaterial(id: string): Promise<void> {
+  const supabase = await createClient();
+  await requireAdminOrThrow(supabase);
+
+  const { data, error: fetchError } = await supabase
+    .from("training_materials")
+    .select("bucket, file_path")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (fetchError || !data) {
+    throw new Error("Material not found.");
+  }
+
+  await supabase.storage.from(data.bucket).remove([data.file_path]);
+
+  const { error } = await supabase
+    .from("training_materials")
+    .delete()
+    .eq("id", id);
+
+  if (error) {
+    console.error("[deleteTrainingMaterial] Error:", error);
+    throw new Error(error.message || "Failed to delete material.");
+  }
+
+  revalidatePath(TRAININGS_PATH);
+}
+
+export async function bulkDeleteTrainingMaterials(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+
+  const supabase = await createClient();
+  await requireAdminOrThrow(supabase);
+
+  const { data, error: fetchError } = await supabase
+    .from("training_materials")
+    .select("bucket, file_path")
+    .in("id", ids);
+
+  if (fetchError) {
+    throw new Error("Failed to fetch materials for deletion.");
+  }
+
+  if (data && data.length > 0) {
+    const byBucket = data.reduce<Record<string, string[]>>((acc, row) => {
+      acc[row.bucket] = acc[row.bucket] ?? [];
+      acc[row.bucket].push(row.file_path);
+      return acc;
+    }, {});
+
+    await Promise.all(
+      Object.entries(byBucket).map(([bucket, paths]) =>
+        supabase.storage.from(bucket).remove(paths),
+      ),
+    );
+  }
+
+  const { error } = await supabase
+    .from("training_materials")
+    .delete()
+    .in("id", ids);
+
+  if (error) {
+    console.error("[bulkDeleteTrainingMaterials] Error:", error);
+    throw new Error(error.message || "Failed to bulk delete materials.");
+  }
+
+  revalidatePath(TRAININGS_PATH);
 }

@@ -4,11 +4,13 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
+import type { UserRole } from "@/utils/helpers/role";
+
 export type UserData = {
   name: string;
   email: string;
   initials: string;
-  role: "sales_representative" | "doctor" | null;
+  role: UserRole;
 };
 
 export async function signOut() {

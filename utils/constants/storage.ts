@@ -4,6 +4,9 @@ export const STORAGE_BUCKETS = {
 
 export const STORAGE_FOLDERS = {
   marketing: "marketing",
+  contracts: "contracts",
+  trainings: "trainings",
+  hospitalOnboarding: "hospital-onboarding",
   orders: "orders",
   invoices: "invoices",
   facilities: "facilities",

@@ -4,11 +4,13 @@ import { useEffect } from "react";
 import { useAppDispatch } from "@/store/hooks";
 import { setUser } from "../(redux)/dashboard-slice";
 
+import type { UserRole } from "@/utils/helpers/role";
+
 type UserData = {
   name: string;
   email: string;
   initials: string;
-  role: "sales_representative" | "doctor" | null;
+  role: UserRole;
 };
 
 export default function Providers({

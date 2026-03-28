@@ -20,64 +20,78 @@ import { HBLogo } from "@/app/(components)/HBLogo";
 import SubmitButton from "@/app/(components)/SubmitButton";
 import { signOut } from "../(services)/actions";
 import { closeSidebar } from "../(redux)/dashboard-slice";
+import type { UserRole } from "@/utils/helpers/role";
 
-const navItems = [
+interface NavItemDef {
+  icon: React.ElementType;
+  label: string;
+  href: string;
+  allowedRoles: UserRole[] | null; // null = all roles
+}
+
+const navItems: NavItemDef[] = [
   {
     icon: LayoutDashboard,
     label: "Dashboard",
     href: "/dashboard",
-    doctorHidden: false,
+    allowedRoles: null,
   },
   {
     icon: ShoppingCart,
     label: "Orders",
     href: "/dashboard/orders",
-    doctorHidden: false,
+    allowedRoles: null,
   },
   {
     icon: Package,
     label: "Products",
     href: "/dashboard/products",
-    doctorHidden: false,
+    allowedRoles: null,
   },
   {
     icon: UserCircle,
     label: "Profile",
     href: "/dashboard/profile",
-    doctorHidden: false,
+    allowedRoles: null,
   },
   {
     icon: Megaphone,
     label: "Marketing",
     href: "/dashboard/marketing",
-    doctorHidden: true,
+    allowedRoles: ["sales_representative", "admin"],
   },
   {
     icon: ScrollText,
     label: "Contracts",
     href: "/dashboard/contracts",
-    doctorHidden: false,
+    allowedRoles: null,
   },
   {
     icon: BookOpen,
     label: "Trainings",
     href: "/dashboard/trainings",
-    doctorHidden: true,
+    allowedRoles: ["sales_representative", "admin"],
   },
   {
     icon: Hospital,
     label: "Hospital Onboarding",
     href: "/dashboard/hospital-onboarding",
-    doctorHidden: true,
+    allowedRoles: ["sales_representative", "admin"],
   },
 ];
+
+function isNavItemVisible(item: NavItemDef, role: UserRole): boolean {
+  if (item.allowedRoles === null) return true;
+  if (role === null) return false;
+  return item.allowedRoles.includes(role);
+}
 
 export function Sidebar() {
   const pathname = usePathname();
   const dispatch = useAppDispatch();
   const isOpen = useAppSelector((state) => state.dashboard.isSidebarOpen);
   const userData = useAppSelector((state) => state.dashboard);
-  const isDoctor = userData.role === "doctor";
+  const role = userData.role;
 
   useEffect(() => {
     dispatch(closeSidebar());
@@ -120,7 +134,7 @@ export function Sidebar() {
         {/* ── Nav items ── */}
         <nav className="flex-1 px-3 space-y-0.5 overflow-y-auto py-4">
           {navItems
-            .filter((item) => !(isDoctor && item.doctorHidden))
+            .filter((item) => isNavItemVisible(item, role))
             .map((item) => (
               <NavItem
                 key={item.label}

@@ -1,4 +1,5 @@
-type UserRole = "sales_representative" | "doctor" | null;
+import type { UserRole } from "@/utils/helpers/role";
+export type { UserRole };
 
 export interface UserState {
   name: string;
