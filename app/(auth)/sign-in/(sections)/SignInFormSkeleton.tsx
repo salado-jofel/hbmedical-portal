@@ -1,50 +1,49 @@
+"use client";
+import { Card, CardBody, Skeleton } from "@heroui/react";
+
 export default function SignInFormSkeleton() {
   return (
-    <div className="w-full max-w-md select-none rounded-2xl border p-8 md:p-10 bg-white/8 backdrop-blur-2xl border-white/15 shadow-[0_8px_32px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.06)]">
+    <Card
+      shadow="lg"
+      radius="lg"
+      className="w-full max-w-md select-none bg-content1/80 backdrop-blur-2xl border border-white/15"
+    >
+      <CardBody className="p-8 md:p-10 gap-0">
+        {/* Logo placeholder */}
+        <div className="flex items-center justify-center py-10 mb-8">
+          <Skeleton className="w-40 h-10 rounded-lg" />
+        </div>
 
-      {/* Header */}
-      <div className="flex flex-col items-center text-center mb-10">
-        <div className="w-12 h-12 rounded-full bg-white/10 animate-pulse mb-4" />
-        <div className="h-6 w-52 bg-white/10 animate-pulse rounded-md mb-2" />
-        <div className="h-4 w-44 bg-white/10 animate-pulse rounded-md" />
-      </div>
-
-      <div className="space-y-6">
-        {/* Fields */}
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <div className="h-4 w-20 bg-white/10 animate-pulse rounded-md" />
-            <div className="h-12 w-full bg-white/10 animate-pulse rounded-md" />
+        <div className="flex flex-col gap-6">
+          {/* Fields */}
+          <div className="flex flex-col gap-4">
+            <Skeleton className="h-14 w-full rounded-xl" />
+            <Skeleton className="h-14 w-full rounded-xl" />
           </div>
-          <div className="space-y-2">
-            <div className="h-4 w-24 bg-white/10 animate-pulse rounded-md" />
-            <div className="h-12 w-full bg-white/10 animate-pulse rounded-md" />
+
+          {/* Remember me */}
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-4 w-4 rounded-md" />
+            <Skeleton className="h-4 w-24 rounded-md" />
+          </div>
+
+          {/* Buttons */}
+          <div className="flex flex-col gap-4 pt-2">
+            <Skeleton className="h-12 w-full rounded-xl" />
+            <div className="flex items-center gap-3 py-1">
+              <div className="flex-1 h-px bg-white/10" />
+              <Skeleton className="h-3 w-6 rounded" />
+              <div className="flex-1 h-px bg-white/10" />
+            </div>
+            <Skeleton className="h-12 w-full rounded-xl" />
           </div>
         </div>
 
-        {/* Remember me */}
-        <div className="flex items-center gap-2">
-          <div className="h-4 w-4 bg-white/10 animate-pulse rounded-sm" />
-          <div className="h-4 w-24 bg-white/10 animate-pulse rounded-md" />
+        {/* Back link */}
+        <div className="mt-10 flex justify-center">
+          <Skeleton className="h-4 w-32 rounded-md" />
         </div>
-
-        {/* Buttons */}
-        <div className="space-y-4 pt-2">
-          <div className="h-12 w-full bg-white/10 animate-pulse rounded-md" />
-          <div className="flex items-center gap-3 py-2">
-            <div className="flex-1 h-px bg-white/10" />
-            <div className="h-3 w-6 bg-white/10 animate-pulse rounded" />
-            <div className="flex-1 h-px bg-white/10" />
-          </div>
-          <div className="h-12 w-full bg-white/10 animate-pulse rounded-md" />
-        </div>
-      </div>
-
-      {/* Back link */}
-      <div className="mt-10 flex justify-center">
-        <div className="h-4 w-32 bg-white/10 animate-pulse rounded-md" />
-      </div>
-
-    </div>
+      </CardBody>
+    </Card>
   );
 }

@@ -1,6 +1,8 @@
 import { Suspense } from "react";
 import { BackgroundDots } from "../../(components)/BackgroundDots";
 import SignInForm from "./(sections)/SignInForm";
+import SignInFormSkeleton from "./(sections)/SignInFormSkeleton";
+import { ThemeToggle } from "@/app/(components)/ThemeToggle";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -16,7 +18,12 @@ export default function SignInPage() {
           "radial-gradient(ellipse at top, #1a7ab8 0%, #15689E 35%, #0d4a72 70%, #082d47 100%)",
       }}
     >
-      {/* Dot field — same as hero */}
+      {/* Theme toggle — top right corner */}
+      {/* <div className="absolute top-4 right-4 z-20">
+        <ThemeToggle />
+      </div> */}
+
+      {/* Dot field */}
       <BackgroundDots />
 
       {/* Subtle orange glow behind form */}
@@ -30,7 +37,7 @@ export default function SignInPage() {
 
       {/* Form card */}
       <div className="relative z-10 w-full max-w-md">
-        <Suspense>
+        <Suspense fallback={<SignInFormSkeleton />}>
           <SignInForm />
         </Suspense>
       </div>

@@ -1,15 +1,21 @@
 "use client";
 
 import React, { useActionState, useState, useEffect } from "react";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Mail, Lock, UserPlus, ArrowLeft } from "lucide-react";
+import {
+  Button,
+  Card,
+  CardBody,
+  Checkbox,
+  Divider,
+  Input,
+  Spinner,
+} from "@heroui/react";
+import { Mail, Lock, Eye, EyeOff, UserPlus, ArrowLeft } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { signIn } from "../(services)/actions";
-import SubmitButton from "@/app/(components)/SubmitButton";
 import ErrorAlert from "@/app/(components)/ErrorAlert";
 import { useSearchParams } from "next/navigation";
-import { AuthField } from "@/app/(components)/AuthField";
-import { PasswordToggle } from "@/app/(components)/PasswordToggle";
 import { HBLogo } from "@/app/(components)/HBLogo";
 
 export default function SignInForm() {
@@ -17,7 +23,6 @@ export default function SignInForm() {
   const [state, formAction, isPending] = useActionState(signIn, null);
   const [formValues, setFormValues] = useState({ email: "", password: "" });
 
-  // ── All fields must be non-empty to enable submit ──
   const isFormValid =
     formValues.email.trim() !== "" && formValues.password.trim() !== "";
 
@@ -32,142 +37,131 @@ export default function SignInForm() {
     }
   }, [state]);
 
+  const router = useRouter();
+
   const searchParams = useSearchParams();
   const qbError = searchParams.get("error");
 
   return (
-    <div className="w-full max-w-md select-none rounded-2xl border p-8 md:p-10 bg-white/8 backdrop-blur-2xl border-white/15 shadow-[0_8px_32px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.06)]">
-
-      {/* Logo */}
-      <div className="relative z-10 mb-8 flex items-center justify-center py-10">
-        <HBLogo variant="dark" size="lg" />
-      </div>
-
-      <form action={formAction} className="space-y-5">
-        <div className="space-y-4">
-
-          <AuthField
-            id="email"
-            name="email"
-            label="Email"
-            icon={<Mail className="w-4 h-4" style={{ color: "#f5a255" }} />}
-            type="email"
-            placeholder="Enter your email"
-            value={formValues.email}
-            onChange={handleChange}
-          />
-
-          <AuthField
-            id="password"
-            name="password"
-            label="Password"
-            icon={<Lock className="w-4 h-4" style={{ color: "#f5a255" }} />}
-            type={showPassword ? "text" : "password"}
-            placeholder="Enter your password"
-            value={formValues.password}
-            onChange={handleChange}
-            rightElement={
-              <PasswordToggle
-                show={showPassword}
-                onToggle={() => setShowPassword((prev) => !prev)}
-              />
-            }
-          />
-
-          {state?.error && <ErrorAlert errorMessage={state.error} />}
+    <Card
+      shadow="lg"
+      radius="lg"
+      className="w-full max-w-md select-none bg-content1/80 backdrop-blur-2xl border border-white/15 bg-transparent"
+    >
+      <CardBody className="p-8 md:p-10 gap-0">
+        {/* Logo */}
+        <div className="relative z-10 mb-8 flex items-center justify-center py-10">
+          <HBLogo variant="dark" size="lg" />
         </div>
 
-        {/* Remember me */}
-        <div className="flex items-center space-x-2">
-          <Checkbox
-            id="remember"
-            name="remember"
-            className="border-white/20 data-[state=checked]:bg-[#e8821a] data-[state=checked]:border-[#e8821a]"
-          />
-          <label
-            htmlFor="remember"
-            className="text-sm font-medium cursor-pointer"
-            style={{ color: "rgba(255,255,255,0.5)" }}
-          >
-            Remember me
-          </label>
-        </div>
+        <form action={formAction} className="flex flex-col gap-5">
+          <div className="flex flex-col gap-4">
+            {/* Email field */}
+            <Input
+              id="email"
+              name="email"
+              type="email"
+              label="Email"
+              placeholder="Enter your email"
+              variant="bordered"
+              color="default"
+              size="lg"
+              radius="lg"
+              value={formValues.email}
+              onChange={handleChange}
+              startContent={
+                <Mail className="w-4 h-4 text-primary pointer-events-none flex-shrink-0" />
+              }
+            />
 
-        <div className="space-y-3 pt-1">
+            {/* Password field */}
+            <Input
+              id="password"
+              name="password"
+              type={showPassword ? "text" : "password"}
+              label="Password"
+              placeholder="Enter your password"
+              variant="bordered"
+              color="primary"
+              size="lg"
+              radius="lg"
+              value={formValues.password}
+              onChange={handleChange}
+              startContent={
+                <Lock className="w-4 h-4 text-primary pointer-events-none flex-shrink-0" />
+              }
+              endContent={
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  className="text-foreground/35 hover:text-primary transition-colors"
+                >
+                  {showPassword ? (
+                    <EyeOff className="w-4 h-4" />
+                  ) : (
+                    <Eye className="w-4 h-4" />
+                  )}
+                </button>
+              }
+            />
 
-          {/* Primary CTA — disabled until both fields filled */}
-          <SubmitButton
-            classname="h-12 w-full font-bold transition-all active:scale-95 text-white"
-            style={{
-              background: "linear-gradient(135deg, #e8821a, #d4741a)",
-              boxShadow: isFormValid
-                ? "0 4px 15px rgba(232,130,26,0.35)"
-                : "none",
-              ...(!isFormValid && {
-                opacity: 0.45,
-                cursor: "not-allowed",
-              }),
-            }}
-            isPending={isPending}
-            disabled={!isFormValid}
-            type="submit"
-            cta="Sign In"
-            variant="default"
-            size="lg"
-            isPendingMesssage="Signing in..."
-          />
-
-          {/* Divider */}
-          <div className="relative flex items-center justify-center py-1">
-            <div className="absolute inset-0 flex items-center">
-              <span
-                className="w-full border-t"
-                style={{ borderColor: "rgba(255,255,255,0.08)" }}
-              />
-            </div>
-            <span
-              className="relative px-4 text-xs uppercase tracking-widest"
-              style={{ color: "rgba(255,255,255,0.3)", background: "transparent" }}
-            >
-              or
-            </span>
+            {state?.error && <ErrorAlert errorMessage={state.error} />}
           </div>
 
-          {/* Secondary CTA — always enabled */}
-          <SubmitButton
-            classname="h-12 w-full cursor-pointer font-bold transition-all active:scale-95"
-            style={{
-              background: "rgba(232,130,26,0.08)",
-              border: "1px solid rgba(232,130,26,0.35)",
-              color: "#f5a255",
-            }}
-            type="button"
-            cta={
-              <Link
-                href="/sign-up"
-                className="flex gap-2 items-center justify-center w-full h-full"
-              >
-                <UserPlus className="w-5 h-5" /> Create New Account
-              </Link>
-            }
-            variant="outline"
-            size="lg"
-          />
-        </div>
-      </form>
+          {/* Remember me */}
+          <Checkbox name="remember" color="primary" size="sm">
+            <span className="text-foreground/50">Remember me</span>
+          </Checkbox>
 
-      {/* Back link */}
-      <div className="mt-8 text-center">
-        <Link
-          href="/"
-          className="inline-flex items-center gap-2 text-sm font-medium transition-colors"
-          style={{ color: "rgba(255,255,255,0.35)" }}
-          onMouseEnter={(e) => (e.currentTarget.style.color = "#f5a255")}
-          onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(255,255,255,0.35)")}
-        >
-          <ArrowLeft className="w-4 h-4" /> Back to Main Site
-        </Link>
-      </div>
-    </div>
+          <div className="flex flex-col gap-3 pt-1">
+            {/* Primary CTA */}
+            <Button
+              type="submit"
+              color="primary"
+              size="lg"
+              radius="lg"
+              fullWidth
+              isDisabled={!isFormValid || isPending}
+              isLoading={isPending}
+              spinner={<Spinner size="sm" color="white" />}
+              className="font-bold"
+            >
+              {isPending ? "Signing in..." : "Sign In"}
+            </Button>
+
+            {/* Divider */}
+            <div className="flex items-center gap-3 py-1">
+              <Divider className="flex-1" />
+              <span className="text-xs uppercase tracking-widest text-foreground/30">
+                or
+              </span>
+              <Divider className="flex-1" />
+            </div>
+
+            {/* Secondary CTA */}
+            <Button
+              variant="bordered"
+              size="lg"
+              radius="lg"
+              fullWidth
+              className="font-bold border-white/15"
+              onPress={() => router.push("/sign-up")}
+            >
+              <UserPlus className="w-5 h-5" /> Create New Account
+            </Button>
+          </div>
+        </form>
+
+        {/* Back link */}
+        <div className="mt-8 text-center">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 text-sm font-medium text-foreground/35 hover:text-primary transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" /> Back to Main Site
+          </Link>
+        </div>
+      </CardBody>
+    </Card>
   );
 }
