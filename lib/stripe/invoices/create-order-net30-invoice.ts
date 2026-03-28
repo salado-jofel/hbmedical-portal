@@ -327,29 +327,27 @@ export async function createStripeNet30Invoice(
   const finalizedInvoice = await stripe.invoices.finalizeInvoice(
     draftInvoice.id,
   );
-  const sentInvoice = await stripe.invoices.sendInvoice(finalizedInvoice.id);
 
-  const localInvoiceStatus: OrderInvoiceStatus = "sent";
+  const localInvoiceStatus: OrderInvoiceStatus = "issued";
 
   const { error: invoiceUpsertError } = await admin.from("invoices").upsert(
     {
       order_id: order.id,
       invoice_number:
-        sentInvoice.number ??
         finalizedInvoice.number ??
         fallbackInvoiceNumber(order.order_number),
       provider: "stripe",
-      provider_invoice_id: sentInvoice.id,
+      provider_invoice_id: finalizedInvoice.id,
       status: localInvoiceStatus,
-      amount_due: toMajorAmount(sentInvoice.amount_due),
-      amount_paid: toMajorAmount(sentInvoice.amount_paid),
-      currency: normalizeCurrency(sentInvoice.currency),
-      due_at: fromUnixTimestamp(sentInvoice.due_date),
+      amount_due: toMajorAmount(finalizedInvoice.amount_due),
+      amount_paid: toMajorAmount(finalizedInvoice.amount_paid),
+      currency: normalizeCurrency(finalizedInvoice.currency),
+      due_at: fromUnixTimestamp(finalizedInvoice.due_date),
       issued_at:
-        fromUnixTimestamp(sentInvoice.status_transitions?.finalized_at) ??
+        fromUnixTimestamp(finalizedInvoice.status_transitions?.finalized_at) ??
         new Date().toISOString(),
-      paid_at: fromUnixTimestamp(sentInvoice.status_transitions?.paid_at),
-      hosted_invoice_url: sentInvoice.hosted_invoice_url,
+      paid_at: fromUnixTimestamp(finalizedInvoice.status_transitions?.paid_at),
+      hosted_invoice_url: finalizedInvoice.hosted_invoice_url,
     },
     { onConflict: "order_id" },
   );

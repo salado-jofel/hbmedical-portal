@@ -484,6 +484,52 @@ async function handleCheckoutSessionExpired(session: Stripe.Checkout.Session) {
   // The order can still remain payable with a new Checkout Session later.
 }
 
+async function handlePaymentIntentSucceeded(
+  paymentIntent: Stripe.PaymentIntent,
+) {
+  const paidAt = new Date().toISOString();
+
+  // Fast path: order_id is in payment intent metadata (set via payment_intent_data.metadata).
+  const orderIdFromMeta = paymentIntent.metadata?.order_id ?? null;
+
+  if (orderIdFromMeta) {
+    const admin = await createAdminClient();
+
+    await admin
+      .from("payments")
+      .update({
+        status: "paid",
+        stripe_payment_intent_id: paymentIntent.id,
+        provider_payment_id: paymentIntent.id,
+        paid_at: paidAt,
+      })
+      .eq("order_id", orderIdFromMeta)
+      .eq("status", "pending");
+
+    await markOrderPaid(orderIdFromMeta, paidAt);
+    return;
+  }
+
+  // Fallback: look up the checkout session from Stripe using the payment intent ID.
+  // This covers sessions created before payment_intent_data.metadata was added.
+  const sessions = await stripe.checkout.sessions.list({
+    payment_intent: paymentIntent.id,
+    limit: 1,
+  });
+
+  const session = sessions.data[0] ?? null;
+
+  if (!session) {
+    console.warn(
+      "[payments.handlePaymentIntentSucceeded] No checkout session found for payment intent:",
+      paymentIntent.id,
+    );
+    return;
+  }
+
+  await handleCheckoutSessionCompleted(session);
+}
+
 export async function handleCheckoutWebhookEvent(event: Stripe.Event) {
   switch (event.type) {
     case "checkout.session.completed": {
@@ -510,6 +556,13 @@ export async function handleCheckoutWebhookEvent(event: Stripe.Event) {
     case "checkout.session.expired": {
       await handleCheckoutSessionExpired(
         event.data.object as Stripe.Checkout.Session,
+      );
+      return;
+    }
+
+    case "payment_intent.succeeded": {
+      await handlePaymentIntentSucceeded(
+        event.data.object as Stripe.PaymentIntent,
       );
       return;
     }

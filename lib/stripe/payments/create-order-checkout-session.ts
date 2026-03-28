@@ -276,6 +276,13 @@ export async function createOrderCheckoutSession(
       facility_id: order.facility_id,
       user_id: user.id,
     },
+    payment_intent_data: {
+      description: `Payment for Order ${order.order_number}`,
+      metadata: {
+        order_id: order.id,
+        order_number: order.order_number,
+      },
+    },
     line_items: [
       {
         quantity: 1,
