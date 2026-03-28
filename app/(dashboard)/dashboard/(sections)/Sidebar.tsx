@@ -20,10 +20,11 @@ import { HBLogo } from "@/app/(components)/HBLogo";
 import SubmitButton from "@/app/(components)/SubmitButton";
 import { signOut } from "../(services)/actions";
 import { closeSidebar } from "../(redux)/dashboard-slice";
+import type { LucideIcon } from "lucide-react";
 import type { UserRole } from "@/utils/helpers/role";
 
 interface NavItemDef {
-  icon: React.ElementType;
+  icon: LucideIcon;
   label: string;
   href: string;
   allowedRoles: UserRole[] | null; // null = all roles
