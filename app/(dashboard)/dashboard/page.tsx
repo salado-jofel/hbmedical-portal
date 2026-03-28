@@ -11,20 +11,19 @@ export const metadata: Metadata = {
 };
 
 export default async function DashboardPage() {
-  // const orders = await getAllOrders(); // This data is already here!
+  const orders = await getAllOrders();
 
-  // const totalOrders = orders.length;
-  // const totalRevenue = orders.reduce((sum, o) => sum + (o.amount ?? 0), 0);
-  // const activeOrders = orders.filter(
-  //   (o) => o.status !== "Delivered" && o.status !== "Draft",
-  // ).length;
+  const totalOrders = orders.length;
+  const totalRevenue = orders.reduce((sum, o) => sum + (o.total_amount ?? 0), 0);
+  const activeOrders = orders.filter(
+    (o) => o.order_status !== "canceled" && o.order_status !== "draft",
+  ).length;
 
   return (
     <div className="p-4 md:p-8 w-full mx-auto space-y-6 select-none">
       <DashboardHeader title="Dashboard" showGreeting />
-      <StatsCards totalOrders={0} totalRevenue={0} activeOrders={0} />
-      {/* Pass the orders here */}
-      <RecentOrdersTable initialOrders={[]} />
+      <StatsCards totalOrders={totalOrders} totalRevenue={totalRevenue} activeOrders={activeOrders} />
+      <RecentOrdersTable initialOrders={orders} />
     </div>
   );
 }

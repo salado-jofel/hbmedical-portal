@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useAppDispatch } from "@/store/hooks";
-import { setUser } from "./(redux)/dashboard-slice";
+import { setUser } from "../(redux)/dashboard-slice";
 
 type UserData = {
   name: string;
