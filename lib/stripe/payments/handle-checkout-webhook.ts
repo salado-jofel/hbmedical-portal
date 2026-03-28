@@ -207,16 +207,33 @@ async function sendSuccessfulPaymentReceipt(
       session.customer_email ??
       null;
 
+    console.info(
+      "[payments.sendSuccessfulPaymentReceipt] orderId:",
+      orderId,
+      "| recipientEmail:",
+      recipientEmail,
+      "| orderNumber:",
+      receiptContext?.orderNumber,
+      "| amountTotal:",
+      session.amount_total,
+    );
+
     if (!recipientEmail) {
       console.warn(
-        "[payments.sendSuccessfulPaymentReceipt] No recipient email found.",
+        "[payments.sendSuccessfulPaymentReceipt] No recipient email found — skipping email.",
       );
       return;
     }
 
     const receiptUrl = await getReceiptUrlFromSession(session);
 
-    await sendPaymentReceiptEmail({
+    console.info(
+      "[payments.sendSuccessfulPaymentReceipt] receiptUrl:",
+      receiptUrl,
+      "| Calling sendPaymentReceiptEmail...",
+    );
+
+    const result = await sendPaymentReceiptEmail({
       to: recipientEmail,
       orderId,
       orderNumber:
@@ -225,6 +242,11 @@ async function sendSuccessfulPaymentReceipt(
       currency: session.currency ?? null,
       receiptUrl,
     });
+
+    console.info(
+      "[payments.sendSuccessfulPaymentReceipt] sendPaymentReceiptEmail result:",
+      result,
+    );
   } catch (error) {
     console.error(
       "[payments.sendSuccessfulPaymentReceipt] Failed to send receipt email:",
@@ -388,7 +410,16 @@ async function markOrderPaid(orderId: string, paidAt: string) {
     throw new Error(error.message || "Failed to mark order as paid.");
   }
 
-  return Boolean(data);
+  const result = Boolean(data);
+  console.info(
+    "[payments.markOrderPaid] orderId:",
+    orderId,
+    "| updated:",
+    result,
+    "| data:",
+    data,
+  );
+  return result;
 }
 
 async function markOrderFailedIfNotPaid(orderId: string) {
@@ -433,17 +464,45 @@ async function handleCheckoutSessionCompleted(
 ) {
   const paidAt = new Date().toISOString();
 
+  console.info(
+    "[payments.handleCheckoutSessionCompleted] Handling session:",
+    session.id,
+  );
+
   const { orderId, wasAlreadyPaid } = await ensurePaymentRecordForSession(
     session,
     "paid",
     paidAt,
   );
 
+  console.info(
+    "[payments.handleCheckoutSessionCompleted] orderId:",
+    orderId,
+    "| wasAlreadyPaid:",
+    wasAlreadyPaid,
+  );
+
   const didMarkPaid = await markOrderPaid(orderId, paidAt);
 
+  console.info(
+    "[payments.handleCheckoutSessionCompleted] didMarkPaid:",
+    didMarkPaid,
+  );
+
   if (!wasAlreadyPaid && didMarkPaid) {
+    console.info(
+      "[payments.handleCheckoutSessionCompleted] Guard passed — sending receipt email for order:",
+      orderId,
+    );
     await sendSuccessfulPaymentReceipt(orderId, session);
     await syncToShipStationSafely(orderId);
+  } else {
+    console.warn(
+      "[payments.handleCheckoutSessionCompleted] Guard FAILED — email skipped. wasAlreadyPaid:",
+      wasAlreadyPaid,
+      "| didMarkPaid:",
+      didMarkPaid,
+    );
   }
 }
 
@@ -487,31 +546,11 @@ async function handleCheckoutSessionExpired(session: Stripe.Checkout.Session) {
 async function handlePaymentIntentSucceeded(
   paymentIntent: Stripe.PaymentIntent,
 ) {
-  const paidAt = new Date().toISOString();
-
-  // Fast path: order_id is in payment intent metadata (set via payment_intent_data.metadata).
-  const orderIdFromMeta = paymentIntent.metadata?.order_id ?? null;
-
-  if (orderIdFromMeta) {
-    const admin = await createAdminClient();
-
-    await admin
-      .from("payments")
-      .update({
-        status: "paid",
-        stripe_payment_intent_id: paymentIntent.id,
-        provider_payment_id: paymentIntent.id,
-        paid_at: paidAt,
-      })
-      .eq("order_id", orderIdFromMeta)
-      .eq("status", "pending");
-
-    await markOrderPaid(orderIdFromMeta, paidAt);
-    return;
-  }
-
-  // Fallback: look up the checkout session from Stripe using the payment intent ID.
-  // This covers sessions created before payment_intent_data.metadata was added.
+  // Always look up the checkout session so the full handleCheckoutSessionCompleted
+  // flow runs — including the receipt email. The previous fast path (skipping the
+  // session lookup when order_id was in metadata) caused a race: it marked the order
+  // and payment as paid before checkout.session.completed fired, which caused the
+  // wasAlreadyPaid/didMarkPaid guards to block the email.
   const sessions = await stripe.checkout.sessions.list({
     payment_intent: paymentIntent.id,
     limit: 1,
