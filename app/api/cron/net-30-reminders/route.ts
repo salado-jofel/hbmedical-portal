@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 
-import { createAdminClient } from "@/utils/supabase/admin";
+import { createAdminClient } from "@/lib/supabase/admin";
 import {
   sendNet30ReminderEmail,
   type Net30ReminderStage,
-} from "@/utils/emails/send-net30-reminder";
-import type { PersistedPaymentStatus } from "@/app/(interfaces)/payment";
+} from "@/lib/emails/send-net30-reminder";
+import type { OrderPaymentStatus } from "@/utils/interfaces/orders";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,7 +21,7 @@ type ReminderCandidateRow = {
   order_id: string | null;
 
   payment_mode: string | null;
-  payment_status: PersistedPaymentStatus | null;
+  payment_status: OrderPaymentStatus | null;
 
   receipt_email: string | null;
 
@@ -364,7 +364,7 @@ async function releaseReminderLock(orderId: string, lockId: string) {
 
 async function markOrderOverdueIfNeeded(
   orderId: string,
-  currentStatus: PersistedPaymentStatus | null,
+  currentStatus: OrderPaymentStatus | null,
   lockId: string,
 ) {
   if (currentStatus === "overdue") return;

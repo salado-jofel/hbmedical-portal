@@ -1,9 +1,9 @@
-import { formatDate, formatAmount } from "@/utils/formatter";
-import { Order } from "@/app/(interfaces)/order";
+import { formatDate, formatAmount } from "@/utils/helpers/formatter";
+import type { DashboardOrder } from "@/utils/interfaces/orders";
 import { StatusBadge } from "./StatusBadge";
 
 interface OrderMobileCardProps {
-  order: Order;
+  order: DashboardOrder;
 }
 
 export function OrderMobileCard({ order }: OrderMobileCardProps) {
@@ -11,9 +11,9 @@ export function OrderMobileCard({ order }: OrderMobileCardProps) {
     <div className="p-4 space-y-2">
       <div className="flex items-center justify-between gap-2">
         <span className="text-sm font-bold text-slate-700 truncate">
-          {order.order_id}
+          {order.order_number}
         </span>
-        <StatusBadge status={order.status} />
+        <StatusBadge status={order.order_status} />
       </div>
 
       <div className="flex items-center gap-2 flex-wrap text-xs text-slate-500">
@@ -30,7 +30,7 @@ export function OrderMobileCard({ order }: OrderMobileCardProps) {
 
       <div className="flex items-center justify-between text-xs">
         <span className="font-bold text-slate-700">
-          {formatAmount(order.amount)}
+          {formatAmount(order.total_amount)}
         </span>
         <span className="text-slate-400">{formatDate(order.created_at)}</span>
       </div>
