@@ -1,8 +1,8 @@
 import {
-  BOARD_STATUSES,
   BoardStatus,
+  BOARD_STATUSES,
   mapOrderToBoardStatus,
-} from "@/app/dashboard/orders/(sections)/kanban-config";
+} from "@/app/(dashboard)/dashboard/orders/(components)/kanban-config";
 import { DashboardOrder } from "../interfaces/orders";
 
 export function groupOrdersByBoardStatus(
