@@ -64,11 +64,15 @@ export default function SignInForm() {
               label="Email"
               placeholder="Enter your email"
               variant="bordered"
-              color="default"
+              color="primary"
               size="lg"
               radius="lg"
               value={formValues.email}
               onChange={handleChange}
+              classNames={{
+                inputWrapper:
+                  "border-primary/60 focus-within:!border-primary hover:border-[#e8891a]",
+              }}
               startContent={
                 <Mail className="w-4 h-4 text-primary pointer-events-none flex-shrink-0" />
               }
@@ -87,6 +91,10 @@ export default function SignInForm() {
               radius="lg"
               value={formValues.password}
               onChange={handleChange}
+              classNames={{
+                inputWrapper:
+                  "border-primary/60 hover:border-primary focus-within:!border-primary",
+              }}
               startContent={
                 <Lock className="w-4 h-4 text-primary pointer-events-none flex-shrink-0" />
               }
@@ -117,6 +125,7 @@ export default function SignInForm() {
             {/* Primary CTA */}
             <Button
               type="submit"
+              variant="solid"
               color="primary"
               size="lg"
               radius="lg"
