@@ -2,7 +2,13 @@
 
 import { useActionState, useState } from "react";
 import { signUp } from "../(services)/actions";
-import { Stethoscope, BriefcaseMedical, Eye, EyeOff } from "lucide-react";
+import {
+  Stethoscope,
+  BriefcaseMedical,
+  Eye,
+  EyeOff,
+  ArrowLeft,
+} from "lucide-react";
 import Link from "next/link";
 import { AuthField } from "@/app/(components)/AuthField";
 import { RoleButton } from "@/app/(components)/RoleButton";
@@ -390,6 +396,19 @@ export default function SignUpForm() {
           size={undefined}
         />
       </form>
+      <div className="mt-8 text-center">
+        <Link
+          href="/sign-in"
+          className="inline-flex items-center gap-2 text-sm font-medium transition-colors"
+          style={{ color: "rgba(255,255,255,0.35)" }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = "#f5a255")}
+          onMouseLeave={(e) =>
+            (e.currentTarget.style.color = "rgba(255,255,255,0.35)")
+          }
+        >
+          <ArrowLeft className="w-4 h-4" /> Back to Sign In
+        </Link>
+      </div>
     </div>
   );
 }
