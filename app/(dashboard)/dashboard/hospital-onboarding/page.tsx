@@ -19,7 +19,7 @@ export default async function HospitalOnboardingPage() {
           title="Hospital Onboarding"
           description="Your onboarding documents & resources"
         />
-        {/* <HospitalOnboardingCards /> */}
+        <HospitalOnboardingCards />
       </div>
     </Providers>
   );

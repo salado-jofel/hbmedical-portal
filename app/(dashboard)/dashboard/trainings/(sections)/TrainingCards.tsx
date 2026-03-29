@@ -10,6 +10,7 @@ import {
   ScrollText,
   CheckSquare,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { MaterialCard } from "@/app/(components)/MaterialCard";
 import { AdminUploadButton } from "@/app/(components)/AdminUploadButton";
 import { AdminBulkBar } from "@/app/(components)/AdminBulkBar";
@@ -169,11 +170,19 @@ async function handleDownload(fileUrl: string): Promise<string> {
 
 export default function TrainingsCards() {
   const dispatch = useAppDispatch();
+  const [mounted, setMounted] = useState(false);
+
   const items = useAppSelector(
     (state) => state.trainings.items,
   ) as TrainingMaterial[];
   const selectedIds = useAppSelector((state) => state.trainings.selectedIds);
   const isAdmin = useAppSelector((state) => state.dashboard.role) === "admin";
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const showAdminUi = mounted && isAdmin;
 
   const grouped = GROUP_ORDER.reduce<Record<string, TrainingMaterial[]>>(
     (acc, group) => {
@@ -186,7 +195,7 @@ export default function TrainingsCards() {
   if (items.length === 0) {
     return (
       <>
-        {isAdmin && (
+        {showAdminUi && (
           <div className="flex justify-end">
             <AdminUploadButton onUpload={uploadTrainingMaterial} />
           </div>
@@ -207,7 +216,7 @@ export default function TrainingsCards() {
 
   return (
     <div className="space-y-6">
-      {isAdmin && (
+      {showAdminUi && (
         <div className="flex items-center justify-between gap-3">
           <button
             type="button"
@@ -227,7 +236,7 @@ export default function TrainingsCards() {
         </div>
       )}
 
-      {isAdmin && selectedIds.length > 0 && (
+      {showAdminUi && selectedIds.length > 0 && (
         <AdminBulkBar
           selectedCount={selectedIds.length}
           onClear={() => dispatch(clearTrainingSelection())}
@@ -243,7 +252,7 @@ export default function TrainingsCards() {
           grouped[group].length === 0 ? null : (
             <MaterialsSection key={group} title={group}>
               {grouped[group].map((card) =>
-                isAdmin ? (
+                showAdminUi ? (
                   <AdminMaterialCard
                     key={card.id}
                     id={card.id}
