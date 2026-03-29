@@ -1,3 +1,4 @@
+import { getUserData } from "@/app/(dashboard)/dashboard/(services)/actions";
 import { createServerClient } from "@supabase/ssr";
 import { jwtDecode } from "jwt-decode";
 import { type NextRequest, NextResponse } from "next/server";
@@ -27,6 +28,7 @@ export async function updateSession(request: NextRequest) {
       },
     },
   );
+  const userData = await getUserData();
 
   const {
     data: { user },
@@ -107,6 +109,37 @@ export async function updateSession(request: NextRequest) {
     url.pathname = "/sign-in";
     url.searchParams.set("next", currentPath);
     return NextResponse.redirect(url);
+  }
+
+  if (user) {
+    const userRole = userData?.role;
+
+    const isAdmin = userRole === "admin";
+    // Admin Restricted Routes
+    const adminForbidden = [
+      "/dashboard",
+      "/dashboard/orders",
+      "/dashboard/profile",
+    ];
+
+    // Non-Admin Restricted Routes
+    const nonAdminForbidden = ["/dashboard/products"];
+
+    if (isAdmin) {
+      // Exact match check for admin forbidden routes
+      if (adminForbidden.includes(currentPath)) {
+        const url = request.nextUrl.clone();
+        url.pathname = "/dashboard/products"; // Redirect admins to their "home"
+        return NextResponse.redirect(url);
+      }
+    } else {
+      // Check if non-admin is trying to access admin-only routes
+      if (nonAdminForbidden.some((path) => currentPath.startsWith(path))) {
+        const url = request.nextUrl.clone();
+        url.pathname = "/dashboard";
+        return NextResponse.redirect(url);
+      }
+    }
   }
 
   return supabaseResponse;

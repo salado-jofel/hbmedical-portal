@@ -27,7 +27,7 @@ interface NavItemDef {
   icon: LucideIcon;
   label: string;
   href: string;
-  allowedRoles: UserRole[] | null; // null = all roles
+  allowedRoles: UserRole[]; // Removed null to keep logic explicit
 }
 
 const navItems: NavItemDef[] = [
@@ -35,55 +35,61 @@ const navItems: NavItemDef[] = [
     icon: LayoutDashboard,
     label: "Dashboard",
     href: "/dashboard",
-    allowedRoles: null,
+    // Forbidden for Admin in middleware
+    allowedRoles: ["sales_representative", "doctor"],
   },
   {
     icon: ShoppingCart,
     label: "Orders",
     href: "/dashboard/orders",
-    allowedRoles: null,
+    // Forbidden for Admin in middleware
+    allowedRoles: ["sales_representative", "doctor"],
   },
   {
     icon: Package,
     label: "Products",
     href: "/dashboard/products",
-    allowedRoles: null,
+    // ONLY for Admin
+    allowedRoles: ["admin"],
   },
   {
     icon: UserCircle,
     label: "Profile",
     href: "/dashboard/profile",
-    allowedRoles: null,
+    // Forbidden for Admin in middleware
+    allowedRoles: ["sales_representative", "doctor"],
   },
   {
     icon: Megaphone,
     label: "Marketing",
     href: "/dashboard/marketing",
-    allowedRoles: ["sales_representative", "admin"],
+    allowedRoles: ["sales_representative", "doctor", "admin"],
   },
   {
     icon: ScrollText,
     label: "Contracts",
     href: "/dashboard/contracts",
-    allowedRoles: null,
+    allowedRoles: ["sales_representative", "doctor", "admin"],
   },
   {
     icon: BookOpen,
     label: "Trainings",
     href: "/dashboard/trainings",
-    allowedRoles: ["sales_representative", "admin"],
+    allowedRoles: ["sales_representative", "doctor", "admin"],
   },
   {
     icon: Hospital,
     label: "Hospital Onboarding",
     href: "/dashboard/hospital-onboarding",
-    allowedRoles: ["sales_representative", "admin"],
+    allowedRoles: ["sales_representative", "doctor", "admin"],
   },
 ];
 
-function isNavItemVisible(item: NavItemDef, role: UserRole): boolean {
-  if (item.allowedRoles === null) return true;
-  if (role === null) return false;
+/**
+ * Helper to check visibility based on the user's current role
+ */
+function isNavItemVisible(item: NavItemDef, role: UserRole | null): boolean {
+  if (!role) return false;
   return item.allowedRoles.includes(role);
 }
 
@@ -92,11 +98,13 @@ export function Sidebar() {
   const dispatch = useAppDispatch();
   const isOpen = useAppSelector((state) => state.dashboard.isSidebarOpen);
   const userData = useAppSelector((state) => state.dashboard);
-  const role = userData.role;
+
+  // Ensure we are getting the string role (e.g., 'sales_representative' or 'admin')
+  const role = userData.role as UserRole;
 
   useEffect(() => {
     dispatch(closeSidebar());
-  }, [pathname]);
+  }, [pathname, dispatch]);
 
   return (
     <>
@@ -127,12 +135,12 @@ export function Sidebar() {
           borderRight: "1px solid rgba(255,255,255,0.08)",
         }}
       >
-        {/* ── Logo (desktop only) ── */}
+        {/* ── Logo ── */}
         <div className="hidden md:flex p-6 pb-4 flex-col items-center border-b border-white/8">
           <HBLogo variant="dark" size="md" />
         </div>
 
-        {/* ── Nav items ── */}
+        {/* ── Filtered Nav items ── */}
         <nav className="flex-1 px-3 space-y-0.5 overflow-y-auto py-4">
           {navItems
             .filter((item) => isNavItemVisible(item, role))
@@ -147,7 +155,7 @@ export function Sidebar() {
             ))}
         </nav>
 
-        {/* ── Footer — user card + logout ── */}
+        {/* ── Footer ── */}
         <div
           className="p-4 border-t border-white/8"
           style={{ background: "rgba(0,0,0,0.2)" }}
