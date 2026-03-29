@@ -14,6 +14,16 @@ export async function forgotPassword(
 
   const supabase = await createClient();
 
+  const { data: user } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("email", email)
+    .single();
+
+  if (!user) {
+    return { error: "No account found with this email address." };
+  }
+
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
     redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback?next=/reset-password`,
   });
