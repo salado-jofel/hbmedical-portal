@@ -18,7 +18,7 @@ export default async function TrainingsPage() {
           title="Trainings"
           description="Your training documents & resources"
         />
-        <TrainingCards />
+        {/* <TrainingCards /> */}
       </div>
     </Providers>
   );

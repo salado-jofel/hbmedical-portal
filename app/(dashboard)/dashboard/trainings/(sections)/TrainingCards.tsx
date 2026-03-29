@@ -11,12 +11,10 @@ import {
   CheckSquare,
 } from "lucide-react";
 import { MaterialCard } from "@/app/(components)/MaterialCard";
-import { AdminMaterialCard } from "@/app/(components)/AdminMaterialCard";
 import { AdminUploadButton } from "@/app/(components)/AdminUploadButton";
 import { AdminBulkBar } from "@/app/(components)/AdminBulkBar";
 import { EmptyState } from "@/app/(components)/EmptyState";
 import { MaterialsSection } from "@/app/(components)/MaterialSection";
-import { useIsAdmin } from "@/app/(components)/hooks/useRole";
 import { TrainingMaterial } from "@/utils/interfaces/trainings";
 import {
   toggleSelectTrainingItem,
@@ -25,19 +23,32 @@ import {
 } from "../(redux)/trainings-slice";
 import {
   getSignedDownloadUrl,
-  uploadTrainingMaterial,
   deleteTrainingMaterial,
   bulkDeleteTrainingMaterials,
 } from "../(services)/actions";
+import { uploadTrainingMaterial } from "../(services)/client-upload";
+import { AdminMaterialCard } from "@/app/(components)/AdminMaterialCard";
 
-type DisplayKind = "onboarding-guide" | "training-deck" | "clinical-training" | "instructions-for-use" | "training-checklist" | "document";
+type DisplayKind =
+  | "onboarding-guide"
+  | "training-deck"
+  | "clinical-training"
+  | "instructions-for-use"
+  | "training-checklist"
+  | "document";
 
 function normalizeText(value?: string | null) {
   return (value ?? "").trim().toLowerCase();
 }
 
 function getSearchText(item: TrainingMaterial) {
-  return [item.title, item.tag, item.description, item.file_name, item.file_path]
+  return [
+    item.title,
+    item.tag,
+    item.description,
+    item.file_name,
+    item.file_path,
+  ]
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
@@ -45,35 +56,60 @@ function getSearchText(item: TrainingMaterial) {
 
 function getDisplayKind(item: TrainingMaterial): DisplayKind {
   const text = getSearchText(item);
-  if (text.includes("onboarding") || text.includes("orientation")) return "onboarding-guide";
-  if (text.includes("slide") || text.includes("deck") || text.includes("presentation")) return "training-deck";
-  if (text.includes("clinical") || text.includes("study") || text.includes("reference")) return "clinical-training";
-  if (text.includes("instruction") || text.includes("ifu")) return "instructions-for-use";
-  if (text.includes("checklist") || text.includes("competency")) return "training-checklist";
+  if (text.includes("onboarding") || text.includes("orientation"))
+    return "onboarding-guide";
+  if (
+    text.includes("slide") ||
+    text.includes("deck") ||
+    text.includes("presentation")
+  )
+    return "training-deck";
+  if (
+    text.includes("clinical") ||
+    text.includes("study") ||
+    text.includes("reference")
+  )
+    return "clinical-training";
+  if (text.includes("instruction") || text.includes("ifu"))
+    return "instructions-for-use";
+  if (text.includes("checklist") || text.includes("competency"))
+    return "training-checklist";
   return "document";
 }
 
 function getDisplayBadge(item: TrainingMaterial) {
   const kind = getDisplayKind(item);
   switch (kind) {
-    case "onboarding-guide": return "PDF - Onboarding Guide";
-    case "training-deck": return "PDF - Training Deck";
-    case "clinical-training": return "PDF - Clinical Training";
-    case "instructions-for-use": return "PDF - Instructions For Use";
-    case "training-checklist": return "PDF - Training Checklist";
-    default: return "PDF - Document";
+    case "onboarding-guide":
+      return "PDF - Onboarding Guide";
+    case "training-deck":
+      return "PDF - Training Deck";
+    case "clinical-training":
+      return "PDF - Clinical Training";
+    case "instructions-for-use":
+      return "PDF - Instructions For Use";
+    case "training-checklist":
+      return "PDF - Training Checklist";
+    default:
+      return "PDF - Document";
   }
 }
 
 function getTrainingIcon(item: TrainingMaterial) {
   const kind = getDisplayKind(item);
   switch (kind) {
-    case "training-deck": return <Presentation className="w-6 h-6 text-white" />;
-    case "clinical-training": return <FlaskConical className="w-6 h-6 text-white" />;
-    case "onboarding-guide": return <BookOpen className="w-6 h-6 text-white" />;
-    case "training-checklist": return <ClipboardCheck className="w-6 h-6 text-white" />;
-    case "instructions-for-use": return <ScrollText className="w-6 h-6 text-white" />;
-    default: return <FileText className="w-6 h-6 text-white" />;
+    case "training-deck":
+      return <Presentation className="w-6 h-6 text-white" />;
+    case "clinical-training":
+      return <FlaskConical className="w-6 h-6 text-white" />;
+    case "onboarding-guide":
+      return <BookOpen className="w-6 h-6 text-white" />;
+    case "training-checklist":
+      return <ClipboardCheck className="w-6 h-6 text-white" />;
+    case "instructions-for-use":
+      return <ScrollText className="w-6 h-6 text-white" />;
+    default:
+      return <FileText className="w-6 h-6 text-white" />;
   }
 }
 
@@ -92,23 +128,38 @@ function getDisplayDescription(item: TrainingMaterial) {
   if (item.description?.trim()) return item.description;
   const kind = getDisplayKind(item);
   switch (kind) {
-    case "onboarding-guide": return "Onboarding guide for training, setup, and operational readiness.";
-    case "training-deck": return "Training slide deck for education, walkthroughs, and internal learning.";
-    case "clinical-training": return "Clinical training material with educational and reference information.";
-    case "instructions-for-use": return "Instructions for use document with training and application guidance.";
-    case "training-checklist": return "Checklist document for training completion, readiness, or compliance review.";
-    default: return "Training-related document containing educational, operational, or supporting information.";
+    case "onboarding-guide":
+      return "Onboarding guide for training, setup, and operational readiness.";
+    case "training-deck":
+      return "Training slide deck for education, walkthroughs, and internal learning.";
+    case "clinical-training":
+      return "Clinical training material with educational and reference information.";
+    case "instructions-for-use":
+      return "Instructions for use document with training and application guidance.";
+    case "training-checklist":
+      return "Checklist document for training completion, readiness, or compliance review.";
+    default:
+      return "Training-related document containing educational, operational, or supporting information.";
   }
 }
 
 function getGroup(item: TrainingMaterial): string {
   const kind = getDisplayKind(item);
   if (kind === "clinical-training") return "Clinical Training";
-  if (kind === "onboarding-guide" || kind === "training-checklist" || kind === "instructions-for-use") return "Training Guides";
+  if (
+    kind === "onboarding-guide" ||
+    kind === "training-checklist" ||
+    kind === "instructions-for-use"
+  )
+    return "Training Guides";
   return "Training Materials";
 }
 
-const GROUP_ORDER = ["Training Materials", "Clinical Training", "Training Guides"];
+const GROUP_ORDER = [
+  "Training Materials",
+  "Clinical Training",
+  "Training Guides",
+];
 
 async function handleDownload(fileUrl: string): Promise<string> {
   const signedUrl = await getSignedDownloadUrl(fileUrl);
@@ -118,14 +169,19 @@ async function handleDownload(fileUrl: string): Promise<string> {
 
 export default function TrainingsCards() {
   const dispatch = useAppDispatch();
-  const items = useAppSelector((state) => state.trainings.items) as TrainingMaterial[];
+  const items = useAppSelector(
+    (state) => state.trainings.items,
+  ) as TrainingMaterial[];
   const selectedIds = useAppSelector((state) => state.trainings.selectedIds);
-  const isAdmin = useIsAdmin();
+  const isAdmin = useAppSelector((state) => state.dashboard.role) === "admin";
 
-  const grouped = GROUP_ORDER.reduce<Record<string, TrainingMaterial[]>>((acc, group) => {
-    acc[group] = items.filter((item) => getGroup(item) === group);
-    return acc;
-  }, {});
+  const grouped = GROUP_ORDER.reduce<Record<string, TrainingMaterial[]>>(
+    (acc, group) => {
+      acc[group] = items.filter((item) => getGroup(item) === group);
+      return acc;
+    },
+    {},
+  );
 
   if (items.length === 0) {
     return (
@@ -163,7 +219,9 @@ export default function TrainingsCards() {
             className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
           >
             <CheckSquare className="h-4 w-4" />
-            {selectedIds.length === items.length ? "Deselect All" : "Select All"}
+            {selectedIds.length === items.length
+              ? "Deselect All"
+              : "Select All"}
           </button>
           <AdminUploadButton onUpload={uploadTrainingMaterial} />
         </div>
@@ -198,7 +256,9 @@ export default function TrainingsCards() {
                     icon={getTrainingIcon(card)}
                     tagSeparator=" - "
                     selected={selectedIds.includes(card.id)}
-                    onToggleSelect={(id) => dispatch(toggleSelectTrainingItem(id))}
+                    onToggleSelect={(id) =>
+                      dispatch(toggleSelectTrainingItem(id))
+                    }
                     isActive={card.is_active}
                   />
                 ) : (
@@ -212,10 +272,10 @@ export default function TrainingsCards() {
                     icon={getTrainingIcon(card)}
                     tagSeparator=" - "
                   />
-                )
+                ),
               )}
             </MaterialsSection>
-          )
+          ),
         )}
       </div>
     </div>

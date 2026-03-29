@@ -80,15 +80,20 @@ export function MaterialCard({
           <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-white/14 text-white shadow-inner shadow-white/10">
             {icon}
           </div>
-
-          <h3 className="pr-28 text-[18px] font-semibold leading-[1.25] text-white">
+          <h3
+            className="pr-28 text-[18px] font-semibold leading-[1.25] text-white truncate "
+            title={title}
+          >
             {title}
           </h3>
         </div>
       </div>
 
       <div className="px-5 pb-5 pt-4">
-        <p className="min-h-[72px] text-[14px] leading-6 text-slate-600">
+        <p
+          className="min-h-[72px] text-[14px] leading-6 text-slate-600 line-clamp-2"
+          title={description || "No description available."}
+        >
           {description || "No description available."}
         </p>
 

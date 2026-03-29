@@ -75,7 +75,9 @@ export function AdminMaterialCard({
     <>
       <div
         className={`relative overflow-hidden rounded-2xl border bg-white shadow-[0_4px_14px_rgba(15,23,42,0.08)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_10px_24px_rgba(15,23,42,0.12)] ${
-          selected ? "border-[#1f6da1] ring-2 ring-[#1f6da1]/30" : "border-slate-200"
+          selected
+            ? "border-[#1f6da1] ring-2 ring-[#1f6da1]/30"
+            : "border-slate-200"
         } ${!isActive ? "opacity-60" : ""}`}
       >
         {/* Checkbox overlay */}
@@ -91,7 +93,14 @@ export function AdminMaterialCard({
         >
           {selected && (
             <svg viewBox="0 0 10 8" className="h-3 w-3 fill-[#1f6da1]">
-              <path d="M1 4l3 3 5-6" stroke="#1f6da1" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+              <path
+                d="M1 4l3 3 5-6"
+                stroke="#1f6da1"
+                strokeWidth="1.5"
+                fill="none"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
             </svg>
           )}
         </button>
@@ -100,10 +109,10 @@ export function AdminMaterialCard({
         <button
           type="button"
           onClick={() => setConfirmOpen(true)}
-          className="absolute right-3 top-3 z-20 flex h-7 w-7 items-center justify-center rounded-lg bg-red-500/80 text-white transition hover:bg-red-600"
+          className="absolute right-0 top-0 z-20 flex h-6 w-6 items-center justify-center rounded-bl-lg bg-red-500/80 text-white transition hover:bg-red-600"
           aria-label="Delete material"
         >
-          <Trash2 className="h-3.5 w-3.5" />
+          <Trash2 className="h-3 w-3" />
         </button>
 
         {/* Inactive badge */}
@@ -132,14 +141,20 @@ export function AdminMaterialCard({
             <div className="mb-4 mt-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-white/14 text-white shadow-inner shadow-white/10">
               {icon}
             </div>
-            <h3 className="pr-28 text-[18px] font-semibold leading-[1.25] text-white">
+            <h3
+              className="pr-28 text-[18px] font-semibold leading-[1.25] text-white truncate "
+              title={title}
+            >
               {title}
             </h3>
           </div>
         </div>
 
         <div className="px-5 pb-5 pt-4">
-          <p className="min-h-[72px] text-[14px] leading-6 text-slate-600">
+          <p
+            className="min-h-[72px] text-[14px] leading-6 text-slate-600 line-clamp-2"
+            title={description || "No description available."}
+          >
             {description || "No description available."}
           </p>
 
@@ -157,7 +172,9 @@ export function AdminMaterialCard({
 
       <ConfirmModal
         open={confirmOpen}
-        onOpenChange={(val) => { if (!deleting) setConfirmOpen(val); }}
+        onOpenChange={(val) => {
+          if (!deleting) setConfirmOpen(val);
+        }}
         onConfirm={handleConfirmDelete}
         isLoading={deleting}
         title="Delete Material"

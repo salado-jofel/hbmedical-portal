@@ -37,3 +37,13 @@ export function validateCountry(country: string) {
     throw new Error("Facility country must be a 2-letter ISO code.");
   }
 }
+
+export function validatePasswordsMatch(
+  password: string,
+  confirmPassword: string,
+): string | null {
+  if (password !== confirmPassword) {
+    return "Passwords do not match.";
+  }
+  return null;
+}

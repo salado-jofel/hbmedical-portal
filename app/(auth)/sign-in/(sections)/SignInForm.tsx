@@ -34,6 +34,9 @@ export default function SignInForm() {
 
   const searchParams = useSearchParams();
   const qbError = searchParams.get("error");
+  const successMessage = searchParams.get("message") === "password_updated"
+    ? "Password updated successfully. Please sign in."
+    : null;
 
   return (
     <div className="w-full max-w-md select-none rounded-2xl border p-8 md:p-10 bg-white/8 backdrop-blur-2xl border-white/15 shadow-[0_8px_32px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.06)]">
@@ -75,6 +78,26 @@ export default function SignInForm() {
           />
 
           {state?.error && <ErrorAlert errorMessage={state.error} />}
+          {successMessage && (
+            <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/20 text-green-400 text-sm font-medium animate-in fade-in zoom-in-95">
+              {successMessage}
+            </div>
+          )}
+        </div>
+
+        {/* Forgot password */}
+        <div className="flex justify-end -mt-1">
+          <Link
+            href="/forgot-password"
+            className="text-xs font-medium transition-colors"
+            style={{ color: "rgba(255,255,255,0.35)" }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = "#f5a255")}
+            onMouseLeave={(e) =>
+              (e.currentTarget.style.color = "rgba(255,255,255,0.35)")
+            }
+          >
+            Forgot password?
+          </Link>
         </div>
 
         {/* Remember me */}

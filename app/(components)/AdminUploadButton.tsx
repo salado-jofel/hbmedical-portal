@@ -2,10 +2,26 @@
 
 import { useRef, useState } from "react";
 import { Upload, X, FileText } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface AdminUploadButtonProps {
   onUpload: (formData: FormData) => Promise<void>;
+}
+
+function getDefaultTitleFromFileName(fileName: string, maxLength = 72) {
+  const base = fileName
+    .replace(/\.pdf$/i, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (base.length <= maxLength) return base;
+  return `${base.slice(0, maxLength).trimEnd()}…`;
 }
 
 export function AdminUploadButton({ onUpload }: AdminUploadButtonProps) {
@@ -35,6 +51,7 @@ export function AdminUploadButton({ onUpload }: AdminUploadButtonProps) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+
     if (!file || !title.trim() || !tag.trim()) {
       setError("File, title, and tag are required.");
       return;
@@ -70,29 +87,45 @@ export function AdminUploadButton({ onUpload }: AdminUploadButtonProps) {
         Upload
       </button>
 
-      <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="sm:max-w-md">
+      <Dialog
+        open={open}
+        onOpenChange={(nextOpen) => {
+          if (loading) return;
+          setOpen(nextOpen);
+          if (!nextOpen) resetForm();
+        }}
+      >
+        <DialogContent className="w-[min(92vw,32rem)] max-w-[calc(100vw-2rem)] overflow-hidden sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Upload Material</DialogTitle>
           </DialogHeader>
 
-          <form onSubmit={handleSubmit} className="space-y-4 pt-2">
+          <form onSubmit={handleSubmit} className="min-w-0 space-y-4 pt-2">
             {/* File picker */}
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
+            <div className="min-w-0">
+              <label className="mb-1 block text-sm font-medium text-slate-700">
                 PDF File <span className="text-red-500">*</span>
               </label>
+
               {file ? (
-                <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                <div className="flex w-full max-w-full items-center gap-2 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                   <FileText className="h-4 w-4 shrink-0 text-[#1f6da1]" />
-                  <span className="flex-1 truncate text-sm text-slate-700">{file.name}</span>
+
+                  <span
+                    className="min-w-0 flex-1 truncate text-sm text-slate-700"
+                    title={file.name}
+                  >
+                    {file.name}
+                  </span>
+
                   <button
                     type="button"
                     onClick={() => {
                       setFile(null);
                       if (fileInputRef.current) fileInputRef.current.value = "";
                     }}
-                    className="text-slate-400 hover:text-red-500"
+                    className="shrink-0 text-slate-400 transition hover:text-red-500"
+                    aria-label="Remove selected file"
                   >
                     <X className="h-4 w-4" />
                   </button>
@@ -106,6 +139,7 @@ export function AdminUploadButton({ onUpload }: AdminUploadButtonProps) {
                   Click to choose a PDF file
                 </button>
               )}
+
               <input
                 ref={fileInputRef}
                 type="file"
@@ -114,55 +148,66 @@ export function AdminUploadButton({ onUpload }: AdminUploadButtonProps) {
                 onChange={(e) => {
                   const f = e.target.files?.[0] ?? null;
                   setFile(f);
-                  if (f && !title) setTitle(f.name.replace(/\.pdf$/i, ""));
+
+                  if (f && !title) {
+                    setTitle(getDefaultTitleFromFileName(f.name));
+                  }
                 }}
               />
             </div>
 
             {/* Title */}
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
+            <div className="min-w-0">
+              <label className="mb-1 block text-sm font-medium text-slate-700">
                 Title <span className="text-red-500">*</span>
               </label>
+
               <input
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
+                maxLength={120}
                 placeholder="e.g. Product Brochure 2026"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1f6da1] focus:ring-1 focus:ring-[#1f6da1]"
+                title={title}
+                className="w-full min-w-0 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1f6da1] focus:ring-1 focus:ring-[#1f6da1]"
               />
             </div>
 
             {/* Tag */}
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
+            <div className="min-w-0">
+              <label className="mb-1 block text-sm font-medium text-slate-700">
                 Tag <span className="text-red-500">*</span>
               </label>
+
               <input
                 type="text"
                 value={tag}
                 onChange={(e) => setTag(e.target.value)}
+                maxLength={60}
                 placeholder="e.g. brochure"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1f6da1] focus:ring-1 focus:ring-[#1f6da1]"
+                className="w-full min-w-0 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1f6da1] focus:ring-1 focus:ring-[#1f6da1]"
               />
             </div>
 
             {/* Sort order */}
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
+            <div className="min-w-0">
+              <label className="mb-1 block text-sm font-medium text-slate-700">
                 Sort Order
               </label>
+
               <input
                 type="number"
                 min="0"
                 value={sortOrder}
                 onChange={(e) => setSortOrder(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1f6da1] focus:ring-1 focus:ring-[#1f6da1]"
+                className="w-full min-w-0 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1f6da1] focus:ring-1 focus:ring-[#1f6da1]"
               />
             </div>
 
             {error && (
-              <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>
+              <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
+                {error}
+              </p>
             )}
 
             <div className="flex gap-3 pt-1">
@@ -174,6 +219,7 @@ export function AdminUploadButton({ onUpload }: AdminUploadButtonProps) {
               >
                 Cancel
               </button>
+
               <button
                 type="submit"
                 disabled={loading}

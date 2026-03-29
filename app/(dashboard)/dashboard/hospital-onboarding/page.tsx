@@ -3,6 +3,7 @@ import Providers from "./(sections)/Providers";
 import HospitalOnboardingCards from "./(sections)/HospitalOnboardingCards";
 import { DashboardHeader } from "@/app/(components)/DashboardHeader";
 import { Metadata } from "next";
+import { getUserData } from "../(services)/actions";
 
 export const metadata: Metadata = {
   title: "Hospital Onboarding",
@@ -18,7 +19,7 @@ export default async function HospitalOnboardingPage() {
           title="Hospital Onboarding"
           description="Your onboarding documents & resources"
         />
-        <HospitalOnboardingCards />
+        {/* <HospitalOnboardingCards /> */}
       </div>
     </Providers>
   );

@@ -1,12 +1,16 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 import { initialState } from "./hospital-onboarding-state";
 import { HospitalOnboardingMaterial } from "@/utils/interfaces/hospital-onboarding";
+import { UserData } from "../../(services)/actions";
 
 const hospitalOnboarding = createSlice({
   name: "Hospital Onboarding",
   initialState,
   reducers: {
-    setHospitalOnboardingMaterials(state, action: PayloadAction<HospitalOnboardingMaterial[]>) {
+    setHospitalOnboardingMaterials(
+      state,
+      action: PayloadAction<HospitalOnboardingMaterial[]>,
+    ) {
       state.items = action.payload;
       state.selectedIds = [];
       state.isSelecting = false;

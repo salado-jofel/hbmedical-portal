@@ -1,4 +1,5 @@
 import { HospitalOnboardingMaterial } from "@/utils/interfaces/hospital-onboarding";
+import { UserData } from "../../(services)/actions";
 
 export interface HospitalOnboardingState {
   items: HospitalOnboardingMaterial[];

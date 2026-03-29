@@ -9,6 +9,7 @@ import { RoleButton } from "@/app/(components)/RoleButton";
 import ErrorAlert from "@/app/(components)/ErrorAlert";
 import SubmitButton from "@/app/(components)/SubmitButton";
 import { HBLogo } from "@/app/(components)/HBLogo";
+import { validatePasswordsMatch } from "@/utils/validators/signup";
 import { PhoneInput } from "react-international-phone";
 import "react-international-phone/style.css";
 
@@ -59,9 +60,10 @@ export default function SignUpForm() {
     confirmPassword.length > 0 && password !== confirmPassword;
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    if (password !== confirmPassword) {
+    const mismatch = validatePasswordsMatch(password, confirmPassword);
+    if (mismatch) {
       event.preventDefault();
-      setClientError("Passwords do not match.");
+      setClientError(mismatch);
       return;
     }
 

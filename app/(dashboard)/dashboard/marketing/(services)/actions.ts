@@ -1,10 +1,22 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { STORAGE_BUCKETS, STORAGE_FOLDERS, STORAGE_SIGNED_URL_EXPIRES_IN } from "@/utils/constants/storage";
-import { toStorageReference, parseStorageReference, buildStoragePath } from "@/utils/helpers/storage";
-import { MarketingMaterialRow, MarketingMaterial } from "@/utils/interfaces/marketing";
+import {
+  STORAGE_BUCKETS,
+  STORAGE_FOLDERS,
+  STORAGE_SIGNED_URL_EXPIRES_IN,
+} from "@/utils/constants/storage";
+import {
+  toStorageReference,
+  parseStorageReference,
+  buildStoragePath,
+} from "@/utils/helpers/storage";
+import {
+  MarketingMaterialRow,
+  MarketingMaterial,
+} from "@/utils/interfaces/marketing";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdminOrThrow, getUserRole } from "@/lib/supabase/auth";
 
 const MARKETING_MATERIALS_SELECT = `
@@ -27,8 +39,21 @@ const MARKETING_PATH = "/dashboard/marketing";
 function mapMarketingMaterial(row: MarketingMaterialRow): MarketingMaterial {
   return {
     ...row,
-    file_url: toStorageReference({ bucket: row.bucket, file_path: row.file_path }),
+    file_url: toStorageReference({
+      bucket: row.bucket,
+      file_path: row.file_path,
+    }),
   };
+}
+
+function sanitizePdfBaseName(fileName: string) {
+  const withoutExt = fileName.replace(/\.pdf$/i, "").trim();
+  const sanitized = withoutExt
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return sanitized || "marketing-material";
 }
 
 export async function getMarketingMaterials(): Promise<MarketingMaterial[]> {
@@ -79,50 +104,91 @@ export async function getSignedDownloadUrl(
   return data?.signedUrl ?? null;
 }
 
-export async function uploadMarketingMaterial(formData: FormData): Promise<void> {
+export async function prepareMarketingUpload(input: {
+  fileName: string;
+  contentType: string;
+}) {
   const supabase = await createClient();
   await requireAdminOrThrow(supabase);
 
-  const file = formData.get("file") as File | null;
-  const title = (formData.get("title") as string | null)?.trim();
-  const tag = (formData.get("tag") as string | null)?.trim();
-  const sortOrder = parseInt((formData.get("sort_order") as string | null) ?? "0", 10);
+  const { fileName, contentType } = input;
 
-  if (!file || !title || !tag) {
-    throw new Error("File, title, and tag are required.");
+  if (!fileName?.trim()) {
+    throw new Error("File name is required.");
   }
 
-  if (file.type !== "application/pdf") {
+  if (contentType !== "application/pdf") {
     throw new Error("Only PDF files are allowed.");
   }
 
-  const fileName = file.name.trim();
-  const filePath = buildStoragePath(STORAGE_FOLDERS.marketing, fileName);
   const bucket = STORAGE_BUCKETS.private;
+  const safeBase = sanitizePdfBaseName(fileName);
+  const finalFileName = `${Date.now()}-${crypto.randomUUID()}-${safeBase}.pdf`;
+  const filePath = buildStoragePath(STORAGE_FOLDERS.marketing, finalFileName);
 
-  const { error: uploadError } = await supabase.storage
+  const admin = createAdminClient();
+
+  const { data, error } = await admin.storage
     .from(bucket)
-    .upload(filePath, file, { contentType: file.type, upsert: false });
+    .createSignedUploadUrl(filePath);
 
-  if (uploadError) {
-    console.error("[uploadMarketingMaterial] Storage upload error:", uploadError);
-    throw new Error(uploadError.message || "Failed to upload file.");
+  if (error || !data?.token) {
+    console.error("[prepareMarketingUpload] Signed upload error:", error);
+    throw new Error(error?.message || "Failed to prepare upload.");
   }
 
-  const { error: insertError } = await supabase.from("marketing_materials").insert({
-    title,
-    tag,
+  return {
     bucket,
-    file_path: filePath,
-    file_name: fileName,
-    mime_type: file.type,
-    sort_order: isNaN(sortOrder) ? 0 : sortOrder,
-    is_active: true,
-  });
+    filePath,
+    token: data.token,
+    fileName: finalFileName,
+    mimeType: contentType,
+  };
+}
+
+export async function completeMarketingUpload(input: {
+  title: string;
+  tag: string;
+  sortOrder?: number;
+  description?: string | null;
+  bucket: string;
+  filePath: string;
+  fileName: string;
+  mimeType: string;
+}) {
+  const supabase = await createClient();
+  await requireAdminOrThrow(supabase);
+
+  const title = input.title?.trim();
+  const tag = input.tag?.trim();
+  const description = input.description?.trim() || null;
+  const sortOrder = Number.isFinite(input.sortOrder)
+    ? Number(input.sortOrder)
+    : 0;
+
+  if (!title || !tag) {
+    throw new Error("Title and tag are required.");
+  }
+
+  const admin = createAdminClient();
+
+  const { error: insertError } = await admin
+    .from("marketing_materials")
+    .insert({
+      title,
+      description,
+      tag,
+      bucket: input.bucket,
+      file_path: input.filePath,
+      file_name: input.fileName,
+      mime_type: input.mimeType,
+      sort_order: sortOrder,
+      is_active: true,
+    });
 
   if (insertError) {
-    await supabase.storage.from(bucket).remove([filePath]);
-    console.error("[uploadMarketingMaterial] DB insert error:", insertError);
+    await admin.storage.from(input.bucket).remove([input.filePath]);
+    console.error("[completeMarketingUpload] DB insert error:", insertError);
     throw new Error(insertError.message || "Failed to save material record.");
   }
 
@@ -133,7 +199,9 @@ export async function deleteMarketingMaterial(id: string): Promise<void> {
   const supabase = await createClient();
   await requireAdminOrThrow(supabase);
 
-  const { data, error: fetchError } = await supabase
+  const admin = createAdminClient();
+
+  const { data, error: fetchError } = await admin
     .from("marketing_materials")
     .select("bucket, file_path")
     .eq("id", id)
@@ -143,9 +211,9 @@ export async function deleteMarketingMaterial(id: string): Promise<void> {
     throw new Error("Material not found.");
   }
 
-  await supabase.storage.from(data.bucket).remove([data.file_path]);
+  await admin.storage.from(data.bucket).remove([data.file_path]);
 
-  const { error } = await supabase
+  const { error } = await admin
     .from("marketing_materials")
     .delete()
     .eq("id", id);
@@ -158,13 +226,17 @@ export async function deleteMarketingMaterial(id: string): Promise<void> {
   revalidatePath(MARKETING_PATH);
 }
 
-export async function bulkDeleteMarketingMaterials(ids: string[]): Promise<void> {
+export async function bulkDeleteMarketingMaterials(
+  ids: string[],
+): Promise<void> {
   if (ids.length === 0) return;
 
   const supabase = await createClient();
   await requireAdminOrThrow(supabase);
 
-  const { data, error: fetchError } = await supabase
+  const admin = createAdminClient();
+
+  const { data, error: fetchError } = await admin
     .from("marketing_materials")
     .select("bucket, file_path")
     .in("id", ids);
@@ -182,12 +254,12 @@ export async function bulkDeleteMarketingMaterials(ids: string[]): Promise<void>
 
     await Promise.all(
       Object.entries(byBucket).map(([bucket, paths]) =>
-        supabase.storage.from(bucket).remove(paths),
+        admin.storage.from(bucket).remove(paths),
       ),
     );
   }
 
-  const { error } = await supabase
+  const { error } = await admin
     .from("marketing_materials")
     .delete()
     .in("id", ids);
