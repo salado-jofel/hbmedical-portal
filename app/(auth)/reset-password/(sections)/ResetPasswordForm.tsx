@@ -3,7 +3,6 @@
 import React, { useEffect, useState } from "react";
 import { Lock, ArrowLeft, Loader2, LinkIcon } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import SubmitButton from "@/app/(components)/SubmitButton";
 import ErrorAlert from "@/app/(components)/ErrorAlert";
@@ -15,7 +14,6 @@ import { validatePasswordsMatch } from "@/utils/validators/signup";
 type PageStatus = "loading" | "ready" | "error";
 
 export default function ResetPasswordForm() {
-  const router = useRouter();
   const supabase = createClient();
 
   const [pageStatus, setPageStatus] = useState<PageStatus>("loading");
@@ -81,7 +79,12 @@ export default function ResetPasswordForm() {
     // the user away from /sign-in back to the dashboard.
     await supabase.auth.signOut();
 
-    router.push("/sign-in?message=password_updated");
+    // Use a full page reload instead of router.push. router.push fires a fetch
+    // navigation immediately and on production the request can reach the
+    // middleware before the browser's cookie jar reflects the signOut, causing
+    // the recovery-session guard to redirect back to /reset-password. A hard
+    // navigation guarantees the updated cookies are flushed first.
+    window.location.href = "/sign-in?message=password_updated";
   };
 
   // ── Loading state ──────────────────────────────────────────────────────────

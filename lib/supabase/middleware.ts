@@ -63,6 +63,7 @@ export async function updateSession(request: NextRequest) {
         if (!currentPath.startsWith("/reset-password")) {
           const url = request.nextUrl.clone();
           url.pathname = "/reset-password";
+          url.search = ""; // don't carry over query params from the original URL
           return NextResponse.redirect(url);
         }
         return supabaseResponse;
