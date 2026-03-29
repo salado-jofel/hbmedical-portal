@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
-
-import { createAdminClient } from "@/utils/supabase/admin";
+import { createAdminClient } from "@/lib/supabase/admin";
 import {
   sendNet30ReminderEmail,
   type Net30ReminderStage,
-} from "@/utils/emails/send-net30-reminder";
-import type { PersistedPaymentStatus } from "@/app/(interfaces)/payment";
+} from "@/lib/emails/send-net30-reminder";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,207 +12,232 @@ export const dynamic = "force-dynamic";
 const ORDERS_PATH = "/dashboard/orders";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const UPCOMING_DAYS_BEFORE_DUE = 7;
-const DEFAULT_CURRENCY = "usd";
 
-type ReminderCandidateRow = {
-  id: string;
-  order_id: string | null;
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-  payment_mode: string | null;
-  payment_status: PersistedPaymentStatus | null;
-
-  receipt_email: string | null;
-
-  stripe_invoice_id: string | null;
-  stripe_invoice_number: string | null;
-  stripe_invoice_hosted_url: string | null;
-
-  invoice_due_date: string | null;
-  invoice_amount_due: number | null;
-  invoice_amount_remaining: number | null;
-  invoice_overdue_at: string | null;
-
-  net30_last_reminder_stage: Net30ReminderStage | null;
-  net30_last_reminder_sent_at: string | null;
-  net30_reminder_count: number | null;
-  net30_reminder_email_error: string | null;
-  net30_reminder_lock_id: string | null;
-
-  facilities?:
-    | {
-        name?: string | null;
-      }
-    | Array<{
-        name?: string | null;
-      }>
-    | null;
-
-  products?:
-    | {
-        name?: string | null;
-      }
-    | Array<{
-        name?: string | null;
-      }>
-    | null;
+type FlatCandidate = {
+  orderId: string;
+  orderNumber: string | null;
+  invoiceId: string;
+  providerInvoiceId: string;
+  invoiceNumber: string | null;
+  invoiceStatus: string;
+  dueAt: string;
+  /** stored in major units (dollars) in the DB */
+  amountDue: number;
+  amountPaid: number;
+  currency: string;
+  hostedInvoiceUrl: string | null;
+  lastReminderStage: Net30ReminderStage | null;
+  reminderCount: number;
+  reminderLockId: string | null;
+  facilityName: string | null;
+  facilityUserId: string | null;
+  productName: string | null;
 };
 
 type ReminderDecision =
-  | {
-      shouldSend: false;
-      reason: string;
-    }
-  | {
-      shouldSend: true;
-      stage: Net30ReminderStage;
-      overdueDays: number | null;
-    };
+  | { shouldSend: false; reason: string }
+  | { shouldSend: true; stage: Net30ReminderStage; overdueDays: number | null };
 
 type ProcessResult = {
   orderId: string;
   orderNumber: string | null;
-  recipient: string | null;
+  invoiceId: string;
   status: "sent" | "skipped" | "failed";
   stage: Net30ReminderStage | null;
   reason?: string;
   error?: string;
 };
 
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+
 function getBearerToken(request: Request): string | null {
   const authHeader = request.headers.get("authorization");
   if (!authHeader) return null;
-
   const [type, token] = authHeader.split(" ");
   if (type !== "Bearer" || !token) return null;
-
   return token.trim();
 }
 
 function isAuthorizedCronRequest(request: Request): boolean {
   const cronSecret = process.env.CRON_SECRET;
-
-  // Allow local/dev execution if no CRON_SECRET is set.
+  // Allow all requests in dev when CRON_SECRET is not configured.
   if (!cronSecret) {
     return process.env.NODE_ENV !== "production";
   }
-
-  const bearerToken = getBearerToken(request);
-  return bearerToken === cronSecret;
+  return getBearerToken(request) === cronSecret;
 }
 
-function toUtcStartOfDay(value: Date | string): Date {
-  const date = typeof value === "string" ? new Date(value) : value;
+// ─── Date helpers ─────────────────────────────────────────────────────────────
 
-  return new Date(
-    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
-  );
+function toUtcStartOfDay(value: Date | string): Date {
+  const d = typeof value === "string" ? new Date(value) : value;
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
 }
 
 function diffUtcCalendarDays(from: Date, to: Date): number {
-  const fromStart = toUtcStartOfDay(from).getTime();
-  const toStart = toUtcStartOfDay(to).getTime();
-
-  return Math.round((toStart - fromStart) / DAY_MS);
+  return Math.round(
+    (toUtcStartOfDay(to).getTime() - toUtcStartOfDay(from).getTime()) / DAY_MS,
+  );
 }
 
-function getRelatedName(
-  value:
-    | { name?: string | null }
-    | Array<{ name?: string | null }>
-    | null
-    | undefined,
-): string | null {
+// ─── Relation helpers ─────────────────────────────────────────────────────────
+
+function getSingle<T>(value: T | T[] | null | undefined): T | null {
   if (!value) return null;
-
-  if (Array.isArray(value)) {
-    return value[0]?.name?.trim() || null;
-  }
-
-  return value.name?.trim() || null;
+  return Array.isArray(value) ? (value[0] ?? null) : value;
 }
 
-function isBlank(value: string | null | undefined): boolean {
-  return !value || value.trim().length === 0;
-}
+const ORDER_WITH_INVOICE_SELECT = `
+  id,
+  order_number,
+  payment_status,
+  facilities ( name, user_id ),
+  order_items ( product_name ),
+  invoices (
+    id,
+    provider_invoice_id,
+    invoice_number,
+    status,
+    amount_due,
+    amount_paid,
+    currency,
+    due_at,
+    hosted_invoice_url,
+    net30_last_reminder_stage,
+    net30_reminder_count,
+    net30_reminder_lock_id
+  )
+`;
 
-function getEffectiveAmountRemaining(
-  order: ReminderCandidateRow,
-): number | null {
+function flattenCandidate(row: Record<string, unknown>): FlatCandidate | null {
+  // Skip terminal order payment states
+  const paymentStatus = row.payment_status as string | null;
   if (
-    typeof order.invoice_amount_remaining === "number" &&
-    Number.isFinite(order.invoice_amount_remaining)
+    paymentStatus === "paid" ||
+    paymentStatus === "canceled" ||
+    paymentStatus === "refunded" ||
+    paymentStatus === "partially_refunded"
   ) {
-    return order.invoice_amount_remaining;
+    return null;
   }
 
-  if (
-    typeof order.invoice_amount_due === "number" &&
-    Number.isFinite(order.invoice_amount_due)
-  ) {
-    return order.invoice_amount_due;
-  }
+  const invoice = getSingle(row.invoices as unknown);
+  if (!invoice) return null;
 
-  return null;
+  const inv = invoice as Record<string, unknown>;
+
+  // Must have a Stripe invoice ID and due date to send reminders
+  if (!inv.provider_invoice_id || !inv.due_at) return null;
+
+  // Skip already settled invoices
+  if (inv.status === "paid" || inv.status === "void") return null;
+
+  const facility = getSingle(row.facilities as unknown) as Record<
+    string,
+    unknown
+  > | null;
+  const orderItems = row.order_items as Array<Record<string, unknown>> | null;
+  const firstItem = Array.isArray(orderItems) ? (orderItems[0] ?? null) : null;
+
+  return {
+    orderId: row.id as string,
+    orderNumber: (row.order_number as string | null) ?? null,
+    invoiceId: inv.id as string,
+    providerInvoiceId: inv.provider_invoice_id as string,
+    invoiceNumber: (inv.invoice_number as string | null) ?? null,
+    invoiceStatus: (inv.status as string | null) ?? "issued",
+    dueAt: inv.due_at as string,
+    amountDue: Number(inv.amount_due ?? 0),
+    amountPaid: Number(inv.amount_paid ?? 0),
+    currency: (inv.currency as string | null) ?? "USD",
+    hostedInvoiceUrl: (inv.hosted_invoice_url as string | null) ?? null,
+    lastReminderStage:
+      (inv.net30_last_reminder_stage as Net30ReminderStage | null) ?? null,
+    reminderCount: (inv.net30_reminder_count as number | null) ?? 0,
+    reminderLockId: (inv.net30_reminder_lock_id as string | null) ?? null,
+    facilityName: (facility?.name as string | null) ?? null,
+    facilityUserId: (facility?.user_id as string | null) ?? null,
+    productName: (firstItem?.product_name as string | null) ?? null,
+  };
 }
+
+// ─── Data loading ─────────────────────────────────────────────────────────────
+
+async function loadCandidates(): Promise<FlatCandidate[]> {
+  const admin = createAdminClient();
+
+  const { data, error } = await admin
+    .from("orders")
+    .select(ORDER_WITH_INVOICE_SELECT)
+    .eq("payment_method", "net_30")
+    .in("payment_status", ["pending", "failed"])
+    .order("created_at", { ascending: true })
+    .limit(500);
+
+  if (error) {
+    throw new Error(
+      `[net30 reminders] Failed to load candidates: ${error.message}`,
+    );
+  }
+
+  const candidates: FlatCandidate[] = [];
+  for (const row of (data ?? []) as Record<string, unknown>[]) {
+    const candidate = flattenCandidate(row);
+    if (candidate) candidates.push(candidate);
+  }
+  return candidates;
+}
+
+async function refreshCandidate(orderId: string): Promise<FlatCandidate | null> {
+  const admin = createAdminClient();
+
+  const { data, error } = await admin
+    .from("orders")
+    .select(ORDER_WITH_INVOICE_SELECT)
+    .eq("id", orderId)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return flattenCandidate(data as Record<string, unknown>);
+}
+
+// ─── Email lookup ──────────────────────────────────────────────────────────────
+
+async function resolveRecipientEmail(
+  userId: string | null,
+  cache: Map<string, string | null>,
+): Promise<string | null> {
+  if (!userId) return null;
+  if (cache.has(userId)) return cache.get(userId) ?? null;
+
+  const admin = createAdminClient();
+  const { data, error } = await admin.auth.admin.getUserById(userId);
+  const email = error ? null : (data?.user?.email ?? null);
+  cache.set(userId, email);
+  return email;
+}
+
+// ─── Reminder decision ────────────────────────────────────────────────────────
 
 function decideReminderStage(
-  order: ReminderCandidateRow,
+  candidate: FlatCandidate,
   now: Date,
 ): ReminderDecision {
-  if (order.payment_mode !== "net_30") {
-    return { shouldSend: false, reason: "not_net_30" };
-  }
-
-  if (!order.stripe_invoice_id) {
-    return { shouldSend: false, reason: "missing_invoice_id" };
-  }
-
-  if (order.payment_status === "paid") {
-    return { shouldSend: false, reason: "already_paid" };
-  }
-
-  if (isBlank(order.receipt_email)) {
-    return { shouldSend: false, reason: "missing_receipt_email" };
-  }
-
-  if (!order.invoice_due_date) {
-    return { shouldSend: false, reason: "missing_due_date" };
-  }
-
-  const amountRemaining = getEffectiveAmountRemaining(order);
-
-  if (amountRemaining != null && amountRemaining <= 0) {
-    return { shouldSend: false, reason: "no_balance_remaining" };
-  }
-
   const today = toUtcStartOfDay(now);
-  const dueDate = toUtcStartOfDay(order.invoice_due_date);
+  const dueDate = toUtcStartOfDay(candidate.dueAt);
   const daysUntilDue = diffUtcCalendarDays(today, dueDate);
 
   if (daysUntilDue === UPCOMING_DAYS_BEFORE_DUE) {
-    return {
-      shouldSend: true,
-      stage: "upcoming",
-      overdueDays: null,
-    };
+    return { shouldSend: true, stage: "upcoming", overdueDays: null };
   }
-
   if (daysUntilDue === 1) {
-    return {
-      shouldSend: true,
-      stage: "tomorrow",
-      overdueDays: null,
-    };
+    return { shouldSend: true, stage: "tomorrow", overdueDays: null };
   }
-
   if (daysUntilDue === 0) {
-    return {
-      shouldSend: true,
-      stage: "due_today",
-      overdueDays: null,
-    };
+    return { shouldSend: true, stage: "due_today", overdueDays: null };
   }
-
   if (daysUntilDue < 0) {
     return {
       shouldSend: true,
@@ -222,245 +245,130 @@ function decideReminderStage(
       overdueDays: Math.abs(daysUntilDue),
     };
   }
-
   return { shouldSend: false, reason: "not_in_send_window" };
 }
 
-async function loadReminderCandidates(): Promise<ReminderCandidateRow[]> {
-  const supabaseAdmin = createAdminClient();
+// ─── DB write helpers ─────────────────────────────────────────────────────────
 
-  const { data, error } = await supabaseAdmin
-    .from("orders")
-    .select(
-      `
-      id,
-      order_id,
-      payment_mode,
-      payment_status,
-      receipt_email,
-      stripe_invoice_id,
-      stripe_invoice_number,
-      stripe_invoice_hosted_url,
-      invoice_due_date,
-      invoice_amount_due,
-      invoice_amount_remaining,
-      invoice_overdue_at,
-      net30_last_reminder_stage,
-      net30_last_reminder_sent_at,
-      net30_reminder_count,
-      net30_reminder_email_error,
-      net30_reminder_lock_id,
-      facilities(name),
-      products(name)
-    `,
-    )
-    .eq("payment_mode", "net_30")
-    .not("stripe_invoice_id", "is", null)
-    .not("invoice_due_date", "is", null)
-    .in("payment_status", [
-      "unpaid",
-      "invoice_sent",
-      "overdue",
-      "payment_failed",
-    ])
-    .order("invoice_due_date", { ascending: true })
-    .limit(500);
-
-  if (error) {
-    throw new Error(
-      `[net30 reminders] Failed to load reminder candidates: ${error.message}`,
-    );
-  }
-
-  return (data ?? []) as ReminderCandidateRow[];
-}
-
-async function loadOrderById(
-  orderId: string,
-): Promise<ReminderCandidateRow | null> {
-  const supabaseAdmin = createAdminClient();
-
-  const { data, error } = await supabaseAdmin
-    .from("orders")
-    .select(
-      `
-      id,
-      order_id,
-      payment_mode,
-      payment_status,
-      receipt_email,
-      stripe_invoice_id,
-      stripe_invoice_number,
-      stripe_invoice_hosted_url,
-      invoice_due_date,
-      invoice_amount_due,
-      invoice_amount_remaining,
-      invoice_overdue_at,
-      net30_last_reminder_stage,
-      net30_last_reminder_sent_at,
-      net30_reminder_count,
-      net30_reminder_email_error,
-      net30_reminder_lock_id,
-      facilities(name),
-      products(name)
-    `,
-    )
-    .eq("id", orderId)
-    .maybeSingle();
-
-  if (error) {
-    throw new Error(
-      `[net30 reminders] Failed to reload order ${orderId}: ${error.message}`,
-    );
-  }
-
-  return (data as ReminderCandidateRow | null) ?? null;
-}
-
-async function claimReminderLock(orderId: string): Promise<string | null> {
-  const supabaseAdmin = createAdminClient();
+async function claimLock(invoiceId: string): Promise<string | null> {
+  const admin = createAdminClient();
   const lockId = crypto.randomUUID();
 
-  const { data, error } = await supabaseAdmin
-    .from("orders")
-    .update({
-      net30_reminder_lock_id: lockId,
-    })
-    .eq("id", orderId)
+  const { data, error } = await admin
+    .from("invoices")
+    .update({ net30_reminder_lock_id: lockId })
+    .eq("id", invoiceId)
     .is("net30_reminder_lock_id", null)
     .select("id")
     .maybeSingle();
 
   if (error) {
     throw new Error(
-      `[net30 reminders] Failed to claim reminder lock for ${orderId}: ${error.message}`,
+      `[net30 reminders] claimLock failed for invoice ${invoiceId}: ${error.message}`,
     );
   }
-
-  if (!data) {
-    return null;
-  }
-
-  return lockId;
+  return data ? lockId : null;
 }
 
-async function releaseReminderLock(orderId: string, lockId: string) {
-  const supabaseAdmin = createAdminClient();
-
-  const { error } = await supabaseAdmin
-    .from("orders")
-    .update({
-      net30_reminder_lock_id: null,
-    })
-    .eq("id", orderId)
+async function releaseLock(invoiceId: string, lockId: string): Promise<void> {
+  const admin = createAdminClient();
+  await admin
+    .from("invoices")
+    .update({ net30_reminder_lock_id: null })
+    .eq("id", invoiceId)
     .eq("net30_reminder_lock_id", lockId);
-
-  if (error) {
-    throw new Error(
-      `[net30 reminders] Failed to release reminder lock for ${orderId}: ${error.message}`,
-    );
-  }
-}
-
-async function markOrderOverdueIfNeeded(
-  orderId: string,
-  currentStatus: PersistedPaymentStatus | null,
-  lockId: string,
-) {
-  if (currentStatus === "overdue") return;
-
-  const supabaseAdmin = createAdminClient();
-
-  const { error } = await supabaseAdmin
-    .from("orders")
-    .update({
-      payment_status: "overdue",
-      invoice_overdue_at: new Date().toISOString(),
-    })
-    .eq("id", orderId)
-    .eq("net30_reminder_lock_id", lockId);
-
-  if (error) {
-    throw new Error(
-      `[net30 reminders] Failed to mark order ${orderId} overdue: ${error.message}`,
-    );
-  }
 }
 
 async function markReminderSent(
-  order: ReminderCandidateRow,
+  candidate: FlatCandidate,
   stage: Net30ReminderStage,
   lockId: string,
-) {
-  const supabaseAdmin = createAdminClient();
-
-  const nextReminderCount = (order.net30_reminder_count ?? 0) + 1;
-
-  const { error } = await supabaseAdmin
-    .from("orders")
+): Promise<void> {
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("invoices")
     .update({
       net30_last_reminder_stage: stage,
       net30_last_reminder_sent_at: new Date().toISOString(),
-      net30_reminder_count: nextReminderCount,
+      net30_reminder_count: candidate.reminderCount + 1,
       net30_reminder_email_error: null,
       net30_reminder_lock_id: null,
     })
-    .eq("id", order.id)
+    .eq("id", candidate.invoiceId)
     .eq("net30_reminder_lock_id", lockId);
 
   if (error) {
     throw new Error(
-      `[net30 reminders] Failed to save reminder send state for ${order.id}: ${error.message}`,
+      `[net30 reminders] markReminderSent failed for invoice ${candidate.invoiceId}: ${error.message}`,
     );
   }
 }
 
 async function markReminderFailed(
-  orderId: string,
+  invoiceId: string,
   lockId: string,
   message: string,
-) {
-  const supabaseAdmin = createAdminClient();
-
-  const { error } = await supabaseAdmin
-    .from("orders")
+): Promise<void> {
+  const admin = createAdminClient();
+  await admin
+    .from("invoices")
     .update({
       net30_reminder_email_error: message,
       net30_reminder_lock_id: null,
     })
-    .eq("id", orderId)
+    .eq("id", invoiceId)
     .eq("net30_reminder_lock_id", lockId);
-
-  if (error) {
-    throw new Error(
-      `[net30 reminders] Failed to save reminder error state for ${orderId}: ${error.message}`,
-    );
-  }
 }
 
-async function processReminderForOrder(
-  order: ReminderCandidateRow,
+async function markInvoiceOverdueIfNeeded(
+  orderId: string,
+  invoiceId: string,
+  currentInvoiceStatus: string,
+  lockId: string,
+): Promise<void> {
+  if (currentInvoiceStatus === "overdue") return;
+
+  const admin = createAdminClient();
+
+  await Promise.all([
+    // Update invoices.status — guards with lock to prevent race
+    admin
+      .from("invoices")
+      .update({ status: "overdue" })
+      .eq("id", invoiceId)
+      .eq("net30_reminder_lock_id", lockId),
+    // Mirror to orders.invoice_status for UI display
+    admin.from("orders").update({ invoice_status: "overdue" }).eq("id", orderId),
+  ]);
+}
+
+// ─── Process one candidate ────────────────────────────────────────────────────
+
+async function processCandidate(
+  candidate: FlatCandidate,
+  recipientEmail: string | null,
   now: Date,
   dryRun: boolean,
 ): Promise<ProcessResult> {
-  const initialDecision = decideReminderStage(order, now);
+  const base = {
+    orderId: candidate.orderId,
+    orderNumber: candidate.orderNumber,
+    invoiceId: candidate.invoiceId,
+  };
 
-  if (!initialDecision.shouldSend) {
-    return {
-      orderId: order.id,
-      orderNumber: order.order_id,
-      recipient: order.receipt_email,
-      status: "skipped",
-      stage: null,
-      reason: initialDecision.reason,
-    };
+  if (!recipientEmail) {
+    return { ...base, status: "skipped", stage: null, reason: "missing_recipient_email" };
   }
 
-  if (order.net30_last_reminder_stage === initialDecision.stage) {
+  const initialDecision = decideReminderStage(candidate, now);
+
+  if (!initialDecision.shouldSend) {
+    return { ...base, status: "skipped", stage: null, reason: initialDecision.reason };
+  }
+
+  if (candidate.lastReminderStage === initialDecision.stage) {
     return {
-      orderId: order.id,
-      orderNumber: order.order_id,
-      recipient: order.receipt_email,
+      ...base,
       status: "skipped",
       stage: initialDecision.stage,
       reason: "stage_already_sent",
@@ -468,23 +376,14 @@ async function processReminderForOrder(
   }
 
   if (dryRun) {
-    return {
-      orderId: order.id,
-      orderNumber: order.order_id,
-      recipient: order.receipt_email,
-      status: "sent",
-      stage: initialDecision.stage,
-      reason: "dry_run",
-    };
+    return { ...base, status: "sent", stage: initialDecision.stage, reason: "dry_run" };
   }
 
-  const lockId = await claimReminderLock(order.id);
+  const lockId = await claimLock(candidate.invoiceId);
 
   if (!lockId) {
     return {
-      orderId: order.id,
-      orderNumber: order.order_id,
-      recipient: order.receipt_email,
+      ...base,
       status: "skipped",
       stage: initialDecision.stage,
       reason: "locked_by_another_process",
@@ -492,43 +391,34 @@ async function processReminderForOrder(
   }
 
   try {
-    const freshOrder = await loadOrderById(order.id);
+    // Re-read after acquiring lock to guard against concurrent updates
+    const fresh = await refreshCandidate(candidate.orderId);
 
-    if (!freshOrder) {
-      await releaseReminderLock(order.id, lockId);
-
-      return {
-        orderId: order.id,
-        orderNumber: order.order_id,
-        recipient: order.receipt_email,
-        status: "skipped",
-        stage: initialDecision.stage,
-        reason: "order_missing_after_lock",
-      };
+    if (!fresh) {
+      await releaseLock(candidate.invoiceId, lockId);
+      return { ...base, status: "skipped", stage: null, reason: "invoice_gone_after_lock" };
     }
 
-    const freshDecision = decideReminderStage(freshOrder, now);
+    const freshDecision = decideReminderStage(fresh, now);
 
     if (!freshDecision.shouldSend) {
-      await releaseReminderLock(order.id, lockId);
-
+      await releaseLock(fresh.invoiceId, lockId);
       return {
-        orderId: freshOrder.id,
-        orderNumber: freshOrder.order_id,
-        recipient: freshOrder.receipt_email,
+        orderId: fresh.orderId,
+        orderNumber: fresh.orderNumber,
+        invoiceId: fresh.invoiceId,
         status: "skipped",
         stage: null,
         reason: freshDecision.reason,
       };
     }
 
-    if (freshOrder.net30_last_reminder_stage === freshDecision.stage) {
-      await releaseReminderLock(order.id, lockId);
-
+    if (fresh.lastReminderStage === freshDecision.stage) {
+      await releaseLock(fresh.invoiceId, lockId);
       return {
-        orderId: freshOrder.id,
-        orderNumber: freshOrder.order_id,
-        recipient: freshOrder.receipt_email,
+        orderId: fresh.orderId,
+        orderNumber: fresh.orderNumber,
+        invoiceId: fresh.invoiceId,
         status: "skipped",
         stage: freshDecision.stage,
         reason: "stage_already_sent",
@@ -536,63 +426,60 @@ async function processReminderForOrder(
     }
 
     if (freshDecision.stage === "overdue") {
-      await markOrderOverdueIfNeeded(
-        freshOrder.id,
-        freshOrder.payment_status,
+      await markInvoiceOverdueIfNeeded(
+        fresh.orderId,
+        fresh.invoiceId,
+        fresh.invoiceStatus,
         lockId,
       );
     }
 
+    // DB stores amounts in major units (dollars); email expects cents
+    const amountRemainingCents = Math.round(
+      (fresh.amountDue - fresh.amountPaid) * 100,
+    );
+
     await sendNet30ReminderEmail({
-      to: freshOrder.receipt_email!.trim(),
-      orderId: freshOrder.id,
-      orderNumber: freshOrder.order_id,
-      facilityName: getRelatedName(freshOrder.facilities),
-      productName: getRelatedName(freshOrder.products),
-      amountRemaining:
-        getEffectiveAmountRemaining(freshOrder) ??
-        freshOrder.invoice_amount_due ??
-        null,
-      currency: DEFAULT_CURRENCY,
-      dueDate: freshOrder.invoice_due_date,
-      hostedInvoiceUrl: freshOrder.stripe_invoice_hosted_url,
-      invoiceNumber: freshOrder.stripe_invoice_number,
+      to: recipientEmail,
+      orderId: fresh.orderId,
+      orderNumber: fresh.orderNumber,
+      facilityName: fresh.facilityName,
+      productName: fresh.productName,
+      amountRemaining: amountRemainingCents > 0 ? amountRemainingCents : null,
+      currency: fresh.currency,
+      dueDate: fresh.dueAt,
+      hostedInvoiceUrl: fresh.hostedInvoiceUrl,
+      invoiceNumber: fresh.invoiceNumber,
       reminderStage: freshDecision.stage,
       overdueDays: freshDecision.overdueDays,
     });
 
-    await markReminderSent(freshOrder, freshDecision.stage, lockId);
+    await markReminderSent(fresh, freshDecision.stage, lockId);
 
     return {
-      orderId: freshOrder.id,
-      orderNumber: freshOrder.order_id,
-      recipient: freshOrder.receipt_email,
+      orderId: fresh.orderId,
+      orderNumber: fresh.orderNumber,
+      invoiceId: fresh.invoiceId,
       status: "sent",
       stage: freshDecision.stage,
     };
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Unknown reminder send error";
-
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown reminder error";
     try {
-      await markReminderFailed(order.id, lockId, message);
-    } catch (persistError) {
-      console.error(
-        "[net30 reminders] Failed to persist reminder failure:",
-        persistError,
-      );
+      await markReminderFailed(candidate.invoiceId, lockId, message);
+    } catch (persistErr) {
+      console.error("[net30 reminders] Failed to persist failure state:", persistErr);
     }
-
     return {
-      orderId: order.id,
-      orderNumber: order.order_id,
-      recipient: order.receipt_email,
+      ...base,
       status: "failed",
       stage: initialDecision.stage,
       error: message,
     };
   }
 }
+
+// ─── Main handler ─────────────────────────────────────────────────────────────
 
 async function handleReminderCron(request: Request) {
   if (!isAuthorizedCronRequest(request)) {
@@ -601,15 +488,16 @@ async function handleReminderCron(request: Request) {
 
   const url = new URL(request.url);
   const dryRun = url.searchParams.get("dry_run") === "1";
+  const now = new Date();
 
   try {
-    const now = new Date();
-    const candidates = await loadReminderCandidates();
-
+    const candidates = await loadCandidates();
+    const emailCache = new Map<string, string | null>();
     const results: ProcessResult[] = [];
 
-    for (const order of candidates) {
-      const result = await processReminderForOrder(order, now, dryRun);
+    for (const candidate of candidates) {
+      const email = await resolveRecipientEmail(candidate.facilityUserId, emailCache);
+      const result = await processCandidate(candidate, email, now, dryRun);
       results.push(result);
     }
 
@@ -625,27 +513,13 @@ async function handleReminderCron(request: Request) {
       ok: true,
       dryRun,
       processedAt: now.toISOString(),
-      summary: {
-        candidateCount: candidates.length,
-        sent,
-        skipped,
-        failed,
-      },
+      summary: { candidateCount: candidates.length, sent, skipped, failed },
       results,
     });
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Net 30 reminder cron failed.";
-
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Net 30 reminder cron failed.";
     console.error("[net30 reminders] fatal error:", message);
-
-    return NextResponse.json(
-      {
-        ok: false,
-        error: message,
-      },
-      { status: 500 },
-    );
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }
 

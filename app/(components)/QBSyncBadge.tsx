@@ -1,4 +1,4 @@
-import { formatDate } from "@/utils/formatter";
+import { formatDate } from "@/utils/helpers/formatter";
 import { CheckCircle } from "lucide-react";
 
 interface QBSyncBadgeProps {
