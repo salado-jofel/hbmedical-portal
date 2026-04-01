@@ -6,7 +6,7 @@ export interface Profile {
   last_name: string;
   email: string;
   phone: string;
-  role: "sales_representative" | "doctor" | "admin";
+  role: "sales_representative" | "doctor" | "admin" | "supervisor" | "clinical_provider" | "non_clinical_staff";
   created_at?: string;
 }
 

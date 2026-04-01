@@ -1,6 +1,6 @@
 "use client";
 
-import { User, Stethoscope, BriefcaseMedical, ShieldCheck } from "lucide-react";
+import { User, Stethoscope, BriefcaseMedical, ShieldCheck, UserCheck } from "lucide-react";
 
 interface SidebarUserCardProps {
   name?: string | null;
@@ -22,6 +22,27 @@ function getRoleBadge(role: string) {
       className: "bg-[#15689E]/30 text-white/80 border-[#15689E]/40",
       icon: <Stethoscope className="w-3 h-3" />,
       label: "Physician",
+    };
+  }
+  if (role === "supervisor") {
+    return {
+      className: "bg-green-500/20 text-green-300 border-green-500/30",
+      icon: <UserCheck className="w-3 h-3" />,
+      label: "Supervisor",
+    };
+  }
+  if (role === "clinical_provider") {
+    return {
+      className: "bg-teal-500/20 text-teal-300 border-teal-500/30",
+      icon: <Stethoscope className="w-3 h-3" />,
+      label: "Clinical Provider",
+    };
+  }
+  if (role === "non_clinical_staff") {
+    return {
+      className: "bg-slate-500/20 text-slate-300 border-slate-500/30",
+      icon: <User className="w-3 h-3" />,
+      label: "Staff",
     };
   }
   return {

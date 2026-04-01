@@ -10,7 +10,10 @@
       "Bash(ls:*)",
       "Bash(grep -E \"\\\\.\\(tsx?|jsx?\\)$\")",
       "Bash(cat:*)",
-      "Bash(grep -rn \"toast\\\\|Toaster\" D:/Documents/hbmedical-portal/app --include=*.tsx --include=*.ts)"
+      "Bash(grep -rn \"toast\\\\|Toaster\" D:/Documents/hbmedical-portal/app --include=*.tsx --include=*.ts)",
+      "mcp__claude_ai_Supabase__execute_sql",
+      "Bash(node -e \"require\\(''bcryptjs''\\)\")",
+      "Bash(npm install:*)"
     ],
     "deny": [
       "Read(.env*)",

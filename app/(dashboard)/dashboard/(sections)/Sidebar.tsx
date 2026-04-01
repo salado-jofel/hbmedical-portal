@@ -12,6 +12,8 @@ import {
   Hospital,
   Building2,
   CheckSquare,
+  Share2,
+  Settings,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
@@ -45,7 +47,7 @@ const navItems: NavItemDef[] = [
     label: "Orders",
     href: "/dashboard/orders",
     // Forbidden for Admin in middleware
-    allowedRoles: ["sales_representative", "doctor"],
+    allowedRoles: ["sales_representative", "doctor", "supervisor", "clinical_provider", "non_clinical_staff"],
   },
   {
     icon: Package,
@@ -96,6 +98,18 @@ const navItems: NavItemDef[] = [
     label: "Tasks",
     href: "/dashboard/tasks",
     allowedRoles: ["sales_representative", "admin"],
+  },
+  {
+    icon: Share2,
+    label: "Onboarding",
+    href: "/dashboard/onboarding",
+    allowedRoles: ["sales_representative", "admin"],
+  },
+  {
+    icon: Settings,
+    label: "Settings",
+    href: "/dashboard/settings",
+    allowedRoles: ["sales_representative", "doctor", "admin", "supervisor", "clinical_provider", "non_clinical_staff"],
   },
 ];
 
