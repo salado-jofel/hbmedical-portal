@@ -10,6 +10,8 @@ import {
   BookOpen,
   LogOut,
   Hospital,
+  Building2,
+  CheckSquare,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
@@ -83,6 +85,18 @@ const navItems: NavItemDef[] = [
     href: "/dashboard/hospital-onboarding",
     allowedRoles: ["sales_representative", "doctor", "admin"],
   },
+  {
+    icon: Building2,
+    label: "Accounts",
+    href: "/dashboard/accounts",
+    allowedRoles: ["sales_representative", "admin"],
+  },
+  {
+    icon: CheckSquare,
+    label: "Tasks",
+    href: "/dashboard/tasks",
+    allowedRoles: ["sales_representative", "admin"],
+  },
 ];
 
 /**
@@ -150,7 +164,11 @@ export function Sidebar() {
                 icon={item.icon}
                 label={item.label}
                 href={item.href}
-                isActive={pathname === item.href}
+                isActive={
+                  pathname === item.href ||
+                  (item.href !== "/dashboard" &&
+                    pathname.startsWith(item.href + "/"))
+                }
               />
             ))}
         </nav>

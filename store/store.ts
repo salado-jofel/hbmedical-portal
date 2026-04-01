@@ -1,4 +1,8 @@
 import dashboardSlice from "@/app/(dashboard)/dashboard/(redux)/dashboard-slice";
+import accountsSlice from "@/app/(dashboard)/dashboard/(redux)/accounts-slice";
+import activitiesSlice from "@/app/(dashboard)/dashboard/(redux)/activities-slice";
+import contactsSlice from "@/app/(dashboard)/dashboard/(redux)/contacts-slice";
+import tasksSlice from "@/app/(dashboard)/dashboard/(redux)/tasks-slice";
 import contractsSlice from "@/app/(dashboard)/dashboard/contracts/(redux)/contracts-slice";
 import hospitalOnboardingSlice from "@/app/(dashboard)/dashboard/hospital-onboarding/(redux)/hospital-onboarding-slice";
 import marketingSlice from "@/app/(dashboard)/dashboard/marketing/(redux)/marketing-slice";
@@ -10,6 +14,10 @@ import { configureStore } from "@reduxjs/toolkit";
 
 export const store = configureStore({
   reducer: {
+    accounts: accountsSlice,
+    activities: activitiesSlice,
+    contacts: contactsSlice,
+    tasks: tasksSlice,
     products: productsSlice,
     orders: ordersSlice,
     profile: profileSlice,

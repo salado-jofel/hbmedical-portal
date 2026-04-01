@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "Read(*)",
+      "Write(*)",
+      "Edit(*)",
+      "MultiEdit(*)",
+      "Bash(xargs grep:*)",
+      "Bash(ls:*)",
+      "Bash(grep -E \"\\\\.\\(tsx?|jsx?\\)$\")",
+      "Bash(cat:*)",
+      "Bash(grep -rn \"toast\\\\|Toaster\" D:/Documents/hbmedical-portal/app --include=*.tsx --include=*.ts)"
+    ],
+    "deny": [
+      "Read(.env*)",
+      "Write(.env*)",
+      "Edit(.env*)"
+    ]
+  }
+}
