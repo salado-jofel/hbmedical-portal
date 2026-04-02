@@ -181,6 +181,7 @@ export async function createUser(
         last_name,
         email,
         role,
+        has_completed_setup: false,
       });
 
     if (profileError) {
@@ -193,6 +194,9 @@ export async function createUser(
       await adminClient.auth.admin.generateLink({
         type: "recovery",
         email,
+        options: {
+          redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/set-password`,
+        },
       });
 
     if (linkError || !linkData?.properties?.action_link) {

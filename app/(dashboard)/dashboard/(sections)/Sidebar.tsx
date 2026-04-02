@@ -93,7 +93,7 @@ const navItems: NavItemDef[] = [
     icon: Share2,
     label: "Onboarding",
     href: "/dashboard/onboarding",
-    allowedRoles: ["admin", "sales_representative"],
+    allowedRoles: ["sales_representative"],
   },
   {
     icon: Users,

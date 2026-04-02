@@ -105,79 +105,121 @@ export async function inviteSignUp(
       return { error: friendlyDbError(profileError, "Failed to create account. Please try again.") };
     }
 
-    // Hash and store PIN for clinical providers
-    if (inviteToken.role_type === "clinical_provider") {
-      const pin = (formData.get("pin") as string)?.trim();
-      if (!pin || !/^\d{4,6}$/.test(pin)) {
-        await supabaseAdmin.auth.admin.deleteUser(createdUserId);
-        return { error: "A valid 4–6 digit PIN is required for clinical providers." };
-      }
-      const pinHash = await bcrypt.hash(pin, 10);
-      const now = new Date().toISOString();
-      const { error: credError } = await supabaseAdmin
-        .from("provider_credentials")
+    // ── CASE B — Sales representative (sub-rep) ───────────────────────────────
+    if (inviteToken.role_type === "sales_representative") {
+      // Record the parent-child rep relationship
+      const { error: hierarchyError } = await supabaseAdmin
+        .from("rep_hierarchy")
         .insert({
-          user_id: createdUserId,
-          pin_hash: pinHash,
-          baa_signed_at: now,
-          terms_signed_at: now,
+          parent_rep_id: inviteToken.created_by,
+          child_rep_id: createdUserId,
         });
-      if (credError) {
-        console.error("[inviteSignUp] provider_credentials error:", JSON.stringify(credError));
+
+      if (hierarchyError) {
+        console.error("[inviteSignUp] rep_hierarchy error:", JSON.stringify(hierarchyError));
         await supabaseAdmin.auth.admin.deleteUser(createdUserId);
-        return { error: credError.message ?? "Failed to save provider credentials." };
-      }
-    }
-
-    // Determine facility ID to use
-    let facilityIdToUse = inviteToken.facility_id;
-
-    if (!facilityIdToUse) {
-      // No facility linked to token — create a new facility from the office info in the form
-      const officeName = (formData.get("office_name") as string)?.trim();
-      const officePhone = toE164((formData.get("office_phone") as string) ?? "");
-      const officeAddress = (formData.get("office_address") as string)?.trim();
-      const officeCity = (formData.get("office_city") as string)?.trim();
-      const officeState = (formData.get("office_state") as string)?.trim();
-      const officePostalCode = (formData.get("office_postal_code") as string)?.trim();
-
-      const { data: newFacility, error: facilityError } = await supabaseAdmin
-        .from("facilities")
-        .insert({
-          user_id: createdUserId,
-          name: officeName || `${firstName} ${lastName}'s Practice`,
-          contact: `${firstName} ${lastName}`,
-          phone: officePhone || phone,
-          address_line_1: officeAddress || "",
-          city: officeCity || "",
-          state: officeState || "",
-          postal_code: officePostalCode || "",
-          country: "US",
-          status: "active",
-        })
-        .select("id")
-        .single();
-
-      if (facilityError) {
-        console.error("[inviteSignUp] Facility creation error:", JSON.stringify(facilityError));
-        await supabaseAdmin.auth.admin.deleteUser(createdUserId);
-        return { error: friendlyDbError(facilityError, "Failed to create facility. Please check your information.") };
+        return { error: "Failed to link rep hierarchy. Please try again." };
       }
 
-      createdFacilityId = newFacility.id;
-      facilityIdToUse = newFacility.id;
+      // Sub-reps need to set up their own practice after sign-in
+      await supabaseAdmin
+        .from("profiles")
+        .update({ has_completed_setup: false })
+        .eq("id", createdUserId);
+
+      await consumeInviteToken(token, createdUserId);
+    } else {
+      // ── CASE A — Clinical role with a pre-linked facility ──────────────────
+      // Hash and store PIN for clinical providers
+      if (inviteToken.role_type === "clinical_provider") {
+        const pin = (formData.get("pin") as string)?.trim();
+        if (!pin || !/^\d{4,6}$/.test(pin)) {
+          await supabaseAdmin.auth.admin.deleteUser(createdUserId);
+          return { error: "A valid 4–6 digit PIN is required for clinical providers." };
+        }
+        const pinHash = await bcrypt.hash(pin, 10);
+        const now = new Date().toISOString();
+        const { error: credError } = await supabaseAdmin
+          .from("provider_credentials")
+          .insert({
+            user_id: createdUserId,
+            pin_hash: pinHash,
+            baa_signed_at: now,
+            terms_signed_at: now,
+          });
+        if (credError) {
+          console.error("[inviteSignUp] provider_credentials error:", JSON.stringify(credError));
+          await supabaseAdmin.auth.admin.deleteUser(createdUserId);
+          return { error: credError.message ?? "Failed to save provider credentials." };
+        }
+      }
+
+      if (inviteToken.facility_id) {
+        // Token carries the facility — link directly
+        const { error: memberError } = await supabaseAdmin
+          .from("facility_members")
+          .insert({
+            facility_id: inviteToken.facility_id,
+            user_id: createdUserId,
+            role_type: inviteToken.role_type,
+            can_sign_orders: inviteToken.role_type === "clinical_provider",
+            is_primary: false,
+            invited_by: inviteToken.created_by,
+          });
+
+        if (memberError) {
+          console.error("[inviteSignUp] facility_members error:", JSON.stringify(memberError));
+          await supabaseAdmin.auth.admin.deleteUser(createdUserId);
+          return { error: "Failed to link to facility. Please try again." };
+        }
+
+        await supabaseAdmin
+          .from("profiles")
+          .update({ has_completed_setup: true })
+          .eq("id", createdUserId);
+      } else {
+        // ── CASE C — Fallback: create a new facility from form data ───────────
+        const officeName = (formData.get("office_name") as string)?.trim();
+        const officePhone = toE164((formData.get("office_phone") as string) ?? "");
+        const officeAddress = (formData.get("office_address") as string)?.trim();
+        const officeCity = (formData.get("office_city") as string)?.trim();
+        const officeState = (formData.get("office_state") as string)?.trim();
+        const officePostalCode = (formData.get("office_postal_code") as string)?.trim();
+
+        const { data: newFacility, error: facilityError } = await supabaseAdmin
+          .from("facilities")
+          .insert({
+            user_id: createdUserId,
+            name: officeName || `${firstName} ${lastName}'s Practice`,
+            contact: `${firstName} ${lastName}`,
+            phone: officePhone || phone,
+            address_line_1: officeAddress || "",
+            city: officeCity || "",
+            state: officeState || "",
+            postal_code: officePostalCode || "",
+            country: "US",
+            status: "active",
+          })
+          .select("id")
+          .single();
+
+        if (facilityError) {
+          console.error("[inviteSignUp] Facility creation error:", JSON.stringify(facilityError));
+          await supabaseAdmin.auth.admin.deleteUser(createdUserId);
+          return { error: friendlyDbError(facilityError, "Failed to create facility. Please check your information.") };
+        }
+
+        createdFacilityId = newFacility.id;
+        await addFacilityMember(newFacility.id, createdUserId, inviteToken.role_type);
+
+        await supabaseAdmin
+          .from("profiles")
+          .update({ has_completed_setup: true })
+          .eq("id", createdUserId);
+      }
+
+      await consumeInviteToken(token, createdUserId);
     }
-
-    // Add to facility_members
-    console.log("[inviteSignUp] addFacilityMember args:", {
-      facilityId: facilityIdToUse,
-      userId: createdUserId,
-      roleType: inviteToken.role_type,
-    });
-    await addFacilityMember(facilityIdToUse, createdUserId, inviteToken.role_type);
-
-    // Consume the token
-    await consumeInviteToken(token, createdUserId);
   } catch (err) {
     if (createdFacilityId) {
       try {

@@ -40,6 +40,37 @@ const LOGO_URL =
   "https://eyrefohymvvabazvmemq.supabase.co/storage/v1/object/public/spearhead-assets/assets/email/hb-logo-name-2.png";
 
 /* -------------------------------------------------------------------------- */
+/* getRepFacilityId — walks rep_hierarchy upward to find an owned facility    */
+/* -------------------------------------------------------------------------- */
+
+async function getRepFacilityId(
+  userId: string,
+  supabase: Awaited<ReturnType<typeof createClient>>,
+): Promise<string | null> {
+  // Check if this rep directly owns a facility
+  const { data: ownedFacility } = await supabase
+    .from("facilities")
+    .select("id")
+    .eq("user_id", userId)
+    .limit(1)
+    .maybeSingle();
+
+  if (ownedFacility?.id) return ownedFacility.id;
+
+  // Walk up the hierarchy to the parent rep and check theirs
+  const { data: hierarchy } = await supabase
+    .from("rep_hierarchy")
+    .select("parent_rep_id")
+    .eq("child_rep_id", userId)
+    .limit(1)
+    .maybeSingle();
+
+  if (!hierarchy?.parent_rep_id) return null;
+
+  return getRepFacilityId(hierarchy.parent_rep_id, supabase);
+}
+
+/* -------------------------------------------------------------------------- */
 /* generateInviteToken                                                        */
 /* -------------------------------------------------------------------------- */
 
@@ -80,11 +111,17 @@ export async function generateInviteToken(
       Date.now() + parsed.data.expires_in_days * 24 * 60 * 60 * 1000,
     ).toISOString();
 
+    // For clinical roles, auto-resolve the rep's facility if none was provided
+    let resolvedFacilityId = parsed.data.facility_id ?? null;
+    if (!resolvedFacilityId && parsed.data.role_type !== "sales_representative") {
+      resolvedFacilityId = await getRepFacilityId(user.id, supabase);
+    }
+
     const { data: inserted, error } = await supabase
       .from(INVITE_TOKENS_TABLE)
       .insert({
         created_by: user.id,
-        facility_id: parsed.data.facility_id ?? null,
+        facility_id: resolvedFacilityId,
         role_type: parsed.data.role_type,
         expires_at: expiresAt,
       })

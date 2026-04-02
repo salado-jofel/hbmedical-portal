@@ -14,7 +14,6 @@ import {
 } from "@/components/ui/select";
 import { generateInviteToken } from "@/app/(dashboard)/dashboard/onboarding/(services)/actions";
 import type { IInviteTokenFormState } from "@/utils/interfaces/invite-tokens";
-import type { IAccount } from "@/utils/interfaces/accounts";
 
 const ROLE_OPTIONS = [
   { value: "clinical_provider", label: "Clinical Provider" },
@@ -29,11 +28,10 @@ const EXPIRY_OPTIONS = [
 ];
 
 interface InviteClinicFormProps {
-  accounts: IAccount[];
   baseUrl: string;
 }
 
-export function InviteClinicForm({ accounts, baseUrl }: InviteClinicFormProps) {
+export function InviteClinicForm({ baseUrl }: InviteClinicFormProps) {
   const [state, formAction, isPending] = useActionState<
     IInviteTokenFormState | null,
     FormData
@@ -61,31 +59,6 @@ export function InviteClinicForm({ accounts, baseUrl }: InviteClinicFormProps) {
   return (
     <div className="space-y-4">
       <form action={formAction} className="space-y-4">
-        {/* Account (optional) */}
-        <div className="space-y-1.5">
-          <Label className="text-xs">
-            Account{" "}
-            <span className="text-slate-400 font-normal">(optional)</span>
-          </Label>
-          <Select name="facility_id" defaultValue="none">
-            <SelectTrigger className="h-9 text-sm">
-              <SelectValue placeholder="No account linked" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none" className="text-sm text-slate-400">
-                No account linked
-              </SelectItem>
-              {accounts
-                .filter((a) => !!a.id)
-                .map((a) => (
-                  <SelectItem key={a.id} value={a.id} className="text-sm">
-                    {a.name}
-                  </SelectItem>
-                ))}
-            </SelectContent>
-          </Select>
-        </div>
-
         {/* Role */}
         <div className="space-y-1.5">
           <Label className="text-xs">

@@ -5,16 +5,16 @@ import { useAppSelector } from "@/store/hooks";
 import { InviteClinicForm } from "../(components)/InviteClinicForm";
 import { InviteSubRepForm } from "../(components)/InviteSubRepForm";
 import { InviteTokenCard } from "../(components)/InviteTokenCard";
-import type { IAccount } from "@/utils/interfaces/accounts";
+import { Button } from "@/components/ui/button";
 import type { UserRole } from "@/utils/helpers/role";
 
 interface OnboardingPageClientProps {
   role: UserRole | null;
-  accounts: IAccount[];
   baseUrl: string;
+  hasCompletedSetup: boolean;
 }
 
-export function OnboardingPageClient({ role, accounts, baseUrl }: OnboardingPageClientProps) {
+export function OnboardingPageClient({ role, baseUrl, hasCompletedSetup }: OnboardingPageClientProps) {
   const tokens = useAppSelector((s) => s.inviteTokens.items);
   const showSubRepSection = role === "sales_representative" || role === "admin";
 
@@ -58,7 +58,26 @@ export function OnboardingPageClient({ role, accounts, baseUrl }: OnboardingPage
           member to the portal.
         </p>
         <div suppressHydrationWarning>
-          <InviteClinicForm accounts={accounts} baseUrl={baseUrl} />
+          {!hasCompletedSetup ? (
+            <div className="flex flex-col gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-4">
+              <div className="flex items-start gap-2.5">
+                <Info className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
+                <p className="text-sm text-amber-800">
+                  You need to complete your office setup before inviting clinic
+                  users. Please complete your profile first.
+                </p>
+              </div>
+              <Button
+                asChild
+                size="sm"
+                className="self-start bg-[#15689E] hover:bg-[#15689E]/90 text-white"
+              >
+                <a href="/onboarding/setup">Complete Setup</a>
+              </Button>
+            </div>
+          ) : (
+            <InviteClinicForm baseUrl={baseUrl} />
+          )}
         </div>
       </section>
 
