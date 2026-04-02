@@ -40,21 +40,21 @@ export function CredentialsTab({ credentials }: CredentialsTabProps) {
   return (
     <div className="space-y-6">
       {/* PIN status */}
-      <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
+      <div className="flex items-center gap-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-4 py-3">
         {credentials?.pin_hash ? (
           <>
-            <ShieldCheck className="w-4 h-4 text-green-500 shrink-0" />
+            <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
             <div>
-              <p className="text-sm font-medium text-slate-800">Digital signature PIN set</p>
-              <p className="text-xs text-slate-500">Your PIN was configured during account setup.</p>
+              <p className="text-sm font-medium text-[#0F172A]">Digital signature PIN set</p>
+              <p className="text-xs text-[#64748B]">Your PIN was configured during account setup.</p>
             </div>
           </>
         ) : (
           <>
-            <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
+            <ShieldAlert className="w-4 h-4 text-amber-500 shrink-0" />
             <div>
-              <p className="text-sm font-medium text-slate-800">No PIN configured</p>
-              <p className="text-xs text-slate-500">A PIN is required to sign orders. Contact your administrator.</p>
+              <p className="text-sm font-medium text-[#0F172A]">No PIN configured</p>
+              <p className="text-xs text-[#64748B]">A PIN is required to sign orders. Contact your administrator.</p>
             </div>
           </>
         )}
@@ -63,7 +63,7 @@ export function CredentialsTab({ credentials }: CredentialsTabProps) {
       {/* Credentials form */}
       <form action={formAction} className="space-y-4">
         <div className="space-y-1.5">
-          <Label className="text-xs text-slate-600">NPI Number</Label>
+          <Label className="text-xs text-[#374151]">NPI Number</Label>
           <Input
             name="npi_number"
             defaultValue={credentials?.npi_number ?? ""}
@@ -73,7 +73,7 @@ export function CredentialsTab({ credentials }: CredentialsTabProps) {
         </div>
 
         <div className="space-y-1.5">
-          <Label className="text-xs text-slate-600">PTAN Number</Label>
+          <Label className="text-xs text-[#374151]">PTAN Number</Label>
           <Input
             name="ptan_number"
             defaultValue={credentials?.ptan_number ?? ""}
@@ -83,7 +83,7 @@ export function CredentialsTab({ credentials }: CredentialsTabProps) {
         </div>
 
         <div className="space-y-1.5">
-          <Label className="text-xs text-slate-600">Medical License Number</Label>
+          <Label className="text-xs text-[#374151]">Medical License Number</Label>
           <Input
             name="medical_license_number"
             defaultValue={credentials?.medical_license_number ?? ""}
@@ -93,7 +93,7 @@ export function CredentialsTab({ credentials }: CredentialsTabProps) {
         </div>
 
         <div className="space-y-1.5">
-          <Label className="text-xs text-slate-600">Other Credential</Label>
+          <Label className="text-xs text-[#374151]">Other Credential</Label>
           <Input
             name="credential"
             defaultValue={credentials?.credential ?? ""}
@@ -122,7 +122,7 @@ export function CredentialsTab({ credentials }: CredentialsTabProps) {
             type="submit"
             size="sm"
             disabled={isPending}
-            className="ml-auto bg-[#15689E] hover:bg-[#15689E]/90 text-white gap-1.5"
+            className="ml-auto bg-[#15689E] hover:bg-[#125d8e] text-white gap-1.5 rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
           >
             {isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
             Save credentials

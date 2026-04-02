@@ -58,7 +58,7 @@ export default function ProfileForm() {
   }
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 sm:p-6">
+    <div className="bg-white border border-[#E2E8F0] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] p-4 sm:p-6">
       <form onSubmit={handleSubmit} className="space-y-5">
         {/* ── Row: First Name + Last Name ── */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -69,7 +69,7 @@ export default function ProfileForm() {
               defaultValue={profile?.first_name ?? ""}
               placeholder="First name"
               disabled={saving}
-              className="border-slate-200 focus-visible:ring-[#15689E]"
+              className="border-[#E2E8F0] focus-visible:ring-[#15689E]/10 focus-visible:border-[#15689E]"
             />
           </div>
           <div>
@@ -79,7 +79,7 @@ export default function ProfileForm() {
               defaultValue={profile?.last_name ?? ""}
               placeholder="Last name"
               disabled={saving}
-              className="border-slate-200 focus-visible:ring-[#15689E]"
+              className="border-[#E2E8F0] focus-visible:ring-[#15689E]/10 focus-visible:border-[#15689E]"
             />
           </div>
         </div>
@@ -93,7 +93,7 @@ export default function ProfileForm() {
             defaultValue={profile?.phone ?? ""}
             placeholder="+63 9XX XXX XXXX"
             disabled={saving}
-            className="border-slate-200 focus-visible:ring-[#15689E]"
+            className="border-[#E2E8F0] focus-visible:ring-[#15689E]/10 focus-visible:border-[#15689E]"
           />
         </div>
 
@@ -110,7 +110,7 @@ export default function ProfileForm() {
           }
           variant={null}
           size="default"
-          classname="w-full sm:w-auto bg-[#15689E] hover:bg-[#0f4f7a] text-white"
+          classname="w-full sm:w-auto bg-[#15689E] hover:bg-[#125d8e] text-white rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
         />
       </form>
     </div>

@@ -67,11 +67,11 @@ export function AccountHeader({ accountId, isAdmin, salesReps }: AccountHeaderPr
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-5 border-b border-[#E2E8F0]">
       {/* ── Back link ── */}
       <Link
         href="/dashboard/accounts"
-        className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-[#15689E] transition-colors"
+        className="inline-flex items-center gap-1.5 text-sm text-[#64748B] hover:text-[#15689E] transition-colors"
       >
         <ArrowLeft className="w-4 h-4" />
         Back to Accounts
@@ -81,14 +81,14 @@ export function AccountHeader({ accountId, isAdmin, salesReps }: AccountHeaderPr
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         {/* Name + badge */}
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 rounded-xl bg-[#15689E]/10 flex items-center justify-center shrink-0">
+          <div className="w-10 h-10 rounded-xl bg-[#EFF6FF] flex items-center justify-center shrink-0">
             <Building2 className="w-5 h-5 text-[#15689E]" />
           </div>
           <div className="min-w-0">
-            <h1 className="text-xl md:text-2xl font-bold text-slate-800 truncate">
+            <h1 className="text-xl font-semibold text-[#0F172A] truncate">
               {account.name}
             </h1>
-            <p className="text-sm text-slate-500 mt-0.5 truncate">{account.contact}</p>
+            <p className="text-sm text-[#64748B] mt-0.5 truncate">{account.contact}</p>
           </div>
           <AccountStatusBadge status={account.status} className="shrink-0" />
         </div>
@@ -103,7 +103,7 @@ export function AccountHeader({ accountId, isAdmin, salesReps }: AccountHeaderPr
             >
               <SelectTrigger
                 className={cn(
-                  "h-8 w-36 text-xs",
+                  "h-9 w-36 text-sm border-[#E2E8F0] bg-white text-[#0F172A] rounded-lg",
                   statusPending && "opacity-60 pointer-events-none",
                 )}
               >
@@ -111,7 +111,7 @@ export function AccountHeader({ accountId, isAdmin, salesReps }: AccountHeaderPr
               </SelectTrigger>
               <SelectContent>
                 {STATUS_OPTIONS.map((o) => (
-                  <SelectItem key={o.value} value={o.value} className="text-xs">
+                  <SelectItem key={o.value} value={o.value} className="text-sm">
                     {o.label}
                   </SelectItem>
                 ))}
@@ -125,18 +125,18 @@ export function AccountHeader({ accountId, isAdmin, salesReps }: AccountHeaderPr
             >
               <SelectTrigger
                 className={cn(
-                  "h-8 w-44 text-xs",
+                  "h-9 w-44 text-sm border-[#E2E8F0] bg-white text-[#0F172A] rounded-lg",
                   repPending && "opacity-60 pointer-events-none",
                 )}
               >
                 <SelectValue placeholder="Assign rep" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none" className="text-xs">
+                <SelectItem value="none" className="text-sm">
                   Unassigned
                 </SelectItem>
                 {salesReps.map((rep) => (
-                  <SelectItem key={rep.id} value={rep.id} className="text-xs">
+                  <SelectItem key={rep.id} value={rep.id} className="text-sm">
                     {rep.first_name} {rep.last_name}
                   </SelectItem>
                 ))}
@@ -148,26 +148,26 @@ export function AccountHeader({ accountId, isAdmin, salesReps }: AccountHeaderPr
 
       {/* ── Error ── */}
       {error && (
-        <p className="text-xs text-red-500 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+        <p className="text-xs text-red-500 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
           {error}
         </p>
       )}
 
       {/* ── Stats row ── */}
       <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-3">
-        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-2">
+        <div className="flex items-center gap-2 bg-white border border-[#E2E8F0] rounded-lg px-3 py-2 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
           <ShoppingCart className="w-4 h-4 text-[#15689E]" />
-          <span className="text-sm font-semibold text-slate-700">{account.orders_count}</span>
-          <span className="text-xs text-slate-400">Orders</span>
+          <span className="text-sm font-semibold text-[#0F172A]">{account.orders_count}</span>
+          <span className="text-xs text-[#94A3B8]">Orders</span>
         </div>
-        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-2">
+        <div className="flex items-center gap-2 bg-white border border-[#E2E8F0] rounded-lg px-3 py-2 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
           <Users className="w-4 h-4 text-[#15689E]" />
-          <span className="text-sm font-semibold text-slate-700">{account.contacts_count}</span>
-          <span className="text-xs text-slate-400">Contacts</span>
+          <span className="text-sm font-semibold text-[#0F172A]">{account.contacts_count}</span>
+          <span className="text-xs text-[#94A3B8]">Contacts</span>
         </div>
-        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-2">
-          <span className="text-xs text-slate-400">Since</span>
-          <span className="text-sm font-semibold text-slate-700">
+        <div className="flex items-center gap-2 bg-white border border-[#E2E8F0] rounded-lg px-3 py-2 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+          <span className="text-xs text-[#94A3B8]">Since</span>
+          <span className="text-sm font-semibold text-[#0F172A]">
             {new Date(account.created_at).toLocaleDateString("en-US", {
               month: "short",
               year: "numeric",

@@ -81,7 +81,7 @@ export function ProfileTab({ profile }: ProfileTabProps) {
 
       <div className="space-y-1.5">
         <Label className="text-xs">Role</Label>
-        <div className="h-9 px-3 flex items-center rounded-md border border-input bg-slate-50 text-sm text-slate-500">
+        <div className="h-9 px-3 flex items-center rounded-md border border-[#E2E8F0] bg-[#F8FAFC] text-sm text-[#64748B]">
           {ROLE_LABELS[profile.role] ?? profile.role}
         </div>
       </div>
@@ -91,7 +91,7 @@ export function ProfileTab({ profile }: ProfileTabProps) {
           type="submit"
           size="sm"
           disabled={isPending}
-          className="bg-[#15689E] hover:bg-[#15689E]/90 text-white gap-1.5"
+          className="bg-[#15689E] hover:bg-[#125d8e] text-white gap-1.5 rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
         >
           {isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
           Save changes

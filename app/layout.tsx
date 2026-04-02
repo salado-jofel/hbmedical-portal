@@ -5,9 +5,10 @@ import { StoreProvider } from "@/store/StoreProvider";
 import { Toaster } from "react-hot-toast";
 
 const roboto = Roboto({
-  variable: "--font-roboto",
-  subsets: ["latin"],
   weight: ["300", "400", "500", "700"],
+  subsets: ["latin"],
+  variable: "--font-roboto",
+  display: "swap",
 });
 
 export const metadata: Metadata = {

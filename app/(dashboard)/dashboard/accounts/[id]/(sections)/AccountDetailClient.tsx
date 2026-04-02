@@ -43,7 +43,7 @@ export function AccountDetailClient({
   return (
     <div className="space-y-4">
       {/* ── Tab bar ── */}
-      <div className="flex border-b border-slate-200 overflow-x-auto">
+      <div className="flex border-b border-[#E2E8F0] overflow-x-auto gap-0 mb-6">
         {TABS.map((tab) => (
           <button
             key={tab.id}
@@ -52,18 +52,11 @@ export function AccountDetailClient({
             className={cn(
               "relative px-4 py-2.5 text-sm font-medium transition-colors whitespace-nowrap",
               activeTab === tab.id
-                ? "text-[#15689E]"
-                : "text-slate-500 hover:text-slate-700",
+                ? "text-[#15689E] border-b-2 border-[#15689E]"
+                : "text-[#94A3B8] hover:text-[#64748B]",
             )}
           >
             {tab.label}
-            {activeTab === tab.id && (
-              <motion.div
-                layoutId="account-tab-indicator"
-                className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#15689E] rounded-full"
-                transition={{ type: "spring", stiffness: 400, damping: 35 }}
-              />
-            )}
           </button>
         ))}
       </div>

@@ -19,20 +19,7 @@ export default async function AccountsPage() {
   ]);
 
   return (
-    <div className="p-4 md:p-8 mx-auto space-y-6">
-      {/* ── Header ── */}
-      <div className="flex items-start gap-3">
-        <div className="w-10 h-10 rounded-xl bg-[#15689E]/10 flex items-center justify-center shrink-0">
-          <Building2 className="w-5 h-5 text-[#15689E]" />
-        </div>
-        <div>
-          <h1 className="text-xl md:text-2xl font-bold text-slate-800">Accounts</h1>
-          <p className="text-slate-500 text-sm mt-0.5">
-            Manage your facilities and prospects
-          </p>
-        </div>
-      </div>
-
+    <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-6">
       {/* ── Table with Redux hydration ── */}
       <Providers accounts={accounts}>
         <AccountsPageClient salesReps={salesReps} isAdmin={admin} />

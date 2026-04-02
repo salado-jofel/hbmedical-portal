@@ -31,8 +31,8 @@ export function AdminBulkBar({ selectedCount, onClear, onBulkDelete }: AdminBulk
 
   return (
     <>
-      <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-        <span className="text-sm font-medium text-slate-700">
+      <div className="flex items-center gap-3 rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
+        <span className="text-sm font-medium text-[#0F172A]">
           {selectedCount} {selectedCount === 1 ? "item" : "items"} selected
         </span>
 
@@ -40,7 +40,7 @@ export function AdminBulkBar({ selectedCount, onClear, onBulkDelete }: AdminBulk
           <button
             type="button"
             onClick={onClear}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[#E2E8F0] bg-white px-3 h-9 text-sm font-medium text-[#374151] transition-colors hover:bg-[#F8FAFC]"
           >
             <X className="h-3.5 w-3.5" />
             Clear
@@ -48,7 +48,7 @@ export function AdminBulkBar({ selectedCount, onClear, onBulkDelete }: AdminBulk
           <button
             type="button"
             onClick={() => setConfirmOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-red-500 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-red-600"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-red-50 border border-red-100 px-3 h-9 text-sm font-medium text-red-600 transition-colors hover:bg-red-100"
           >
             <Trash2 className="h-3.5 w-3.5" />
             Delete Selected

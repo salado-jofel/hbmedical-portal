@@ -63,11 +63,11 @@ const ROLE_COLORS: Record<
     avatarTo: "to-teal-100",
   },
   clinical_staff: {
-    bg: "bg-slate-100",
-    text: "text-slate-600",
-    dot: "bg-slate-400",
-    avatarFrom: "from-slate-200",
-    avatarTo: "to-slate-100",
+    bg: "bg-[#F1F5F9]",
+    text: "text-[#64748B]",
+    dot: "bg-[#94A3B8]",
+    avatarFrom: "from-[#E2E8F0]",
+    avatarTo: "to-[#F1F5F9]",
   },
 };
 
@@ -151,45 +151,15 @@ export function UsersPageClient() {
 
   return (
     <div className="space-y-5">
-      {/* ── Top bar: status filter chips + create ── */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        {/* Status chips (mirroring reference: All / Active / Inactive) */}
-        <div className="flex items-center gap-2">
-          {(
-            [
-              { key: "all", label: "All Users", count: stats.total, activeClass: "bg-[#15689E] text-white shadow-[#15689E]/20", countClass: "bg-white/20 text-white", idleCountClass: "bg-slate-100 text-slate-500" },
-              { key: "active", label: "Active", count: stats.active, activeClass: "bg-green-600 text-white shadow-green-600/20", countClass: "bg-white/20 text-white", idleCountClass: "bg-green-50 text-green-600" },
-              { key: "inactive", label: "Inactive", count: stats.inactive, activeClass: "bg-slate-600 text-white shadow-slate-600/10", countClass: "bg-white/20 text-white", idleCountClass: "bg-slate-100 text-slate-500" },
-            ] as const
-          ).map(({ key, label, count, activeClass, countClass, idleCountClass }) => {
-            const isActive = statusFilter === key;
-            return (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setStatusFilter(key)}
-                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-sm font-medium transition-all ${
-                  isActive
-                    ? `${activeClass} shadow-sm`
-                    : "bg-white border border-slate-200 text-slate-600 hover:border-slate-300"
-                }`}
-              >
-                {label}
-                <span
-                  className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${
-                    isActive ? countClass : idleCountClass
-                  }`}
-                >
-                  {count}
-                </span>
-              </button>
-            );
-          })}
+      {/* ── Header ── */}
+      <div className="flex items-start justify-between gap-4 pb-5 mb-6 border-b border-[#E2E8F0]">
+        <div>
+          <h1 className="text-xl font-semibold text-[#0F172A]">Users</h1>
+          <p className="text-sm text-[#64748B] mt-0.5">Check and manage all HB Medical portal users</p>
         </div>
-
         <Button
           size="sm"
-          className="h-9 bg-[#15689E] hover:bg-[#15689E]/90 text-white gap-1.5 shrink-0 shadow-sm shadow-[#15689E]/20"
+          className="h-9 bg-[#15689E] hover:bg-[#125d8e] text-white gap-1.5 shrink-0 rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors"
           onClick={() => setShowCreate(true)}
         >
           <UserPlus className="w-3.5 h-3.5" />
@@ -197,19 +167,49 @@ export function UsersPageClient() {
         </Button>
       </div>
 
+      {/* ── Top bar: status filter chips ── */}
+      <div className="flex flex-wrap items-center gap-2">
+        {(
+          [
+            { key: "all", label: "All Users", count: stats.total },
+            { key: "active", label: "Active", count: stats.active },
+            { key: "inactive", label: "Inactive", count: stats.inactive },
+          ] as const
+        ).map(({ key, label, count }) => {
+          const isActive = statusFilter === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setStatusFilter(key)}
+              className={`inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors ${
+                isActive
+                  ? "text-[#15689E] border-b-2 border-[#15689E]"
+                  : "text-[#94A3B8] hover:text-[#64748B]"
+              }`}
+            >
+              {label}
+              <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${isActive ? "bg-[#EFF6FF] text-[#15689E]" : "bg-[#F1F5F9] text-[#64748B]"}`}>
+                {count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       {/* ── Search + role filter ── */}
       <div className="flex flex-col sm:flex-row gap-2.5">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8] pointer-events-none" />
           <Input
             placeholder="Search by name or email..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 h-9 text-sm bg-white border-slate-200 rounded-lg"
+            className="pl-9 h-9 text-sm bg-white border-[#E2E8F0] rounded-lg text-[#0F172A] placeholder:text-[#94A3B8] focus:border-[#15689E] focus:ring-2 focus:ring-[#15689E]/10 transition-colors"
           />
         </div>
         <Select value={roleFilter} onValueChange={setRoleFilter}>
-          <SelectTrigger className="w-full sm:w-44 h-9 text-sm bg-white border-slate-200">
+          <SelectTrigger className="w-full sm:w-44 h-9 text-sm bg-white border-[#E2E8F0] rounded-lg text-[#0F172A]">
             <SelectValue placeholder="All roles" />
           </SelectTrigger>
           <SelectContent>
@@ -229,22 +229,21 @@ export function UsersPageClient() {
           message="No users found"
         />
       ) : (
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+        <div className="bg-white rounded-xl border border-[#E2E8F0] overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
           {/* Column headers */}
-          <div className="grid grid-cols-[28px_2fr_1fr_auto] sm:grid-cols-[28px_2.5fr_2fr_1.3fr_1fr_auto] px-5 py-2.5 bg-slate-50 border-b border-slate-200/80">
-            <span className="text-[11px] font-semibold text-slate-300 uppercase tracking-wider">#</span>
-            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">User</span>
-            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider hidden sm:block">Email</span>
-            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Role</span>
-            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider hidden sm:block">Status</span>
-            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider text-right">Action</span>
+          <div className="grid grid-cols-[28px_2fr_1fr_auto] sm:grid-cols-[28px_2.5fr_2fr_1.3fr_1fr_auto] px-4 py-3 bg-[#F8FAFC] border-b border-[#E2E8F0]">
+            <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wider">#</span>
+            <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wider">User</span>
+            <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wider hidden sm:block">Email</span>
+            <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wider">Role</span>
+            <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wider hidden sm:block">Status</span>
+            <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wider text-right">Action</span>
           </div>
 
           <motion.div
             variants={staggerContainer}
             initial="hidden"
             animate="visible"
-            className="divide-y divide-slate-100"
           >
             {filtered.map((user, index) => {
               const initials =
@@ -260,36 +259,36 @@ export function UsersPageClient() {
                 <motion.div
                   key={user.id}
                   variants={fadeUp}
-                  className="grid grid-cols-[28px_2fr_1fr_auto] sm:grid-cols-[28px_2.5fr_2fr_1.3fr_1fr_auto] items-center px-5 py-4 hover:bg-slate-50/70 transition-colors group"
+                  className="grid grid-cols-[28px_2fr_1fr_auto] sm:grid-cols-[28px_2.5fr_2fr_1.3fr_1fr_auto] items-center px-4 py-3.5 border-b border-[#F1F5F9] last:border-0 hover:bg-[#FAFBFC] transition-colors group"
                 >
                   {/* Row number */}
-                  <span className="text-xs font-medium text-slate-300 select-none">
+                  <span className="text-xs font-medium text-[#94A3B8] select-none">
                     {index + 1}
                   </span>
 
                   {/* Avatar + Name */}
                   <div className="flex items-center gap-3 min-w-0">
                     <div
-                      className={`w-9 h-9 rounded-full bg-gradient-to-br ${colors.avatarFrom} ${colors.avatarTo} flex items-center justify-center shrink-0 shadow-sm`}
+                      className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${colors.bg}`}
                     >
-                      <span className={`text-xs font-bold ${colors.text}`}>
+                      <span className={`text-xs font-semibold ${colors.text}`}>
                         {initials}
                       </span>
                     </div>
                     <div className="min-w-0">
                       <p
-                        className={`text-sm font-semibold truncate ${
-                          user.is_active ? "text-slate-800" : "text-slate-400"
+                        className={`text-sm font-medium truncate ${
+                          user.is_active ? "text-[#0F172A]" : "text-[#94A3B8]"
                         }`}
                       >
                         {user.first_name} {user.last_name}
                       </p>
                       {user.facility ? (
-                        <p className="text-xs text-slate-400 truncate">
+                        <p className="text-xs text-[#94A3B8] truncate">
                           {user.facility.name}
                         </p>
                       ) : (
-                        <p className="text-xs text-slate-300 truncate italic">
+                        <p className="text-xs text-[#94A3B8] truncate italic">
                           No facility
                         </p>
                       )}
@@ -298,17 +297,14 @@ export function UsersPageClient() {
 
                   {/* Email */}
                   <div className="hidden sm:block min-w-0">
-                    <p className="text-sm text-slate-500 truncate">{user.email}</p>
+                    <p className="text-sm text-[#64748B] truncate">{user.email}</p>
                   </div>
 
                   {/* Role badge */}
                   <div>
                     <span
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${colors.bg} ${colors.text}`}
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${colors.bg} ${colors.text}`}
                     >
-                      <span
-                        className={`w-1.5 h-1.5 rounded-full ${colors.dot} shrink-0`}
-                      />
                       {roleLabel}
                     </span>
                   </div>
@@ -316,17 +312,12 @@ export function UsersPageClient() {
                   {/* Status */}
                   <div className="hidden sm:block">
                     <span
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
                         user.is_active
-                          ? "bg-green-50 text-green-700"
-                          : "bg-slate-100 text-slate-400"
+                          ? "bg-emerald-50 text-emerald-700"
+                          : "bg-[#F1F5F9] text-[#64748B]"
                       }`}
                     >
-                      <span
-                        className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                          user.is_active ? "bg-green-500" : "bg-slate-300"
-                        }`}
-                      />
                       {user.is_active ? "Active" : "Inactive"}
                     </span>
                   </div>
@@ -338,7 +329,7 @@ export function UsersPageClient() {
                         type="button"
                         onClick={() => handleDeactivate(user.id)}
                         disabled={isActing}
-                        className="h-7 px-2.5 flex items-center gap-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all disabled:opacity-40 opacity-0 group-hover:opacity-100"
+                        className="h-7 px-2.5 flex items-center gap-1.5 rounded-lg text-xs font-medium text-[#64748B] hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-40 opacity-0 group-hover:opacity-100"
                         title="Deactivate user"
                       >
                         <UserX className="w-3.5 h-3.5" />
@@ -349,7 +340,7 @@ export function UsersPageClient() {
                         type="button"
                         onClick={() => handleReactivate(user.id)}
                         disabled={isActing}
-                        className="h-7 px-2.5 flex items-center gap-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-green-600 hover:bg-green-50 transition-all disabled:opacity-40 opacity-0 group-hover:opacity-100"
+                        className="h-7 px-2.5 flex items-center gap-1.5 rounded-lg text-xs font-medium text-[#64748B] hover:text-emerald-600 hover:bg-emerald-50 transition-colors disabled:opacity-40 opacity-0 group-hover:opacity-100"
                         title="Reactivate user"
                       >
                         <UserCheck className="w-3.5 h-3.5" />
@@ -364,7 +355,7 @@ export function UsersPageClient() {
         </div>
       )}
 
-      <p className="text-xs text-slate-400 text-right">
+      <p className="text-xs text-[#94A3B8] text-right">
         {filtered.length} of {users.length} user{users.length !== 1 ? "s" : ""}
       </p>
 

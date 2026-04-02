@@ -93,17 +93,12 @@ export default function SetPasswordForm() {
   // ── Loading state ──────────────────────────────────────────────────────────
   if (pageStatus === "loading") {
     return (
-      <div className="w-full max-w-md select-none rounded-2xl border p-8 md:p-10 bg-white/8 backdrop-blur-2xl border-white/15 shadow-[0_8px_32px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.06)] flex flex-col items-center justify-center gap-4">
-        <div className="relative z-10 mb-2 flex items-center justify-center py-6">
-          <HBLogo variant="dark" size="lg" />
+      <div className="bg-white rounded-2xl shadow-[0_8px_40px_rgba(0,0,0,0.1)] border border-[#E2E8F0] p-8 w-full max-w-md select-none flex flex-col items-center justify-center gap-4">
+        <div className="mb-2 flex items-center justify-center">
+          <HBLogo variant="light" size="lg" />
         </div>
-        <Loader2
-          className="w-8 h-8 animate-spin"
-          style={{ color: "#f5a255" }}
-        />
-        <p className="text-sm" style={{ color: "rgba(255,255,255,0.5)" }}>
-          Loading...
-        </p>
+        <Loader2 className="w-8 h-8 animate-spin text-[#15689E]" />
+        <p className="text-sm text-[#64748B]">Loading...</p>
       </div>
     );
   }
@@ -111,27 +106,18 @@ export default function SetPasswordForm() {
   // ── Error state ────────────────────────────────────────────────────────────
   if (pageStatus === "error") {
     return (
-      <div className="w-full max-w-md select-none rounded-2xl border p-8 text-center bg-white/8 backdrop-blur-2xl border-white/15 shadow-[0_8px_32px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.06)]">
-        <div className="relative z-10 mb-8 flex items-center justify-center py-10">
-          <HBLogo variant="dark" size="lg" />
+      <div className="bg-white rounded-2xl shadow-[0_8px_40px_rgba(0,0,0,0.1)] border border-[#E2E8F0] p-8 w-full max-w-md select-none text-center">
+        <div className="mb-6 flex items-center justify-center">
+          <HBLogo variant="light" size="lg" />
         </div>
 
-        <div
-          className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6"
-          style={{
-            background: "rgba(239,68,68,0.1)",
-            border: "1px solid rgba(239,68,68,0.3)",
-          }}
-        >
-          <LinkIcon className="w-9 h-9" style={{ color: "#f87171" }} />
+        <div className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-6">
+          <LinkIcon className="w-8 h-8 text-red-500" />
         </div>
 
-        <h2 className="text-xl font-bold text-white mb-3">Link expired</h2>
+        <h2 className="text-2xl font-bold text-[#0F172A] mb-3">Link expired</h2>
 
-        <p
-          className="text-sm mb-8 leading-relaxed"
-          style={{ color: "rgba(255,255,255,0.5)" }}
-        >
+        <p className="text-sm text-[#64748B] mb-8 leading-relaxed">
           This invite link is invalid or has expired. Please contact your
           administrator for a new invitation.
         </p>
@@ -139,7 +125,7 @@ export default function SetPasswordForm() {
         <SubmitButton
           type="button"
           variant="outline"
-          size="lg"
+          size="default"
           cta={
             <Link
               href="/sign-in"
@@ -148,12 +134,7 @@ export default function SetPasswordForm() {
               Back to Sign In
             </Link>
           }
-          classname="h-12 w-full font-bold transition-all active:scale-95"
-          style={{
-            background: "rgba(232,130,26,0.08)",
-            border: "1px solid rgba(232,130,26,0.35)",
-            color: "#f5a255",
-          }}
+          classname="h-9 w-full font-medium border border-[#E2E8F0] text-[#374151] hover:bg-[#F8FAFC] rounded-lg transition-colors"
         />
       </div>
     );
@@ -161,18 +142,16 @@ export default function SetPasswordForm() {
 
   // ── Password form ──────────────────────────────────────────────────────────
   return (
-    <div className="w-full max-w-md select-none rounded-2xl border p-8 md:p-10 bg-white/8 backdrop-blur-2xl border-white/15 shadow-[0_8px_32px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.06)]">
+    <div className="bg-white rounded-2xl shadow-[0_8px_40px_rgba(0,0,0,0.1)] border border-[#E2E8F0] p-8 w-full max-w-md select-none">
       {/* Logo */}
-      <div className="relative z-10 mb-8 flex items-center justify-center py-10">
-        <HBLogo variant="dark" size="lg" />
+      <div className="mb-6 flex items-center justify-center">
+        <HBLogo variant="light" size="lg" />
       </div>
 
-      <div className="mb-6">
-        <h2 className="text-xl font-bold text-white mb-2">Set Your Password</h2>
-        <p className="text-sm" style={{ color: "rgba(255,255,255,0.5)" }}>
-          Welcome to HB Medical Portal. Create your password to get started.
-        </p>
-      </div>
+      <h2 className="text-2xl font-bold text-[#0F172A] text-center">Set Your Password</h2>
+      <p className="text-sm text-[#64748B] text-center mt-1.5 mb-8">
+        Welcome to HB Medical Portal. Create your password to get started.
+      </p>
 
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="space-y-4">
@@ -180,7 +159,7 @@ export default function SetPasswordForm() {
             id="password"
             name="password"
             label="Password"
-            icon={<Lock className="w-4 h-4" style={{ color: "#f5a255" }} />}
+            icon={<Lock className="w-4 h-4" />}
             type={showPassword ? "text" : "password"}
             placeholder="Create a password"
             value={formValues.password}
@@ -197,7 +176,7 @@ export default function SetPasswordForm() {
             id="confirmPassword"
             name="confirmPassword"
             label="Confirm Password"
-            icon={<Lock className="w-4 h-4" style={{ color: "#f5a255" }} />}
+            icon={<Lock className="w-4 h-4" />}
             type={showConfirm ? "text" : "password"}
             placeholder="Confirm your password"
             value={formValues.confirmPassword}
@@ -215,23 +194,13 @@ export default function SetPasswordForm() {
 
         <div className="space-y-3 pt-1">
           <SubmitButton
-            classname="h-12 w-full font-bold transition-all active:scale-95 text-white"
-            style={{
-              background: "linear-gradient(135deg, #e8821a, #d4741a)",
-              boxShadow: isFormValid
-                ? "0 4px 15px rgba(232,130,26,0.35)"
-                : "none",
-              ...(!isFormValid && {
-                opacity: 0.45,
-                cursor: "not-allowed",
-              }),
-            }}
+            classname="h-9 w-full font-medium bg-[#15689E] hover:bg-[#125d8e] text-white rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             isPending={isSubmitting}
             disabled={!isFormValid}
             type="submit"
             cta="Set Password & Sign In"
             variant="default"
-            size="lg"
+            size="default"
             isPendingMesssage="Setting password..."
           />
         </div>

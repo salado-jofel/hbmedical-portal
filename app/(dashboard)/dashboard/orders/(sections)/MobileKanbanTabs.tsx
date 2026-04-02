@@ -21,7 +21,7 @@ export function MobileKanbanTabs({
 
   return (
     <div>
-      <div className="flex bg-slate-100 rounded-xl p-1 gap-1 mb-4">
+      <div className="flex bg-[#F1F5F9] rounded-xl p-1 gap-1 mb-4">
         {BOARD_STATUSES.map((status) => {
           const isActive = activeTab === status;
           const cfg = STATUS_CONFIG[status];
@@ -36,8 +36,8 @@ export function MobileKanbanTabs({
                 transition-all duration-200
                 ${
                   isActive
-                    ? "bg-white shadow-sm text-slate-800"
-                    : "text-slate-400 hover:text-slate-600"
+                    ? "bg-white shadow-sm text-[#0F172A]"
+                    : "text-[#94A3B8] hover:text-[#64748B]"
                 }
               `}
             >
@@ -50,7 +50,7 @@ export function MobileKanbanTabs({
                   ${
                     isActive
                       ? "bg-[#15689E] text-white"
-                      : "bg-slate-200 text-slate-500"
+                      : "bg-[#E2E8F0] text-[#64748B]"
                   }
                 `}
               >
@@ -63,10 +63,10 @@ export function MobileKanbanTabs({
 
       <div className="flex items-center gap-2 mb-3 px-1">
         <div className={`w-2.5 h-2.5 rounded-full ${config.dot}`} />
-        <span className="text-sm font-semibold text-slate-700">
+        <span className="text-sm font-semibold text-[#0F172A]">
           {activeTab}
         </span>
-        <span className="text-xs text-slate-400">
+        <span className="text-xs text-[#94A3B8]">
           {grouped[activeTab].length}{" "}
           {grouped[activeTab].length === 1 ? "order" : "orders"}
         </span>
@@ -74,9 +74,9 @@ export function MobileKanbanTabs({
 
       <div className="flex flex-col gap-3">
         {grouped[activeTab].length === 0 ? (
-          <div className="bg-slate-50 rounded-xl border border-slate-200 py-14">
+          <div className="bg-[#F8FAFC] rounded-xl border border-[#E2E8F0] py-14">
             <EmptyState
-              icon={<Package className="w-8 h-8 text-slate-300 opacity-30" />}
+              icon={<Package className="w-8 h-8 text-[#E2E8F0]" />}
               message="No orders"
               description={`Nothing in ${activeTab} yet`}
             />

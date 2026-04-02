@@ -46,14 +46,14 @@ const TYPE_COLORS: Record<ActivityType, string> = {
 };
 
 const outcomeBadgeVariants = cva(
-  "inline-flex items-center gap-1 rounded-full border border-transparent px-2.5 py-0.5 text-xs font-medium whitespace-nowrap",
+  "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap",
   {
     variants: {
       outcome: {
-        positive: "bg-emerald-50 text-emerald-700 border-emerald-200",
-        neutral: "bg-zinc-100 text-zinc-600 border-zinc-200",
-        negative: "bg-red-50 text-red-600 border-red-200",
-        no_response: "bg-yellow-50 text-yellow-700 border-yellow-200",
+        positive: "bg-emerald-50 text-emerald-700",
+        neutral: "bg-[#F1F5F9] text-[#64748B]",
+        negative: "bg-red-50 text-red-600",
+        no_response: "bg-amber-50 text-amber-700",
       },
     },
     defaultVariants: { outcome: "neutral" },
@@ -137,7 +137,7 @@ export function ActivitiesTab({
                 "px-3 py-1 rounded-full text-xs font-medium transition-colors",
                 typeFilter === opt.value
                   ? "bg-[#15689E] text-white"
-                  : "bg-slate-100 text-slate-500 hover:bg-slate-200",
+                  : "bg-[#F1F5F9] text-[#64748B] hover:bg-[#E2E8F0]",
               )}
             >
               {opt.label}
@@ -171,7 +171,7 @@ export function ActivitiesTab({
               <motion.div
                 key={activity.id}
                 variants={fadeUp}
-                className="bg-white border border-slate-200 rounded-xl p-4"
+                className="bg-white border border-[#E2E8F0] rounded-xl p-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)]"
               >
                 <div className="flex items-start gap-3">
                   {/* Type icon */}
@@ -187,7 +187,7 @@ export function ActivitiesTab({
                   {/* Content */}
                   <div className="flex-1 min-w-0 space-y-1.5">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-semibold text-slate-700">
+                      <span className="text-sm font-semibold text-[#0F172A]">
                         {TYPE_LABELS[activity.type]}
                       </span>
                       <span
@@ -206,9 +206,9 @@ export function ActivitiesTab({
                         {OUTCOME_LABELS[activity.outcome]}
                       </span>
                       {activity.contact && (
-                        <span className="text-xs text-slate-400">
+                        <span className="text-xs text-[#94A3B8]">
                           with{" "}
-                          <span className="font-medium text-slate-600">
+                          <span className="font-medium text-[#64748B]">
                             {activity.contact.first_name}{" "}
                             {activity.contact.last_name}
                           </span>
@@ -216,7 +216,7 @@ export function ActivitiesTab({
                       )}
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
+                    <div className="flex flex-wrap items-center gap-3 text-xs text-[#94A3B8]">
                       <span>
                         {new Date(activity.activity_date + "T00:00:00").toLocaleDateString(
                           "en-US",
@@ -226,7 +226,7 @@ export function ActivitiesTab({
                       {activity.logged_by_profile && (
                         <span>
                           Logged by{" "}
-                          <span className="text-slate-600">
+                          <span className="text-[#64748B]">
                             {activity.logged_by_profile.first_name}{" "}
                             {activity.logged_by_profile.last_name}
                           </span>
@@ -235,7 +235,7 @@ export function ActivitiesTab({
                     </div>
 
                     {activity.notes && (
-                      <p className="text-sm text-slate-600 leading-relaxed border-t border-slate-100 pt-2 mt-2">
+                      <p className="text-sm text-[#64748B] leading-relaxed border-t border-[#F1F5F9] pt-2 mt-2">
                         {activity.notes}
                       </p>
                     )}
@@ -251,7 +251,7 @@ export function ActivitiesTab({
                       <button
                         type="button"
                         onClick={() => handleDelete(activity.id)}
-                        className="w-7 h-7 flex items-center justify-center rounded-md text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                        className="w-7 h-7 flex items-center justify-center rounded-md text-[#94A3B8] hover:text-red-600 hover:bg-red-50 transition-colors"
                         title="Delete activity"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -265,7 +265,7 @@ export function ActivitiesTab({
         </motion.div>
       )}
 
-      <p className="text-xs text-slate-400 text-right">
+      <p className="text-xs text-[#94A3B8] text-right">
         {filtered.length} of {activities.length} activit
         {activities.length !== 1 ? "ies" : "y"}
       </p>

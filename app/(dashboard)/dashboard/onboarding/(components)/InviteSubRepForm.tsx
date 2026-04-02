@@ -78,7 +78,7 @@ export function InviteSubRepForm() {
         type="submit"
         size="sm"
         disabled={isPending}
-        className="w-full bg-[#e8821a] hover:bg-[#e8821a]/90 text-white gap-1.5"
+        className="w-full h-9 bg-[#E8821A] hover:bg-[#d4741a] text-white gap-1.5 rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors"
       >
         {isPending ? (
           <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -88,7 +88,7 @@ export function InviteSubRepForm() {
         Send Invite
       </Button>
 
-      <p className="text-xs text-slate-400">
+      <p className="text-xs text-[#94A3B8]">
         Sub-reps you invite will be linked to your account.
       </p>
     </form>

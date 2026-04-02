@@ -46,7 +46,7 @@ export function ContactsTab({ facilityId, isAdmin, isAssignedRep }: ContactsTabP
     <div className="space-y-4">
       {/* ── Header + Add button ── */}
       <div className="flex items-center justify-between">
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-[#64748B]">
           {contacts.length} active contact{contacts.length !== 1 ? "s" : ""}
         </p>
         {canManage && <ContactModal facilityId={facilityId} />}
@@ -69,16 +69,16 @@ export function ContactsTab({ facilityId, isAdmin, isAssignedRep }: ContactsTabP
             <motion.div
               key={contact.id}
               variants={fadeUp}
-              className="bg-white border border-slate-200 rounded-xl p-4 space-y-3"
+              className="bg-white border border-[#E2E8F0] rounded-xl p-4 space-y-3 shadow-[0_1px_3px_rgba(0,0,0,0.04)]"
             >
               {/* Name + edit/delete */}
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-slate-800 truncate">
+                  <p className="text-sm font-semibold text-[#0F172A] truncate">
                     {contact.first_name} {contact.last_name}
                   </p>
                   {contact.title && (
-                    <p className="text-xs text-slate-400 truncate mt-0.5">
+                    <p className="text-xs text-[#94A3B8] truncate mt-0.5">
                       {contact.title}
                     </p>
                   )}
@@ -89,7 +89,7 @@ export function ContactsTab({ facilityId, isAdmin, isAssignedRep }: ContactsTabP
                     <button
                       type="button"
                       onClick={() => handleDeactivate(contact.id)}
-                      className="w-7 h-7 flex items-center justify-center rounded-md text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                      className="w-7 h-7 flex items-center justify-center rounded-md text-[#94A3B8] hover:text-red-600 hover:bg-red-50 transition-colors"
                       title="Remove contact"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -102,7 +102,7 @@ export function ContactsTab({ facilityId, isAdmin, isAssignedRep }: ContactsTabP
               {contact.email && (
                 <a
                   href={`mailto:${contact.email}`}
-                  className="flex items-center gap-2 text-xs text-slate-500 hover:text-[#15689E] transition-colors group"
+                  className="flex items-center gap-2 text-xs text-[#64748B] hover:text-[#15689E] transition-colors group"
                 >
                   <Mail className="w-3.5 h-3.5 shrink-0" />
                   <span className="truncate">{contact.email}</span>
@@ -113,7 +113,7 @@ export function ContactsTab({ facilityId, isAdmin, isAssignedRep }: ContactsTabP
               {contact.phone && (
                 <a
                   href={`tel:${contact.phone}`}
-                  className="flex items-center gap-2 text-xs text-slate-500 hover:text-[#15689E] transition-colors"
+                  className="flex items-center gap-2 text-xs text-[#64748B] hover:text-[#15689E] transition-colors"
                 >
                   <Phone className="w-3.5 h-3.5 shrink-0" />
                   <span className="truncate">{contact.phone}</span>
@@ -123,12 +123,12 @@ export function ContactsTab({ facilityId, isAdmin, isAssignedRep }: ContactsTabP
               {/* Preferred method */}
               <div
                 className={cn(
-                  "inline-flex items-center rounded-full px-2 py-0.5 text-xs border",
+                  "inline-flex items-center rounded-full px-2 py-0.5 text-xs",
                   contact.preferred_contact === "email"
-                    ? "bg-blue-50 text-[#15689E] border-blue-200"
+                    ? "bg-[#EFF6FF] text-[#15689E]"
                     : contact.preferred_contact === "phone"
-                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                      : "bg-slate-50 text-slate-500 border-slate-200",
+                      ? "bg-emerald-50 text-emerald-700"
+                      : "bg-[#F1F5F9] text-[#64748B]",
                 )}
               >
                 {PREFERRED_LABELS[contact.preferred_contact]}
@@ -136,7 +136,7 @@ export function ContactsTab({ facilityId, isAdmin, isAssignedRep }: ContactsTabP
 
               {/* Notes */}
               {contact.notes && (
-                <p className="text-xs text-slate-400 line-clamp-2 border-t border-slate-100 pt-2">
+                <p className="text-xs text-[#94A3B8] line-clamp-2 border-t border-[#F1F5F9] pt-2">
                   {contact.notes}
                 </p>
               )}

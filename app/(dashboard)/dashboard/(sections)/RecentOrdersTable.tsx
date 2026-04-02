@@ -14,7 +14,7 @@ const columns: TableColumn<DashboardOrder>[] = [
     key: "order_number",
     label: "Order ID",
     render: (order) => (
-      <span className="font-medium text-slate-700">
+      <span className="font-medium text-[#0F172A]">
         {order.order_number ?? "—"}
       </span>
     ),
@@ -59,13 +59,13 @@ export default function RecentOrdersTable({
 
   return (
     <TableCard title={`Recent Orders (${recent.length})`}>
-      <div className="divide-y divide-slate-100 md:hidden">
+      <div className="divide-y divide-[#F1F5F9] md:hidden">
         {recent.length > 0 ? (
           recent.map((order) => (
             <OrderMobileCard key={order.id} order={order} />
           ))
         ) : (
-          <div className="p-4 text-sm text-slate-500">No Orders Yet</div>
+          <div className="p-4 text-sm text-[#94A3B8]">No Orders Yet</div>
         )}
       </div>
 

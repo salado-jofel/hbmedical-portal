@@ -37,7 +37,7 @@ export function SearchFilterBar({
           placeholder={placeholder}
           value={searchValue}
           onChange={(e) => onSearchChange(e.target.value)}
-          className="w-full pl-9 pr-4 py-3 bg-white border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-transparent shadow-sm"
+          className="w-full pl-9 pr-4 h-9 bg-white border border-[#E2E8F0] rounded-lg text-sm text-[#0F172A] placeholder:text-[#94A3B8] focus:outline-none focus:border-[#15689E] focus:ring-2 focus:ring-[#15689E]/10 transition-colors"
         />
       </div>
 
@@ -45,7 +45,7 @@ export function SearchFilterBar({
         <select
           value={filterValue}
           onChange={(e) => onFilterChange(e.target.value)}
-          className="w-full sm:w-auto border border-slate-300 rounded-lg px-3 py-3 text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white shadow-sm"
+          className="w-full sm:w-auto border border-[#E2E8F0] rounded-lg px-3 h-9 text-sm text-[#0F172A] focus:outline-none focus:border-[#15689E] focus:ring-2 focus:ring-[#15689E]/10 bg-white transition-colors"
         >
           {filterOptions.map((opt) => (
             <option key={opt.value} value={opt.value}>

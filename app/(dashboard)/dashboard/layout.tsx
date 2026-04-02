@@ -17,15 +17,15 @@ export default async function DashboardLayout({
   return (
     <Providers userData={userData}>
       <NextTopLoader
-        color="#f5a255"
-        shadow="0 0 10px #f5a255, 0 0 5px #f5a255"
-        height={3}
+        color="#15689E"
+        shadow="0 0 10px #15689E, 0 0 5px #15689E"
+        height={2}
         showSpinner={false}
       />
 
-      <div className="flex min-h-screen bg-slate-100">
+      <div className="flex min-h-screen bg-[#F8FAFC]">
         <Sidebar />
-        <div className="flex flex-col flex-1 md:ml-64 min-w-0">
+        <div className="flex flex-col flex-1 md:ml-56 min-w-0">
           <MobileTopBar />
           <main className="flex-1 pt-16 md:pt-0 pb-16 md:pb-0 overflow-y-auto">
             {children}

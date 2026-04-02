@@ -45,13 +45,13 @@ import type { IAccount, IRepProfile } from "@/utils/interfaces/accounts";
 /* -------------------------------------------------------------------------- */
 
 const priorityBadgeVariants = cva(
-  "inline-flex items-center rounded-full border border-transparent px-2 py-0.5 text-xs font-medium whitespace-nowrap",
+  "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap",
   {
     variants: {
       priority: {
-        high: "bg-red-50 text-red-600 border-red-200",
-        medium: "bg-[#e8821a]/10 text-[#e8821a] border-[#e8821a]/20",
-        low: "bg-zinc-100 text-zinc-500 border-zinc-200",
+        high: "bg-red-50 text-red-600",
+        medium: "bg-amber-50 text-amber-700",
+        low: "bg-[#F1F5F9] text-[#64748B]",
       },
     },
     defaultVariants: { priority: "medium" },
@@ -86,7 +86,7 @@ const GROUP_CONFIG = {
   },
   done: {
     label: "Completed",
-    dotClass: "bg-slate-400",
+    dotClass: "bg-[#94A3B8]",
     emptyLabel: "No completed tasks",
   },
 } as const;
@@ -121,8 +121,8 @@ function TaskCard({
     <motion.div
       variants={fadeUp}
       className={cn(
-        "bg-white border rounded-xl p-4 space-y-2 transition-opacity",
-        isDone ? "border-slate-100 opacity-60" : "border-slate-200",
+        "bg-white border rounded-xl p-4 space-y-2 transition-opacity shadow-[0_1px_3px_rgba(0,0,0,0.04)]",
+        isDone ? "border-[#E2E8F0] opacity-60" : "border-[#E2E8F0]",
       )}
     >
       {/* Top row: checkbox + title + actions */}
@@ -132,7 +132,7 @@ function TaskCard({
           onClick={() => onToggle(task)}
           disabled={isToggling}
           className={cn(
-            "mt-0.5 shrink-0 text-slate-400 hover:text-[#15689E] transition-colors",
+            "mt-0.5 shrink-0 text-[#94A3B8] hover:text-[#15689E] transition-colors",
             isToggling && "pointer-events-none opacity-50",
           )}
           title={isDone ? "Mark open" : "Mark done"}
@@ -149,7 +149,7 @@ function TaskCard({
         <p
           className={cn(
             "flex-1 text-sm font-medium leading-snug min-w-0",
-            isDone ? "line-through text-slate-400" : "text-slate-800",
+            isDone ? "line-through text-[#94A3B8]" : "text-[#0F172A]",
           )}
         >
           {task.title}
@@ -165,7 +165,7 @@ function TaskCard({
           <button
             type="button"
             onClick={() => onDelete(task.id)}
-            className="w-7 h-7 flex items-center justify-center rounded-md text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+            className="w-7 h-7 flex items-center justify-center rounded-md text-[#94A3B8] hover:text-red-600 hover:bg-red-50 transition-colors"
             title="Delete task"
           >
             <Trash2 className="w-3.5 h-3.5" />
@@ -180,7 +180,7 @@ function TaskCard({
         </span>
 
         {task.due_date && (
-          <span className="flex items-center gap-1 text-xs text-slate-400">
+          <span className="flex items-center gap-1 text-xs text-[#94A3B8]">
             <Calendar className="w-3 h-3" />
             {new Date(task.due_date + "T00:00:00").toLocaleDateString("en-US", {
               month: "short",
@@ -191,14 +191,14 @@ function TaskCard({
         )}
 
         {task.facility && (
-          <span className="flex items-center gap-1 text-xs text-slate-400 truncate max-w-36">
+          <span className="flex items-center gap-1 text-xs text-[#94A3B8] truncate max-w-36">
             <Building2 className="w-3 h-3 shrink-0" />
             <span className="truncate">{task.facility.name}</span>
           </span>
         )}
 
         {task.contact && (
-          <span className="flex items-center gap-1 text-xs text-slate-400">
+          <span className="flex items-center gap-1 text-xs text-[#94A3B8]">
             <User className="w-3 h-3 shrink-0" />
             {task.contact.first_name} {task.contact.last_name}
           </span>
@@ -206,7 +206,7 @@ function TaskCard({
       </div>
 
       {task.notes && (
-        <p className="text-xs text-slate-400 pl-7 line-clamp-2">{task.notes}</p>
+        <p className="text-xs text-[#94A3B8] pl-7 line-clamp-2">{task.notes}</p>
       )}
     </motion.div>
   );
@@ -272,7 +272,7 @@ export function TasksPageClient({ accounts, salesReps, isAdmin }: TasksPageClien
             value={statusFilter}
             onValueChange={(v) => setStatusFilter(v as TaskStatus | "all")}
           >
-            <SelectTrigger className="h-8 w-36 text-xs shrink-0">
+            <SelectTrigger className="h-8 w-36 text-xs shrink-0 border-[#E2E8F0] text-[#0F172A]">
               <SelectValue placeholder="All statuses" />
             </SelectTrigger>
             <SelectContent>
@@ -286,7 +286,7 @@ export function TasksPageClient({ accounts, salesReps, isAdmin }: TasksPageClien
             value={priorityFilter}
             onValueChange={(v) => setPriorityFilter(v as TaskPriority | "all")}
           >
-            <SelectTrigger className="h-8 w-36 text-xs shrink-0">
+            <SelectTrigger className="h-8 w-36 text-xs shrink-0 border-[#E2E8F0] text-[#0F172A]">
               <SelectValue placeholder="All priorities" />
             </SelectTrigger>
             <SelectContent>
@@ -298,7 +298,7 @@ export function TasksPageClient({ accounts, salesReps, isAdmin }: TasksPageClien
           </Select>
 
           {totalOpen > 0 && (
-            <span className="flex items-center text-xs text-slate-500 self-center shrink-0">
+            <span className="flex items-center text-xs text-[#64748B] self-center shrink-0">
               {totalOpen} open task{totalOpen !== 1 ? "s" : ""}
             </span>
           )}
@@ -337,12 +337,12 @@ export function TasksPageClient({ accounts, salesReps, isAdmin }: TasksPageClien
             const groupTasks = grouped[groupKey];
 
             return (
-              <div key={groupKey} className="flex flex-col bg-slate-50 border border-slate-200 rounded-xl overflow-hidden">
+              <div key={groupKey} className="flex flex-col bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl overflow-hidden">
                 {/* Group header */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-[#E2E8F0]">
                   <div className="flex items-center gap-2">
                     <div className={cn("w-2 h-2 rounded-full", config.dotClass)} />
-                    <span className="text-sm font-semibold text-slate-700">{config.label}</span>
+                    <span className="text-sm font-semibold text-[#0F172A]">{config.label}</span>
                   </div>
                   <span className="min-w-5 h-5 flex items-center justify-center rounded-full bg-[#15689E] text-white text-xs font-bold px-1.5">
                     {groupTasks.length}
@@ -357,7 +357,7 @@ export function TasksPageClient({ accounts, salesReps, isAdmin }: TasksPageClien
                   className="flex flex-col gap-2 p-3 flex-1 overflow-y-auto max-h-[calc(100vh-300px)]"
                 >
                   {groupTasks.length === 0 ? (
-                    <p className="text-xs text-slate-400 text-center py-4">
+                    <p className="text-xs text-[#94A3B8] text-center py-4">
                       {config.emptyLabel}
                     </p>
                   ) : (

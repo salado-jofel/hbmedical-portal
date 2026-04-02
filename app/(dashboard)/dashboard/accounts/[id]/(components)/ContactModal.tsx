@@ -84,7 +84,7 @@ export function ContactModal({ facilityId, contact }: ContactModalProps) {
         )}
       </DialogTrigger>
 
-      <DialogContent className="sm:max-w-lg max-h-[85dvh] overflow-y-auto">
+      <DialogContent className="sm:max-w-lg max-h-[85dvh] overflow-y-auto sm:rounded-2xl border border-[#E2E8F0] shadow-[0_20px_60px_rgba(0,0,0,0.12)]">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit Contact" : "New Contact"}</DialogTitle>
         </DialogHeader>
@@ -213,7 +213,7 @@ export function ContactModal({ facilityId, contact }: ContactModalProps) {
               type="button"
               variant="outline"
               size="sm"
-              className="w-full sm:w-auto"
+              className="w-full sm:w-auto border-[#E2E8F0] text-[#374151] hover:bg-[#F8FAFC]"
               onClick={() => setOpen(false)}
             >
               Cancel
@@ -222,7 +222,7 @@ export function ContactModal({ facilityId, contact }: ContactModalProps) {
               type="submit"
               size="sm"
               disabled={isPending}
-              className="w-full sm:w-auto bg-[#15689E] hover:bg-[#15689E]/90 text-white gap-1.5"
+              className="w-full sm:w-auto bg-[#15689E] hover:bg-[#125d8e] text-white gap-1.5 rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
             >
               {isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
               {isEdit ? "Save changes" : "Add contact"}

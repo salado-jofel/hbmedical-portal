@@ -6,7 +6,7 @@ export default async function OrdersPage() {
   const orders = await getAllOrders();
 
   return (
-    <div className="p-4 md:p-8 mx-auto space-y-6">
+    <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-6">
       <Providers orders={orders}>
         <OrdersPageClient />
       </Providers>

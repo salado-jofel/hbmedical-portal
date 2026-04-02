@@ -46,17 +46,17 @@ export function SettingsPageClient({
   return (
     <div className="space-y-6">
       {/* Tab bar */}
-      <div className="flex gap-1 bg-slate-100 rounded-xl p-1 w-fit">
+      <div className="flex border-b border-[#E2E8F0] gap-0">
         {tabs.map((tab) => (
           <button
             key={tab.key}
             type="button"
             onClick={() => setActive(tab.key)}
             className={cn(
-              "flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all",
+              "flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors whitespace-nowrap",
               active === tab.key
-                ? "bg-white text-[#15689E] shadow-sm"
-                : "text-slate-500 hover:text-slate-700",
+                ? "text-[#15689E] border-b-2 border-[#15689E]"
+                : "text-[#94A3B8] hover:text-[#64748B]",
             )}
           >
             <tab.icon className="w-4 h-4" />
@@ -66,7 +66,7 @@ export function SettingsPageClient({
       </div>
 
       {/* Tab content */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5">
+      <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
         {active === "profile" && <ProfileTab profile={profile} />}
         {active === "team" && (
           <TeamTab members={members} canManage={canManageTeam} />

@@ -131,6 +131,8 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-roboto), sans-serif;
+    background-color: #F8FAFC;
   }
   html {
     @apply font-sans;

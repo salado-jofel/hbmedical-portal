@@ -65,7 +65,7 @@ export function BottomNav() {
   if (visibleItems.length === 0) return null;
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 h-16 bg-white border-t border-slate-200 flex items-center md:hidden">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 h-16 bg-white border-t border-[#E2E8F0] shadow-[0_-2px_8px_rgba(0,0,0,0.06)] flex items-center justify-around px-2 md:hidden">
       {visibleItems.map((item) => {
         const isActive =
           pathname === item.href ||
@@ -76,12 +76,12 @@ export function BottomNav() {
             key={item.label}
             href={item.href}
             className={cn(
-              "flex flex-col items-center justify-center flex-1 h-full gap-1 transition-colors",
-              isActive ? "text-[#15689E]" : "text-slate-400 hover:text-slate-600",
+              "flex flex-col items-center gap-0.5 transition-colors",
+              isActive ? "text-[#15689E] font-medium text-[10px]" : "text-[#94A3B8] text-[10px]",
             )}
           >
             <item.icon className="w-5 h-5" />
-            <span className="text-[10px] font-medium leading-none">{item.label}</span>
+            <span className="leading-none">{item.label}</span>
           </Link>
         );
       })}

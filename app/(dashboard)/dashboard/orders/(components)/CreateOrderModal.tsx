@@ -136,7 +136,7 @@ export function CreateOrderModal() {
           type="button"
           variant="default"
           size="default"
-          classname="bg-[#15689E] hover:bg-[#0f4f7a] text-white cursor-pointer w-full sm:w-auto"
+          classname="bg-[#15689E] hover:bg-[#125d8e] text-white cursor-pointer w-full sm:w-auto rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
           cta={
             <>
               <Plus className="w-4 h-4 mr-2" />
@@ -146,32 +146,32 @@ export function CreateOrderModal() {
         />
       </DialogTrigger>
 
-      <DialogContent className="w-[calc(100%-2rem)] sm:max-w-md rounded-xl max-h-[90dvh] overflow-y-auto">
+      <DialogContent className="w-[calc(100%-2rem)] sm:max-w-md sm:rounded-2xl border border-[#E2E8F0] shadow-[0_20px_60px_rgba(0,0,0,0.12)] max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-lg font-semibold text-slate-800">
+          <DialogTitle className="text-lg font-semibold text-[#0F172A]">
             Create Draft Order
           </DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 pt-2">
           <div className="space-y-1.5">
-            <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+            <label className="flex items-center gap-2 text-sm font-medium text-[#374151]">
               <Building2 className="w-4 h-4 text-[#15689E]" />
               Facility
             </label>
-            <div className="flex items-center gap-2 w-full border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 min-h-[42px]">
+            <div className="flex items-center gap-2 w-full border border-[#E2E8F0] rounded-lg px-3 py-2 bg-[#F8FAFC] min-h-[42px]">
               {isLoadingData ? (
-                <span className="text-sm text-slate-400 animate-pulse">
+                <span className="text-sm text-[#94A3B8] animate-pulse">
                   Loading facility...
                 </span>
               ) : facility ? (
                 <div className="flex flex-col min-w-0">
-                  <span className="text-sm text-slate-700 font-medium truncate">
+                  <span className="text-sm text-[#0F172A] font-medium truncate">
                     {facility.name}
                   </span>
                   {[facility.contact, facility.phone].filter(Boolean).length >
                     0 && (
-                    <span className="text-xs text-slate-400 truncate">
+                    <span className="text-xs text-[#94A3B8] truncate">
                       {[facility.contact, facility.phone]
                         .filter(Boolean)
                         .join(" • ")}
@@ -187,7 +187,7 @@ export function CreateOrderModal() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+            <label className="flex items-center gap-2 text-sm font-medium text-[#374151]">
               <Package className="w-4 h-4 text-[#15689E]" />
               Product
             </label>
@@ -199,7 +199,7 @@ export function CreateOrderModal() {
               }}
               required
               disabled={isPending || isLoadingData || products.length === 0}
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#15689E] bg-white disabled:opacity-50"
+              className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#15689E]/10 focus:border-[#15689E] bg-white disabled:opacity-50"
             >
               <option value="">
                 {isLoadingData
@@ -219,7 +219,7 @@ export function CreateOrderModal() {
             </select>
 
             {selectedProduct && (
-              <div className="text-xs text-slate-500 px-1">
+              <div className="text-xs text-[#64748B] px-1">
                 {[selectedProduct.category, selectedProduct.sku]
                   .filter(Boolean)
                   .join(" • ")}
@@ -229,7 +229,7 @@ export function CreateOrderModal() {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+              <label className="flex items-center gap-2 text-sm font-medium text-[#374151]">
                 <Layers className="w-4 h-4 text-[#15689E]" />
                 Quantity
               </label>
@@ -248,12 +248,12 @@ export function CreateOrderModal() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+              <label className="flex items-center gap-2 text-sm font-medium text-[#374151]">
                 <DollarSign className="w-4 h-4 text-[#15689E]" />
                 Unit Price
               </label>
-              <div className="flex items-center w-full border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 min-h-[42px]">
-                <span className="text-sm text-slate-500">
+              <div className="flex items-center w-full border border-[#E2E8F0] rounded-lg px-3 py-2 bg-[#F8FAFC] min-h-[42px]">
+                <span className="text-sm text-[#64748B]">
                   {selectedProduct ? `$${unitPrice.toFixed(2)}` : "—"}
                 </span>
               </div>
@@ -261,21 +261,21 @@ export function CreateOrderModal() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+            <label className="flex items-center gap-2 text-sm font-medium text-[#374151]">
               <DollarSign className="w-4 h-4 text-[#15689E]" />
               Estimated Total
             </label>
-            <div className="flex items-center w-full border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 min-h-[42px]">
+            <div className="flex items-center w-full border border-[#E2E8F0] rounded-lg px-3 py-2 bg-[#F8FAFC] min-h-[42px]">
               <span
                 className={`text-sm font-semibold ${
-                  totalAmount > 0 ? "text-[#f5a255]" : "text-slate-400"
+                  totalAmount > 0 ? "text-[#E8821A]" : "text-[#94A3B8]"
                 }`}
               >
                 {totalAmount > 0 ? `$${totalAmount.toFixed(2)}` : "—"}
               </span>
 
               {selectedProduct && quantity > 1 && (
-                <span className="text-xs text-slate-400 ml-2">
+                <span className="text-xs text-[#94A3B8] ml-2">
                   ${unitPrice.toFixed(2)} × {quantity}
                 </span>
               )}
@@ -295,7 +295,7 @@ export function CreateOrderModal() {
               size="default"
               onClick={() => setOpen(false)}
               disabled={isPending}
-              classname="text-slate-600 w-full sm:w-auto cursor-pointer"
+              classname="border-[#E2E8F0] text-[#374151] hover:bg-[#F8FAFC] w-full sm:w-auto cursor-pointer"
               cta={<span>Cancel</span>}
             />
 
@@ -312,7 +312,7 @@ export function CreateOrderModal() {
               isPendingMesssage="Saving..."
               variant="default"
               size="default"
-              classname="bg-[#15689E] hover:bg-[#0f4f7a] text-white w-full sm:w-auto cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              classname="bg-[#15689E] hover:bg-[#125d8e] text-white w-full sm:w-auto cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
             />
           </div>
         </form>

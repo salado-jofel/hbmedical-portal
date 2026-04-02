@@ -36,15 +36,13 @@ export function DataTable<T>({
       <table className="w-full text-sm text-left">
         <thead>
           <tr
-            className={isBrand ? "bg-[#15689E]" : "border-b border-slate-100"}
+            className="bg-[#F8FAFC] border-b border-[#E2E8F0]"
           >
             {columns.map((col) => (
               <th
                 key={col.key}
-                className={`px-5 py-3 font-medium text-xs tracking-wide ${
-                  isBrand
-                    ? "text-white font-semibold"
-                    : (col.headerClassName ?? "text-slate-400")
+                className={`px-4 py-3 text-[10px] uppercase tracking-wider font-semibold text-[#94A3B8] ${
+                  !isBrand ? (col.headerClassName ?? "") : ""
                 }`}
               >
                 {col.label}
@@ -52,19 +50,19 @@ export function DataTable<T>({
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-50">
+        <tbody>
           {data.map((row) => (
             <tr
               key={keyExtractor(row)}
               onClick={() => onRowClick?.(row)}
-              className={`hover:bg-slate-50 transition-colors ${
+              className={`border-b border-[#F1F5F9] last:border-0 hover:bg-[#FAFBFC] transition-colors ${
                 onRowClick ? "cursor-pointer" : ""
               }`}
             >
               {columns.map((col) => (
                 <td
                   key={col.key}
-                  className={`px-5 py-3 text-slate-600 ${col.cellClassName ?? ""}`}
+                  className={`px-4 py-3.5 text-sm text-[#64748B] ${col.cellClassName ?? ""}`}
                 >
                   {col.render(row)}
                 </td>

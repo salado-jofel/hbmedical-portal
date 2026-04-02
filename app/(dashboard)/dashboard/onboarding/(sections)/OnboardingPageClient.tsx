@@ -19,25 +19,20 @@ export function OnboardingPageClient({ role, baseUrl, hasCompletedSetup }: Onboa
   const showSubRepSection = role === "sales_representative" || role === "admin";
 
   return (
-    <div className="p-4 md:p-8 mx-auto max-w-3xl space-y-8">
+    <div className="p-6 md:p-8 max-w-3xl mx-auto space-y-6">
       {/* ── Header ── */}
-      <div className="flex items-start gap-3">
-        <div className="w-10 h-10 rounded-xl bg-[#15689E]/10 flex items-center justify-center shrink-0">
-          <Share2 className="w-5 h-5 text-[#15689E]" />
-        </div>
+      <div className="flex items-start justify-between gap-4 pb-5 mb-6 border-b border-[#E2E8F0]">
         <div>
-          <h1 className="text-xl md:text-2xl font-bold text-slate-800">Onboarding</h1>
-          <p className="text-slate-500 text-sm mt-0.5">
-            Invite clinic users and manage rep access
-          </p>
+          <h1 className="text-xl font-semibold text-[#0F172A]">Onboarding</h1>
+          <p className="text-sm text-[#64748B] mt-0.5">Invite clinic users and manage rep access</p>
         </div>
       </div>
 
       {/* ── Admin note ── */}
       {role === "admin" && (
-        <div className="flex items-start gap-2.5 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
-          <Info className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
-          <p className="text-sm text-blue-700">
+        <div className="flex items-start gap-2.5 bg-[#EFF6FF] border border-[#15689E]/20 rounded-xl px-4 py-3">
+          <Info className="w-4 h-4 text-[#15689E] mt-0.5 shrink-0" />
+          <p className="text-sm text-[#15689E]">
             Main rep and support staff accounts are managed from the{" "}
             <a href="/dashboard/users" className="font-semibold underline underline-offset-2">
               Users page
@@ -48,21 +43,21 @@ export function OnboardingPageClient({ role, baseUrl, hasCompletedSetup }: Onboa
       )}
 
       {/* ── Section A — Invite Clinic User ── */}
-      <section className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
+      <section className="bg-white rounded-xl border border-[#E2E8F0] p-5 space-y-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
         <div className="flex items-center gap-2">
           <Users className="w-4 h-4 text-[#15689E]" />
-          <h2 className="text-base font-semibold text-slate-800">Invite Clinic User</h2>
+          <h2 className="text-base font-semibold text-[#0F172A]">Invite Clinic User</h2>
         </div>
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-[#64748B]">
           Generate a one-time link to onboard a Clinical Provider or Clinical Staff
           member to the portal.
         </p>
         <div suppressHydrationWarning>
           {!hasCompletedSetup ? (
-            <div className="flex flex-col gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-4">
+            <div className="flex flex-col gap-3 bg-amber-50 border border-amber-100 rounded-xl px-4 py-4">
               <div className="flex items-start gap-2.5">
-                <Info className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
-                <p className="text-sm text-amber-800">
+                <Info className="w-4 h-4 text-amber-700 mt-0.5 shrink-0" />
+                <p className="text-sm text-amber-700">
                   You need to complete your office setup before inviting clinic
                   users. Please complete your profile first.
                 </p>
@@ -70,7 +65,7 @@ export function OnboardingPageClient({ role, baseUrl, hasCompletedSetup }: Onboa
               <Button
                 asChild
                 size="sm"
-                className="self-start bg-[#15689E] hover:bg-[#15689E]/90 text-white"
+                className="self-start h-9 bg-[#15689E] hover:bg-[#125d8e] text-white rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors"
               >
                 <a href="/onboarding/setup">Complete Setup</a>
               </Button>
@@ -83,12 +78,12 @@ export function OnboardingPageClient({ role, baseUrl, hasCompletedSetup }: Onboa
 
       {/* ── Section B — Invite Sub-Rep ── */}
       {showSubRepSection && (
-        <section className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
+        <section className="bg-white rounded-xl border border-[#E2E8F0] p-5 space-y-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
           <div className="flex items-center gap-2">
-            <UserPlus className="w-4 h-4 text-[#e8821a]" />
-            <h2 className="text-base font-semibold text-slate-800">Invite Sub-Rep</h2>
+            <UserPlus className="w-4 h-4 text-[#E8821A]" />
+            <h2 className="text-base font-semibold text-[#0F172A]">Invite Sub-Rep</h2>
           </div>
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-[#64748B]">
             Invite a new sales representative to work under you.
           </p>
           <div suppressHydrationWarning>
@@ -100,7 +95,7 @@ export function OnboardingPageClient({ role, baseUrl, hasCompletedSetup }: Onboa
       {/* ── Existing Invite Links ── */}
       {tokens.length > 0 && (
         <section className="space-y-3">
-          <h2 className="text-sm font-semibold text-slate-700">
+          <h2 className="text-sm font-semibold text-[#0F172A]">
             Your invite links ({tokens.length})
           </h2>
           <div className="space-y-2" suppressHydrationWarning>

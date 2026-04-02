@@ -150,7 +150,7 @@ export default function ProductsTable() {
             disabled={saving}
           />
         ) : (
-          <span className="text-sm font-medium text-slate-700">
+          <span className="text-sm font-medium text-[#0F172A]">
             {product.sku}
           </span>
         );
@@ -172,15 +172,15 @@ export default function ProductsTable() {
           />
         ) : (
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-[#15689E]/10 flex items-center justify-center shrink-0">
+            <div className="w-8 h-8 rounded-lg bg-[#EFF6FF] flex items-center justify-center shrink-0">
               <Package className="w-4 h-4 text-[#15689E]" />
             </div>
             <div className="min-w-0">
-              <span className="text-slate-700 font-medium text-sm block">
+              <span className="text-[#0F172A] font-medium text-sm block">
                 {product.name}
               </span>
               {product.description ? (
-                <span className="text-xs text-slate-400 block truncate max-w-[260px]">
+                <span className="text-xs text-[#94A3B8] block truncate max-w-[260px]">
                   {product.description}
                 </span>
               ) : null}
@@ -206,7 +206,7 @@ export default function ProductsTable() {
             disabled={saving}
           />
         ) : (
-          <span className="text-sm text-slate-600">
+          <span className="text-sm text-[#64748B]">
             {product.category || "—"}
           </span>
         );
@@ -232,7 +232,7 @@ export default function ProductsTable() {
             disabled={saving}
           />
         ) : (
-          <span className="text-slate-700 font-medium text-sm">
+          <span className="text-[#0F172A] font-medium text-sm">
             ${Number(product.unit_price).toFixed(2)}
           </span>
         );
@@ -246,7 +246,7 @@ export default function ProductsTable() {
         const saving = savingId === product.id;
 
         return edit ? (
-          <label className="flex items-center gap-2 text-sm text-slate-700">
+          <label className="flex items-center gap-2 text-sm text-[#374151]">
             <input
               type="checkbox"
               checked={edit.is_active}
@@ -263,7 +263,7 @@ export default function ProductsTable() {
             className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${
               product.is_active
                 ? "bg-emerald-50 text-emerald-700"
-                : "bg-slate-100 text-slate-600"
+                : "bg-[#F1F5F9] text-[#64748B]"
             }`}
           >
             {product.is_active ? "Active" : "Inactive"}
@@ -298,7 +298,7 @@ export default function ProductsTable() {
                   type="button"
                   onClick={() => cancelEditing(product.id)}
                   disabled={saving}
-                  className="p-1.5 text-slate-400 hover:text-slate-600 transition-colors rounded disabled:opacity-40 cursor-pointer"
+                  className="p-1.5 text-[#94A3B8] hover:text-[#64748B] transition-colors rounded disabled:opacity-40 cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -312,7 +312,7 @@ export default function ProductsTable() {
                   isPendingMesssage=""
                   variant="ghost"
                   size="icon-xs"
-                  classname="text-[#15689E] hover:text-[#0f4f7a] hover:bg-transparent cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  classname="text-[#15689E] hover:text-[#125d8e] hover:bg-transparent cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 />
               </>
             ) : (
@@ -321,7 +321,7 @@ export default function ProductsTable() {
                   type="button"
                   onClick={() => startEditing(product)}
                   disabled={deleting}
-                  className="p-1.5 text-slate-300 hover:text-[#15689E] transition-colors rounded disabled:opacity-40 cursor-pointer"
+                  className="p-1.5 text-[#94A3B8] hover:text-[#15689E] transition-colors rounded disabled:opacity-40 cursor-pointer"
                 >
                   <Pencil className="w-4 h-4" />
                 </button>
@@ -330,7 +330,7 @@ export default function ProductsTable() {
                   type="button"
                   onClick={() => setConfirmId(product.id)}
                   disabled={deleting}
-                  className="p-1.5 text-slate-300 hover:text-red-500 transition-colors rounded disabled:opacity-40 cursor-pointer"
+                  className="p-1.5 text-[#94A3B8] hover:text-red-600 transition-colors rounded disabled:opacity-40 cursor-pointer"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -358,19 +358,19 @@ export default function ProductsTable() {
         onConfirm={handleDelete}
       />
 
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm flex flex-col h-[calc(100vh-172px)] md:h-[calc(100vh-219px)]">
-        <div className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-6 py-4 border-b border-slate-100 bg-slate-50/60 shrink-0">
+      <div className="bg-white border border-[#E2E8F0] rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.05)] flex flex-col h-[calc(100vh-172px)] md:h-[calc(100vh-219px)]">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-6 py-4 border-b border-[#E2E8F0] bg-[#F8FAFC] shrink-0">
           <div className="space-y-0.5">
-            <h2 className="text-sm font-semibold text-slate-700">
+            <h2 className="text-sm font-semibold text-[#0F172A]">
               All Products
             </h2>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-[#94A3B8]">
               Showing{" "}
-              <span className="font-medium text-slate-600">
+              <span className="font-medium text-[#64748B]">
                 {filtered.length}
               </span>{" "}
               of{" "}
-              <span className="font-medium text-slate-600">{items.length}</span>{" "}
+              <span className="font-medium text-[#64748B]">{items.length}</span>{" "}
               products
             </p>
           </div>
@@ -388,13 +388,13 @@ export default function ProductsTable() {
             {filtered.length === 0 ? (
               <EmptyState
                 icon={
-                  <Package className="w-10 h-10 mb-3 text-slate-300 opacity-30" />
+                  <Package className="w-10 h-10 mb-3 text-[#E2E8F0]" />
                 }
                 message="No Products Found"
                 description="Try adjusting your search or filter"
               />
             ) : (
-              <div className="divide-y divide-slate-100">
+              <div className="divide-y divide-[#F1F5F9]">
                 {filtered.map((product) => (
                   <ProductCard key={product.id} product={product} />
                 ))}
@@ -413,14 +413,14 @@ export default function ProductsTable() {
           </div>
         </div>
 
-        <div className="px-4 py-2.5 border-t border-slate-100 bg-slate-50/60 shrink-0">
-          <p className="text-xs text-slate-400">
+        <div className="px-4 py-2.5 border-t border-[#E2E8F0] bg-[#F8FAFC] shrink-0">
+          <p className="text-xs text-[#94A3B8]">
             Showing{" "}
-            <span className="font-medium text-slate-600">
+            <span className="font-medium text-[#64748B]">
               {filtered.length}
             </span>{" "}
             of{" "}
-            <span className="font-medium text-slate-600">{items.length}</span>{" "}
+            <span className="font-medium text-[#64748B]">{items.length}</span>{" "}
             products
           </p>
         </div>

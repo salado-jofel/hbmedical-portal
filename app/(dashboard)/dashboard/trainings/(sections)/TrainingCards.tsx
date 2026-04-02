@@ -203,8 +203,8 @@ export default function TrainingsCards() {
         <EmptyState
           className="py-24"
           icon={
-            <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
-              <FileText className="w-8 h-8 text-slate-300" />
+            <div className="w-16 h-16 rounded-2xl bg-[#F1F5F9] flex items-center justify-center mb-4">
+              <FileText className="w-8 h-8 text-[#E2E8F0]" />
             </div>
           }
           message="No training materials available"
@@ -225,7 +225,7 @@ export default function TrainingsCards() {
                 ? dispatch(clearTrainingSelection())
                 : dispatch(selectAllTrainingItems())
             }
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+            className="inline-flex items-center gap-2 rounded-lg border border-[#E2E8F0] px-3 py-1.5 text-sm font-medium text-[#64748B] transition hover:bg-[#F8FAFC]"
           >
             <CheckSquare className="h-4 w-4" />
             {selectedIds.length === items.length

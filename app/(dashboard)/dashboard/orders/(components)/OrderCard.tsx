@@ -383,7 +383,7 @@ export function OrderCard({ order }: { order: DashboardOrder }) {
           size="sm"
           onClick={handleResumePayment}
           disabled={isPayingNow}
-          className="h-9 cursor-pointer bg-[#15689E] text-white hover:bg-[#0f4f7a]"
+          className="h-9 cursor-pointer bg-[#15689E] text-white hover:bg-[#125d8e]"
         >
           {isPayingNow ? (
             <>
@@ -407,7 +407,7 @@ export function OrderCard({ order }: { order: DashboardOrder }) {
           size="sm"
           onClick={handleViewInvoice}
           disabled={!hasInvoiceUrl}
-          className="h-9 cursor-pointer bg-[#15689E] text-white hover:bg-[#0f4f7a] disabled:cursor-not-allowed disabled:bg-slate-400"
+          className="h-9 cursor-pointer bg-[#15689E] text-white hover:bg-[#125d8e] disabled:cursor-not-allowed disabled:bg-[#94A3B8]"
         >
           <ReceiptText className="mr-1 h-4 w-4" />
           View Invoice
@@ -424,7 +424,7 @@ export function OrderCard({ order }: { order: DashboardOrder }) {
               size="sm"
               onClick={handleViewReceipt}
               disabled={!receiptUrl}
-              className="h-9 cursor-pointer bg-[#15689E] text-white hover:bg-[#0f4f7a] disabled:cursor-not-allowed disabled:bg-slate-400"
+              className="h-9 cursor-pointer bg-[#15689E] text-white hover:bg-[#125d8e] disabled:cursor-not-allowed disabled:bg-[#94A3B8]"
             >
               <ReceiptText className="mr-1 h-4 w-4" />
               View Receipt
@@ -435,7 +435,7 @@ export function OrderCard({ order }: { order: DashboardOrder }) {
               size="sm"
               onClick={handleViewInvoice}
               disabled={!hasInvoiceUrl}
-              className="h-9 cursor-pointer bg-[#15689E] text-white hover:bg-[#0f4f7a] disabled:cursor-not-allowed disabled:bg-slate-400"
+              className="h-9 cursor-pointer bg-[#15689E] text-white hover:bg-[#125d8e] disabled:cursor-not-allowed disabled:bg-[#94A3B8]"
             >
               <ReceiptText className="mr-1 h-4 w-4" />
               View Invoice
@@ -463,7 +463,7 @@ export function OrderCard({ order }: { order: DashboardOrder }) {
             size="sm"
             onClick={() => setPaymentMenuOpen((prev) => !prev)}
             disabled={isBusy}
-            className="h-9 cursor-pointer bg-[#15689E] text-white hover:bg-[#0f4f7a]"
+            className="h-9 cursor-pointer bg-[#15689E] text-white hover:bg-[#125d8e]"
           >
             {isPayingNow || isPayingLater ? (
               <>
@@ -480,11 +480,11 @@ export function OrderCard({ order }: { order: DashboardOrder }) {
           </Button>
 
           {paymentMenuOpen && !isBusy && (
-            <div className="absolute right-0 top-full z-20 mt-2 w-52 overflow-hidden rounded-md border border-slate-200 bg-white shadow-lg">
+            <div className="absolute right-0 top-full z-20 mt-2 w-52 overflow-hidden rounded-lg border border-[#E2E8F0] bg-white shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
               <button
                 type="button"
                 onClick={() => handlePaymentChoice("pay_now")}
-                className="flex w-full items-center px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                className="flex w-full items-center px-3 py-2 text-left text-sm text-[#0F172A] hover:bg-[#F8FAFC]"
               >
                 <CreditCard className="mr-2 h-4 w-4" />
                 Pay Now
@@ -493,7 +493,7 @@ export function OrderCard({ order }: { order: DashboardOrder }) {
               <button
                 type="button"
                 onClick={() => handlePaymentChoice("net_30")}
-                className="flex w-full items-center px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                className="flex w-full items-center px-3 py-2 text-left text-sm text-[#0F172A] hover:bg-[#F8FAFC]"
               >
                 <Clock3 className="mr-2 h-4 w-4" />
                 Pay Later (Net 30)
@@ -523,7 +523,7 @@ export function OrderCard({ order }: { order: DashboardOrder }) {
         type="button"
         size="sm"
         disabled
-        className="h-9 bg-slate-600 text-white hover:bg-slate-600"
+        className="h-9 bg-[#94A3B8] text-white hover:bg-[#94A3B8]"
       >
         <Clock3 className="mr-1 h-4 w-4" />
         Awaiting Payment
@@ -566,13 +566,13 @@ export function OrderCard({ order }: { order: DashboardOrder }) {
         order={order}
       />
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
+      <div className="rounded-2xl border border-[#E2E8F0] bg-white p-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)] transition-all hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
         <div className="flex items-start justify-between gap-3">
           <div className="space-y-1">
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#15689E]">
               Order
             </p>
-            <h3 className="text-sm font-bold text-slate-800">
+            <h3 className="text-sm font-bold text-[#0F172A]">
               {order.order_number}
             </h3>
           </div>
@@ -589,7 +589,7 @@ export function OrderCard({ order }: { order: DashboardOrder }) {
                   ? "Edit order"
                   : lockReason || "This order cannot be edited."
               }
-              className="h-7 w-7 cursor-pointer text-slate-300 hover:bg-slate-100 hover:text-slate-600"
+              className="h-7 w-7 cursor-pointer text-[#94A3B8] hover:bg-[#F1F5F9] hover:text-[#64748B]"
             >
               <Edit3 className="h-4 w-4" />
             </Button>
@@ -611,7 +611,7 @@ export function OrderCard({ order }: { order: DashboardOrder }) {
                   ? "Delete order"
                   : lockReason || "This order cannot be deleted."
               }
-              className="h-7 w-7 cursor-pointer text-slate-300 hover:bg-red-50 hover:text-red-500"
+              className="h-7 w-7 cursor-pointer text-[#94A3B8] hover:bg-red-50 hover:text-red-600"
             >
               <Trash2 className="h-4 w-4" />
             </Button>
@@ -636,22 +636,22 @@ export function OrderCard({ order }: { order: DashboardOrder }) {
           />
 
           <div className="grid grid-cols-2 gap-2 pt-1">
-            <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
-              <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+            <div className="rounded-xl border border-[#F1F5F9] bg-[#F8FAFC] px-3 py-2">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-[#94A3B8]">
                 Quantity
               </p>
-              <div className="mt-1 flex items-center gap-2 text-slate-800">
-                <Boxes className="h-4 w-4 text-slate-500" />
+              <div className="mt-1 flex items-center gap-2 text-[#0F172A]">
+                <Boxes className="h-4 w-4 text-[#64748B]" />
                 <span className="text-sm font-semibold">{quantity}</span>
               </div>
             </div>
 
-            <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
-              <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+            <div className="rounded-xl border border-[#F1F5F9] bg-[#F8FAFC] px-3 py-2">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-[#94A3B8]">
                 Unit Price
               </p>
-              <div className="mt-1 flex items-center gap-2 text-slate-800">
-                <DollarSign className="h-4 w-4 text-slate-500" />
+              <div className="mt-1 flex items-center gap-2 text-[#0F172A]">
+                <DollarSign className="h-4 w-4 text-[#64748B]" />
                 <span className="text-sm font-semibold">
                   {formatCurrency(unitPrice)}
                 </span>
@@ -659,12 +659,12 @@ export function OrderCard({ order }: { order: DashboardOrder }) {
             </div>
           </div>
 
-          <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+          <div className="rounded-xl border border-[#F1F5F9] bg-[#F8FAFC] px-3 py-2">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-[#94A3B8]">
               Payment Method
             </p>
-            <div className="mt-1 flex items-center gap-2 text-slate-800">
-              <CreditCard className="h-4 w-4 text-slate-500" />
+            <div className="mt-1 flex items-center gap-2 text-[#0F172A]">
+              <CreditCard className="h-4 w-4 text-[#64748B]" />
               <span className="text-sm font-semibold">
                 {getPaymentMethodLabel(order.payment_method)}
               </span>
@@ -673,12 +673,12 @@ export function OrderCard({ order }: { order: DashboardOrder }) {
 
           {order.payment_method === "net_30" &&
           order.invoice_status !== DEFAULT_INVOICE_STATUS ? (
-            <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
-              <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+            <div className="rounded-xl border border-[#F1F5F9] bg-[#F8FAFC] px-3 py-2">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-[#94A3B8]">
                 Invoice Status
               </p>
-              <div className="mt-1 flex items-center gap-2 text-slate-800">
-                <ReceiptText className="h-4 w-4 text-slate-500" />
+              <div className="mt-1 flex items-center gap-2 text-[#0F172A]">
+                <ReceiptText className="h-4 w-4 text-[#64748B]" />
                 <span className="text-sm font-semibold">
                   {order.invoice_status.replace(/_/g, " ")}
                 </span>
@@ -708,11 +708,11 @@ export function OrderCard({ order }: { order: DashboardOrder }) {
           ) : null}
 
           {order.tracking_number ? (
-            <div className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2">
-              <p className="text-[11px] font-medium uppercase tracking-wide text-blue-500">
+            <div className="rounded-xl border border-[#E2E8F0] bg-[#EFF6FF] px-3 py-2">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-[#15689E]">
                 Tracking
               </p>
-              <div className="mt-1 flex items-center gap-2 text-blue-800">
+              <div className="mt-1 flex items-center gap-2 text-[#0F172A]">
                 <Truck className="h-4 w-4" />
                 <span className="text-sm font-semibold">
                   {order.tracking_number}
@@ -722,16 +722,16 @@ export function OrderCard({ order }: { order: DashboardOrder }) {
           ) : null}
         </div>
 
-        <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50 px-3 py-3">
+        <div className="mt-4 rounded-xl border border-[#F1F5F9] bg-[#F8FAFC] px-3 py-3">
           <div className="flex items-end justify-between gap-3">
             <div className="flex flex-col">
-              <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+              <span className="text-[11px] font-medium uppercase tracking-wide text-[#94A3B8]">
                 Total Amount
               </span>
-              <span className="mt-1 text-xl font-bold text-slate-800">
+              <span className="mt-1 text-xl font-bold text-[#0F172A]">
                 {formatCurrency(totalAmount)}
               </span>
-              <span className="text-xs text-slate-500">
+              <span className="text-xs text-[#64748B]">
                 {quantity} × {formatCurrency(unitPrice)}
               </span>
             </div>
@@ -741,16 +741,16 @@ export function OrderCard({ order }: { order: DashboardOrder }) {
         </div>
 
         <div className="mt-3 flex items-center justify-between text-xs">
-          <span className="text-slate-500">
+          <span className="text-[#64748B]">
             Payment:{" "}
-            <span className="font-semibold text-slate-700">
+            <span className="font-semibold text-[#0F172A]">
               {renderPaymentText()}
             </span>
           </span>
 
-          <span className="text-slate-500">
+          <span className="text-[#64748B]">
             Status:{" "}
-            <span className="font-semibold text-slate-700">
+            <span className="font-semibold text-[#0F172A]">
               {displayStatus}
             </span>
           </span>

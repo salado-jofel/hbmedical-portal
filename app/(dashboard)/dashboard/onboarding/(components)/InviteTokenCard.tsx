@@ -39,33 +39,33 @@ export function InviteTokenCard({ token, baseUrl }: InviteTokenCardProps) {
   return (
     <div
       className={cn(
-        "bg-white border rounded-xl p-4 space-y-3",
-        isUsed || isExpired ? "border-slate-100 opacity-60" : "border-slate-200",
+        "bg-white rounded-xl border p-4 space-y-3 shadow-[0_1px_3px_rgba(0,0,0,0.04)]",
+        isUsed || isExpired ? "border-[#F1F5F9] opacity-60" : "border-[#E2E8F0]",
       )}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-medium text-slate-800">
+            <span className="text-sm font-medium text-[#0F172A]">
               {token.facility?.name ?? "No account linked"}
             </span>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-[#15689E]/10 text-[#15689E] font-medium">
+            <span className="text-xs px-2 py-0.5 rounded-full bg-[#EFF6FF] text-[#15689E] font-medium">
               {ROLE_LABELS[token.role_type]}
             </span>
             {isUsed && (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">
+              <span className="text-xs px-2 py-0.5 rounded-full bg-[#F1F5F9] text-[#64748B]">
                 Used
               </span>
             )}
             {isExpired && !isUsed && (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-500">
+              <span className="text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-600">
                 Expired
               </span>
             )}
           </div>
 
           {token.expires_at && !isUsed && !isExpired && (
-            <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
+            <p className="text-xs text-[#94A3B8] mt-1 flex items-center gap-1">
               <Clock className="w-3 h-3" />
               Expires{" "}
               {new Date(token.expires_at).toLocaleDateString("en-US", {
@@ -97,7 +97,7 @@ export function InviteTokenCard({ token, baseUrl }: InviteTokenCardProps) {
             type="button"
             onClick={handleDelete}
             disabled={deleting}
-            className="w-7 h-7 flex items-center justify-center rounded-md text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+            className="w-7 h-7 flex items-center justify-center rounded-md text-[#94A3B8] hover:text-red-600 hover:bg-red-50 transition-colors"
             title="Delete token"
           >
             <Trash2 className="w-3.5 h-3.5" />
@@ -107,15 +107,15 @@ export function InviteTokenCard({ token, baseUrl }: InviteTokenCardProps) {
 
       {!isUsed && !isExpired && (
         <div
-          className="flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-2 cursor-pointer group"
+          className="flex items-center gap-2 bg-[#F8FAFC] rounded-lg px-3 py-2 cursor-pointer group border border-[#E2E8F0]"
           onClick={handleCopy}
           role="button"
           tabIndex={0}
           onKeyDown={(e) => e.key === "Enter" && handleCopy()}
           title="Click to copy"
         >
-          <p className="text-xs text-slate-500 font-mono truncate flex-1">{inviteUrl}</p>
-          <Copy className="w-3 h-3 text-slate-400 group-hover:text-[#15689E] shrink-0 transition-colors" />
+          <p className="text-xs text-[#64748B] font-mono truncate flex-1">{inviteUrl}</p>
+          <Copy className="w-3 h-3 text-[#94A3B8] group-hover:text-[#15689E] shrink-0 transition-colors" />
         </div>
       )}
     </div>

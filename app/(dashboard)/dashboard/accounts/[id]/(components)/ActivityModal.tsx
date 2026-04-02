@@ -92,7 +92,7 @@ export function ActivityModal({ facilityId, activity }: ActivityModalProps) {
         )}
       </DialogTrigger>
 
-      <DialogContent className="sm:max-w-md max-h-[85dvh] overflow-y-auto">
+      <DialogContent className="sm:max-w-md max-h-[85dvh] overflow-y-auto sm:rounded-2xl border border-[#E2E8F0] shadow-[0_20px_60px_rgba(0,0,0,0.12)]">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit Activity" : "Log Activity"}</DialogTitle>
         </DialogHeader>
@@ -128,7 +128,7 @@ export function ActivityModal({ facilityId, activity }: ActivityModalProps) {
                 type="date"
                 required
                 defaultValue={activity?.activity_date ?? today}
-                className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                className="h-9 w-full rounded-md border border-[#E2E8F0] bg-white px-3 py-1 text-sm text-[#0F172A] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#15689E]/10 focus-visible:border-[#15689E]"
               />
             </div>
           </div>
@@ -136,7 +136,7 @@ export function ActivityModal({ facilityId, activity }: ActivityModalProps) {
           {/* Contact */}
           <div className="space-y-1.5">
             <Label htmlFor="contact_id" className="text-xs">
-              Contact <span className="text-slate-400 font-normal">(optional)</span>
+              Contact <span className="text-[#94A3B8] font-normal">(optional)</span>
             </Label>
             <Select
               name="contact_id"
@@ -146,7 +146,7 @@ export function ActivityModal({ facilityId, activity }: ActivityModalProps) {
                 <SelectValue placeholder="No contact linked" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none" className="text-sm text-slate-400">
+                <SelectItem value="none" className="text-sm text-[#94A3B8]">
                   No contact linked
                 </SelectItem>
                 {contacts
@@ -206,7 +206,7 @@ export function ActivityModal({ facilityId, activity }: ActivityModalProps) {
               type="button"
               variant="outline"
               size="sm"
-              className="w-full sm:w-auto"
+              className="w-full sm:w-auto border-[#E2E8F0] text-[#374151] hover:bg-[#F8FAFC]"
               onClick={() => setOpen(false)}
             >
               Cancel
@@ -215,7 +215,7 @@ export function ActivityModal({ facilityId, activity }: ActivityModalProps) {
               type="submit"
               size="sm"
               disabled={isPending}
-              className="w-full sm:w-auto bg-[#15689E] hover:bg-[#15689E]/90 text-white gap-1.5"
+              className="w-full sm:w-auto bg-[#15689E] hover:bg-[#125d8e] text-white gap-1.5 rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
             >
               {isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
               {isEdit ? "Save changes" : "Log activity"}

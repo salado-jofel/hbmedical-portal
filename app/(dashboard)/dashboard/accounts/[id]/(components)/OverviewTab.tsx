@@ -17,8 +17,8 @@ function InfoRow({
         <Icon className="w-3.5 h-3.5 text-[#15689E]" />
       </div>
       <div className="min-w-0">
-        <p className="text-xs text-slate-400">{label}</p>
-        <p className="text-sm text-slate-700 mt-0.5">{value}</p>
+        <p className="text-xs text-[#94A3B8]">{label}</p>
+        <p className="text-sm text-[#64748B] mt-0.5">{value}</p>
       </div>
     </div>
   );
@@ -46,8 +46,8 @@ export function OverviewTab({ account }: OverviewTabProps) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
       {/* ── Contact & Address ── */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
-        <h3 className="text-sm font-semibold text-slate-700">Facility Details</h3>
+      <div className="bg-white rounded-xl border border-[#E2E8F0] p-5 space-y-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+        <h3 className="text-sm font-semibold text-[#0F172A]">Facility Details</h3>
         <div className="space-y-3">
           <InfoRow icon={User} label="Primary Contact" value={account.contact} />
           <InfoRow icon={Phone} label="Phone" value={account.phone} />
@@ -60,32 +60,32 @@ export function OverviewTab({ account }: OverviewTabProps) {
       </div>
 
       {/* ── Assigned Rep ── */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
-        <h3 className="text-sm font-semibold text-slate-700">Sales Representative</h3>
+      <div className="bg-white rounded-xl border border-[#E2E8F0] p-5 space-y-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+        <h3 className="text-sm font-semibold text-[#0F172A]">Sales Representative</h3>
         {account.assigned_rep_profile ? (
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-[#15689E]/10 flex items-center justify-center shrink-0">
-              <span className="text-sm font-bold text-[#15689E]">
+            <div className="w-10 h-10 rounded-full bg-[#EFF6FF] flex items-center justify-center shrink-0">
+              <span className="text-sm font-semibold text-[#15689E]">
                 {account.assigned_rep_profile.first_name[0]}
                 {account.assigned_rep_profile.last_name[0]}
               </span>
             </div>
             <div>
-              <p className="text-sm font-semibold text-slate-800">{repName}</p>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <p className="text-sm font-medium text-[#0F172A]">{repName}</p>
+              <p className="text-xs text-[#94A3B8] mt-0.5">
                 {account.assigned_rep_profile.email}
               </p>
             </div>
           </div>
         ) : (
-          <p className="text-sm text-slate-400">No rep assigned yet.</p>
+          <p className="text-sm text-[#94A3B8]">No rep assigned yet.</p>
         )}
 
         {/* ── Timeline ── */}
-        <div className="pt-2 border-t border-slate-100 space-y-2">
+        <div className="pt-2 border-t border-[#F1F5F9] space-y-2">
           <div className="flex items-center gap-2">
-            <Calendar className="w-3.5 h-3.5 text-slate-400" />
-            <span className="text-xs text-slate-400">
+            <Calendar className="w-3.5 h-3.5 text-[#94A3B8]" />
+            <span className="text-xs text-[#94A3B8]">
               Created{" "}
               {new Date(account.created_at).toLocaleDateString("en-US", {
                 month: "long",
@@ -95,8 +95,8 @@ export function OverviewTab({ account }: OverviewTabProps) {
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <Calendar className="w-3.5 h-3.5 text-slate-400" />
-            <span className="text-xs text-slate-400">
+            <Calendar className="w-3.5 h-3.5 text-[#94A3B8]" />
+            <span className="text-xs text-[#94A3B8]">
               Updated{" "}
               {new Date(account.updated_at).toLocaleDateString("en-US", {
                 month: "long",

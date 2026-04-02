@@ -130,7 +130,7 @@ export function TaskModal({
         )}
       </DialogTrigger>
 
-      <DialogContent className="sm:max-w-lg max-h-[85dvh] overflow-y-auto">
+      <DialogContent className="sm:max-w-lg max-h-[85dvh] overflow-y-auto sm:rounded-2xl border border-[#E2E8F0] shadow-[0_20px_60px_rgba(0,0,0,0.12)]">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit Task" : "New Task"}</DialogTitle>
         </DialogHeader>
@@ -162,7 +162,7 @@ export function TaskModal({
                 name="due_date"
                 type="date"
                 defaultValue={task?.due_date ?? ""}
-                className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                className="h-9 w-full rounded-md border border-[#E2E8F0] bg-white px-3 py-1 text-sm text-[#0F172A] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#15689E]/10 focus-visible:border-[#15689E]"
               />
             </div>
 
@@ -199,7 +199,7 @@ export function TaskModal({
                   <SelectValue placeholder="Select rep" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none" className="text-sm text-slate-400">
+                  <SelectItem value="none" className="text-sm text-[#94A3B8]">
                     Unassigned
                   </SelectItem>
                   {salesReps
@@ -218,7 +218,7 @@ export function TaskModal({
           <div className="space-y-1.5">
             <Label htmlFor="facility_id" className="text-xs">
               Account{" "}
-              <span className="text-slate-400 font-normal">(optional)</span>
+              <span className="text-[#94A3B8] font-normal">(optional)</span>
             </Label>
             <Select
               name="facility_id"
@@ -231,7 +231,7 @@ export function TaskModal({
                 <SelectValue placeholder="No account linked" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none" className="text-sm text-slate-400">
+                <SelectItem value="none" className="text-sm text-[#94A3B8]">
                   No account linked
                 </SelectItem>
                 {accounts
@@ -249,7 +249,7 @@ export function TaskModal({
           <div className="space-y-1.5">
             <Label htmlFor="contact_id" className="text-xs">
               Contact{" "}
-              <span className="text-slate-400 font-normal">(optional)</span>
+              <span className="text-[#94A3B8] font-normal">(optional)</span>
             </Label>
             <Select
               name="contact_id"
@@ -268,7 +268,7 @@ export function TaskModal({
                 />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none" className="text-sm text-slate-400">
+                <SelectItem value="none" className="text-sm text-[#94A3B8]">
                   No contact linked
                 </SelectItem>
                 {facilityContacts
@@ -309,7 +309,7 @@ export function TaskModal({
               type="button"
               variant="outline"
               size="sm"
-              className="w-full sm:w-auto"
+              className="w-full sm:w-auto border-[#E2E8F0] text-[#374151] hover:bg-[#F8FAFC]"
               onClick={() => setOpen(false)}
             >
               Cancel
@@ -318,7 +318,7 @@ export function TaskModal({
               type="submit"
               size="sm"
               disabled={isPending}
-              className="w-full sm:w-auto bg-[#15689E] hover:bg-[#15689E]/90 text-white gap-1.5"
+              className="w-full sm:w-auto bg-[#15689E] hover:bg-[#125d8e] text-white gap-1.5 rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
             >
               {isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
               {isEdit ? "Save changes" : "Create task"}

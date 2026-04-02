@@ -39,12 +39,15 @@ export default function SignInForm() {
     : null;
 
   return (
-    <div className="w-full max-w-md select-none rounded-2xl border p-8 md:p-10 bg-white/8 backdrop-blur-2xl border-white/15 shadow-[0_8px_32px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.06)]">
+    <div className="bg-white rounded-2xl shadow-[0_8px_40px_rgba(0,0,0,0.1)] border border-[#E2E8F0] p-8 w-full max-w-md select-none">
 
       {/* Logo */}
-      <div className="relative z-10 mb-8 flex items-center justify-center py-10">
-        <HBLogo variant="dark" size="lg" />
+      <div className="mb-6 flex items-center justify-center">
+        <HBLogo variant="light" size="lg" />
       </div>
+
+      <h2 className="text-2xl font-bold text-[#0F172A] text-center">Sign In</h2>
+      <p className="text-sm text-[#64748B] text-center mt-1.5 mb-8">Welcome back. Sign in to your account.</p>
 
       <form action={formAction} className="space-y-5">
         <div className="space-y-4">
@@ -53,7 +56,7 @@ export default function SignInForm() {
             id="email"
             name="email"
             label="Email"
-            icon={<Mail className="w-4 h-4" style={{ color: "#f5a255" }} />}
+            icon={<Mail className="w-4 h-4" />}
             type="email"
             placeholder="Enter your email"
             value={formValues.email}
@@ -64,7 +67,7 @@ export default function SignInForm() {
             id="password"
             name="password"
             label="Password"
-            icon={<Lock className="w-4 h-4" style={{ color: "#f5a255" }} />}
+            icon={<Lock className="w-4 h-4" />}
             type={showPassword ? "text" : "password"}
             placeholder="Enter your password"
             value={formValues.password}
@@ -79,7 +82,7 @@ export default function SignInForm() {
 
           {state?.error && <ErrorAlert errorMessage={state.error} />}
           {successMessage && (
-            <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/20 text-green-400 text-sm font-medium animate-in fade-in zoom-in-95">
+            <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-100 text-emerald-700 text-xs font-medium animate-in fade-in zoom-in-95">
               {successMessage}
             </div>
           )}
@@ -89,12 +92,7 @@ export default function SignInForm() {
         <div className="flex justify-end -mt-1">
           <Link
             href="/forgot-password"
-            className="text-xs font-medium transition-colors"
-            style={{ color: "rgba(255,255,255,0.35)" }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = "#f5a255")}
-            onMouseLeave={(e) =>
-              (e.currentTarget.style.color = "rgba(255,255,255,0.35)")
-            }
+            className="text-xs font-medium text-[#15689E] hover:text-[#125d8e] transition-colors"
           >
             Forgot password?
           </Link>
@@ -105,12 +103,11 @@ export default function SignInForm() {
           <Checkbox
             id="remember"
             name="remember"
-            className="border-white/20 data-[state=checked]:bg-[#e8821a] data-[state=checked]:border-[#e8821a]"
+            className="border-[#E2E8F0] data-[state=checked]:bg-[#15689E] data-[state=checked]:border-[#15689E]"
           />
           <label
             htmlFor="remember"
-            className="text-sm font-medium cursor-pointer"
-            style={{ color: "rgba(255,255,255,0.5)" }}
+            className="text-sm font-medium text-[#64748B] cursor-pointer"
           >
             Remember me
           </label>
@@ -118,25 +115,15 @@ export default function SignInForm() {
 
         <div className="space-y-3 pt-1">
 
-          {/* Primary CTA — disabled until both fields filled */}
+          {/* Primary CTA */}
           <SubmitButton
-            classname="h-12 w-full font-bold transition-all active:scale-95 text-white"
-            style={{
-              background: "linear-gradient(135deg, #e8821a, #d4741a)",
-              boxShadow: isFormValid
-                ? "0 4px 15px rgba(232,130,26,0.35)"
-                : "none",
-              ...(!isFormValid && {
-                opacity: 0.45,
-                cursor: "not-allowed",
-              }),
-            }}
+            classname="h-9 w-full font-medium bg-[#15689E] hover:bg-[#125d8e] text-white rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             isPending={isPending}
             disabled={!isFormValid}
             type="submit"
             cta="Sign In"
             variant="default"
-            size="lg"
+            size="default"
             isPendingMesssage="Signing in..."
           />
 
@@ -147,10 +134,7 @@ export default function SignInForm() {
       <div className="mt-8 text-center">
         <Link
           href="/"
-          className="inline-flex items-center gap-2 text-sm font-medium transition-colors"
-          style={{ color: "rgba(255,255,255,0.35)" }}
-          onMouseEnter={(e) => (e.currentTarget.style.color = "#f5a255")}
-          onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(255,255,255,0.35)")}
+          className="inline-flex items-center gap-2 text-sm font-medium text-[#64748B] hover:text-[#15689E] transition-colors"
         >
           <ArrowLeft className="w-4 h-4" /> Back to Main Site
         </Link>

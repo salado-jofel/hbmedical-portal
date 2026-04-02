@@ -43,11 +43,11 @@ export function TeamTab({ members, canManage }: TeamTabProps) {
   if (members.length === 0) {
     return (
       <div className="py-10 text-center space-y-3">
-        <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto">
-          <UserPlus className="w-5 h-5 text-slate-400" />
+        <div className="w-12 h-12 rounded-full bg-[#F1F5F9] flex items-center justify-center mx-auto">
+          <UserPlus className="w-5 h-5 text-[#94A3B8]" />
         </div>
-        <p className="text-sm text-slate-500">No team members yet.</p>
-        <p className="text-xs text-slate-400">
+        <p className="text-sm text-[#64748B]">No team members yet.</p>
+        <p className="text-xs text-[#94A3B8]">
           Use the Onboarding page to generate invite links.
         </p>
       </div>
@@ -65,10 +65,10 @@ export function TeamTab({ members, canManage }: TeamTabProps) {
         return (
           <div
             key={member.id}
-            className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3"
+            className="flex items-center gap-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-4 py-3"
           >
             {/* Avatar */}
-            <div className="w-8 h-8 rounded-full bg-[#15689E]/10 flex items-center justify-center shrink-0">
+            <div className="w-8 h-8 rounded-full bg-[#EFF6FF] flex items-center justify-center shrink-0">
               <span className="text-xs font-bold text-[#15689E]">
                 {name.charAt(0).toUpperCase()}
               </span>
@@ -76,9 +76,9 @@ export function TeamTab({ members, canManage }: TeamTabProps) {
 
             {/* Info */}
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-slate-800 truncate">{name}</p>
+              <p className="text-sm font-medium text-[#0F172A] truncate">{name}</p>
               {profile?.email && (
-                <p className="text-xs text-slate-400 truncate">{profile.email}</p>
+                <p className="text-xs text-[#94A3B8] truncate">{profile.email}</p>
               )}
             </div>
 
@@ -97,7 +97,7 @@ export function TeamTab({ members, canManage }: TeamTabProps) {
                   }
                 }}
               >
-                <SelectTrigger className="h-7 text-xs w-40 shrink-0">
+                <SelectTrigger className="h-7 text-xs w-40 shrink-0 border-[#E2E8F0]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -109,7 +109,7 @@ export function TeamTab({ members, canManage }: TeamTabProps) {
                 </SelectContent>
               </Select>
             ) : (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-[#15689E]/10 text-[#15689E] font-medium shrink-0">
+              <span className="text-xs px-2 py-0.5 rounded-full bg-[#EFF6FF] text-[#15689E] font-medium shrink-0">
                 {ROLE_LABELS[member.role_type as keyof typeof ROLE_LABELS] ?? member.role_type}
               </span>
             )}
@@ -120,7 +120,7 @@ export function TeamTab({ members, canManage }: TeamTabProps) {
                 type="button"
                 onClick={() => handleRemove(member.id)}
                 disabled={removingId === member.id}
-                className="w-7 h-7 flex items-center justify-center rounded-md text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors shrink-0"
+                className="w-7 h-7 flex items-center justify-center rounded-md text-[#94A3B8] hover:text-red-600 hover:bg-red-50 transition-colors shrink-0"
                 title="Remove member"
               >
                 <Trash2 className="w-3.5 h-3.5" />
