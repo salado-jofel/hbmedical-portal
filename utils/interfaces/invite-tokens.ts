@@ -5,9 +5,9 @@ import { z } from "zod";
 /* -------------------------------------------------------------------------- */
 
 export const inviteTokenRoleSchema = z.enum([
-  "supervisor",
   "clinical_provider",
-  "non_clinical_staff",
+  "clinical_staff",
+  "sales_representative",
 ]);
 export type InviteTokenRole = z.infer<typeof inviteTokenRoleSchema>;
 
@@ -53,7 +53,7 @@ export interface IInviteTokenFormState {
 
 export const generateInviteTokenSchema = z.object({
   facility_id: z.string().uuid("Invalid account.").nullable().optional(),
-  role_type: inviteTokenRoleSchema,
+  role_type: z.enum(["clinical_provider", "clinical_staff"]),
   expires_in_days: z.coerce.number().int().min(1).max(365).default(30),
 });
 
@@ -101,7 +101,7 @@ export function mapInviteToken(raw: RawInviteTokenRecord): IInviteToken {
     token: raw.token,
     created_by: raw.created_by,
     facility_id: raw.facility_id,
-    role_type: inviteTokenRoleSchema.catch("non_clinical_staff").parse(raw.role_type),
+    role_type: inviteTokenRoleSchema.catch("clinical_staff").parse(raw.role_type),
     used_by: raw.used_by,
     used_at: raw.used_at,
     expires_at: raw.expires_at,

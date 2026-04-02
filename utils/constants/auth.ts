@@ -1,4 +1,4 @@
-export const PROFILE_ROLES = ["sales_representative", "doctor"] as const;
+export const PROFILE_ROLES = ["sales_representative"] as const;
 export const FACILITY_STATUSES = ["active", "inactive"] as const;
 
 export const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

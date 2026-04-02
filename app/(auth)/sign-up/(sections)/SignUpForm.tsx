@@ -19,7 +19,7 @@ import { validatePasswordsMatch } from "@/utils/validators/signup";
 import { PhoneInput } from "react-international-phone";
 import "react-international-phone/style.css";
 
-type Role = "sales_representative" | "doctor";
+type Role = "sales_representative" | "clinical_provider";
 
 const initialState = { error: "" };
 
@@ -30,9 +30,9 @@ const roles: { value: Role; icon: React.ReactNode; label: string }[] = [
     label: "Sales Representative",
   },
   {
-    value: "doctor",
+    value: "clinical_provider",
     icon: <Stethoscope className="w-6 h-6" />,
-    label: "Physician",
+    label: "Clinical Provider",
   },
 ];
 

@@ -2,7 +2,7 @@
 
 import React, { useActionState, useState, useEffect } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Mail, Lock, UserPlus, ArrowLeft } from "lucide-react";
+import { Mail, Lock, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { signIn } from "../(services)/actions";
 import SubmitButton from "@/app/(components)/SubmitButton";
@@ -140,42 +140,6 @@ export default function SignInForm() {
             isPendingMesssage="Signing in..."
           />
 
-          {/* Divider */}
-          <div className="relative flex items-center justify-center py-1">
-            <div className="absolute inset-0 flex items-center">
-              <span
-                className="w-full border-t"
-                style={{ borderColor: "rgba(255,255,255,0.08)" }}
-              />
-            </div>
-            <span
-              className="relative px-4 text-xs uppercase tracking-widest"
-              style={{ color: "rgba(255,255,255,0.3)", background: "transparent" }}
-            >
-              or
-            </span>
-          </div>
-
-          {/* Secondary CTA — always enabled */}
-          <SubmitButton
-            classname="h-12 w-full cursor-pointer font-bold transition-all active:scale-95"
-            style={{
-              background: "rgba(232,130,26,0.08)",
-              border: "1px solid rgba(232,130,26,0.35)",
-              color: "#f5a255",
-            }}
-            type="button"
-            cta={
-              <Link
-                href="/sign-up"
-                className="flex gap-2 items-center justify-center w-full h-full"
-              >
-                <UserPlus className="w-5 h-5" /> Create New Account
-              </Link>
-            }
-            variant="outline"
-            size="lg"
-          />
         </div>
       </form>
 

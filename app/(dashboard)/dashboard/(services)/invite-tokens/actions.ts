@@ -1,9 +1,11 @@
 "use server";
 
+import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUserOrThrow, getUserRole } from "@/lib/supabase/auth";
+import { resend, PAYMENTS_FROM_EMAIL } from "@/lib/emails/resend";
 import {
   generateInviteTokenSchema,
   mapInviteToken,
@@ -202,4 +204,133 @@ export async function deleteInviteToken(tokenId: string): Promise<void> {
   }
 
   revalidatePath("/dashboard/onboarding");
+}
+
+/* -------------------------------------------------------------------------- */
+/* inviteSubRep                                                               */
+/* -------------------------------------------------------------------------- */
+
+
+const LOGO_URL =
+  "https://eyrefohymvvabazvmemq.supabase.co/storage/v1/object/public/spearhead-assets/assets/email/hb-logo-name-2.png";
+
+const inviteSubRepSchema = z.object({
+  first_name: z.string().min(1, "First name is required."),
+  last_name: z.string().min(1, "Last name is required."),
+  email: z.string().email("Enter a valid email."),
+});
+
+export async function inviteSubRep(
+  _prev: IInviteTokenFormState | null,
+  formData: FormData,
+): Promise<IInviteTokenFormState> {
+  try {
+    const supabase = await createClient();
+    const user = await getCurrentUserOrThrow(supabase);
+    const role = await getUserRole(supabase);
+
+    if (role !== "sales_representative" && role !== "admin") {
+      return { error: "Unauthorized.", success: false };
+    }
+
+    const raw = {
+      first_name: formData.get("first_name") as string,
+      last_name: formData.get("last_name") as string,
+      email: formData.get("email") as string,
+    };
+
+    const parsed = inviteSubRepSchema.safeParse(raw);
+    if (!parsed.success) {
+      const msg = parsed.error.errors[0]?.message ?? "Invalid input.";
+      return { error: msg, success: false };
+    }
+
+    const { first_name, last_name, email } = parsed.data;
+
+    const adminClient = createAdminClient();
+
+    // Generate invite link
+    const { data: linkData, error: linkError } =
+      await adminClient.auth.admin.generateLink({
+        type: "invite",
+        email,
+        options: {
+          data: { first_name, last_name, invited_by: user.id },
+          redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? ""}/sign-in`,
+        },
+      });
+
+    if (linkError || !linkData?.user) {
+      console.error("[inviteSubRep] generateLink error:", linkError);
+      return { error: linkError?.message ?? "Failed to create invite.", success: false };
+    }
+
+    const userId = linkData.user.id;
+    const actionLink = linkData.properties?.action_link ?? "";
+
+    // Create profile with sales_representative role
+    await adminClient.from("profiles").upsert({
+      id: userId,
+      first_name,
+      last_name,
+      email,
+      role: "sales_representative",
+    });
+
+    // Record invite token for tracking
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    await supabase.from(INVITE_TOKENS_TABLE).insert({
+      created_by: user.id,
+      facility_id: null,
+      role_type: "sales_representative",
+      expires_at: expiresAt,
+    });
+
+    // Send invite email via Resend
+    if (actionLink) {
+      await resend.emails.send({
+        from: PAYMENTS_FROM_EMAIL,
+        to: email,
+        subject: "You've been invited to join HB Medical as a Sales Rep",
+        html: `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8" /><style>
+body{font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background-color:#f4f7f9;margin:0;padding:0;}
+.wrapper{background-color:#f4f7f9;padding:32px 16px;}
+.container{max-width:600px;margin:0 auto;background-color:#ffffff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden;}
+.header{padding:22px 28px 16px;text-align:center;border-bottom:1px solid #f1f5f9;}
+.logo-img{display:block;margin:0 auto;width:176px;height:auto;border:0;}
+.content{padding:28px 32px 34px;line-height:1.6;color:#334155;}
+.h1{font-size:22px;font-weight:700;color:#0f172a;margin:0 0 12px;}
+p{margin:0 0 14px;font-size:14px;}
+.btn-row{text-align:center;margin:24px 0 22px;}
+.btn{background-color:#e8821a;color:#ffffff !important;padding:13px 28px;text-decoration:none;border-radius:8px;font-weight:600;font-size:15px;display:inline-block;}
+.muted{margin-top:20px;font-size:13px;color:#94a3b8;}
+.footer{background-color:#f8fafc;padding:20px 24px;text-align:center;font-size:12px;color:#64748b;border-top:1px solid #f1f5f9;}
+</style></head>
+<body>
+<div class="wrapper"><div class="container">
+<div class="header"><img src="${LOGO_URL}" alt="HB Medical" width="176" class="logo-img" /></div>
+<div class="content">
+<h1 class="h1">You're invited to HB Medical Portal</h1>
+<p>Hi ${first_name} ${last_name},</p>
+<p>You've been invited to join the <strong>HB Medical Portal</strong> as a <strong>Sales Representative</strong>. Click below to set your password and get started.</p>
+<div class="btn-row"><a href="${actionLink}" class="btn" target="_blank" rel="noopener noreferrer">Set Password &amp; Sign In</a></div>
+<p>This invitation expires in 7 days. If you did not expect this, you can safely ignore it.</p>
+<p class="muted">Questions? Contact your HB Medical admin.</p>
+</div>
+<div class="footer">&copy; 2026 HB Medical Portal.</div>
+</div></div>
+</body></html>
+        `.trim(),
+      });
+    }
+
+    revalidatePath("/dashboard/onboarding");
+    return { success: true, error: null };
+  } catch (err) {
+    console.error("[inviteSubRep] Unexpected error:", err);
+    return { error: "An unexpected error occurred.", success: false };
+  }
 }

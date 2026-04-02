@@ -17,9 +17,8 @@ import type { IInviteTokenFormState } from "@/utils/interfaces/invite-tokens";
 import type { IAccount } from "@/utils/interfaces/accounts";
 
 const ROLE_OPTIONS = [
-  { value: "supervisor", label: "Supervisor" },
   { value: "clinical_provider", label: "Clinical Provider" },
-  { value: "non_clinical_staff", label: "Non-Clinical Staff" },
+  { value: "clinical_staff", label: "Clinical Staff" },
 ];
 
 const EXPIRY_OPTIONS = [
@@ -90,9 +89,9 @@ export function GenerateInviteForm({ accounts, baseUrl }: GenerateInviteFormProp
         {/* Role */}
         <div className="space-y-1.5">
           <Label className="text-xs">
-            Staff role <span className="text-red-400">*</span>
+            Role <span className="text-red-400">*</span>
           </Label>
-          <Select name="role_type" defaultValue="non_clinical_staff">
+          <Select name="role_type" defaultValue="clinical_staff">
             <SelectTrigger className="h-9 text-sm">
               <SelectValue />
             </SelectTrigger>
@@ -169,7 +168,7 @@ export function GenerateInviteForm({ accounts, baseUrl }: GenerateInviteFormProp
             </button>
           </div>
           <p className="text-xs text-slate-400">
-            This link is now saved below. Share it with the staff member to join the portal.
+            This link is now saved below. Share it with the clinic user to join the portal.
           </p>
         </div>
       )}

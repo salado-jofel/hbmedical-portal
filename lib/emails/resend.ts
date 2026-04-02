@@ -10,3 +10,6 @@ export const resend = new Resend(apiKey);
 
 export const PAYMENTS_FROM_EMAIL =
   process.env.PAYMENTS_FROM_EMAIL || "payments@hbmedicalportal.com";
+
+export const ACCOUNTS_FROM_EMAIL =
+  process.env.ACCOUNTS_FROM_EMAIL || "HB Medical <accounts@hbmedicalportal.com>";

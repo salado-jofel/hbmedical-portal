@@ -5,7 +5,7 @@ import {
   ShoppingCart,
   Building2,
   CheckSquare,
-  UserCircle,
+  Settings,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -18,7 +18,7 @@ interface BottomNavItem {
   icon: LucideIcon;
   label: string;
   href: string;
-  allowedRoles: UserRole[];
+  allowedRoles: NonNullable<UserRole>[];
 }
 
 const bottomNavItems: BottomNavItem[] = [
@@ -26,19 +26,19 @@ const bottomNavItems: BottomNavItem[] = [
     icon: LayoutDashboard,
     label: "Home",
     href: "/dashboard",
-    allowedRoles: ["sales_representative", "doctor"],
+    allowedRoles: ["sales_representative", "support_staff", "clinical_provider", "clinical_staff"],
   },
   {
     icon: ShoppingCart,
     label: "Orders",
     href: "/dashboard/orders",
-    allowedRoles: ["sales_representative", "doctor"],
+    allowedRoles: ["support_staff", "clinical_provider", "clinical_staff"],
   },
   {
     icon: Building2,
     label: "Accounts",
     href: "/dashboard/accounts",
-    allowedRoles: ["sales_representative", "admin"],
+    allowedRoles: ["sales_representative", "admin", "support_staff"],
   },
   {
     icon: CheckSquare,
@@ -47,10 +47,10 @@ const bottomNavItems: BottomNavItem[] = [
     allowedRoles: ["sales_representative", "admin"],
   },
   {
-    icon: UserCircle,
-    label: "Profile",
-    href: "/dashboard/profile",
-    allowedRoles: ["sales_representative", "doctor"],
+    icon: Settings,
+    label: "Settings",
+    href: "/dashboard/settings",
+    allowedRoles: ["sales_representative", "support_staff", "clinical_provider", "clinical_staff"],
   },
 ];
 
@@ -59,7 +59,7 @@ export function BottomNav() {
   const role = useAppSelector((s) => s.dashboard.role) as UserRole;
 
   const visibleItems = bottomNavItems.filter(
-    (item) => role && item.allowedRoles.includes(role),
+    (item) => role && item.allowedRoles.includes(role as NonNullable<UserRole>),
   );
 
   if (visibleItems.length === 0) return null;

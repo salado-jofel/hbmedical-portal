@@ -16,15 +16,11 @@ export default async function SettingsPage() {
   const profile = await getProfile();
   if (!profile) notFound();
 
-  const showCredentials =
-    role === "doctor" ||
-    role === "clinical_provider" ||
-    role === "supervisor";
+  const showCredentials = role === "clinical_provider";
 
   const canManageTeam =
     role === "admin" ||
-    role === "sales_representative" ||
-    role === "doctor";
+    role === "sales_representative";
 
   const [members, credentials] = await Promise.all([
     getFacilityMembers(),

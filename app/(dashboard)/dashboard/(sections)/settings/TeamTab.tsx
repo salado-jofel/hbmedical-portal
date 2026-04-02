@@ -21,9 +21,8 @@ interface TeamTabProps {
 }
 
 const STAFF_ROLES = [
-  { value: "supervisor", label: "Supervisor" },
   { value: "clinical_provider", label: "Clinical Provider" },
-  { value: "non_clinical_staff", label: "Non-Clinical Staff" },
+  { value: "clinical_staff", label: "Clinical Staff" },
 ];
 
 export function TeamTab({ members, canManage }: TeamTabProps) {
@@ -86,7 +85,7 @@ export function TeamTab({ members, canManage }: TeamTabProps) {
             {/* Role selector or badge */}
             {canManage ? (
               <Select
-                defaultValue={member.role}
+                defaultValue={member.role_type}
                 onValueChange={async (value) => {
                   const fd = new FormData();
                   fd.set("role", value);
@@ -111,7 +110,7 @@ export function TeamTab({ members, canManage }: TeamTabProps) {
               </Select>
             ) : (
               <span className="text-xs px-2 py-0.5 rounded-full bg-[#15689E]/10 text-[#15689E] font-medium shrink-0">
-                {ROLE_LABELS[member.role as keyof typeof ROLE_LABELS] ?? member.role}
+                {ROLE_LABELS[member.role_type as keyof typeof ROLE_LABELS] ?? member.role_type}
               </span>
             )}
 

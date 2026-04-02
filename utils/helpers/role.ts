@@ -1,50 +1,55 @@
 export type UserRole =
-  | "sales_representative"
-  | "doctor"
   | "admin"
-  | "supervisor"
+  | "sales_representative"
+  | "support_staff"
   | "clinical_provider"
-  | "non_clinical_staff"
+  | "clinical_staff"
   | null;
 
 export function isAdmin(role: UserRole): boolean {
   return role === "admin";
 }
 
-export function isDoctor(role: UserRole): boolean {
-  return role === "doctor";
-}
-
 export function isSalesRep(role: UserRole): boolean {
   return role === "sales_representative";
 }
 
-export function isSupervisor(role: UserRole): boolean {
-  return role === "supervisor";
+export function isSupport(role: UserRole): boolean {
+  return role === "support_staff";
 }
 
 export function isClinicalProvider(role: UserRole): boolean {
   return role === "clinical_provider";
 }
 
-export function isNonClinicalStaff(role: UserRole): boolean {
-  return role === "non_clinical_staff";
+export function isClinicalStaff(role: UserRole): boolean {
+  return role === "clinical_staff";
 }
 
-/** Returns true for clinic/facility staff invited via invite link */
-export function isFacilityMember(role: UserRole): boolean {
+export function isDistributionSide(role: UserRole): boolean {
   return (
-    role === "supervisor" ||
-    role === "clinical_provider" ||
-    role === "non_clinical_staff"
+    role === "admin" ||
+    role === "sales_representative" ||
+    role === "support_staff"
   );
+}
+
+export function isClinicSide(role: UserRole): boolean {
+  return role === "clinical_provider" || role === "clinical_staff";
+}
+
+export function canSignOrders(role: UserRole): boolean {
+  return role === "clinical_provider";
+}
+
+export function canCreateOrders(role: UserRole): boolean {
+  return role === "clinical_provider" || role === "clinical_staff";
 }
 
 export const ROLE_LABELS: Record<NonNullable<UserRole>, string> = {
   admin: "Admin",
-  sales_representative: "Sales Representative",
-  doctor: "Physician",
-  supervisor: "Supervisor",
+  sales_representative: "Sales Rep",
+  support_staff: "Support Staff",
   clinical_provider: "Clinical Provider",
-  non_clinical_staff: "Non-Clinical Staff",
+  clinical_staff: "Clinical Staff",
 };

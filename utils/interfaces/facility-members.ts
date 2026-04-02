@@ -41,7 +41,7 @@ export interface IFacilityMemberFormState {
 /* -------------------------------------------------------------------------- */
 
 export const updateMemberRoleSchema = z.object({
-  role_type: z.enum(["supervisor", "clinical_provider", "non_clinical_staff"]),
+  role_type: z.enum(["clinical_provider", "clinical_staff"]),
 });
 
 export type UpdateMemberRoleInput = z.infer<typeof updateMemberRoleSchema>;

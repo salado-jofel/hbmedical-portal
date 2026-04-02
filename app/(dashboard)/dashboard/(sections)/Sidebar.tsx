@@ -4,7 +4,6 @@ import {
   LayoutDashboard,
   ShoppingCart,
   Package,
-  UserCircle,
   Megaphone,
   ScrollText,
   BookOpen,
@@ -14,6 +13,7 @@ import {
   CheckSquare,
   Share2,
   Settings,
+  Users,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
@@ -31,7 +31,7 @@ interface NavItemDef {
   icon: LucideIcon;
   label: string;
   href: string;
-  allowedRoles: UserRole[]; // Removed null to keep logic explicit
+  allowedRoles: NonNullable<UserRole>[];
 }
 
 const navItems: NavItemDef[] = [
@@ -39,86 +39,79 @@ const navItems: NavItemDef[] = [
     icon: LayoutDashboard,
     label: "Dashboard",
     href: "/dashboard",
-    // Forbidden for Admin in middleware
-    allowedRoles: ["sales_representative", "doctor"],
-  },
-  {
-    icon: ShoppingCart,
-    label: "Orders",
-    href: "/dashboard/orders",
-    // Forbidden for Admin in middleware
-    allowedRoles: ["sales_representative", "doctor", "supervisor", "clinical_provider", "non_clinical_staff"],
+    allowedRoles: ["sales_representative", "support_staff", "clinical_provider", "clinical_staff", "admin"],
   },
   {
     icon: Package,
     label: "Products",
     href: "/dashboard/products",
-    // ONLY for Admin
     allowedRoles: ["admin"],
-  },
-  {
-    icon: UserCircle,
-    label: "Profile",
-    href: "/dashboard/profile",
-    // Forbidden for Admin in middleware
-    allowedRoles: ["sales_representative", "doctor"],
   },
   {
     icon: Megaphone,
     label: "Marketing",
     href: "/dashboard/marketing",
-    allowedRoles: ["sales_representative", "doctor", "admin"],
+    allowedRoles: ["admin"],
   },
   {
     icon: ScrollText,
     label: "Contracts",
     href: "/dashboard/contracts",
-    allowedRoles: ["sales_representative", "doctor", "admin"],
+    allowedRoles: ["admin"],
   },
   {
     icon: BookOpen,
     label: "Trainings",
     href: "/dashboard/trainings",
-    allowedRoles: ["sales_representative", "doctor", "admin"],
+    allowedRoles: ["admin"],
   },
   {
     icon: Hospital,
     label: "Hospital Onboarding",
     href: "/dashboard/hospital-onboarding",
-    allowedRoles: ["sales_representative", "doctor", "admin"],
+    allowedRoles: ["admin"],
   },
   {
     icon: Building2,
     label: "Accounts",
     href: "/dashboard/accounts",
-    allowedRoles: ["sales_representative", "admin"],
+    allowedRoles: ["admin", "sales_representative", "support_staff"],
+  },
+  {
+    icon: ShoppingCart,
+    label: "Orders",
+    href: "/dashboard/orders",
+    allowedRoles: ["support_staff", "clinical_provider", "clinical_staff"],
   },
   {
     icon: CheckSquare,
     label: "Tasks",
     href: "/dashboard/tasks",
-    allowedRoles: ["sales_representative", "admin"],
+    allowedRoles: ["admin", "sales_representative"],
   },
   {
     icon: Share2,
     label: "Onboarding",
     href: "/dashboard/onboarding",
-    allowedRoles: ["sales_representative", "admin"],
+    allowedRoles: ["admin", "sales_representative"],
+  },
+  {
+    icon: Users,
+    label: "Users",
+    href: "/dashboard/users",
+    allowedRoles: ["admin"],
   },
   {
     icon: Settings,
     label: "Settings",
     href: "/dashboard/settings",
-    allowedRoles: ["sales_representative", "doctor", "admin", "supervisor", "clinical_provider", "non_clinical_staff"],
+    allowedRoles: ["admin", "sales_representative", "support_staff", "clinical_provider", "clinical_staff"],
   },
 ];
 
-/**
- * Helper to check visibility based on the user's current role
- */
 function isNavItemVisible(item: NavItemDef, role: UserRole | null): boolean {
   if (!role) return false;
-  return item.allowedRoles.includes(role);
+  return item.allowedRoles.includes(role as NonNullable<UserRole>);
 }
 
 export function Sidebar() {
@@ -127,7 +120,6 @@ export function Sidebar() {
   const isOpen = useAppSelector((state) => state.dashboard.isSidebarOpen);
   const userData = useAppSelector((state) => state.dashboard);
 
-  // Ensure we are getting the string role (e.g., 'sales_representative' or 'admin')
   const role = userData.role as UserRole;
 
   useEffect(() => {

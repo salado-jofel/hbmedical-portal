@@ -1,6 +1,6 @@
 "use client";
 
-import { User, Stethoscope, BriefcaseMedical, ShieldCheck, UserCheck } from "lucide-react";
+import { User, Stethoscope, BriefcaseMedical, ShieldCheck, HeadsetIcon } from "lucide-react";
 
 interface SidebarUserCardProps {
   name?: string | null;
@@ -12,43 +12,49 @@ interface SidebarUserCardProps {
 function getRoleBadge(role: string) {
   if (role === "admin") {
     return {
-      className: "bg-purple-500/20 text-purple-300 border-purple-500/30",
+      className: "border",
+      style: { background: "rgba(21,104,158,0.25)", color: "#7dd3f8", borderColor: "rgba(21,104,158,0.4)" },
       icon: <ShieldCheck className="w-3 h-3" />,
-      label: "Admin",
+      label: "ADMIN",
     };
   }
-  if (role === "doctor") {
+  if (role === "sales_representative") {
     return {
-      className: "bg-[#15689E]/30 text-white/80 border-[#15689E]/40",
-      icon: <Stethoscope className="w-3 h-3" />,
-      label: "Physician",
+      className: "border",
+      style: { background: "rgba(232,130,26,0.2)", color: "#f5a255", borderColor: "rgba(232,130,26,0.35)" },
+      icon: <BriefcaseMedical className="w-3 h-3" />,
+      label: "SALES REP",
     };
   }
-  if (role === "supervisor") {
+  if (role === "support_staff") {
     return {
-      className: "bg-green-500/20 text-green-300 border-green-500/30",
-      icon: <UserCheck className="w-3 h-3" />,
-      label: "Supervisor",
+      className: "border",
+      style: { background: "rgba(124,58,237,0.2)", color: "#c4b5fd", borderColor: "rgba(124,58,237,0.35)" },
+      icon: <HeadsetIcon className="w-3 h-3" />,
+      label: "SUPPORT STAFF",
     };
   }
   if (role === "clinical_provider") {
     return {
-      className: "bg-teal-500/20 text-teal-300 border-teal-500/30",
+      className: "border",
+      style: { background: "rgba(13,148,136,0.2)", color: "#5eead4", borderColor: "rgba(13,148,136,0.35)" },
       icon: <Stethoscope className="w-3 h-3" />,
-      label: "Clinical Provider",
+      label: "CLINICAL PROVIDER",
     };
   }
-  if (role === "non_clinical_staff") {
+  if (role === "clinical_staff") {
     return {
-      className: "bg-slate-500/20 text-slate-300 border-slate-500/30",
+      className: "border",
+      style: { background: "rgba(71,85,105,0.25)", color: "#cbd5e1", borderColor: "rgba(71,85,105,0.4)" },
       icon: <User className="w-3 h-3" />,
-      label: "Staff",
+      label: "CLINICAL STAFF",
     };
   }
   return {
-    className: "bg-[#f5a255]/15 text-[#f5a255] border-[#f5a255]/30",
+    className: "border",
+    style: { background: "rgba(232,130,26,0.15)", color: "#f5a255", borderColor: "rgba(232,130,26,0.3)" },
     icon: <BriefcaseMedical className="w-3 h-3" />,
-    label: "Sales Rep",
+    label: "STAFF",
   };
 }
 
@@ -77,7 +83,10 @@ export function SidebarUserCard({
         {role != null && (() => {
           const badge = getRoleBadge(role);
           return (
-            <div className={`inline-flex items-center gap-1.5 mt-1 w-fit px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide border ${badge.className}`}>
+            <div
+              className={`inline-flex items-center gap-1.5 mt-1 w-fit px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide ${badge.className}`}
+              style={badge.style}
+            >
               {badge.icon}
               {badge.label}
             </div>
