@@ -20,5 +20,9 @@
       "Write(.env*)",
       "Edit(.env*)"
     ]
+  },
+  "enabledPlugins": {
+    "frontend-design@claude-plugins-official": true,
+    "superpowers@claude-plugins-official": true
   }
 }

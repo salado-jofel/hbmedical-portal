@@ -30,13 +30,48 @@ const ROLE_FILTER_OPTIONS: { value: string; label: string }[] = [
   { value: "clinical_staff", label: "Clinical Staff" },
 ];
 
-const ROLE_BADGE_STYLES: Record<NonNullable<UserRole>, string> = {
-  admin: "bg-blue-100 text-blue-700",
-  sales_representative: "bg-orange-100 text-orange-700",
-  support_staff: "bg-purple-100 text-purple-700",
-  clinical_provider: "bg-teal-100 text-teal-700",
-  clinical_staff: "bg-slate-100 text-slate-600",
+const ROLE_COLORS: Record<
+  NonNullable<UserRole>,
+  { bg: string; text: string; dot: string; avatarFrom: string; avatarTo: string }
+> = {
+  admin: {
+    bg: "bg-[#15689E]/10",
+    text: "text-[#15689E]",
+    dot: "bg-[#15689E]",
+    avatarFrom: "from-[#15689E]/20",
+    avatarTo: "to-[#15689E]/10",
+  },
+  sales_representative: {
+    bg: "bg-orange-100",
+    text: "text-[#e8821a]",
+    dot: "bg-[#e8821a]",
+    avatarFrom: "from-orange-200",
+    avatarTo: "to-orange-100",
+  },
+  support_staff: {
+    bg: "bg-purple-100",
+    text: "text-purple-700",
+    dot: "bg-purple-500",
+    avatarFrom: "from-purple-200",
+    avatarTo: "to-purple-100",
+  },
+  clinical_provider: {
+    bg: "bg-teal-100",
+    text: "text-teal-700",
+    dot: "bg-teal-500",
+    avatarFrom: "from-teal-200",
+    avatarTo: "to-teal-100",
+  },
+  clinical_staff: {
+    bg: "bg-slate-100",
+    text: "text-slate-600",
+    dot: "bg-slate-400",
+    avatarFrom: "from-slate-200",
+    avatarTo: "to-slate-100",
+  },
 };
+
+type StatusFilter = "all" | "active" | "inactive";
 
 export function UsersPageClient() {
   const dispatch = useAppDispatch();
@@ -44,9 +79,19 @@ export function UsersPageClient() {
 
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [showCreate, setShowCreate] = useState(false);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
+
+  const stats = useMemo(
+    () => ({
+      total: users.length,
+      active: users.filter((u) => u.is_active).length,
+      inactive: users.filter((u) => !u.is_active).length,
+    }),
+    [users],
+  );
 
   const filtered = useMemo(() => {
     let result = users;
@@ -62,8 +107,13 @@ export function UsersPageClient() {
     if (roleFilter !== "all") {
       result = result.filter((u) => u.role === roleFilter);
     }
+    if (statusFilter !== "all") {
+      result = result.filter((u) =>
+        statusFilter === "active" ? u.is_active : !u.is_active,
+      );
+    }
     return result;
-  }, [users, search, roleFilter]);
+  }, [users, search, roleFilter, statusFilter]);
 
   function handleDeactivate(userId: string) {
     const user = users.find((u) => u.id === userId);
@@ -100,21 +150,66 @@ export function UsersPageClient() {
   }
 
   return (
-    <div className="space-y-4">
-      {/* ── Filters + Create ── */}
-      <div className="flex flex-col sm:flex-row gap-3">
+    <div className="space-y-5">
+      {/* ── Top bar: status filter chips + create ── */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        {/* Status chips (mirroring reference: All / Active / Inactive) */}
+        <div className="flex items-center gap-2">
+          {(
+            [
+              { key: "all", label: "All Users", count: stats.total, activeClass: "bg-[#15689E] text-white shadow-[#15689E]/20", countClass: "bg-white/20 text-white", idleCountClass: "bg-slate-100 text-slate-500" },
+              { key: "active", label: "Active", count: stats.active, activeClass: "bg-green-600 text-white shadow-green-600/20", countClass: "bg-white/20 text-white", idleCountClass: "bg-green-50 text-green-600" },
+              { key: "inactive", label: "Inactive", count: stats.inactive, activeClass: "bg-slate-600 text-white shadow-slate-600/10", countClass: "bg-white/20 text-white", idleCountClass: "bg-slate-100 text-slate-500" },
+            ] as const
+          ).map(({ key, label, count, activeClass, countClass, idleCountClass }) => {
+            const isActive = statusFilter === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setStatusFilter(key)}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-sm font-medium transition-all ${
+                  isActive
+                    ? `${activeClass} shadow-sm`
+                    : "bg-white border border-slate-200 text-slate-600 hover:border-slate-300"
+                }`}
+              >
+                {label}
+                <span
+                  className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${
+                    isActive ? countClass : idleCountClass
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <Button
+          size="sm"
+          className="h-9 bg-[#15689E] hover:bg-[#15689E]/90 text-white gap-1.5 shrink-0 shadow-sm shadow-[#15689E]/20"
+          onClick={() => setShowCreate(true)}
+        >
+          <UserPlus className="w-3.5 h-3.5" />
+          Create User
+        </Button>
+      </div>
+
+      {/* ── Search + role filter ── */}
+      <div className="flex flex-col sm:flex-row gap-2.5">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
           <Input
             placeholder="Search by name or email..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 h-9 text-sm"
+            className="pl-9 h-9 text-sm bg-white border-slate-200 rounded-lg"
           />
         </div>
-
         <Select value={roleFilter} onValueChange={setRoleFilter}>
-          <SelectTrigger className="w-full sm:w-44 h-9 text-sm">
+          <SelectTrigger className="w-full sm:w-44 h-9 text-sm bg-white border-slate-200">
             <SelectValue placeholder="All roles" />
           </SelectTrigger>
           <SelectContent>
@@ -125,15 +220,6 @@ export function UsersPageClient() {
             ))}
           </SelectContent>
         </Select>
-
-        <Button
-          size="sm"
-          className="h-9 bg-[#15689E] hover:bg-[#15689E]/90 text-white gap-1.5 shrink-0"
-          onClick={() => setShowCreate(true)}
-        >
-          <UserPlus className="w-3.5 h-3.5" />
-          Create User
-        </Button>
       </div>
 
       {/* ── Table ── */}
@@ -143,28 +229,29 @@ export function UsersPageClient() {
           message="No users found"
         />
       ) : (
-        <div className="rounded-xl border border-slate-200 overflow-hidden">
-          {/* Header */}
-          <div className="grid grid-cols-[2fr_1fr_auto] sm:grid-cols-[2fr_2fr_1fr_1fr_auto] bg-[#15689E] px-5 py-3">
-            <span className="text-xs font-semibold text-white tracking-wide">User</span>
-            <span className="text-xs font-semibold text-white tracking-wide hidden sm:block">Email</span>
-            <span className="text-xs font-semibold text-white tracking-wide">Role</span>
-            <span className="text-xs font-semibold text-white tracking-wide hidden sm:block">Status</span>
-            <span className="text-xs font-semibold text-white tracking-wide text-right pl-4"></span>
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+          {/* Column headers */}
+          <div className="grid grid-cols-[28px_2fr_1fr_auto] sm:grid-cols-[28px_2.5fr_2fr_1.3fr_1fr_auto] px-5 py-2.5 bg-slate-50 border-b border-slate-200/80">
+            <span className="text-[11px] font-semibold text-slate-300 uppercase tracking-wider">#</span>
+            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">User</span>
+            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider hidden sm:block">Email</span>
+            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Role</span>
+            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider hidden sm:block">Status</span>
+            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider text-right">Action</span>
           </div>
 
           <motion.div
             variants={staggerContainer}
             initial="hidden"
             animate="visible"
-            className="divide-y divide-slate-50"
+            className="divide-y divide-slate-100"
           >
-            {filtered.map((user) => {
+            {filtered.map((user, index) => {
               const initials =
                 `${user.first_name.charAt(0)}${user.last_name.charAt(0)}`.toUpperCase();
-              const badgeClass =
-                ROLE_BADGE_STYLES[user.role as NonNullable<UserRole>] ??
-                "bg-slate-100 text-slate-600";
+              const colors =
+                ROLE_COLORS[user.role as NonNullable<UserRole>] ??
+                ROLE_COLORS.clinical_staff;
               const roleLabel =
                 ROLE_LABELS[user.role as NonNullable<UserRole>] ?? user.role;
               const isActing = pendingId === user.id;
@@ -173,19 +260,38 @@ export function UsersPageClient() {
                 <motion.div
                   key={user.id}
                   variants={fadeUp}
-                  className="grid grid-cols-[2fr_1fr_auto] sm:grid-cols-[2fr_2fr_1fr_1fr_auto] items-center px-5 py-3.5 hover:bg-slate-50 transition-colors"
+                  className="grid grid-cols-[28px_2fr_1fr_auto] sm:grid-cols-[28px_2.5fr_2fr_1.3fr_1fr_auto] items-center px-5 py-4 hover:bg-slate-50/70 transition-colors group"
                 >
-                  {/* Name + facility */}
+                  {/* Row number */}
+                  <span className="text-xs font-medium text-slate-300 select-none">
+                    {index + 1}
+                  </span>
+
+                  {/* Avatar + Name */}
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-8 h-8 rounded-full bg-[#15689E]/10 flex items-center justify-center shrink-0">
-                      <span className="text-xs font-bold text-[#15689E]">{initials}</span>
+                    <div
+                      className={`w-9 h-9 rounded-full bg-gradient-to-br ${colors.avatarFrom} ${colors.avatarTo} flex items-center justify-center shrink-0 shadow-sm`}
+                    >
+                      <span className={`text-xs font-bold ${colors.text}`}>
+                        {initials}
+                      </span>
                     </div>
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-slate-800 truncate">
+                      <p
+                        className={`text-sm font-semibold truncate ${
+                          user.is_active ? "text-slate-800" : "text-slate-400"
+                        }`}
+                      >
                         {user.first_name} {user.last_name}
                       </p>
-                      {user.facility && (
-                        <p className="text-xs text-slate-400 truncate">{user.facility.name}</p>
+                      {user.facility ? (
+                        <p className="text-xs text-slate-400 truncate">
+                          {user.facility.name}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-slate-300 truncate italic">
+                          No facility
+                        </p>
                       )}
                     </div>
                   </div>
@@ -198,45 +304,56 @@ export function UsersPageClient() {
                   {/* Role badge */}
                   <div>
                     <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${badgeClass}`}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${colors.bg} ${colors.text}`}
                     >
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full ${colors.dot} shrink-0`}
+                      />
                       {roleLabel}
                     </span>
                   </div>
 
                   {/* Status */}
-                  <div className="hidden sm:flex items-center gap-1.5">
+                  <div className="hidden sm:block">
                     <span
-                      className={`w-1.5 h-1.5 rounded-full ${
-                        user.is_active ? "bg-green-500" : "bg-slate-300"
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+                        user.is_active
+                          ? "bg-green-50 text-green-700"
+                          : "bg-slate-100 text-slate-400"
                       }`}
-                    />
-                    <span className="text-xs text-slate-500">
+                    >
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                          user.is_active ? "bg-green-500" : "bg-slate-300"
+                        }`}
+                      />
                       {user.is_active ? "Active" : "Inactive"}
                     </span>
                   </div>
 
-                  {/* Action button */}
-                  <div className="flex justify-end pl-4">
+                  {/* Action — revealed on row hover */}
+                  <div className="flex items-center justify-end">
                     {user.is_active ? (
                       <button
                         type="button"
                         onClick={() => handleDeactivate(user.id)}
                         disabled={isActing}
-                        className="w-7 h-7 flex items-center justify-center rounded-md text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40"
+                        className="h-7 px-2.5 flex items-center gap-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all disabled:opacity-40 opacity-0 group-hover:opacity-100"
                         title="Deactivate user"
                       >
                         <UserX className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Deactivate</span>
                       </button>
                     ) : (
                       <button
                         type="button"
                         onClick={() => handleReactivate(user.id)}
                         disabled={isActing}
-                        className="w-7 h-7 flex items-center justify-center rounded-md text-slate-400 hover:text-green-600 hover:bg-green-50 transition-colors disabled:opacity-40"
+                        className="h-7 px-2.5 flex items-center gap-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-green-600 hover:bg-green-50 transition-all disabled:opacity-40 opacity-0 group-hover:opacity-100"
                         title="Reactivate user"
                       >
                         <UserCheck className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Reactivate</span>
                       </button>
                     )}
                   </div>
@@ -251,10 +368,7 @@ export function UsersPageClient() {
         {filtered.length} of {users.length} user{users.length !== 1 ? "s" : ""}
       </p>
 
-      <CreateUserModal
-        open={showCreate}
-        onClose={() => setShowCreate(false)}
-      />
+      <CreateUserModal open={showCreate} onClose={() => setShowCreate(false)} />
     </div>
   );
 }
