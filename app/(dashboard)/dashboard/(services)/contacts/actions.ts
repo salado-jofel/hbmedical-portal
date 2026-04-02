@@ -86,37 +86,41 @@ export async function createContact(
     }
 
     const raw = {
-      first_name: formData.get("first_name") as string,
-      last_name: formData.get("last_name") as string,
-      title: toNullable(formData.get("title") as string),
-      email: toNullable(formData.get("email") as string) || null,
-      phone: toNullable(formData.get("phone") as string),
-      preferred_contact: formData.get("preferred_contact") as string || "either",
-      notes: toNullable(formData.get("notes") as string),
+      first_name:        formData.get("first_name") as string,
+      last_name:         formData.get("last_name") as string,
+      title:             formData.get("title") as string,
+      email:             formData.get("email") as string,
+      phone:             formData.get("phone") as string,
+      preferred_contact: (formData.get("preferred_contact") as string) || "email",
+      notes:             toNullable(formData.get("notes") as string),
     };
 
     const parsed = createContactSchema.safeParse(raw);
     if (!parsed.success) {
-      const msg = parsed.error.errors[0]?.message ?? "Invalid input.";
-      return { error: msg, success: false };
+      const fieldErrors: IContactFormState["fieldErrors"] = {};
+      for (const issue of parsed.error.issues) {
+        const field = issue.path[0] as keyof NonNullable<IContactFormState["fieldErrors"]>;
+        if (!fieldErrors[field]) fieldErrors[field] = issue.message;
+      }
+      return { error: null, success: false, fieldErrors };
     }
 
     const payload: InsertContactPayload = {
-      facility_id: facilityId,
-      first_name: parsed.data.first_name,
-      last_name: parsed.data.last_name,
-      title: toNullable(parsed.data.title),
-      email: toNullable(parsed.data.email),
-      phone: toNullable(parsed.data.phone),
-      preferred_contact: parsed.data.preferred_contact ?? "either",
-      notes: toNullable(parsed.data.notes),
-      is_active: true,
+      facility_id:       facilityId,
+      first_name:        parsed.data.first_name,
+      last_name:         parsed.data.last_name,
+      title:             parsed.data.title,
+      email:             parsed.data.email,
+      phone:             parsed.data.phone,
+      preferred_contact: parsed.data.preferred_contact,
+      notes:             toNullable(parsed.data.notes),
+      is_active:         true,
     };
 
     const { error } = await supabase.from(CONTACTS_TABLE).insert(payload);
 
     if (error) {
-      console.error("[createContact] Error:", error);
+      console.error("[createContact] Error:", JSON.stringify(error));
       return { error: error.message || "Failed to create contact.", success: false };
     }
 
@@ -148,29 +152,33 @@ export async function updateContact(
     }
 
     const raw = {
-      first_name: formData.get("first_name") as string,
-      last_name: formData.get("last_name") as string,
-      title: toNullable(formData.get("title") as string),
-      email: toNullable(formData.get("email") as string) || null,
-      phone: toNullable(formData.get("phone") as string),
-      preferred_contact: formData.get("preferred_contact") as string || "either",
-      notes: toNullable(formData.get("notes") as string),
+      first_name:        formData.get("first_name") as string,
+      last_name:         formData.get("last_name") as string,
+      title:             formData.get("title") as string,
+      email:             formData.get("email") as string,
+      phone:             formData.get("phone") as string,
+      preferred_contact: (formData.get("preferred_contact") as string) || "email",
+      notes:             toNullable(formData.get("notes") as string),
     };
 
     const parsed = updateContactSchema.safeParse(raw);
     if (!parsed.success) {
-      const msg = parsed.error.errors[0]?.message ?? "Invalid input.";
-      return { error: msg, success: false };
+      const fieldErrors: IContactFormState["fieldErrors"] = {};
+      for (const issue of parsed.error.issues) {
+        const field = issue.path[0] as keyof NonNullable<IContactFormState["fieldErrors"]>;
+        if (!fieldErrors[field]) fieldErrors[field] = issue.message;
+      }
+      return { error: null, success: false, fieldErrors };
     }
 
     const payload: UpdateContactPayload = {
-      first_name: parsed.data.first_name,
-      last_name: parsed.data.last_name,
-      title: toNullable(parsed.data.title),
-      email: toNullable(parsed.data.email),
-      phone: toNullable(parsed.data.phone),
-      preferred_contact: parsed.data.preferred_contact ?? "either",
-      notes: toNullable(parsed.data.notes),
+      first_name:        parsed.data.first_name,
+      last_name:         parsed.data.last_name,
+      title:             parsed.data.title,
+      email:             parsed.data.email,
+      phone:             parsed.data.phone,
+      preferred_contact: parsed.data.preferred_contact,
+      notes:             toNullable(parsed.data.notes),
     };
 
     const { error } = await supabase
@@ -180,7 +188,7 @@ export async function updateContact(
       .eq("facility_id", facilityId);
 
     if (error) {
-      console.error("[updateContact] Error:", error);
+      console.error("[updateContact] Error:", JSON.stringify(error));
       return { error: error.message || "Failed to update contact.", success: false };
     }
 
@@ -215,7 +223,7 @@ export async function deactivateContact(
     .eq("facility_id", facilityId);
 
   if (error) {
-    console.error("[deactivateContact] Error:", error);
+    console.error("[deactivateContact] Error:", JSON.stringify(error));
     throw new Error(error.message || "Failed to deactivate contact.");
   }
 

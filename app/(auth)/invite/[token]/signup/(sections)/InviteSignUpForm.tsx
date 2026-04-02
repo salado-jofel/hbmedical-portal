@@ -6,8 +6,7 @@ import { ChevronRight, ChevronLeft, UserCheck, User, Lock, FileCheck, Building2,
 import { HBLogo } from "@/app/(components)/HBLogo";
 import { AuthField } from "@/app/(components)/AuthField";
 import { ROLE_LABELS } from "@/utils/helpers/role";
-import { PhoneInput } from "react-international-phone";
-import "react-international-phone/style.css";
+import { PhoneInputField } from "@/app/(components)/PhoneInputField";
 import { inviteSignUp, type InviteSignUpState } from "../(services)/actions";
 import type { InviteTokenRole } from "@/utils/interfaces/invite-tokens";
 
@@ -246,23 +245,12 @@ export default function InviteSignUpForm({
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="jane@clinic.com"
                 />
-                <div className="space-y-1.5 phone-input-container">
-                  <label className="text-xs font-medium text-[#374151] block mb-1.5">Phone</label>
-                  <PhoneInput
-                    defaultCountry="us"
-                    value={phone}
-                    onChange={setPhone}
-                    inputClassName="!w-full !h-9 !bg-white !border-[#E2E8F0] !text-[#0F172A] !text-sm !rounded-r-lg focus:!border-[#15689E] !transition-colors"
-                    countrySelectorStyleProps={{
-                      buttonClassName:
-                        "!h-9 !w-[52px] !min-w-[52px] !justify-center !px-0 !bg-white !border-[#E2E8F0] !rounded-l-lg hover:!bg-[#F8FAFC] !transition-colors",
-                      buttonContentWrapperClassName:
-                        "!w-full !justify-center !items-center !gap-0",
-                      flagClassName: "!m-0",
-                      dropdownArrowClassName: "!hidden",
-                    }}
-                  />
-                </div>
+                <PhoneInputField
+                  value={phone}
+                  onChange={(val) => setPhone(val)}
+                  label="Phone"
+                  theme="light"
+                />
               </div>
             )}
 
@@ -278,14 +266,12 @@ export default function InviteSignUpForm({
                   onChange={(e) => setOfficeName(e.target.value)}
                   placeholder="Sunrise Medical Group"
                 />
-                <AuthField
-                  id="office_phone"
-                  label="Office phone"
-                  name="office_phone_display"
-                  type="tel"
+                <PhoneInputField
                   value={officePhone}
-                  onChange={(e) => setOfficePhone(e.target.value)}
-                  placeholder="+1 (555) 000-0000"
+                  onChange={(val) => setOfficePhone(val)}
+                  label="Office phone"
+                  required
+                  theme="light"
                 />
                 <AuthField
                   id="office_address"

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentUserOrThrow, getUserRole } from "@/lib/supabase/auth";
+import { getCurrentUserOrThrow, requireAdminOrThrow } from "@/lib/supabase/auth";
 import { TASKS_TABLE, TASK_SELECT, TASKS_PATH } from "@/utils/constants/activities";
 import {
   createTaskSchema,
@@ -34,19 +34,13 @@ export async function getTasks(filters?: {
   facility_id?: string;
 }): Promise<ITask[]> {
   const supabase = await createClient();
-  const user = await getCurrentUserOrThrow(supabase);
-  const role = await getUserRole(supabase);
+  await requireAdminOrThrow(supabase);
 
   let query = supabase
     .from(TASKS_TABLE)
     .select(TASK_SELECT)
     .order("due_date", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: false });
-
-  // Sales reps only see their assigned tasks
-  if (role === "sales_representative") {
-    query = query.eq("assigned_to", user.id);
-  }
 
   if (filters?.status && filters.status !== "all") {
     query = query.eq("status", filters.status);
@@ -88,8 +82,8 @@ export async function createTask(
 ): Promise<ITaskFormState> {
   try {
     const supabase = await createClient();
+    await requireAdminOrThrow(supabase);
     const user = await getCurrentUserOrThrow(supabase);
-    const role = await getUserRole(supabase);
 
     const raw = {
       title: formData.get("title") as string,
@@ -106,11 +100,7 @@ export async function createTask(
       return { error: parsed.error.errors[0]?.message ?? "Invalid input.", success: false };
     }
 
-    // Sales reps always assign to themselves
-    const assignedTo =
-      role === "sales_representative"
-        ? user.id
-        : parsed.data.assigned_to || user.id;
+    const assignedTo = parsed.data.assigned_to || user.id;
 
     const { error } = await supabase.from(TASKS_TABLE).insert({
       title: parsed.data.title,
@@ -149,8 +139,8 @@ export async function updateTask(
 ): Promise<ITaskFormState> {
   try {
     const supabase = await createClient();
+    await requireAdminOrThrow(supabase);
     const user = await getCurrentUserOrThrow(supabase);
-    const role = await getUserRole(supabase);
 
     const raw = {
       title: formData.get("title") as string,
@@ -167,10 +157,7 @@ export async function updateTask(
       return { error: parsed.error.errors[0]?.message ?? "Invalid input.", success: false };
     }
 
-    const assignedTo =
-      role === "sales_representative"
-        ? user.id
-        : parsed.data.assigned_to || user.id;
+    const assignedTo = parsed.data.assigned_to || user.id;
 
     const { error } = await supabase
       .from(TASKS_TABLE)
@@ -207,7 +194,7 @@ export async function toggleTaskStatus(
   currentStatus: TaskStatus,
 ): Promise<ITask> {
   const supabase = await createClient();
-  await getCurrentUserOrThrow(supabase);
+  await requireAdminOrThrow(supabase);
 
   const nextStatus: TaskStatus = currentStatus === "open" ? "done" : "open";
 
@@ -241,7 +228,7 @@ export async function toggleTaskStatus(
 
 export async function deleteTask(taskId: string): Promise<void> {
   const supabase = await createClient();
-  await getCurrentUserOrThrow(supabase);
+  await requireAdminOrThrow(supabase);
 
   const { error } = await supabase
     .from(TASKS_TABLE)

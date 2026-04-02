@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole } from "@/lib/supabase/auth";
 import { isAdmin as checkIsAdmin } from "@/utils/helpers/role";
@@ -12,6 +13,8 @@ export default async function TasksPage() {
   const supabase = await createClient();
   const role = await getUserRole(supabase);
   const admin = checkIsAdmin(role);
+
+  if (!admin) redirect("/dashboard/products");
 
   const [tasks, accounts, salesReps] = await Promise.all([
     getTasks(),

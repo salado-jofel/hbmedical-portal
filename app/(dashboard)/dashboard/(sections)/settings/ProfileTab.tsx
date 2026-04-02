@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { PhoneInputField } from "@/app/(components)/PhoneInputField";
 import { Loader2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,7 @@ interface ProfileTabProps {
 export function ProfileTab({ profile }: ProfileTabProps) {
   const formRef = useRef<HTMLFormElement>(null);
   const [isPending, setIsPending] = useState(false);
+  const [phone, setPhone] = useState(profile.phone ?? "");
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -69,15 +71,13 @@ export function ProfileTab({ profile }: ProfileTabProps) {
         />
       </div>
 
-      <div className="space-y-1.5">
-        <Label htmlFor="phone" className="text-xs">Phone</Label>
-        <Input
-          id="phone"
-          name="phone"
-          defaultValue={profile.phone}
-          className="h-9 text-sm"
-        />
-      </div>
+      <PhoneInputField
+        value={phone}
+        onChange={(val) => setPhone(val)}
+        label="Phone"
+        theme="light"
+      />
+      {phone && <input type="hidden" name="phone" value={phone} />}
 
       <div className="space-y-1.5">
         <Label className="text-xs">Role</Label>

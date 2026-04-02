@@ -16,8 +16,7 @@ import ErrorAlert from "@/app/(components)/ErrorAlert";
 import SubmitButton from "@/app/(components)/SubmitButton";
 import { HBLogo } from "@/app/(components)/HBLogo";
 import { validatePasswordsMatch } from "@/utils/validators/signup";
-import { PhoneInput } from "react-international-phone";
-import "react-international-phone/style.css";
+import { PhoneInputField } from "@/app/(components)/PhoneInputField";
 
 type Role = "sales_representative" | "clinical_provider";
 
@@ -142,29 +141,15 @@ export default function SignUpForm() {
           onChange={(e) => setEmail(e.target.value)}
         />
 
-        <div className="space-y-1.5 phone-input-container">
-          <label className="text-sm font-medium text-white/70">
-            Phone Number
-          </label>
-
-          <PhoneInput
-            defaultCountry="us"
-            value={phone}
-            onChange={(value, meta) => {
-              setPhone(value);
-              setCountry(meta.country.iso2);
-            }}
-            inputClassName="!w-full !h-11 !bg-white/5 !border-white/10 !text-white !rounded-r-lg focus:!border-[#e8821a] !transition-all"
-            countrySelectorStyleProps={{
-              buttonClassName:
-                "!h-11 !w-[52px] !min-w-[52px] !justify-center !px-0 !bg-transparent !border-white/10 !rounded-l-lg hover:!bg-white/10 !transition-all",
-              buttonContentWrapperClassName:
-                "!w-full !justify-center !items-center !gap-0",
-              flagClassName: "!m-0",
-              dropdownArrowClassName: "!hidden",
-            }}
-          />
-        </div>
+        <PhoneInputField
+          value={phone}
+          onChange={(val, country) => {
+            setPhone(val);
+            setCountry(country);
+          }}
+          theme="dark"
+          required
+        />
 
         <div className="flex items-center gap-3 py-1">
           <div className="h-px flex-1 bg-white/10" />

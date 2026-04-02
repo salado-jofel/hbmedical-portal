@@ -1,11 +1,12 @@
 "use client";
 
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import { PhoneInputField } from "@/app/(components)/PhoneInputField";
 import { updateProfileInStore } from "../(redux)/profile-slice";
 import { updateProfile } from "../(services)/actions";
 import { Input } from "@/components/ui/input";
 import SubmitButton from "@/app/(components)/SubmitButton";
-import { User, Mail, Phone, Save } from "lucide-react";
+import { User, Mail, Save } from "lucide-react";
 import { useState } from "react";
 import toast from "react-hot-toast"; // ✅ import
 
@@ -32,6 +33,7 @@ export default function ProfileForm() {
   const dispatch = useAppDispatch();
   const profile = useAppSelector((state) => state.profile.item);
   const [saving, setSaving] = useState(false);
+  const [phone, setPhone] = useState(profile?.phone ?? "");
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -85,17 +87,13 @@ export default function ProfileForm() {
         </div>
 
         {/* ── Row: Phone ── */}
-        <div>
-          <FieldLabel icon={Phone} label="Phone" />
-          <Input
-            name="phone"
-            type="tel"
-            defaultValue={profile?.phone ?? ""}
-            placeholder="+63 9XX XXX XXXX"
-            disabled={saving}
-            className="border-[#E2E8F0] focus-visible:ring-[#15689E]/10 focus-visible:border-[#15689E]"
-          />
-        </div>
+        <PhoneInputField
+          value={phone}
+          onChange={(val) => setPhone(val)}
+          label="Phone"
+          theme="light"
+        />
+        {phone && <input type="hidden" name="phone" value={phone} />}
 
         {/* ── Save Button ── */}
         <SubmitButton

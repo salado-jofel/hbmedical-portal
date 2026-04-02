@@ -88,7 +88,7 @@ const navItems: NavItemDef[] = [
     icon: CheckSquare,
     label: "Tasks",
     href: "/dashboard/tasks",
-    visible: isSalesRep,
+    visible: isAdmin,
   },
   {
     icon: Share2,

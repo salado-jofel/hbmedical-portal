@@ -33,6 +33,15 @@ export interface IContact {
 export interface IContactFormState {
   error: string | null;
   success: boolean;
+  fieldErrors?: {
+    first_name?: string;
+    last_name?: string;
+    title?: string;
+    email?: string;
+    phone?: string;
+    preferred_contact?: string;
+    notes?: string;
+  };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -40,19 +49,17 @@ export interface IContactFormState {
 /* -------------------------------------------------------------------------- */
 
 export const createContactSchema = z.object({
-  first_name: z.string().trim().min(1, "First name is required."),
-  last_name: z.string().trim().min(1, "Last name is required."),
-  title: z.string().trim().nullable().optional(),
-  email: z
-    .string()
-    .trim()
-    .email("Invalid email address.")
-    .nullable()
-    .optional()
-    .or(z.literal("")),
-  phone: z.string().trim().nullable().optional(),
-  preferred_contact: contactPreferredContactSchema.default("either"),
-  notes: z.string().trim().nullable().optional(),
+  first_name:        z.string().trim().min(1, "First name is required."),
+  last_name:         z.string().trim().min(1, "Last name is required."),
+  title:             z.string().trim().min(1, "Title is required."),
+  email:             z.string().trim().email("Enter a valid email."),
+  phone:             z
+                       .string()
+                       .trim()
+                       .min(1, "Phone number is required.")
+                       .regex(/^\+[1-9][0-9]{7,14}$/, "Enter a valid phone number."),
+  preferred_contact: contactPreferredContactSchema,
+  notes:             z.string().trim().optional(),
 });
 
 export const updateContactSchema = createContactSchema;
@@ -68,9 +75,9 @@ export type InsertContactPayload = {
   facility_id: string;
   first_name: string;
   last_name: string;
-  title: string | null;
-  email: string | null;
-  phone: string | null;
+  title: string;
+  email: string;
+  phone: string;
   preferred_contact: ContactPreferredContact;
   notes: string | null;
   is_active: true;
@@ -79,9 +86,9 @@ export type InsertContactPayload = {
 export type UpdateContactPayload = {
   first_name: string;
   last_name: string;
-  title: string | null;
-  email: string | null;
-  phone: string | null;
+  title: string;
+  email: string;
+  phone: string;
   preferred_contact: ContactPreferredContact;
   notes: string | null;
 };

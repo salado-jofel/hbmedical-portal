@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentUserOrThrow, getUserRole } from "@/lib/supabase/auth";
+import { getCurrentUserOrThrow, requireAdminOrThrow } from "@/lib/supabase/auth";
 import {
   ACTIVITIES_TABLE,
   ACTIVITY_SELECT,
@@ -18,28 +18,6 @@ import {
   type RawActivityRecord,
 } from "@/utils/interfaces/activities";
 
-/* -------------------------------------------------------------------------- */
-/* Permission helper                                                          */
-/* -------------------------------------------------------------------------- */
-
-async function canManageActivity(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  userId: string,
-  facilityId: string,
-): Promise<boolean> {
-  const role = await getUserRole(supabase);
-  if (role === "admin") return true;
-  if (role === "sales_representative") {
-    const { data } = await supabase
-      .from("facilities")
-      .select("assigned_rep")
-      .eq("id", facilityId)
-      .maybeSingle();
-    return data?.assigned_rep === userId;
-  }
-  return false;
-}
-
 function toNullable(val: string | null | undefined): string | null {
   if (!val || val.trim() === "" || val.trim() === "none") return null;
   return val.trim();
@@ -53,7 +31,7 @@ export async function getActivitiesByFacility(
   facilityId: string,
 ): Promise<IActivity[]> {
   const supabase = await createClient();
-  await getCurrentUserOrThrow(supabase);
+  await requireAdminOrThrow(supabase);
 
   const { data, error } = await supabase
     .from(ACTIVITIES_TABLE)
@@ -81,12 +59,8 @@ export async function createActivity(
 ): Promise<IActivityFormState> {
   try {
     const supabase = await createClient();
+    await requireAdminOrThrow(supabase);
     const user = await getCurrentUserOrThrow(supabase);
-
-    const allowed = await canManageActivity(supabase, user.id, facilityId);
-    if (!allowed) {
-      return { error: "You do not have permission to log activities for this account.", success: false };
-    }
 
     const raw = {
       type: formData.get("type") as string,
@@ -136,12 +110,7 @@ export async function updateActivity(
 ): Promise<IActivityFormState> {
   try {
     const supabase = await createClient();
-    const user = await getCurrentUserOrThrow(supabase);
-
-    const allowed = await canManageActivity(supabase, user.id, facilityId);
-    if (!allowed) {
-      return { error: "You do not have permission to edit this activity.", success: false };
-    }
+    await requireAdminOrThrow(supabase);
 
     const raw = {
       type: formData.get("type") as string,
@@ -190,12 +159,7 @@ export async function deleteActivity(
   facilityId: string,
 ): Promise<void> {
   const supabase = await createClient();
-  const user = await getCurrentUserOrThrow(supabase);
-
-  const allowed = await canManageActivity(supabase, user.id, facilityId);
-  if (!allowed) {
-    throw new Error("You do not have permission to delete this activity.");
-  }
+  await requireAdminOrThrow(supabase);
 
   const { error } = await supabase
     .from(ACTIVITIES_TABLE)

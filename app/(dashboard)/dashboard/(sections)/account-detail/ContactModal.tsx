@@ -28,6 +28,7 @@ import {
 import { useAppDispatch } from "@/store/hooks";
 import { setContacts } from "@/app/(dashboard)/dashboard/(redux)/contacts-slice";
 import type { IContact, IContactFormState } from "@/utils/interfaces/contacts";
+import { PhoneInputField } from "@/app/(components)/PhoneInputField";
 
 const PREFERRED_OPTIONS = [
   { value: "email", label: "Email" },
@@ -46,6 +47,7 @@ export function ContactModal({ facilityId, contact }: ContactModalProps) {
   const formRef = useRef<HTMLFormElement>(null);
 
   const isEdit = !!contact;
+  const [phone, setPhone] = useState(contact?.phone ?? "");
 
   const action = isEdit
     ? updateContact.bind(null, contact.id, facilityId)
@@ -61,9 +63,11 @@ export function ContactModal({ facilityId, contact }: ContactModalProps) {
     if (!state?.success) return;
     setOpen(false);
     formRef.current?.reset();
+    setPhone(contact?.phone ?? "");
     getContactsByFacility(facilityId).then((fresh) => {
       dispatch(setContacts(fresh));
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state?.success, facilityId, dispatch]);
 
   return (
@@ -76,7 +80,7 @@ export function ContactModal({ facilityId, contact }: ContactModalProps) {
         ) : (
           <Button
             size="sm"
-            className="gap-1.5 bg-[#15689E] hover:bg-[#15689E]/90 text-white"
+            className="gap-1.5 bg-[#15689E] hover:bg-[#125d8e] text-white"
           >
             <Plus className="w-4 h-4" />
             Add Contact
@@ -90,7 +94,7 @@ export function ContactModal({ facilityId, contact }: ContactModalProps) {
         </DialogHeader>
 
         <form ref={formRef} action={formAction} className="space-y-4 mt-2">
-          {/* First + Last name */}
+          {/* ── First Name + Last Name ── */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="first_name" className="text-xs">
@@ -104,6 +108,9 @@ export function ContactModal({ facilityId, contact }: ContactModalProps) {
                 placeholder="Jane"
                 className="h-9 text-sm"
               />
+              {state?.fieldErrors?.first_name && (
+                <p className="text-xs text-red-500">{state.fieldErrors.first_name}</p>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="last_name" className="text-xs">
@@ -117,61 +124,68 @@ export function ContactModal({ facilityId, contact }: ContactModalProps) {
                 placeholder="Smith"
                 className="h-9 text-sm"
               />
+              {state?.fieldErrors?.last_name && (
+                <p className="text-xs text-red-500">{state.fieldErrors.last_name}</p>
+              )}
             </div>
           </div>
 
-          {/* Title */}
+          {/* ── Title ── */}
           <div className="space-y-1.5">
             <Label htmlFor="title" className="text-xs">
-              Title
+              Title <span className="text-red-400">*</span>
             </Label>
             <Input
               id="title"
               name="title"
+              required
               defaultValue={contact?.title ?? ""}
               placeholder="Director of Operations"
               className="h-9 text-sm"
             />
+            {state?.fieldErrors?.title && (
+              <p className="text-xs text-red-500">{state.fieldErrors.title}</p>
+            )}
           </div>
 
-          {/* Email + Phone */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="email" className="text-xs">
-                Email
-              </Label>
-              <Input
-                id="email"
-                name="email"
-                type="email"
-                defaultValue={contact?.email ?? ""}
-                placeholder="jane@hospital.com"
-                className="h-9 text-sm"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="phone" className="text-xs">
-                Phone
-              </Label>
-              <Input
-                id="phone"
-                name="phone"
-                type="tel"
-                defaultValue={contact?.phone ?? ""}
-                placeholder="(555) 000-0000"
-                className="h-9 text-sm"
-              />
-            </div>
+          {/* ── Email ── */}
+          <div className="space-y-1.5">
+            <Label htmlFor="email" className="text-xs">
+              Email <span className="text-red-400">*</span>
+            </Label>
+            <Input
+              id="email"
+              name="email"
+              type="email"
+              required
+              defaultValue={contact?.email ?? ""}
+              placeholder="jane@hospital.com"
+              className="h-9 text-sm"
+            />
+            {state?.fieldErrors?.email && (
+              <p className="text-xs text-red-500">{state.fieldErrors.email}</p>
+            )}
           </div>
 
-          {/* Preferred contact */}
+          {/* ── Phone ── */}
+          <PhoneInputField
+            value={phone}
+            onChange={(val) => setPhone(val)}
+            label="Phone Number"
+            required={true}
+            theme="light"
+            error={state?.fieldErrors?.phone}
+          />
+          {phone && <input type="hidden" name="phone" value={phone} />}
+
+          {/* ── Preferred contact ── */}
           <div className="space-y-1.5">
             <Label htmlFor="preferred_contact" className="text-xs">
-              Preferred contact method
+              Preferred contact method <span className="text-red-400">*</span>
             </Label>
             <Select
               name="preferred_contact"
-              defaultValue={contact?.preferred_contact ?? "either"}
+              defaultValue={contact?.preferred_contact ?? "email"}
             >
               <SelectTrigger className="h-9 text-sm">
                 <SelectValue />
@@ -184,9 +198,12 @@ export function ContactModal({ facilityId, contact }: ContactModalProps) {
                 ))}
               </SelectContent>
             </Select>
+            {state?.fieldErrors?.preferred_contact && (
+              <p className="text-xs text-red-500">{state.fieldErrors.preferred_contact}</p>
+            )}
           </div>
 
-          {/* Notes */}
+          {/* ── Notes ── */}
           <div className="space-y-1.5">
             <Label htmlFor="notes" className="text-xs">
               Notes
@@ -200,14 +217,14 @@ export function ContactModal({ facilityId, contact }: ContactModalProps) {
             />
           </div>
 
-          {/* Error */}
+          {/* ── Top-level error ── */}
           {state?.error && (
             <p className="text-xs text-red-500 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
               {state.error}
             </p>
           )}
 
-          {/* Actions */}
+          {/* ── Actions ── */}
           <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-1">
             <Button
               type="button"

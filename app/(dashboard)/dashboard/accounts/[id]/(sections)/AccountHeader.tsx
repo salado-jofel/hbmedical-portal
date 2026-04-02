@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
-import { ArrowLeft, Building2, ShoppingCart, Users } from "lucide-react";
+import { ArrowLeft, Building2, Loader2, ShoppingCart, Users } from "lucide-react";
+import toast from "react-hot-toast";
 import { useAppSelector, useAppDispatch } from "@/store/hooks";
 import { updateAccountInStore } from "@/app/(dashboard)/dashboard/accounts/(redux)/accounts-slice";
 import { updateAccountStatus, assignRep } from "@/app/(dashboard)/dashboard/accounts/(services)/actions";
@@ -36,8 +37,14 @@ export function AccountHeader({ accountId, isAdmin, salesReps }: AccountHeaderPr
   );
 
   const [statusPending, startStatusTransition] = useTransition();
-  const [repPending, startRepTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [isAssigning, setIsAssigning] = useState(false);
+  const [selectedRep, setSelectedRep] = useState(account?.assigned_rep ?? "none");
+
+  // Sync with Redux after Providers hydrates on first render (hard refresh)
+  useEffect(() => {
+    setSelectedRep(account?.assigned_rep ?? "none");
+  }, [account?.assigned_rep]);
 
   if (!account) return null;
 
@@ -53,17 +60,22 @@ export function AccountHeader({ accountId, isAdmin, salesReps }: AccountHeaderPr
     });
   }
 
-  function handleRepChange(value: string) {
-    setError(null);
-    startRepTransition(async () => {
-      try {
-        const repId = value === "none" ? null : value;
-        const updated = await assignRep(accountId, repId);
-        dispatch(updateAccountInStore(updated));
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to assign rep.");
-      }
-    });
+  async function handleRepChange(newRepId: string) {
+    if (newRepId === selectedRep) return;
+    const previous = selectedRep;
+    setSelectedRep(newRepId);
+    setIsAssigning(true);
+    try {
+      const repId = newRepId === "none" ? null : newRepId;
+      const updated = await assignRep(accountId, repId);
+      dispatch(updateAccountInStore(updated));
+      toast.success("Sales rep updated.");
+    } catch {
+      setSelectedRep(previous);
+      toast.error("Failed to update sales rep.");
+    } finally {
+      setIsAssigning(false);
+    }
   }
 
   return (
@@ -119,17 +131,22 @@ export function AccountHeader({ accountId, isAdmin, salesReps }: AccountHeaderPr
             </Select>
 
             <Select
-              value={account.assigned_rep ?? "none"}
+              value={selectedRep}
               onValueChange={handleRepChange}
-              disabled={repPending}
+              disabled={isAssigning}
             >
               <SelectTrigger
-                className={cn(
-                  "h-9 w-44 text-sm border-[#E2E8F0] bg-white text-[#0F172A] rounded-lg",
-                  repPending && "opacity-60 pointer-events-none",
-                )}
+                className="h-9 w-44 text-sm border-[#E2E8F0] bg-white text-[#0F172A] rounded-lg"
+                disabled={isAssigning}
               >
-                <SelectValue placeholder="Assign rep" />
+                {isAssigning ? (
+                  <span className="flex items-center gap-2 text-muted-foreground">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Updating...
+                  </span>
+                ) : (
+                  <SelectValue placeholder="Assign rep" />
+                )}
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none" className="text-sm">

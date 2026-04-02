@@ -1,9 +1,8 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import { Building2, MapPin, Phone } from "lucide-react";
-import { PhoneInput } from "react-international-phone";
-import "react-international-phone/style.css";
+import { Building2, MapPin } from "lucide-react";
+import { PhoneInputField } from "@/app/(components)/PhoneInputField";
 import { HBLogo } from "@/app/(components)/HBLogo";
 import { AuthField } from "@/app/(components)/AuthField";
 import SubmitButton from "@/app/(components)/SubmitButton";
@@ -17,7 +16,6 @@ export default function RepSetupForm() {
   );
 
   const [phone, setPhone] = useState("");
-  const [rawPhone, setRawPhone] = useState("");
 
   useEffect(() => {
     if (state.success) {
@@ -47,45 +45,14 @@ export default function RepSetupForm() {
           placeholder="e.g. Sunrise Medical Group"
         />
 
-        {/* Phone */}
-        <div className="space-y-1.5">
-          <label
-            htmlFor="phone-display"
-            className="block text-xs font-medium text-[#374151] mb-1.5"
-          >
-            Practice Phone
-          </label>
-          <PhoneInput
-            defaultCountry="us"
-            value={phone}
-            onChange={(value, meta) => {
-              setPhone(value);
-              setRawPhone((meta as any)?.inputValue ?? value);
-            }}
-            inputProps={{ id: "phone-display", autoComplete: "tel" }}
-            style={{ width: "100%" }}
-            inputStyle={{
-              width: "100%",
-              background: "white",
-              border: "1px solid #E2E8F0",
-              borderRadius: "0 0.5rem 0.5rem 0",
-              color: "#0F172A",
-              fontSize: "0.875rem",
-              height: "2.25rem",
-              padding: "0 0.75rem",
-            }}
-            countrySelectorStyleProps={{
-              buttonStyle: {
-                background: "white",
-                border: "1px solid #E2E8F0",
-                borderRadius: "0.5rem 0 0 0.5rem",
-                padding: "0 0.5rem",
-                height: "2.25rem",
-              },
-            }}
-          />
-          <input type="hidden" name="phone" value={phone} />
-        </div>
+        <PhoneInputField
+          value={phone}
+          onChange={(val) => setPhone(val)}
+          label="Practice Phone"
+          required
+          theme="light"
+        />
+        <input type="hidden" name="phone" value={phone} />
 
         <AuthField
           id="address_line_1"
