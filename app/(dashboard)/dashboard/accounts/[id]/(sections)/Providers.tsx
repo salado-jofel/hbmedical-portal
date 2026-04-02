@@ -2,7 +2,7 @@
 
 import { type ReactNode, useEffect } from "react";
 import { useAppDispatch } from "@/store/hooks";
-import { setAccounts } from "@/app/(dashboard)/dashboard/(redux)/accounts-slice";
+import { setAccounts } from "@/app/(dashboard)/dashboard/accounts/(redux)/accounts-slice";
 import { setContacts } from "@/app/(dashboard)/dashboard/(redux)/contacts-slice";
 import { setActivities } from "@/app/(dashboard)/dashboard/(redux)/activities-slice";
 import type { IAccount } from "@/utils/interfaces/accounts";

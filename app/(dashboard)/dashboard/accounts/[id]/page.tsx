@@ -6,12 +6,12 @@ import { getCurrentUserOrThrow } from "@/lib/supabase/auth";
 import {
   getAccountById,
   getSalesReps,
-} from "@/app/(dashboard)/dashboard/(services)/accounts/actions";
+} from "@/app/(dashboard)/dashboard/accounts/(services)/actions";
 import { getContactsByFacility } from "@/app/(dashboard)/dashboard/(services)/contacts/actions";
 import { getActivitiesByFacility } from "@/app/(dashboard)/dashboard/(services)/activities/actions";
 import Providers from "./(sections)/Providers";
-import { AccountHeader } from "@/app/(dashboard)/dashboard/(sections)/account-detail/AccountHeader";
-import { AccountTabs } from "@/app/(dashboard)/dashboard/(sections)/account-detail/AccountTabs";
+import { AccountHeader } from "./(sections)/AccountHeader";
+import { AccountDetailClient } from "./(sections)/AccountDetailClient";
 import { mapDashboardOrders } from "@/utils/helpers/orders";
 import type { RawOrderRecord } from "@/utils/interfaces/orders";
 import {
@@ -79,7 +79,7 @@ export default async function AccountDetailPage({
           isAdmin={admin}
           salesReps={salesReps}
         />
-        <AccountTabs
+        <AccountDetailClient
           account={account}
           contacts={contacts}
           orders={orders}

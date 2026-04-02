@@ -2,11 +2,10 @@ import { CheckSquare } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole } from "@/lib/supabase/auth";
 import { isAdmin as checkIsAdmin } from "@/utils/helpers/role";
-import { getTasks } from "@/app/(dashboard)/dashboard/(services)/tasks/actions";
-import { getAccounts } from "@/app/(dashboard)/dashboard/(services)/accounts/actions";
-import { getSalesReps } from "@/app/(dashboard)/dashboard/(services)/accounts/actions";
+import { getTasks } from "@/app/(dashboard)/dashboard/tasks/(services)/actions";
+import { getAccounts, getSalesReps } from "@/app/(dashboard)/dashboard/accounts/(services)/actions";
 import Providers from "./(sections)/Providers";
-import { TasksBoard } from "@/app/(dashboard)/dashboard/(sections)/tasks/TasksBoard";
+import { TasksPageClient } from "./(sections)/TasksPageClient";
 
 export const dynamic = "force-dynamic";
 
@@ -38,7 +37,7 @@ export default async function TasksPage() {
 
       {/* ── Board ── */}
       <Providers tasks={tasks}>
-        <TasksBoard accounts={accounts} salesReps={salesReps} isAdmin={admin} />
+        <TasksPageClient accounts={accounts} salesReps={salesReps} isAdmin={admin} />
       </Providers>
     </div>
   );

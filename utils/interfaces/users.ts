@@ -20,6 +20,7 @@ export interface IUser {
 export interface IUserFormState {
   error?: string | null;
   success?: boolean;
+  user?: IUser;
   fieldErrors?: {
     first_name?: string;
     last_name?: string;

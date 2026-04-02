@@ -1,11 +1,14 @@
 import { Settings } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole } from "@/lib/supabase/auth";
-import { getProfile } from "@/app/(dashboard)/dashboard/profile/(services)/actions";
-import { getFacilityMembers } from "@/app/(dashboard)/dashboard/(services)/facility-members/actions";
-import { getMyCredentials } from "@/app/(dashboard)/dashboard/(services)/provider-credentials/actions";
-import { SettingsClient } from "@/app/(dashboard)/dashboard/(sections)/settings/SettingsClient";
+import {
+  getMyProfile,
+  getMyCredentials,
+  getFacilityMembers,
+} from "@/app/(dashboard)/dashboard/settings/(services)/actions";
 import { notFound } from "next/navigation";
+import Providers from "./(sections)/Providers";
+import { SettingsPageClient } from "./(sections)/SettingsPageClient";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +16,7 @@ export default async function SettingsPage() {
   const supabase = await createClient();
   const role = await getUserRole(supabase);
 
-  const profile = await getProfile();
+  const profile = await getMyProfile();
   if (!profile) notFound();
 
   const showCredentials = role === "clinical_provider";
@@ -43,13 +46,15 @@ export default async function SettingsPage() {
       </div>
 
       {/* ── Tabbed content ── */}
-      <SettingsClient
-        profile={profile}
-        members={members}
-        credentials={credentials}
-        canManageTeam={canManageTeam}
-        showCredentials={showCredentials}
-      />
+      <Providers>
+        <SettingsPageClient
+          profile={profile}
+          members={members}
+          credentials={credentials}
+          canManageTeam={canManageTeam}
+          showCredentials={showCredentials}
+        />
+      </Providers>
     </div>
   );
 }

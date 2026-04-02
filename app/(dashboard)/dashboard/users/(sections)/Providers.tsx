@@ -2,21 +2,21 @@
 
 import { type ReactNode, useEffect } from "react";
 import { useAppDispatch } from "@/store/hooks";
-import { setTasks } from "@/app/(dashboard)/dashboard/tasks/(redux)/tasks-slice";
-import type { ITask } from "@/utils/interfaces/tasks";
+import { setUsers } from "@/app/(dashboard)/dashboard/users/(redux)/users-slice";
+import type { IUser } from "@/utils/interfaces/users";
 
 export default function Providers({
   children,
-  tasks,
+  users,
 }: {
   children: ReactNode;
-  tasks: ITask[];
+  users: IUser[];
 }) {
   const dispatch = useAppDispatch();
 
   useEffect(() => {
-    dispatch(setTasks(tasks));
-  }, [dispatch, tasks]);
+    dispatch(setUsers(users));
+  }, [dispatch, users]);
 
   return <>{children}</>;
 }

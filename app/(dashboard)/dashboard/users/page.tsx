@@ -2,8 +2,9 @@ import { redirect } from "next/navigation";
 import { Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole } from "@/lib/supabase/auth";
-import { getUsers } from "@/app/(dashboard)/dashboard/(services)/users/actions";
-import { UsersTable } from "@/app/(dashboard)/dashboard/(sections)/users/UsersTable";
+import { getUsers } from "@/app/(dashboard)/dashboard/users/(services)/actions";
+import Providers from "./(sections)/Providers";
+import { UsersPageClient } from "./(sections)/UsersPageClient";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,9 @@ export default async function UsersPage() {
         </div>
       </div>
 
-      <UsersTable initialUsers={users} />
+      <Providers users={users}>
+        <UsersPageClient />
+      </Providers>
     </div>
   );
 }

@@ -1,11 +1,10 @@
 import { Building2 } from "lucide-react";
-import { getAccounts } from "@/app/(dashboard)/dashboard/(services)/accounts/actions";
-import { getSalesReps } from "@/app/(dashboard)/dashboard/(services)/accounts/actions";
+import { getAccounts, getSalesReps } from "@/app/(dashboard)/dashboard/accounts/(services)/actions";
 import { getUserRole } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 import { isAdmin } from "@/utils/helpers/role";
 import Providers from "./(sections)/Providers";
-import { AccountsTable } from "@/app/(dashboard)/dashboard/(sections)/accounts/AccountsTable";
+import { AccountsPageClient } from "./(sections)/AccountsPageClient";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +35,7 @@ export default async function AccountsPage() {
 
       {/* ── Table with Redux hydration ── */}
       <Providers accounts={accounts}>
-        <AccountsTable salesReps={salesReps} isAdmin={admin} />
+        <AccountsPageClient salesReps={salesReps} isAdmin={admin} />
       </Providers>
     </div>
   );

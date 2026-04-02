@@ -1,8 +1,10 @@
 import dashboardSlice from "@/app/(dashboard)/dashboard/(redux)/dashboard-slice";
-import accountsSlice from "@/app/(dashboard)/dashboard/(redux)/accounts-slice";
+import accountsSlice from "@/app/(dashboard)/dashboard/accounts/(redux)/accounts-slice";
 import activitiesSlice from "@/app/(dashboard)/dashboard/(redux)/activities-slice";
 import contactsSlice from "@/app/(dashboard)/dashboard/(redux)/contacts-slice";
-import tasksSlice from "@/app/(dashboard)/dashboard/(redux)/tasks-slice";
+import tasksSlice from "@/app/(dashboard)/dashboard/tasks/(redux)/tasks-slice";
+import usersSlice from "@/app/(dashboard)/dashboard/users/(redux)/users-slice";
+import inviteTokensSlice from "@/app/(dashboard)/dashboard/onboarding/(redux)/invite-tokens-slice";
 import contractsSlice from "@/app/(dashboard)/dashboard/contracts/(redux)/contracts-slice";
 import hospitalOnboardingSlice from "@/app/(dashboard)/dashboard/hospital-onboarding/(redux)/hospital-onboarding-slice";
 import marketingSlice from "@/app/(dashboard)/dashboard/marketing/(redux)/marketing-slice";
@@ -18,6 +20,8 @@ export const store = configureStore({
     activities: activitiesSlice,
     contacts: contactsSlice,
     tasks: tasksSlice,
+    users: usersSlice,
+    inviteTokens: inviteTokensSlice,
     products: productsSlice,
     orders: ordersSlice,
     profile: profileSlice,
