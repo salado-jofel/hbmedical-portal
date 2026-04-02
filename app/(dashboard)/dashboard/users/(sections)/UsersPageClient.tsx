@@ -1,8 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { motion } from "framer-motion";
-import { Search, UserPlus, UserX, UserCheck, User } from "lucide-react";
+import { Search, UserPlus, UserX, UserCheck, User, Trash2, Mail, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,14 +12,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import toast from "react-hot-toast";
-import { staggerContainer, fadeUp } from "@/components/ui/animations";
 import { ROLE_LABELS } from "@/utils/helpers/role";
-import { deactivateUser, reactivateUser } from "@/app/(dashboard)/dashboard/users/(services)/actions";
+import { deactivateUser, reactivateUser, deleteUser, resendInvite } from "@/app/(dashboard)/dashboard/users/(services)/actions";
 import { useAppSelector, useAppDispatch } from "@/store/hooks";
-import { updateUserInStore } from "@/app/(dashboard)/dashboard/users/(redux)/users-slice";
+import { updateUserInStore, removeUserFromStore } from "@/app/(dashboard)/dashboard/users/(redux)/users-slice";
 import { CreateUserModal } from "../(components)/CreateUserModal";
-import { EmptyState } from "@/app/(components)/EmptyState";
+import ConfirmModal from "@/app/(components)/ConfirmModal";
+import { DataTable } from "@/app/(components)/DataTable";
+import type { TableColumn } from "@/utils/interfaces/table-column";
 import type { UserRole } from "@/utils/helpers/role";
+import type { UserStatus } from "@/utils/interfaces/users";
 
 const ROLE_FILTER_OPTIONS: { value: string; label: string }[] = [
   { value: "all", label: "All roles" },
@@ -32,46 +33,16 @@ const ROLE_FILTER_OPTIONS: { value: string; label: string }[] = [
 
 const ROLE_COLORS: Record<
   NonNullable<UserRole>,
-  { bg: string; text: string; dot: string; avatarFrom: string; avatarTo: string }
+  { bg: string; text: string; dot: string }
 > = {
-  admin: {
-    bg: "bg-[#15689E]/10",
-    text: "text-[#15689E]",
-    dot: "bg-[#15689E]",
-    avatarFrom: "from-[#15689E]/20",
-    avatarTo: "to-[#15689E]/10",
-  },
-  sales_representative: {
-    bg: "bg-orange-100",
-    text: "text-[#e8821a]",
-    dot: "bg-[#e8821a]",
-    avatarFrom: "from-orange-200",
-    avatarTo: "to-orange-100",
-  },
-  support_staff: {
-    bg: "bg-purple-100",
-    text: "text-purple-700",
-    dot: "bg-purple-500",
-    avatarFrom: "from-purple-200",
-    avatarTo: "to-purple-100",
-  },
-  clinical_provider: {
-    bg: "bg-teal-100",
-    text: "text-teal-700",
-    dot: "bg-teal-500",
-    avatarFrom: "from-teal-200",
-    avatarTo: "to-teal-100",
-  },
-  clinical_staff: {
-    bg: "bg-[#F1F5F9]",
-    text: "text-[#64748B]",
-    dot: "bg-[#94A3B8]",
-    avatarFrom: "from-[#E2E8F0]",
-    avatarTo: "to-[#F1F5F9]",
-  },
+  admin:                { bg: "bg-[#EFF6FF]",    text: "text-[#15689E]",  dot: "bg-[#15689E]"  },
+  sales_representative: { bg: "bg-orange-50",    text: "text-orange-600", dot: "bg-orange-400" },
+  support_staff:        { bg: "bg-purple-50",    text: "text-purple-700", dot: "bg-purple-400" },
+  clinical_provider:    { bg: "bg-teal-50",      text: "text-teal-700",   dot: "bg-teal-400"   },
+  clinical_staff:       { bg: "bg-[#F1F5F9]",   text: "text-[#64748B]",  dot: "bg-[#94A3B8]"  },
 };
 
-type StatusFilter = "all" | "active" | "inactive";
+type StatusFilter = "all" | "active" | "pending" | "inactive";
 
 export function UsersPageClient() {
   const dispatch = useAppDispatch();
@@ -82,13 +53,16 @@ export function UsersPageClient() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [showCreate, setShowCreate] = useState(false);
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
   const stats = useMemo(
     () => ({
       total: users.length,
-      active: users.filter((u) => u.is_active).length,
-      inactive: users.filter((u) => !u.is_active).length,
+      active: users.filter((u) => u.status === "active").length,
+      pending: users.filter((u) => u.status === "pending").length,
+      inactive: users.filter((u) => u.status === "inactive").length,
     }),
     [users],
   );
@@ -104,14 +78,9 @@ export function UsersPageClient() {
           u.email.toLowerCase().includes(term),
       );
     }
-    if (roleFilter !== "all") {
-      result = result.filter((u) => u.role === roleFilter);
-    }
-    if (statusFilter !== "all") {
-      result = result.filter((u) =>
-        statusFilter === "active" ? u.is_active : !u.is_active,
-      );
-    }
+    if (roleFilter !== "all") result = result.filter((u) => u.role === roleFilter);
+    if (statusFilter !== "all")
+      result = result.filter((u) => u.status === statusFilter);
     return result;
   }, [users, search, roleFilter, statusFilter]);
 
@@ -122,7 +91,7 @@ export function UsersPageClient() {
     startTransition(async () => {
       try {
         await deactivateUser(userId);
-        dispatch(updateUserInStore({ ...user, is_active: false }));
+        dispatch(updateUserInStore({ ...user, is_active: false, status: "inactive" }));
         toast.success("User deactivated.");
       } catch {
         toast.error("Failed to deactivate user.");
@@ -139,7 +108,7 @@ export function UsersPageClient() {
     startTransition(async () => {
       try {
         await reactivateUser(userId);
-        dispatch(updateUserInStore({ ...user, is_active: true }));
+        dispatch(updateUserInStore({ ...user, is_active: true, status: "active" }));
         toast.success("User reactivated.");
       } catch {
         toast.error("Failed to reactivate user.");
@@ -148,6 +117,177 @@ export function UsersPageClient() {
       }
     });
   }
+
+  function handleDelete(userId: string) {
+    setPendingId(userId);
+    startTransition(async () => {
+      try {
+        const result = await deleteUser(userId);
+        if (!result.success) {
+          toast.error(result.error ?? "Failed to delete user.");
+          return;
+        }
+        dispatch(removeUserFromStore(userId));
+        toast.success("User deleted.");
+        setDeleteConfirmId(null);
+      } catch {
+        toast.error("Failed to delete user.");
+      } finally {
+        setPendingId(null);
+      }
+    });
+  }
+
+  async function handleResendInvite(user: (typeof users)[number]) {
+    setLoadingId(user.id);
+    try {
+      const result = await resendInvite(user.id, user.email, user.first_name, user.role);
+      if (result.success) {
+        toast.success("Invite resent.");
+      } else {
+        toast.error(result.error ?? "Failed to resend invite.");
+      }
+    } catch {
+      toast.error("Failed to resend invite.");
+    } finally {
+      setLoadingId(null);
+    }
+  }
+
+  // Columns defined inside component to close over pendingId + handlers
+  const columns: TableColumn<(typeof users)[number]>[] = [
+    {
+      key: "user",
+      label: "User",
+      headerClassName: "pl-11",
+      render: (user) => {
+        const initials = `${user.first_name.charAt(0)}${user.last_name.charAt(0)}`.toUpperCase();
+        const colors = ROLE_COLORS[user.role as NonNullable<UserRole>] ?? ROLE_COLORS.clinical_staff;
+        return (
+          <div className="flex items-center gap-3 min-w-0">
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${colors.bg}`}>
+              <span className={`text-xs font-semibold ${colors.text}`}>{initials}</span>
+            </div>
+            <div className="min-w-0">
+              <p className={`text-sm font-medium truncate ${user.is_active ? "text-[#0F172A]" : "text-[#94A3B8]"}`}>
+                {user.first_name} {user.last_name}
+              </p>
+              <p className="text-xs text-[#94A3B8] truncate">
+                {user.facility?.name ?? <span className="italic">No facility</span>}
+              </p>
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      key: "email",
+      label: "Email",
+      headerClassName: "hidden sm:table-cell",
+      cellClassName: "hidden sm:table-cell",
+      render: (user) => (
+        <span className="text-sm text-[#64748B]">{user.email}</span>
+      ),
+    },
+    {
+      key: "role",
+      label: "Role",
+      render: (user) => {
+        const colors = ROLE_COLORS[user.role as NonNullable<UserRole>] ?? ROLE_COLORS.clinical_staff;
+        const roleLabel = ROLE_LABELS[user.role as NonNullable<UserRole>] ?? user.role;
+        return (
+          <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${colors.bg} ${colors.text}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${colors.dot}`} />
+            {roleLabel}
+          </span>
+        );
+      },
+    },
+    {
+      key: "status",
+      label: "Status",
+      headerClassName: "hidden sm:table-cell",
+      cellClassName: "hidden sm:table-cell",
+      render: (user) => {
+        const STATUS_CONFIG: Record<UserStatus, { bg: string; text: string; dot: string; label: string }> = {
+          active:   { bg: "bg-emerald-50",  text: "text-emerald-600", dot: "bg-emerald-500", label: "Active"   },
+          pending:  { bg: "bg-amber-50",    text: "text-amber-600",   dot: "bg-amber-500",   label: "Pending"  },
+          inactive: { bg: "bg-[#F1F5F9]",   text: "text-gray-500",    dot: "bg-gray-400",    label: "Inactive" },
+        };
+        const cfg = STATUS_CONFIG[user.status] ?? STATUS_CONFIG.inactive;
+        return (
+          <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${cfg.bg} ${cfg.text}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+            {cfg.label}
+          </span>
+        );
+      },
+    },
+    {
+      key: "action",
+      label: "",
+      headerClassName: "text-right",
+      cellClassName: "text-right",
+      render: (user) => {
+        const isActing = pendingId === user.id;
+        const isResending = loadingId === user.id;
+        if (user.status === "pending") {
+          return (
+            <div className="inline-flex items-center gap-1 justify-end">
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); handleResendInvite(user); }}
+                disabled={isResending || isActing}
+                className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded-lg text-xs font-medium text-[#15689E] hover:bg-[#EFF6FF] transition-all disabled:opacity-40 opacity-0 group-hover:opacity-100"
+                title="Resend invite"
+              >
+                {isResending
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  : <Mail className="w-3.5 h-3.5" />
+                }
+                <span className="hidden sm:inline">Resend</span>
+              </button>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(user.id); }}
+                disabled={isActing || isResending}
+                className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded-lg text-xs font-medium text-red-400 hover:text-red-600 hover:bg-red-50 transition-all disabled:opacity-40 opacity-0 group-hover:opacity-100"
+                title="Delete user"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          );
+        }
+        if (user.status === "active") {
+          return (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); handleDeactivate(user.id); }}
+              disabled={isActing}
+              className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded-lg text-xs font-medium text-[#94A3B8] hover:text-red-500 hover:bg-red-50 transition-all disabled:opacity-40 opacity-0 group-hover:opacity-100"
+              title="Deactivate user"
+            >
+              <UserX className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Deactivate</span>
+            </button>
+          );
+        }
+        return (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); handleReactivate(user.id); }}
+            disabled={isActing}
+            className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded-lg text-xs font-medium text-[#94A3B8] hover:text-emerald-600 hover:bg-emerald-50 transition-all disabled:opacity-40 opacity-0 group-hover:opacity-100"
+            title="Reactivate user"
+          >
+            <UserCheck className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Reactivate</span>
+          </button>
+        );
+      },
+    },
+  ];
 
   return (
     <div className="space-y-5">
@@ -167,13 +307,14 @@ export function UsersPageClient() {
         </Button>
       </div>
 
-      {/* ── Top bar: status filter chips ── */}
-      <div className="flex flex-wrap items-center gap-2">
+      {/* ── Status filter tabs ── */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-[#E2E8F0]">
         {(
           [
-            { key: "all", label: "All Users", count: stats.total },
-            { key: "active", label: "Active", count: stats.active },
-            { key: "inactive", label: "Inactive", count: stats.inactive },
+            { key: "all",      label: "All Users", count: stats.total    },
+            { key: "active",   label: "Active",    count: stats.active   },
+            { key: "pending",  label: "Pending",   count: stats.pending  },
+            { key: "inactive", label: "Inactive",  count: stats.inactive },
           ] as const
         ).map(({ key, label, count }) => {
           const isActive = statusFilter === key;
@@ -182,14 +323,16 @@ export function UsersPageClient() {
               key={key}
               type="button"
               onClick={() => setStatusFilter(key)}
-              className={`inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors ${
+              className={`inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors relative -mb-px ${
                 isActive
                   ? "text-[#15689E] border-b-2 border-[#15689E]"
                   : "text-[#94A3B8] hover:text-[#64748B]"
               }`}
             >
               {label}
-              <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${isActive ? "bg-[#EFF6FF] text-[#15689E]" : "bg-[#F1F5F9] text-[#64748B]"}`}>
+              <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
+                isActive ? "bg-[#EFF6FF] text-[#15689E]" : "bg-[#F1F5F9] text-[#64748B]"
+              }`}>
                 {count}
               </span>
             </button>
@@ -223,143 +366,31 @@ export function UsersPageClient() {
       </div>
 
       {/* ── Table ── */}
-      {filtered.length === 0 ? (
-        <EmptyState
-          icon={<User className="w-10 h-10 stroke-1" />}
-          message="No users found"
-        />
-      ) : (
-        <div className="bg-white rounded-xl border border-[#E2E8F0] overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
-          {/* Column headers */}
-          <div className="grid grid-cols-[28px_2fr_1fr_auto] sm:grid-cols-[28px_2.5fr_2fr_1.3fr_1fr_auto] px-4 py-3 bg-[#F8FAFC] border-b border-[#E2E8F0]">
-            <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wider">#</span>
-            <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wider">User</span>
-            <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wider hidden sm:block">Email</span>
-            <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wider">Role</span>
-            <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wider hidden sm:block">Status</span>
-            <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wider text-right">Action</span>
-          </div>
-
-          <motion.div
-            variants={staggerContainer}
-            initial="hidden"
-            animate="visible"
-          >
-            {filtered.map((user, index) => {
-              const initials =
-                `${user.first_name.charAt(0)}${user.last_name.charAt(0)}`.toUpperCase();
-              const colors =
-                ROLE_COLORS[user.role as NonNullable<UserRole>] ??
-                ROLE_COLORS.clinical_staff;
-              const roleLabel =
-                ROLE_LABELS[user.role as NonNullable<UserRole>] ?? user.role;
-              const isActing = pendingId === user.id;
-
-              return (
-                <motion.div
-                  key={user.id}
-                  variants={fadeUp}
-                  className="grid grid-cols-[28px_2fr_1fr_auto] sm:grid-cols-[28px_2.5fr_2fr_1.3fr_1fr_auto] items-center px-4 py-3.5 border-b border-[#F1F5F9] last:border-0 hover:bg-[#FAFBFC] transition-colors group"
-                >
-                  {/* Row number */}
-                  <span className="text-xs font-medium text-[#94A3B8] select-none">
-                    {index + 1}
-                  </span>
-
-                  {/* Avatar + Name */}
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div
-                      className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${colors.bg}`}
-                    >
-                      <span className={`text-xs font-semibold ${colors.text}`}>
-                        {initials}
-                      </span>
-                    </div>
-                    <div className="min-w-0">
-                      <p
-                        className={`text-sm font-medium truncate ${
-                          user.is_active ? "text-[#0F172A]" : "text-[#94A3B8]"
-                        }`}
-                      >
-                        {user.first_name} {user.last_name}
-                      </p>
-                      {user.facility ? (
-                        <p className="text-xs text-[#94A3B8] truncate">
-                          {user.facility.name}
-                        </p>
-                      ) : (
-                        <p className="text-xs text-[#94A3B8] truncate italic">
-                          No facility
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Email */}
-                  <div className="hidden sm:block min-w-0">
-                    <p className="text-sm text-[#64748B] truncate">{user.email}</p>
-                  </div>
-
-                  {/* Role badge */}
-                  <div>
-                    <span
-                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${colors.bg} ${colors.text}`}
-                    >
-                      {roleLabel}
-                    </span>
-                  </div>
-
-                  {/* Status */}
-                  <div className="hidden sm:block">
-                    <span
-                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-                        user.is_active
-                          ? "bg-emerald-50 text-emerald-700"
-                          : "bg-[#F1F5F9] text-[#64748B]"
-                      }`}
-                    >
-                      {user.is_active ? "Active" : "Inactive"}
-                    </span>
-                  </div>
-
-                  {/* Action — revealed on row hover */}
-                  <div className="flex items-center justify-end">
-                    {user.is_active ? (
-                      <button
-                        type="button"
-                        onClick={() => handleDeactivate(user.id)}
-                        disabled={isActing}
-                        className="h-7 px-2.5 flex items-center gap-1.5 rounded-lg text-xs font-medium text-[#64748B] hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-40 opacity-0 group-hover:opacity-100"
-                        title="Deactivate user"
-                      >
-                        <UserX className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Deactivate</span>
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => handleReactivate(user.id)}
-                        disabled={isActing}
-                        className="h-7 px-2.5 flex items-center gap-1.5 rounded-lg text-xs font-medium text-[#64748B] hover:text-emerald-600 hover:bg-emerald-50 transition-colors disabled:opacity-40 opacity-0 group-hover:opacity-100"
-                        title="Reactivate user"
-                      >
-                        <UserCheck className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Reactivate</span>
-                      </button>
-                    )}
-                  </div>
-                </motion.div>
-              );
-            })}
-          </motion.div>
-        </div>
-      )}
+      <DataTable
+        columns={columns}
+        data={filtered}
+        keyExtractor={(u) => u.id}
+        emptyMessage="No users found"
+        emptyIcon={<User className="w-10 h-10 stroke-1" />}
+        rowNumbered
+        rowClassName="group"
+      />
 
       <p className="text-xs text-[#94A3B8] text-right">
         {filtered.length} of {users.length} user{users.length !== 1 ? "s" : ""}
       </p>
 
       <CreateUserModal open={showCreate} onClose={() => setShowCreate(false)} />
+
+      <ConfirmModal
+        open={deleteConfirmId !== null}
+        onOpenChange={(open) => { if (!open) setDeleteConfirmId(null); }}
+        title="Delete pending user?"
+        description="This will permanently delete this user's account. This action cannot be undone."
+        confirmLabel="Delete User"
+        isLoading={pendingId === deleteConfirmId && deleteConfirmId !== null}
+        onConfirm={() => { if (deleteConfirmId) handleDelete(deleteConfirmId); }}
+      />
     </div>
   );
 }

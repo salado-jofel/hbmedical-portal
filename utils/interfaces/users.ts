@@ -1,5 +1,7 @@
 import type { UserRole } from "@/utils/helpers/role";
 
+export type UserStatus = "pending" | "active" | "inactive";
+
 export interface IUser {
   id: string;
   first_name: string;
@@ -8,6 +10,7 @@ export interface IUser {
   role: NonNullable<UserRole>;
   created_at: string;
   is_active: boolean;
+  status: UserStatus;
   facility: {
     id: string;
     name: string;

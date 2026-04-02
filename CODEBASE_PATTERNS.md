@@ -82,12 +82,25 @@ export default async function FeaturePage() {
 - `DashboardHeader` receives `title` and `description` props
 - Padding is always `p-4 md:p-8 mx-auto space-y-6`
 - For parallel fetches: `const [a, b] = await Promise.all([getA(), getB()])`
-- Admin-only pages redirect non-admins:
+- Admin-only pages redirect non-admins (use role helpers, never hardcode strings):
   ```typescript
   const supabase = await createClient();
   const role = await getUserRole(supabase);
-  if (role !== "admin") redirect("/dashboard");
+  if (!isAdmin(role)) redirect("/dashboard/products");
   ```
+- Multi-role pages (e.g. admin + sales rep):
+  ```typescript
+  const adminUser = isAdmin(role);
+  if (!isSalesRep(role) && !adminUser) redirect("/dashboard");
+  ```
+- Role-conditional parallel fetches:
+  ```typescript
+  const [tokens, repsWithFacilities] = await Promise.all([
+    getMyInviteTokens(),
+    adminUser ? getSalesRepsWithFacilities() : Promise.resolve([]),
+  ]);
+  ```
+- Non-Redux server data (e.g. dropdown options) is passed directly as props from server page → client component. It does NOT go through Providers/Redux unless it needs to update reactively.
 
 ---
 
@@ -544,11 +557,14 @@ Roles are defined in `utils/helpers/role.ts`. The 5 valid roles:
 
 | Role value | Label | Scope |
 |---|---|---|
-| `admin` | Admin | Full access: all nav, all features, user management |
-| `sales_representative` | Sales Rep | Distribution side: dashboard, products, marketing, contracts, trainings, hospital-onboarding, accounts, tasks, onboarding, settings |
-| `support_staff` | Support Staff | Distribution side: dashboard, accounts, orders, settings |
-| `clinical_provider` | Clinical Provider | Clinic side: dashboard, orders, settings (+ provider credentials in settings) |
-| `clinical_staff` | Clinical Staff | Clinic side: dashboard, orders, settings |
+| `admin` | Admin | Full access: products, marketing, contracts, trainings, hospital-onboarding, accounts, users, onboarding, settings — **no Dashboard nav item** |
+| `sales_representative` | Sales Rep | Dashboard, Products, Marketing, Contracts, Trainings, Hospital Onboarding, Accounts, Tasks, Onboarding, Settings |
+| `support_staff` | Support Staff | Dashboard, Settings only |
+| `clinical_provider` | Clinical Provider | Dashboard, Orders, Settings |
+| `clinical_staff` | Clinical Staff | Dashboard, Orders, Settings |
+
+**Admin landing page:** After login, admin is redirected to `/dashboard/products` (not `/dashboard`).  
+Middleware (`lib/supabase/middleware.ts`) blocks admin from `/dashboard`, `/dashboard/orders`, `/dashboard/profile`.
 
 Role badge colors (from `SidebarUserCard.tsx`):
 - admin → `#15689E` (brand blue)
@@ -559,3 +575,311 @@ Role badge colors (from `SidebarUserCard.tsx`):
 
 **Never hardcode role strings in JSX.** Use `ROLE_LABELS[role]` for display.
 **Never gate UI with `role === "doctor"` or old role values.** They do not exist.
+
+---
+
+## SECTION K — User Status System
+
+`profiles.status` is the single source of truth for user status. Values: `'pending' | 'active' | 'inactive'`.
+
+```typescript
+// utils/interfaces/users.ts
+export type UserStatus = "pending" | "active" | "inactive";
+
+export interface IUser {
+  // ...
+  status: UserStatus;
+  is_active: boolean; // derived: status === "active"
+}
+```
+
+**Reading status in `getUsers`:**
+```typescript
+// SELECT profiles.status directly — never derive from auth.users.banned_until
+const { data } = await adminClient
+  .from("profiles")
+  .select("id, first_name, last_name, email, role, status, has_completed_setup, ...");
+
+const status = (p.status as UserStatus) ?? "pending";
+const is_active = status === "active";
+```
+
+**Status lifecycle:**
+1. `createUser` → inserts `status: "pending"` into profiles
+2. First login (`sign-in/(services)/actions.ts`) → if `profile.status === "pending"`, updates to `"active"` before redirect
+3. Admin deactivates → `profiles.update({ status: "inactive" })`
+4. Admin reactivates → `profiles.update({ status: "active" })`
+5. Admin deletes → only allowed when `status === "pending"`; calls `adminClient.auth.admin.deleteUser(userId)` (profile cascades)
+
+**Status badge colors** (used in `UsersPageClient.tsx`):
+```typescript
+const STATUS_CONFIG: Record<UserStatus, { label: string; className: string; dot: string }> = {
+  active:   { label: "Active",   className: "bg-emerald-50 text-emerald-700", dot: "bg-emerald-500" },
+  pending:  { label: "Pending",  className: "bg-amber-50 text-amber-700",     dot: "bg-amber-400"  },
+  inactive: { label: "Inactive", className: "bg-[#F1F5F9] text-[#64748B]",   dot: "bg-[#94A3B8]"  },
+};
+```
+
+**4-tab filter:** All Users / Active / Pending / Inactive — filter using `u.status === statusFilter`.
+
+---
+
+## SECTION L — Sidebar Navigation Pattern
+
+Nav items use a `visible` predicate instead of an `allowedRoles` array:
+
+```typescript
+// app/(dashboard)/dashboard/(sections)/Sidebar.tsx
+interface NavItemDef {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  visible: (role: UserRole) => boolean;
+}
+
+const NAV_ITEMS: NavItemDef[] = [
+  {
+    href: "/dashboard",
+    label: "Dashboard",
+    icon: LayoutDashboard,
+    visible: (role) => !!role && !isAdmin(role), // admin has NO Dashboard link
+  },
+  {
+    href: "/dashboard/accounts",
+    label: "Accounts",
+    icon: Building2,
+    visible: (role) => isAdmin(role) || isSalesRep(role),
+  },
+  {
+    href: "/dashboard/orders",
+    label: "Orders",
+    icon: ShoppingCart,
+    visible: (role) => isClinicalProvider(role) || isClinicalStaff(role),
+  },
+  {
+    href: "/dashboard/tasks",
+    label: "Tasks",
+    icon: CheckSquare,
+    visible: (role) => isSalesRep(role),
+  },
+  {
+    href: "/dashboard/onboarding",
+    label: "Onboarding",
+    icon: UserPlus,
+    visible: (role) => isSalesRep(role) || isAdmin(role),
+  },
+  // ...
+];
+
+function isNavItemVisible(item: NavItemDef, role: UserRole): boolean {
+  return item.visible(role);
+}
+```
+
+**Rules:**
+- Always use `isAdmin()`, `isSalesRep()`, `isClinicalProvider()`, `isClinicalStaff()`, `isSupport()` from `utils/helpers/role.ts`.
+- Never hardcode role strings in Sidebar.
+- Admin has **no Dashboard** nav item; they land on `/dashboard/products`.
+- Support staff has **only Dashboard + Settings**.
+
+---
+
+## SECTION M — DataTable Component
+
+`DataTable` lives at `app/(components)/DataTable.tsx`. Use it for all tabular data displays.
+
+```typescript
+import { DataTable } from "@/app/(components)/DataTable";
+
+interface TableColumn<T> {
+  key: string;
+  header: string;
+  headerClassName?: string;
+  cellClassName?: string;
+  render: (item: T) => React.ReactNode;
+}
+
+const columns: TableColumn<IUser>[] = [
+  {
+    key: "name",
+    header: "Name",
+    headerClassName: "w-48",
+    render: (u) => <span className="font-medium">{u.first_name} {u.last_name}</span>,
+  },
+  {
+    key: "status",
+    header: "Status",
+    cellClassName: "text-right",
+    render: (u) => <StatusBadge status={u.status} />,
+  },
+];
+
+<DataTable
+  columns={columns}
+  data={users}
+  rowNumbered        // optional: adds a # column
+  rowClassName="hover:bg-[#FAFBFC] transition-colors"
+  emptyIcon={<Users className="w-10 h-10 stroke-1" />}
+/>
+```
+
+---
+
+## SECTION N — Email Helper Pattern
+
+Email helpers live in `lib/emails/send-*.ts`. Each file exports one async function.
+
+```typescript
+// lib/emails/send-invite-email.ts
+import { resend, ACCOUNTS_FROM_EMAIL } from "@/lib/emails/resend";
+
+const LOGO_URL = "https://eyrefohymvvabazvmemq.supabase.co/storage/v1/object/public/...";
+
+export async function sendInviteEmail({
+  to,
+  firstName,
+  role,       // already-formatted label string, e.g. "Clinical Staff"
+  resetLink,
+}: {
+  to: string;
+  firstName: string;
+  role: string;
+  resetLink: string;
+}): Promise<void> {
+  await resend.emails.send({
+    from: ACCOUNTS_FROM_EMAIL,
+    to,
+    subject: `You've been invited to HB Medical Portal`,
+    html: `...`, // full HTML email template
+  });
+}
+```
+
+**Rules:**
+- Always import `resend` from `lib/emails/resend.ts` — never `new Resend()`
+- Use `ACCOUNTS_FROM_EMAIL` for user account emails, `PAYMENTS_FROM_EMAIL` for order/payment emails
+- The caller passes `ROLE_LABELS[role] ?? role` as the `role` string so the helper stays generic
+- `resetLink` comes from `adminClient.auth.admin.generateLink({ type: "invite" | "recovery", ... }).properties.action_link`
+
+---
+
+## SECTION O — User Management Patterns
+
+All user management actions live in `app/(dashboard)/dashboard/users/(services)/actions.ts`.
+
+**Creating a user:**
+```typescript
+export async function createUser(_prev, formData): Promise<IUserFormState> {
+  // 1. requireAdminOrThrow
+  // 2. Validate with zod schema
+  // 3. adminClient.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { first_name, last_name } })
+  // 4. adminClient.from("profiles").upsert({ id, first_name, last_name, email, role, status: "pending" })
+  // 5. Build invite email HTML and send via resend
+  // 6. Return { success: true, user: { ...mapped, status: "pending", is_active: false } }
+}
+```
+
+**Resending an invite:**
+```typescript
+export async function resendInvite(
+  userId: string,
+  email: string,
+  firstName: string,
+  role: string,
+): Promise<IUserFormState> {
+  // 1. Verify profile.status === "pending" (error if not)
+  // 2. adminClient.auth.admin.generateLink({ type: "recovery", email })
+  // 3. sendInviteEmail({ to: email, firstName, role: ROLE_LABELS[role] ?? role, resetLink: actionLink })
+  // 4. Return { success: true, error: null }
+}
+```
+
+**Deleting a user (pending-only guard):**
+```typescript
+export async function deleteUser(userId: string): Promise<IUserFormState> {
+  // 1. Fetch profile.status — error if not "pending"
+  // 2. adminClient.auth.admin.deleteUser(userId) — profile cascades via FK
+  // 3. revalidatePath("/dashboard/users")
+  // 4. Return { success: true, error: null }
+}
+```
+
+**UI action column by status:**
+- `pending` → Resend Invite button (Mail icon / Loader2 spinner, blue) + Delete button (Trash2, red destructive)
+- `active` → Deactivate button (UserX icon)
+- `inactive` → Reactivate button (UserCheck icon)
+
+**Confirm before delete:** Use `ConfirmModal` from `app/(components)/ConfirmModal.tsx`.
+
+---
+
+## SECTION P — Onboarding / Invite Token Patterns
+
+**RepWithFacility type** (exported from `app/(dashboard)/dashboard/onboarding/(services)/actions.ts`):
+```typescript
+export type RepWithFacility = {
+  id: string;         // profiles.id of the rep
+  name: string;       // "First Last"
+  facilityId: string; // facilities.id owned by the rep
+  facilityName: string;
+};
+```
+
+**Fetching reps with facilities (admin-only):**
+```typescript
+export async function getSalesRepsWithFacilities(): Promise<RepWithFacility[]> {
+  const supabase = await createClient();
+  await requireAdminOrThrow(supabase);
+  const adminClient = createAdminClient();
+
+  const { data } = await adminClient
+    .from("profiles")
+    .select(`id, first_name, last_name, facility:facilities!facilities_user_id_fkey(id, name)`)
+    .eq("role", "sales_representative")
+    .order("first_name", { ascending: true });
+
+  return (data ?? [])
+    .map((p: any) => {
+      const fac = Array.isArray(p.facility) ? p.facility[0] : p.facility;
+      return fac?.id ? { id: p.id, name: `${p.first_name} ${p.last_name}`, facilityId: fac.id, facilityName: fac.name } : null;
+    })
+    .filter((r): r is RepWithFacility => r !== null);
+}
+```
+
+**Facility resolution in `generateInviteToken` (role-branched):**
+```typescript
+let resolvedFacilityId: string | null;
+if (isAdmin(role as UserRole)) {
+  // Admin selects a rep's facility from the dropdown — passed as hidden facility_id field
+  resolvedFacilityId = parsed.data.facility_id ?? null;
+  if (!resolvedFacilityId) return { error: "Please select a sales rep to assign this invite to.", success: false };
+} else {
+  // Sales rep — walk their hierarchy to find owned facility
+  resolvedFacilityId = await getRepFacilityId(user.id, supabase);
+  if (!resolvedFacilityId) return { error: "You need to complete your office setup before inviting clinic users.", success: false };
+}
+```
+
+**Passing non-Redux server data to client forms:**
+```typescript
+// page.tsx (server)
+const [tokens, repsWithFacilities] = await Promise.all([
+  getMyInviteTokens(),
+  adminUser ? getSalesRepsWithFacilities() : Promise.resolve([] as RepWithFacility[]),
+]);
+
+return (
+  <Providers tokens={tokens}>
+    <OnboardingPageClient repsWithFacilities={repsWithFacilities} ... />
+  </Providers>
+);
+// repsWithFacilities goes through props (not Redux) — it's a static dropdown list, not reactive state
+```
+
+**Admin "Assign to Rep" dropdown in InviteClinicForm:**
+- Only rendered when `isAdmin && !hasNoReps`
+- Uses a hidden `<input type="hidden" name="facility_id" value={selectedFacilityId} />` to submit with the form
+- `selectedFacilityId` defaults to `repsWithFacilities[0]?.facilityId ?? ""`
+- `hasNoReps = isAdmin && repsWithFacilities.length === 0` → shows amber warning + disables Generate button
+- Button: `disabled={isPending || hasNoReps || (isAdmin && !selectedFacilityId)}`

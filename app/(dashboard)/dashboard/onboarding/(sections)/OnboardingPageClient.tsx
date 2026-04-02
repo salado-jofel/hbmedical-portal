@@ -7,16 +7,19 @@ import { InviteSubRepForm } from "../(components)/InviteSubRepForm";
 import { InviteTokenCard } from "../(components)/InviteTokenCard";
 import { Button } from "@/components/ui/button";
 import type { UserRole } from "@/utils/helpers/role";
+import type { RepWithFacility } from "../(services)/actions";
 
 interface OnboardingPageClientProps {
   role: UserRole | null;
   baseUrl: string;
   hasCompletedSetup: boolean;
+  isAdmin?: boolean;
+  repsWithFacilities?: RepWithFacility[];
 }
 
-export function OnboardingPageClient({ role, baseUrl, hasCompletedSetup }: OnboardingPageClientProps) {
+export function OnboardingPageClient({ role, baseUrl, hasCompletedSetup, isAdmin = false, repsWithFacilities = [] }: OnboardingPageClientProps) {
   const tokens = useAppSelector((s) => s.inviteTokens.items);
-  const showSubRepSection = role === "sales_representative" || role === "admin";
+  const showSubRepSection = role === "sales_representative";
 
   return (
     <div className="p-6 md:p-8 max-w-3xl mx-auto space-y-6">
@@ -71,7 +74,7 @@ export function OnboardingPageClient({ role, baseUrl, hasCompletedSetup }: Onboa
               </Button>
             </div>
           ) : (
-            <InviteClinicForm baseUrl={baseUrl} />
+            <InviteClinicForm baseUrl={baseUrl} isAdmin={isAdmin} repsWithFacilities={repsWithFacilities} />
           )}
         </div>
       </section>
@@ -96,13 +99,79 @@ export function OnboardingPageClient({ role, baseUrl, hasCompletedSetup }: Onboa
       {tokens.length > 0 && (
         <section className="space-y-3">
           <h2 className="text-sm font-semibold text-[#0F172A]">
-            Your invite links ({tokens.length})
+            {isAdmin ? `All invite links (${tokens.length})` : `Your invite links (${tokens.length})`}
           </h2>
-          <div className="space-y-2" suppressHydrationWarning>
-            {tokens.map((token) => (
-              <InviteTokenCard key={token.id} token={token} baseUrl={baseUrl} />
-            ))}
-          </div>
+          {isAdmin ? (
+            <div className="bg-white rounded-xl border border-[#E2E8F0] overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
+              <table className="w-full text-sm text-left">
+                <thead>
+                  <tr className="bg-[#F8FAFC] border-b border-[#E2E8F0]">
+                    <th className="px-4 py-3 text-[10px] uppercase tracking-wider font-semibold text-[#94A3B8]">Created By</th>
+                    <th className="px-4 py-3 text-[10px] uppercase tracking-wider font-semibold text-[#94A3B8] hidden sm:table-cell">Role Type</th>
+                    <th className="px-4 py-3 text-[10px] uppercase tracking-wider font-semibold text-[#94A3B8] hidden md:table-cell">Expires</th>
+                    <th className="px-4 py-3 text-[10px] uppercase tracking-wider font-semibold text-[#94A3B8] text-right">Status</th>
+                  </tr>
+                </thead>
+                <tbody suppressHydrationWarning>
+                  {tokens.map((token) => {
+                    const isUsed = !!token.used_at;
+                    const isExpired = !isUsed && token.expires_at ? new Date(token.expires_at) < new Date() : false;
+                    const statusLabel = isUsed ? "Used" : isExpired ? "Expired" : "Active";
+                    const statusStyle = isUsed
+                      ? "bg-[#F1F5F9] text-[#64748B]"
+                      : isExpired
+                      ? "bg-red-50 text-red-600"
+                      : "bg-emerald-50 text-emerald-700";
+                    const dotStyle = isUsed ? "bg-[#94A3B8]" : isExpired ? "bg-red-400" : "bg-emerald-500";
+                    const roleColors: Record<string, string> = {
+                      clinical_provider: "bg-teal-50 text-teal-700",
+                      clinical_staff: "bg-[#F1F5F9] text-[#64748B]",
+                      sales_representative: "bg-orange-50 text-orange-600",
+                      support_staff: "bg-purple-50 text-purple-700",
+                    };
+                    const roleLabels: Record<string, string> = {
+                      clinical_provider: "Clinical Provider",
+                      clinical_staff: "Clinical Staff",
+                      sales_representative: "Sales Rep",
+                      support_staff: "Support Staff",
+                    };
+                    const createdBy = token.created_by_profile
+                      ? `${token.created_by_profile.first_name} ${token.created_by_profile.last_name}`
+                      : "Unknown";
+                    return (
+                      <tr key={token.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#FAFBFC] transition-colors">
+                        <td className="px-4 py-3.5">
+                          <span className="text-sm text-[#0F172A] font-medium">{createdBy}</span>
+                        </td>
+                        <td className="px-4 py-3.5 hidden sm:table-cell">
+                          <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${roleColors[token.role_type] ?? "bg-[#F1F5F9] text-[#64748B]"}`}>
+                            {roleLabels[token.role_type] ?? token.role_type}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3.5 hidden md:table-cell">
+                          <span className="text-xs text-[#64748B]">
+                            {token.expires_at ? new Date(token.expires_at).toLocaleDateString() : "—"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3.5 text-right">
+                          <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${statusStyle}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${dotStyle}`} />
+                            {statusLabel}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="space-y-2" suppressHydrationWarning>
+              {tokens.map((token) => (
+                <InviteTokenCard key={token.id} token={token} baseUrl={baseUrl} />
+              ))}
+            </div>
+          )}
         </section>
       )}
     </div>

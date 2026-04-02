@@ -6,8 +6,10 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdminOrThrow } from "@/lib/supabase/auth";
 import { resend, ACCOUNTS_FROM_EMAIL } from "@/lib/emails/resend";
-import type { IUser, IUserFormState } from "@/utils/interfaces/users";
+import { sendInviteEmail } from "@/lib/emails/send-invite-email";
+import type { IUser, IUserFormState, UserStatus } from "@/utils/interfaces/users";
 import type { UserRole } from "@/utils/helpers/role";
+import { ROLE_LABELS } from "@/utils/helpers/role";
 
 const LOGO_URL =
   "https://eyrefohymvvabazvmemq.supabase.co/storage/v1/object/public/spearhead-assets/assets/email/hb-logo-name-2.png";
@@ -25,17 +27,6 @@ export async function getUsers(filters?: {
 
   const adminClient = createAdminClient();
 
-  // Fetch auth users (to get banned status)
-  const { data: authData, error: authError } = await adminClient.auth.admin.listUsers({
-    perPage: 1000,
-  });
-
-  if (authError) {
-    console.error("[getUsers] Auth list error:", authError);
-    throw new Error("Failed to fetch users.");
-  }
-
-  // Fetch profiles with owned facility via the only valid FK hint
   const { data: profiles, error: profilesError } = await adminClient
     .from("profiles")
     .select(`
@@ -45,6 +36,8 @@ export async function getUsers(filters?: {
       last_name,
       phone,
       role,
+      status,
+      has_completed_setup,
       created_at,
       updated_at,
       facility:facilities!facilities_user_id_fkey(
@@ -62,18 +55,9 @@ export async function getUsers(filters?: {
     throw new Error(profilesError.message ?? profilesError.code ?? "Failed to fetch users.");
   }
 
-  const authMap = new Map(
-    (authData.users ?? []).map((u) => [u.id, u]),
-  );
-
   let users: IUser[] = (profiles ?? []).map((p: any) => {
-    const authUser = authMap.get(p.id);
-    const isBanned =
-      authUser?.banned_until
-        ? new Date(authUser.banned_until) > new Date()
-        : false;
-
     const fac = Array.isArray(p.facility) ? p.facility[0] : p.facility;
+    const status = (p.status as UserStatus) ?? "pending";
 
     return {
       id: p.id,
@@ -82,7 +66,8 @@ export async function getUsers(filters?: {
       email: p.email ?? "",
       role: p.role,
       created_at: p.created_at ?? "",
-      is_active: !isBanned,
+      is_active: status === "active",
+      status,
       facility: fac
         ? { id: fac.id, name: fac.name, status: fac.status ?? null, city: fac.city ?? null, state: fac.state ?? null }
         : null,
@@ -116,7 +101,7 @@ const createUserSchema = z.object({
   first_name: z.string().min(1, "First name is required."),
   last_name: z.string().min(1, "Last name is required."),
   email: z.string().email("Enter a valid email."),
-  role: z.enum(["sales_representative", "support_staff"], {
+  role: z.enum(["sales_representative", "support_staff", "admin"], {
     errorMap: () => ({ message: "Select a valid role." }),
   }),
 });
@@ -181,7 +166,8 @@ export async function createUser(
         last_name,
         email,
         role,
-        has_completed_setup: false,
+        has_completed_setup: role === "admin",
+        status: "pending",
       });
 
     if (profileError) {
@@ -209,6 +195,7 @@ export async function createUser(
         role: role as NonNullable<UserRole>,
         created_at: authData.user.created_at,
         is_active: true,
+        status: "pending",
         facility: null,
       };
       return { success: true, error: null, user: newUser };
@@ -234,6 +221,7 @@ export async function createUser(
       role: role as NonNullable<UserRole>,
       created_at: authData.user.created_at,
       is_active: true,
+      status: "pending",
       facility: null,
     };
 
@@ -263,6 +251,8 @@ export async function deactivateUser(userId: string): Promise<void> {
     throw new Error(error.message ?? "Failed to deactivate user.");
   }
 
+  await adminClient.from("profiles").update({ status: "inactive" }).eq("id", userId);
+
   revalidatePath("/dashboard/users");
 }
 
@@ -284,7 +274,103 @@ export async function reactivateUser(userId: string): Promise<void> {
     throw new Error(error.message ?? "Failed to reactivate user.");
   }
 
+  await adminClient.from("profiles").update({ status: "active" }).eq("id", userId);
+
   revalidatePath("/dashboard/users");
+}
+
+/* -------------------------------------------------------------------------- */
+/* deleteUser                                                                 */
+/* -------------------------------------------------------------------------- */
+
+export async function deleteUser(userId: string): Promise<IUserFormState> {
+  try {
+    const supabase = await createClient();
+    await requireAdminOrThrow(supabase);
+
+    const adminClient = createAdminClient();
+
+    // Guard: only pending users may be deleted
+    const { data: profile } = await adminClient
+      .from("profiles")
+      .select("status")
+      .eq("id", userId)
+      .single();
+
+    if (profile?.status !== "pending") {
+      return { success: false, error: "Only pending users can be deleted." };
+    }
+
+    const { error } = await adminClient.auth.admin.deleteUser(userId);
+    if (error) {
+      console.error("[deleteUser] Error:", error);
+      return { success: false, error: error.message ?? "Failed to delete user." };
+    }
+
+    revalidatePath("/dashboard/users");
+    return { success: true, error: null };
+  } catch (err) {
+    console.error("[deleteUser] Unexpected error:", err);
+    return { success: false, error: "An unexpected error occurred." };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* resendInvite                                                               */
+/* -------------------------------------------------------------------------- */
+
+export async function resendInvite(
+  userId: string,
+  email: string,
+  firstName: string,
+  role: string,
+): Promise<IUserFormState> {
+  try {
+    const supabase = await createClient();
+    await requireAdminOrThrow(supabase);
+
+    const adminClient = createAdminClient();
+
+    // Verify user is still pending
+    const { data: profile } = await adminClient
+      .from("profiles")
+      .select("status")
+      .eq("id", userId)
+      .single();
+
+    if (profile?.status !== "pending") {
+      return { error: "User is not in pending status.", success: false };
+    }
+
+    // Generate fresh recovery link
+    const { data: linkData, error: linkError } =
+      await adminClient.auth.admin.generateLink({
+        type: "recovery",
+        email,
+        options: {
+          redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/set-password`,
+        },
+      });
+
+    if (linkError || !linkData?.properties?.action_link) {
+      console.error("[resendInvite] generateLink error:", linkError);
+      return { error: linkError?.message ?? "Failed to generate invite link.", success: false };
+    }
+
+    const resetLink = linkData.properties.action_link;
+
+    await sendInviteEmail({
+      to: email,
+      firstName,
+      role: ROLE_LABELS[role as NonNullable<UserRole>] ?? role,
+      resetLink,
+    });
+
+    return { success: true, error: null };
+  } catch (err) {
+    console.error("[resendInvite] Unexpected error:", err);
+    return { error: "An unexpected error occurred.", success: false };
+  }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -303,7 +389,11 @@ function buildInviteEmail({
   resetLink: string;
 }) {
   const roleLabel =
-    role === "sales_representative" ? "Sales Representative" : "Support Staff";
+    role === "admin"
+      ? "Administrator"
+      : role === "sales_representative"
+      ? "Sales Representative"
+      : "Support Staff";
 
   return `
 <!DOCTYPE html>

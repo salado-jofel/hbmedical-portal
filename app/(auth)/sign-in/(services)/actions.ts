@@ -21,6 +21,20 @@ export async function signIn(
   if (error) {
     return { error: error.message };
   }
+
+  // Activate pending users on first login
+  const { data: { user } } = await supabase.auth.getUser();
+  if (user) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("status")
+      .eq("id", user.id)
+      .single();
+    if (profile?.status === "pending") {
+      await supabase.from("profiles").update({ status: "active" }).eq("id", user.id);
+    }
+  }
+
   const userData = await getUserData();
   if (userData?.role === "admin") {
     redirect("/dashboard/products");

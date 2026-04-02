@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import { Loader2, Plus, Copy, Check } from "lucide-react";
+import { Loader2, Plus, Copy, Check, Info } from "lucide-react";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import { generateInviteToken } from "@/app/(dashboard)/dashboard/onboarding/(services)/actions";
 import type { IInviteTokenFormState } from "@/utils/interfaces/invite-tokens";
+import type { RepWithFacility } from "../(services)/actions";
 
 const ROLE_OPTIONS = [
   { value: "clinical_provider", label: "Clinical Provider" },
@@ -29,15 +30,22 @@ const EXPIRY_OPTIONS = [
 
 interface InviteClinicFormProps {
   baseUrl: string;
+  isAdmin?: boolean;
+  repsWithFacilities?: RepWithFacility[];
 }
 
-export function InviteClinicForm({ baseUrl }: InviteClinicFormProps) {
+export function InviteClinicForm({ baseUrl, isAdmin = false, repsWithFacilities = [] }: InviteClinicFormProps) {
   const [state, formAction, isPending] = useActionState<
     IInviteTokenFormState | null,
     FormData
   >(generateInviteToken, null);
 
   const [copied, setCopied] = useState(false);
+  const [selectedFacilityId, setSelectedFacilityId] = useState<string>(
+    repsWithFacilities[0]?.facilityId ?? ""
+  );
+
+  const hasNoReps = isAdmin && repsWithFacilities.length === 0;
 
   const generatedUrl =
     state?.success && state.token ? `${baseUrl}/invite/${state.token}` : null;
@@ -58,7 +66,47 @@ export function InviteClinicForm({ baseUrl }: InviteClinicFormProps) {
 
   return (
     <div className="space-y-4">
+      {/* Admin: no reps warning */}
+      {hasNoReps && (
+        <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
+          <Info className="w-4 h-4 text-amber-700 mt-0.5 shrink-0" />
+          <p className="text-sm text-amber-700">
+            No reps have set up their office yet. Ask reps to complete their
+            profile setup first.
+          </p>
+        </div>
+      )}
+
       <form action={formAction} className="space-y-4">
+        {/* Admin: hidden facility_id input */}
+        {isAdmin && (
+          <input type="hidden" name="facility_id" value={selectedFacilityId} />
+        )}
+
+        {/* Admin: Assign to Rep dropdown */}
+        {isAdmin && !hasNoReps && (
+          <div className="space-y-1.5">
+            <Label className="text-xs">
+              Assign to Rep <span className="text-red-400">*</span>
+            </Label>
+            <Select
+              value={selectedFacilityId}
+              onValueChange={setSelectedFacilityId}
+            >
+              <SelectTrigger className="h-9 text-sm">
+                <SelectValue placeholder="Select a sales rep..." />
+              </SelectTrigger>
+              <SelectContent>
+                {repsWithFacilities.map((rep) => (
+                  <SelectItem key={rep.facilityId} value={rep.facilityId} className="text-sm">
+                    {rep.name} — {rep.facilityName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
         {/* Role */}
         <div className="space-y-1.5">
           <Label className="text-xs">
@@ -104,7 +152,7 @@ export function InviteClinicForm({ baseUrl }: InviteClinicFormProps) {
         <Button
           type="submit"
           size="sm"
-          disabled={isPending}
+          disabled={isPending || hasNoReps || (isAdmin && !selectedFacilityId)}
           className="w-full h-9 bg-[#15689E] hover:bg-[#125d8e] text-white gap-1.5 rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors"
         >
           {isPending ? (

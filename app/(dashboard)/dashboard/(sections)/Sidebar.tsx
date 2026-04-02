@@ -26,12 +26,13 @@ import { signOut } from "../(services)/actions";
 import { closeSidebar } from "../(redux)/dashboard-slice";
 import type { LucideIcon } from "lucide-react";
 import type { UserRole } from "@/utils/helpers/role";
+import { isAdmin, isSalesRep, isClinicalProvider, isClinicalStaff } from "@/utils/helpers/role";
 
 interface NavItemDef {
   icon: LucideIcon;
   label: string;
   href: string;
-  allowedRoles: NonNullable<UserRole>[];
+  visible: (role: UserRole) => boolean;
 }
 
 const navItems: NavItemDef[] = [
@@ -39,79 +40,79 @@ const navItems: NavItemDef[] = [
     icon: LayoutDashboard,
     label: "Dashboard",
     href: "/dashboard",
-    allowedRoles: ["sales_representative", "support_staff", "clinical_provider", "clinical_staff", "admin"],
+    visible: (role) => !!role && !isAdmin(role),
   },
   {
     icon: Package,
     label: "Products",
     href: "/dashboard/products",
-    allowedRoles: ["admin"],
+    visible: isAdmin,
   },
   {
     icon: Megaphone,
     label: "Marketing",
     href: "/dashboard/marketing",
-    allowedRoles: ["admin"],
+    visible: isAdmin,
   },
   {
     icon: ScrollText,
     label: "Contracts",
     href: "/dashboard/contracts",
-    allowedRoles: ["admin"],
+    visible: isAdmin,
   },
   {
     icon: BookOpen,
     label: "Trainings",
     href: "/dashboard/trainings",
-    allowedRoles: ["admin"],
+    visible: isAdmin,
   },
   {
     icon: Hospital,
     label: "Hospital Onboarding",
     href: "/dashboard/hospital-onboarding",
-    allowedRoles: ["admin"],
+    visible: isAdmin,
   },
   {
     icon: Building2,
     label: "Accounts",
     href: "/dashboard/accounts",
-    allowedRoles: ["admin", "sales_representative", "support_staff"],
+    visible: (role) => isAdmin(role) || isSalesRep(role),
   },
   {
     icon: ShoppingCart,
     label: "Orders",
     href: "/dashboard/orders",
-    allowedRoles: ["support_staff", "clinical_provider", "clinical_staff"],
+    visible: (role) => isClinicalProvider(role) || isClinicalStaff(role),
   },
   {
     icon: CheckSquare,
     label: "Tasks",
     href: "/dashboard/tasks",
-    allowedRoles: ["admin", "sales_representative"],
+    visible: isSalesRep,
   },
   {
     icon: Share2,
     label: "Onboarding",
     href: "/dashboard/onboarding",
-    allowedRoles: ["sales_representative"],
+    visible: (role) => isSalesRep(role) || isAdmin(role),
   },
   {
     icon: Users,
     label: "Users",
     href: "/dashboard/users",
-    allowedRoles: ["admin"],
+    visible: isAdmin,
   },
   {
     icon: Settings,
     label: "Settings",
     href: "/dashboard/settings",
-    allowedRoles: ["admin", "sales_representative", "support_staff", "clinical_provider", "clinical_staff"],
+    visible: (role) => !!role,
   },
 ];
 
 function isNavItemVisible(item: NavItemDef, role: UserRole | null): boolean {
   if (!role) return false;
-  return item.allowedRoles.includes(role as NonNullable<UserRole>);
+  return item.visible(role);
 }
 
 export function Sidebar() {

@@ -32,6 +32,7 @@ interface CreateUserModalProps {
 const ROLE_OPTIONS = [
   { value: "sales_representative", label: "Sales Rep" },
   { value: "support_staff", label: "Support Staff" },
+  { value: "admin", label: "Admin" },
 ];
 
 export function CreateUserModal({ open, onClose }: CreateUserModalProps) {

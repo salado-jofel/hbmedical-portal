@@ -4,7 +4,9 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getCurrentUserOrThrow, getUserRole } from "@/lib/supabase/auth";
+import { getCurrentUserOrThrow, getUserRole, requireAdminOrThrow } from "@/lib/supabase/auth";
+import { isAdmin } from "@/utils/helpers/role";
+import type { UserRole } from "@/utils/helpers/role";
 import { resend, PAYMENTS_FROM_EMAIL } from "@/lib/emails/resend";
 import {
   generateInviteTokenSchema,
@@ -38,6 +40,58 @@ const INVITE_TOKEN_SELECT = `
 
 const LOGO_URL =
   "https://eyrefohymvvabazvmemq.supabase.co/storage/v1/object/public/spearhead-assets/assets/email/hb-logo-name-2.png";
+
+/* -------------------------------------------------------------------------- */
+/* RepWithFacility type                                                       */
+/* -------------------------------------------------------------------------- */
+
+export type RepWithFacility = {
+  id: string;
+  name: string;
+  facilityId: string;
+  facilityName: string;
+};
+
+/* -------------------------------------------------------------------------- */
+/* getSalesRepsWithFacilities                                                 */
+/* -------------------------------------------------------------------------- */
+
+export async function getSalesRepsWithFacilities(): Promise<RepWithFacility[]> {
+  const supabase = await createClient();
+  await requireAdminOrThrow(supabase);
+
+  const adminClient = createAdminClient();
+
+  const { data, error } = await adminClient
+    .from("profiles")
+    .select(`
+      id,
+      first_name,
+      last_name,
+      facility:facilities!facilities_user_id_fkey(id, name)
+    `)
+    .eq("role", "sales_representative")
+    .order("first_name", { ascending: true });
+
+  if (error) {
+    console.error("[getSalesRepsWithFacilities] Error:", JSON.stringify(error));
+    throw new Error(error.message ?? "Failed to fetch reps.");
+  }
+
+  return (data ?? [])
+    .map((p: any) => {
+      const fac = Array.isArray(p.facility) ? p.facility[0] : p.facility;
+      return fac?.id
+        ? {
+            id: p.id as string,
+            name: `${p.first_name} ${p.last_name}`,
+            facilityId: fac.id as string,
+            facilityName: fac.name as string,
+          }
+        : null;
+    })
+    .filter((r): r is RepWithFacility => r !== null);
+}
 
 /* -------------------------------------------------------------------------- */
 /* getRepFacilityId — walks rep_hierarchy upward to find an owned facility    */
@@ -111,10 +165,20 @@ export async function generateInviteToken(
       Date.now() + parsed.data.expires_in_days * 24 * 60 * 60 * 1000,
     ).toISOString();
 
-    // For clinical roles, auto-resolve the rep's facility if none was provided
-    let resolvedFacilityId = parsed.data.facility_id ?? null;
-    if (!resolvedFacilityId && parsed.data.role_type !== "sales_representative") {
+    // Resolve facility_id based on role
+    let resolvedFacilityId: string | null;
+    if (isAdmin(role as UserRole)) {
+      // Admin must select a rep's facility from the dropdown
+      resolvedFacilityId = parsed.data.facility_id ?? null;
+      if (!resolvedFacilityId) {
+        return { error: "Please select a sales rep to assign this invite to.", success: false };
+      }
+    } else {
+      // Sales rep — resolve their own facility
       resolvedFacilityId = await getRepFacilityId(user.id, supabase);
+      if (!resolvedFacilityId) {
+        return { error: "You need to complete your office setup before inviting clinic users.", success: false };
+      }
     }
 
     const { data: inserted, error } = await supabase

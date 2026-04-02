@@ -2,12 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
 import { Building2, Search, User, ChevronRight } from "lucide-react";
 import { useAppSelector } from "@/store/hooks";
-import { fadeUp, staggerContainer } from "@/components/ui/animations";
 import { AccountStatusBadge } from "../(components)/AccountStatusBadge";
-import { EmptyState } from "@/app/(components)/EmptyState";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -16,9 +13,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { cn } from "@/utils/utils";
-import type { IRepProfile } from "@/utils/interfaces/accounts";
-import type { AccountStatus } from "@/utils/interfaces/accounts";
+import { DataTable } from "@/app/(components)/DataTable";
+import type { TableColumn } from "@/utils/interfaces/table-column";
+import type { IRepProfile, AccountStatus } from "@/utils/interfaces/accounts";
 
 const STATUS_OPTIONS: { value: AccountStatus | "all"; label: string }[] = [
   { value: "all", label: "All statuses" },
@@ -42,7 +39,6 @@ export function AccountsPageClient({ salesReps, isAdmin }: AccountsPageClientPro
 
   const filtered = useMemo(() => {
     let result = accounts;
-
     if (search.trim()) {
       const term = search.trim().toLowerCase();
       result = result.filter(
@@ -53,17 +49,93 @@ export function AccountsPageClient({ salesReps, isAdmin }: AccountsPageClientPro
           a.contact.toLowerCase().includes(term),
       );
     }
-
-    if (statusFilter !== "all") {
-      result = result.filter((a) => a.status === statusFilter);
-    }
-
-    if (isAdmin && repFilter !== "all") {
-      result = result.filter((a) => a.assigned_rep === repFilter);
-    }
-
+    if (statusFilter !== "all") result = result.filter((a) => a.status === statusFilter);
+    if (isAdmin && repFilter !== "all") result = result.filter((a) => a.assigned_rep === repFilter);
     return result;
   }, [accounts, search, statusFilter, repFilter, isAdmin]);
+
+  const columns: TableColumn<(typeof accounts)[number]>[] = [
+    {
+      key: "account",
+      label: "Account",
+      render: (account) => (
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-[#0F172A] truncate group-hover:text-[#15689E] transition-colors">
+            {account.name}
+          </p>
+          <p className="text-xs text-[#94A3B8] truncate mt-0.5">
+            {account.city}, {account.state} · {account.country}
+          </p>
+        </div>
+      ),
+    },
+    {
+      key: "status",
+      label: "Status",
+      headerClassName: "hidden sm:table-cell",
+      cellClassName: "hidden sm:table-cell",
+      render: (account) => <AccountStatusBadge status={account.status} />,
+    },
+    {
+      key: "rep",
+      label: "Assigned Rep",
+      headerClassName: "hidden md:table-cell",
+      cellClassName: "hidden md:table-cell",
+      render: (account) => (
+        <div className="flex items-center gap-1.5 min-w-0">
+          {account.assigned_rep_profile ? (
+            <>
+              <div className="w-6 h-6 rounded-full bg-[#EFF6FF] flex items-center justify-center shrink-0">
+                <User className="w-3 h-3 text-[#15689E]" />
+              </div>
+              <span className="text-xs text-[#64748B] truncate">
+                {account.assigned_rep_profile.first_name}{" "}
+                {account.assigned_rep_profile.last_name}
+              </span>
+            </>
+          ) : (
+            <span className="text-xs text-[#94A3B8]">Unassigned</span>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: "location",
+      label: "Location",
+      headerClassName: "hidden lg:table-cell",
+      cellClassName: "hidden lg:table-cell",
+      render: (account) => (
+        <span className="text-xs text-[#64748B]">
+          {account.city}, {account.state}
+        </span>
+      ),
+    },
+    {
+      key: "contacts",
+      label: "Contacts",
+      headerClassName: "hidden sm:table-cell text-right",
+      cellClassName: "hidden sm:table-cell text-right",
+      render: (account) => (
+        <span className="min-w-5 h-5 inline-flex items-center justify-center rounded-full bg-[#F1F5F9] text-[#64748B] text-xs font-semibold px-1.5">
+          {account.contacts_count}
+        </span>
+      ),
+    },
+    {
+      key: "orders",
+      label: "Orders",
+      headerClassName: "text-right",
+      cellClassName: "text-right",
+      render: (account) => (
+        <div className="inline-flex items-center gap-3 justify-end">
+          <span className="min-w-5 h-5 inline-flex items-center justify-center rounded-full bg-[#EFF6FF] text-[#15689E] text-xs font-semibold px-1.5">
+            {account.orders_count}
+          </span>
+          <ChevronRight className="w-4 h-4 text-[#94A3B8] group-hover:text-[#15689E] transition-colors shrink-0" />
+        </div>
+      ),
+    },
+  ];
 
   return (
     <div className="space-y-4">
@@ -86,7 +158,6 @@ export function AccountsPageClient({ salesReps, isAdmin }: AccountsPageClientPro
             className="pl-9 h-9 text-sm border-[#E2E8F0] bg-white text-[#0F172A] placeholder:text-[#94A3B8] focus:border-[#15689E] focus:ring-2 focus:ring-[#15689E]/10 rounded-lg transition-colors"
           />
         </div>
-
         <Select
           value={statusFilter}
           onValueChange={(v) => setStatusFilter(v as AccountStatus | "all")}
@@ -102,7 +173,6 @@ export function AccountsPageClient({ salesReps, isAdmin }: AccountsPageClientPro
             ))}
           </SelectContent>
         </Select>
-
         {isAdmin && (
           <Select value={repFilter} onValueChange={setRepFilter}>
             <SelectTrigger className="w-full sm:w-52 h-9 text-sm border-[#E2E8F0] bg-white text-[#0F172A] rounded-lg">
@@ -121,97 +191,15 @@ export function AccountsPageClient({ salesReps, isAdmin }: AccountsPageClientPro
       </div>
 
       {/* ── Table ── */}
-      {filtered.length === 0 ? (
-        <EmptyState
-          icon={<Building2 className="w-10 h-10 stroke-1" />}
-          message="No accounts found"
-        />
-      ) : (
-        <div className="bg-white rounded-xl border border-[#E2E8F0] overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
-          {/* Header */}
-          <div className="grid grid-cols-[1fr_auto] sm:grid-cols-[2fr_1fr_auto_auto] md:grid-cols-[2fr_1fr_1fr_auto_auto] lg:grid-cols-[2fr_1fr_1fr_1fr_auto_auto] bg-[#F8FAFC] border-b border-[#E2E8F0] px-4 py-3">
-            <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wider">Account</span>
-            <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wider hidden sm:block">Status</span>
-            <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wider hidden md:block">Assigned Rep</span>
-            <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wider hidden lg:block">Location</span>
-            <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wider text-right hidden sm:block">Contacts</span>
-            <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wider text-right pl-4">Orders</span>
-          </div>
-
-          {/* Rows */}
-          <motion.div
-            variants={staggerContainer}
-            initial="hidden"
-            animate="visible"
-          >
-            {filtered.map((account) => (
-              <motion.div
-                key={account.id}
-                variants={fadeUp}
-                onClick={() => router.push(`/dashboard/accounts/${account.id}`)}
-                className={cn(
-                  "grid grid-cols-[1fr_auto] sm:grid-cols-[2fr_1fr_auto_auto] md:grid-cols-[2fr_1fr_1fr_auto_auto] lg:grid-cols-[2fr_1fr_1fr_1fr_auto_auto] items-center px-4 py-3.5",
-                  "border-b border-[#F1F5F9] last:border-0 hover:bg-[#FAFBFC] transition-colors cursor-pointer group",
-                )}
-              >
-                {/* Name + location sub-text */}
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-[#0F172A] truncate group-hover:text-[#15689E] transition-colors">
-                    {account.name}
-                  </p>
-                  <p className="text-xs text-[#94A3B8] truncate mt-0.5">
-                    {account.city}, {account.state} · {account.country}
-                  </p>
-                </div>
-
-                {/* Status */}
-                <div className="hidden sm:flex">
-                  <AccountStatusBadge status={account.status} />
-                </div>
-
-                {/* Rep */}
-                <div className="hidden md:flex items-center gap-1.5 min-w-0">
-                  {account.assigned_rep_profile ? (
-                    <>
-                      <div className="w-6 h-6 rounded-full bg-[#EFF6FF] flex items-center justify-center shrink-0">
-                        <User className="w-3 h-3 text-[#15689E]" />
-                      </div>
-                      <span className="text-xs text-[#64748B] truncate">
-                        {account.assigned_rep_profile.first_name}{" "}
-                        {account.assigned_rep_profile.last_name}
-                      </span>
-                    </>
-                  ) : (
-                    <span className="text-xs text-[#94A3B8]">Unassigned</span>
-                  )}
-                </div>
-
-                {/* Location */}
-                <div className="hidden lg:block min-w-0">
-                  <span className="text-xs text-[#64748B] truncate">
-                    {account.city}, {account.state}
-                  </span>
-                </div>
-
-                {/* Contacts count */}
-                <div className="hidden sm:flex justify-end">
-                  <span className="min-w-5 h-5 flex items-center justify-center rounded-full bg-[#F1F5F9] text-[#64748B] text-xs font-semibold px-1.5">
-                    {account.contacts_count}
-                  </span>
-                </div>
-
-                {/* Orders count + chevron */}
-                <div className="flex items-center gap-3 justify-end pl-4">
-                  <span className="min-w-5 h-5 flex items-center justify-center rounded-full bg-[#EFF6FF] text-[#15689E] text-xs font-semibold px-1.5">
-                    {account.orders_count}
-                  </span>
-                  <ChevronRight className="w-4 h-4 text-[#94A3B8] group-hover:text-[#15689E] transition-colors shrink-0" />
-                </div>
-              </motion.div>
-            ))}
-          </motion.div>
-        </div>
-      )}
+      <DataTable
+        columns={columns}
+        data={filtered}
+        keyExtractor={(a) => a.id}
+        emptyMessage="No accounts found"
+        emptyIcon={<Building2 className="w-10 h-10 stroke-1" />}
+        onRowClick={(account) => router.push(`/dashboard/accounts/${account.id}`)}
+        rowClassName="group"
+      />
 
       <p className="text-xs text-[#94A3B8] text-right">
         {filtered.length} of {accounts.length} account{accounts.length !== 1 ? "s" : ""}
