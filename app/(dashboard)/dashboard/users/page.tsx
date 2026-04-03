@@ -19,7 +19,7 @@ export default async function UsersPage() {
   const users = await getUsers();
 
   return (
-    <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-6">
+    <div className="p-6 md:p-8 max-w-480 mx-auto space-y-6">
       <Providers users={users}>
         <UsersPageClient />
       </Providers>

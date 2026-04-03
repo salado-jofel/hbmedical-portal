@@ -1,7 +1,11 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole } from "@/lib/supabase/auth";
-import { isAdmin as checkIsAdmin, isSalesRep, isSupport } from "@/utils/helpers/role";
+import {
+  isAdmin as checkIsAdmin,
+  isSalesRep,
+  isSupport,
+} from "@/utils/helpers/role";
 import {
   getAccountById,
   getSalesReps,
@@ -48,10 +52,10 @@ export default async function AccountDetailPage({
   const supabase = await createClient();
   const role = await getUserRole(supabase);
 
-  const adminUser   = checkIsAdmin(role);
-  const repUser     = isSalesRep(role);
+  const adminUser = checkIsAdmin(role);
+  const repUser = isSalesRep(role);
   const supportUser = isSupport(role);
-  const canEdit     = adminUser; // only admins may create / update / delete
+  const canEdit = adminUser; // only admins may create / update / delete
   const showActivities = adminUser || repUser; // support staff cannot see activities
 
   const [account, salesReps] = await Promise.all([
@@ -67,13 +71,11 @@ export default async function AccountDetailPage({
     getContactsByFacility(account.id),
     getFacilityOrders(account.id),
     // Admin and reps may read activities; support staff cannot
-    showActivities
-      ? getActivitiesByFacility(account.id)
-      : Promise.resolve([]),
+    showActivities ? getActivitiesByFacility(account.id) : Promise.resolve([]),
   ]);
 
   return (
-    <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-6">
+    <div className="p-6 md:p-8 max-w-480 mx-auto space-y-6">
       <Providers account={account} contacts={contacts} activities={activities}>
         <AccountHeader
           accountId={account.id}

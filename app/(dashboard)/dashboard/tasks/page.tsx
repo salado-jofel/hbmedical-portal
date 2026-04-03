@@ -3,7 +3,10 @@ import { createClient } from "@/lib/supabase/server";
 import { getUserRole } from "@/lib/supabase/auth";
 import { isAdmin as checkIsAdmin } from "@/utils/helpers/role";
 import { getTasks } from "@/app/(dashboard)/dashboard/tasks/(services)/actions";
-import { getAccounts, getSalesReps } from "@/app/(dashboard)/dashboard/accounts/(services)/actions";
+import {
+  getAccounts,
+  getSalesReps,
+} from "@/app/(dashboard)/dashboard/accounts/(services)/actions";
 import Providers from "./(sections)/Providers";
 import { TasksPageClient } from "./(sections)/TasksPageClient";
 
@@ -23,7 +26,7 @@ export default async function TasksPage() {
   ]);
 
   return (
-    <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-6">
+    <div className="p-6 md:p-8 max-w-480 mx-auto space-y-6">
       {/* ── Header ── */}
       <div className="pb-5 border-b border-[#E2E8F0]">
         <h1 className="text-xl font-semibold text-[#0F172A]">Tasks</h1>
@@ -34,7 +37,11 @@ export default async function TasksPage() {
 
       {/* ── Board ── */}
       <Providers tasks={tasks}>
-        <TasksPageClient accounts={accounts} salesReps={salesReps} isAdmin={admin} />
+        <TasksPageClient
+          accounts={accounts}
+          salesReps={salesReps}
+          isAdmin={admin}
+        />
       </Providers>
     </div>
   );

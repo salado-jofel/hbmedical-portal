@@ -1,5 +1,8 @@
 import { Building2 } from "lucide-react";
-import { getAccounts, getSalesReps } from "@/app/(dashboard)/dashboard/accounts/(services)/actions";
+import {
+  getAccounts,
+  getSalesReps,
+} from "@/app/(dashboard)/dashboard/accounts/(services)/actions";
 import { getUserRole } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 import { isAdmin } from "@/utils/helpers/role";
@@ -19,7 +22,7 @@ export default async function AccountsPage() {
   ]);
 
   return (
-    <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-6">
+    <div className="p-6 md:p-8 max-w-480 mx-auto space-y-6">
       {/* ── Table with Redux hydration ── */}
       <Providers accounts={accounts}>
         <AccountsPageClient salesReps={salesReps} isAdmin={admin} />

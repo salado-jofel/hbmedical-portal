@@ -22,44 +22,46 @@ export default async function SettingsPage() {
   const profile = await getMyProfile();
   if (!profile) notFound();
 
-  const repUser      = isSalesRep(role as UserRole);
+  const repUser = isSalesRep(role as UserRole);
   const providerUser = isClinicalProvider(role as UserRole);
   const showCredentials = providerUser;
-  const showTeamTab     = repUser || providerUser;
+  const showTeamTab = repUser || providerUser;
   // Admin manages all users via the Users page — no Team tab in Settings.
   // Support staff and clinical staff have no team management responsibilities.
 
   const [myClinicAccounts, mySubReps, myClinicMembers, credentials] =
     await Promise.all([
-      repUser      ? getMyClinicAccounts() : Promise.resolve([]),
-      repUser      ? getMySubReps()         : Promise.resolve([]),
-      providerUser ? getMyClinicMembers()   : Promise.resolve([]),
-      showCredentials ? getMyCredentials()  : Promise.resolve(null),
+      repUser ? getMyClinicAccounts() : Promise.resolve([]),
+      repUser ? getMySubReps() : Promise.resolve([]),
+      providerUser ? getMyClinicMembers() : Promise.resolve([]),
+      showCredentials ? getMyCredentials() : Promise.resolve(null),
     ]);
 
   return (
-    <div className="p-6 md:p-8 max-w-2xl mx-auto space-y-6">
-      {/* ── Header ── */}
+    <div className="p-6 md:p-8 max-w-480 mx-auto space-y-6">
       <div className="pb-5 border-b border-[#E2E8F0]">
         <h1 className="text-xl font-semibold text-[#0F172A]">Settings</h1>
         <p className="text-sm text-[#64748B] mt-1">
           Manage your profile, team, and credentials
         </p>
-      </div>
+        <div className="p-6 md:p-8 max-w-3xl mx-auto space-y-6">
+          {/* ── Header ── */}
 
-      {/* ── Tabbed content ── */}
-      <Providers>
-        <SettingsPageClient
-          profile={profile}
-          isRep={repUser}
-          myClinicAccounts={myClinicAccounts}
-          mySubReps={mySubReps}
-          myClinicMembers={myClinicMembers}
-          credentials={credentials}
-          showTeamTab={showTeamTab}
-          showCredentials={showCredentials}
-        />
-      </Providers>
+          {/* ── Tabbed content ── */}
+          <Providers>
+            <SettingsPageClient
+              profile={profile}
+              isRep={repUser}
+              myClinicAccounts={myClinicAccounts}
+              mySubReps={mySubReps}
+              myClinicMembers={myClinicMembers}
+              credentials={credentials}
+              showTeamTab={showTeamTab}
+              showCredentials={showCredentials}
+            />
+          </Providers>
+        </div>
+      </div>
     </div>
   );
 }

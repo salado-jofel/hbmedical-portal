@@ -21,7 +21,7 @@ export default async function TrainingsPage() {
 
   return (
     <Providers trainings={trainings}>
-      <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-6">
+      <div className="p-6 md:p-8 max-w-480 mx-auto space-y-6">
         <DashboardHeader
           title="Trainings"
           description="Your training documents & resources"

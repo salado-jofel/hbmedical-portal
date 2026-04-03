@@ -9,7 +9,8 @@ import { getAllOrders } from "./(services)/actions";
 export default async function OrdersPage() {
   const supabase = await createClient();
   const role = await getUserRole(supabase);
-  if (!isClinicalProvider(role) && !isClinicalStaff(role)) redirect("/dashboard");
+  if (!isClinicalProvider(role) && !isClinicalStaff(role))
+    redirect("/dashboard");
 
   const user = await getCurrentUserOrThrow(supabase);
   const { data: memberRecord } = await supabase
@@ -22,7 +23,7 @@ export default async function OrdersPage() {
   const orders = await getAllOrders();
 
   return (
-    <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-6">
+    <div className="p-6 md:p-8 max-w-480 mx-auto space-y-6">
       <Providers orders={orders}>
         <OrdersPageClient canSign={canSign} />
       </Providers>

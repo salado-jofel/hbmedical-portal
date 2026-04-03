@@ -1,6 +1,18 @@
 "use client";
 
-import { User, Stethoscope, BriefcaseMedical, ShieldCheck, HeadsetIcon } from "lucide-react";
+import {
+  User,
+  Stethoscope,
+  BriefcaseMedical,
+  ShieldCheck,
+  HeadsetIcon,
+} from "lucide-react";
+import { cn } from "@/utils/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface SidebarUserCardProps {
   name?: string | null;
@@ -8,6 +20,7 @@ interface SidebarUserCardProps {
   initials?: string | null;
   role?: string | null;
   isSubRep?: boolean;
+  collapsed?: boolean;
 }
 
 function getRoleBadge(role: string, isSubRep?: boolean) {
@@ -59,34 +72,59 @@ export function SidebarUserCard({
   initials,
   role,
   isSubRep,
+  collapsed = false,
 }: SidebarUserCardProps) {
-  return (
-    <div className="px-3 py-3 border-t border-[#E2E8F0] mt-auto flex items-center gap-3">
-      {/* Avatar */}
-      <div className="w-8 h-8 rounded-full bg-[#15689E] flex items-center justify-center text-white text-xs font-semibold shrink-0">
-        {initials || <User className="w-4 h-4" />}
-      </div>
+  const avatar = (
+    <div className="w-8 h-8 rounded-full bg-[#15689E] flex items-center justify-center text-white text-[11px] font-semibold shrink-0 ring-2 ring-white">
+      {initials || <User className="w-4 h-4" />}
+    </div>
+  );
 
-      {/* Name / email / role badge */}
-      <div className="flex flex-col overflow-hidden gap-0.5 min-w-0">
-        <span className="text-sm font-semibold text-[#0F172A] leading-tight truncate">
+  if (collapsed) {
+    return (
+      <div className="px-3 py-3 border-t border-[#E8EFF5] flex justify-center">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button className="cursor-default" type="button">
+              {avatar}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right" sideOffset={10} className="text-xs">
+            <p className="font-medium">{name || "—"}</p>
+            <p className="text-[10px] opacity-70">{email || "—"}</p>
+          </TooltipContent>
+        </Tooltip>
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-3 py-3 border-t border-[#E8EFF5] flex items-center gap-2.5">
+      {avatar}
+
+      <div className="flex flex-col overflow-hidden gap-0.5 min-w-0 flex-1">
+        <span className="text-[13px] font-semibold text-[#0F172A] leading-tight truncate tracking-[-0.01em]">
           {name || "—"}
         </span>
-        <span className="text-[10px] text-[#94A3B8] truncate">
+        <span className="text-[10px] text-[#94A3B8] truncate leading-none">
           {email || "—"}
         </span>
 
-        {role != null && (() => {
-          const badge = getRoleBadge(role, isSubRep);
-          return (
-            <div
-              className={`inline-flex items-center gap-1 mt-0.5 w-fit px-1.5 py-0.5 rounded-sm text-[9px] font-bold uppercase tracking-wide ${badge.className}`}
-            >
-              {badge.icon}
-              {badge.label}
-            </div>
-          );
-        })()}
+        {role != null &&
+          (() => {
+            const badge = getRoleBadge(role, isSubRep);
+            return (
+              <div
+                className={cn(
+                  "inline-flex items-center gap-1 mt-1 w-fit px-1.5 py-[3px] rounded text-[9px] font-bold uppercase tracking-[0.06em]",
+                  badge.className,
+                )}
+              >
+                {badge.icon}
+                {badge.label}
+              </div>
+            );
+          })()}
       </div>
     </div>
   );

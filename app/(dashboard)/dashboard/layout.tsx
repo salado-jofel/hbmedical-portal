@@ -25,7 +25,7 @@ export default async function DashboardLayout({
 
       <div className="flex min-h-screen bg-[#F8FAFC]">
         <Sidebar />
-        <div className="flex flex-col flex-1 md:ml-56 min-w-0">
+        <div className="flex flex-col flex-1 min-w-0">
           <MobileTopBar />
           <main className="flex-1 pt-16 md:pt-0 pb-16 md:pb-0 overflow-y-auto">
             {children}
