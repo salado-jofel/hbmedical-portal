@@ -14,7 +14,7 @@ export default async function TasksPage() {
   const role = await getUserRole(supabase);
   const admin = checkIsAdmin(role);
 
-  if (!admin) redirect("/dashboard/products");
+  if (!admin) redirect("/dashboard");
 
   const [tasks, accounts, salesReps] = await Promise.all([
     getTasks(),

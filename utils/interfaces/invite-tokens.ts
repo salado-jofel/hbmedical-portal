@@ -35,6 +35,10 @@ export interface IInviteToken {
     id: string;
     name: string;
   } | null;
+  // Used-by profile enrichment (for status label)
+  used_by_name: string | null;
+  used_by_has_completed_setup: boolean;
+  used_by_facility_name: string | null;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -84,6 +88,11 @@ export type RawInviteTokenRecord = {
     first_name: string;
     last_name: string;
     email: string;
+    has_completed_setup: boolean;
+    created_facility: {
+      id: string;
+      name: string;
+    } | null;
   } | null;
   facility: {
     id: string;
@@ -96,6 +105,13 @@ export type RawInviteTokenRecord = {
 /* -------------------------------------------------------------------------- */
 
 export function mapInviteToken(raw: RawInviteTokenRecord): IInviteToken {
+  const usedByProfile = raw.used_by_profile ?? null;
+  const createdFacility = usedByProfile
+    ? (Array.isArray(usedByProfile.created_facility)
+        ? (usedByProfile.created_facility[0] ?? null)
+        : usedByProfile.created_facility ?? null)
+    : null;
+
   return {
     id: raw.id,
     token: raw.token,
@@ -108,6 +124,11 @@ export function mapInviteToken(raw: RawInviteTokenRecord): IInviteToken {
     created_at: raw.created_at,
     created_by_profile: raw.created_by_profile ?? null,
     facility: raw.facility ?? null,
+    used_by_name: usedByProfile
+      ? `${usedByProfile.first_name} ${usedByProfile.last_name}`
+      : null,
+    used_by_has_completed_setup: usedByProfile?.has_completed_setup ?? false,
+    used_by_facility_name: createdFacility?.name ?? null,
   };
 }
 

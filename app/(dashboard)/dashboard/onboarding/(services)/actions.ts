@@ -32,7 +32,12 @@ const INVITE_TOKEN_SELECT = `
     id,
     first_name,
     last_name,
-    email
+    email,
+    has_completed_setup,
+    created_facility:facilities!facilities_user_id_fkey (
+      id,
+      name
+    )
   ),
   facility:facilities!invite_tokens_facility_id_fkey (
     id,
@@ -436,13 +441,17 @@ export async function inviteSubRep(
       };
     }
 
-    // Record invite token for tracking
+    // Record invite token for tracking — mark as used immediately since the
+    // sub-rep account was created directly (not via /invite/:token link).
+    // used_by lets the card resolve has_completed_setup and the rep's facility.
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
     await supabase.from(INVITE_TOKENS_TABLE).insert({
       created_by: user.id,
       facility_id: null,
       role_type: "sales_representative",
       expires_at: expiresAt,
+      used_by: userId,
+      used_at: new Date().toISOString(),
     });
 
     // Send invite email via Resend

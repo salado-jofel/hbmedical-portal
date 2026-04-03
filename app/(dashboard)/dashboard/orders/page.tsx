@@ -9,7 +9,7 @@ import { getAllOrders } from "./(services)/actions";
 export default async function OrdersPage() {
   const supabase = await createClient();
   const role = await getUserRole(supabase);
-  if (!isClinicalProvider(role) && !isClinicalStaff(role)) redirect("/dashboard/products");
+  if (!isClinicalProvider(role) && !isClinicalStaff(role)) redirect("/dashboard");
 
   const user = await getCurrentUserOrThrow(supabase);
   const { data: memberRecord } = await supabase

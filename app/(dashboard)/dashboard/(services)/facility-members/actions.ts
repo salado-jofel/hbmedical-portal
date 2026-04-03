@@ -38,7 +38,10 @@ const FACILITY_MEMBER_SELECT = `
 /* getFacilityMembers                                                         */
 /* -------------------------------------------------------------------------- */
 
-export async function getFacilityMembers(facilityId?: string): Promise<IFacilityMember[]> {
+export async function getFacilityMembers(
+  facilityId?: string,
+  options?: { excludeUserId?: string },
+): Promise<IFacilityMember[]> {
   const supabase = await createClient();
   const user = await getCurrentUserOrThrow(supabase);
 
@@ -56,11 +59,16 @@ export async function getFacilityMembers(facilityId?: string): Promise<IFacility
     targetFacilityId = facility.id;
   }
 
-  const { data, error } = await supabase
+  let query = supabase
     .from(FACILITY_MEMBERS_TABLE)
     .select(FACILITY_MEMBER_SELECT)
-    .eq("facility_id", targetFacilityId)
-    .order("created_at", { ascending: true });
+    .eq("facility_id", targetFacilityId);
+
+  if (options?.excludeUserId) {
+    query = query.neq("user_id", options.excludeUserId);
+  }
+
+  const { data, error } = await query.order("created_at", { ascending: true });
 
   if (error) {
     console.error("[getFacilityMembers] Error:", JSON.stringify(error));

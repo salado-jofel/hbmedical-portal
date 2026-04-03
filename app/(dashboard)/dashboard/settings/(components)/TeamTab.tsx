@@ -1,32 +1,139 @@
 "use client";
 
 import { useState } from "react";
-import { Trash2, UserPlus } from "lucide-react";
+import { Trash2, Building2, Users } from "lucide-react";
 import toast from "react-hot-toast";
-import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { removeFacilityMember, updateMemberRole } from "@/app/(dashboard)/dashboard/settings/(services)/actions";
 import { ROLE_LABELS } from "@/utils/helpers/role";
 import ConfirmModal from "@/app/(components)/ConfirmModal";
+import { EmptyState } from "@/app/(components)/EmptyState";
+import { removeFacilityMember } from "@/app/(dashboard)/dashboard/settings/(services)/actions";
 import type { IFacilityMember } from "@/utils/interfaces/facility-members";
+import type { ISubRep } from "@/utils/interfaces/sub-reps";
+import type { IClinicAccount } from "@/app/(dashboard)/dashboard/settings/(services)/actions";
 
 interface TeamTabProps {
-  members: IFacilityMember[];
-  canManage: boolean;
+  isRep: boolean;
+  myClinicAccounts: IClinicAccount[];
+  mySubReps: ISubRep[];
+  myClinicMembers: IFacilityMember[];
 }
 
-const STAFF_ROLES = [
-  { value: "clinical_provider", label: "Clinical Provider" },
-  { value: "clinical_staff", label: "Clinical Staff" },
-];
+/* ── Status badge ── */
+function StatusBadge({ status }: { status: string }) {
+  const cfg: Record<string, { bg: string; text: string; label: string }> = {
+    active:   { bg: "bg-emerald-50", text: "text-emerald-600", label: "Active"   },
+    inactive: { bg: "bg-[#F1F5F9]",  text: "text-[#64748B]",  label: "Inactive" },
+    prospect: { bg: "bg-amber-50",   text: "text-amber-600",  label: "Prospect" },
+    pending:  { bg: "bg-amber-50",   text: "text-amber-600",  label: "Pending"  },
+  };
+  const c = cfg[status] ?? cfg.inactive;
+  return (
+    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${c.bg} ${c.text}`}>
+      {c.label}
+    </span>
+  );
+}
 
-export function TeamTab({ members, canManage }: TeamTabProps) {
+/* ── Section heading ── */
+function SectionHeading({ title, count }: { title: string; count: number }) {
+  return (
+    <div className="flex items-center justify-between mb-3">
+      <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">{title}</p>
+      <span className="text-xs px-2 py-0.5 rounded-full bg-[#F1F5F9] text-[#64748B] font-medium">
+        {count}
+      </span>
+    </div>
+  );
+}
+
+/* ── Rep view ── */
+function RepTeamTab({
+  myClinicAccounts,
+  mySubReps,
+}: {
+  myClinicAccounts: IClinicAccount[];
+  mySubReps: ISubRep[];
+}) {
+  return (
+    <div className="space-y-8">
+      {/* My Clinics */}
+      <div>
+        <SectionHeading title="My Clinics" count={myClinicAccounts.length} />
+        {myClinicAccounts.length === 0 ? (
+          <EmptyState
+            icon={<Building2 className="w-10 h-10 stroke-1" />}
+            message="No clinics yet"
+            description="Onboard a clinical provider from the Onboarding page to see their clinic here."
+            className="py-8"
+          />
+        ) : (
+          <div className="space-y-2">
+            {myClinicAccounts.map((clinic) => (
+              <div
+                key={clinic.id}
+                className="flex items-center gap-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-4 py-3"
+              >
+                <div className="w-8 h-8 rounded-full bg-[#EFF6FF] flex items-center justify-center shrink-0">
+                  <span className="text-xs font-bold text-[#15689E]">
+                    {clinic.name.charAt(0).toUpperCase()}
+                  </span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-[#0F172A] truncate">{clinic.name}</p>
+                  <p className="text-xs text-[#94A3B8] truncate">{clinic.primaryDoctor}</p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-[#F1F5F9] text-[#64748B] font-medium">
+                    {clinic.memberCount} member{clinic.memberCount !== 1 ? "s" : ""}
+                  </span>
+                  <StatusBadge status={clinic.status} />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* My Sub-Reps */}
+      <div>
+        <SectionHeading title="My Sub-Reps" count={mySubReps.length} />
+        {mySubReps.length === 0 ? (
+          <EmptyState
+            icon={<Users className="w-10 h-10 stroke-1" />}
+            message="No sub-reps yet"
+            description="Invite a sub-rep from the Onboarding page."
+            className="py-8"
+          />
+        ) : (
+          <div className="space-y-2">
+            {mySubReps.map((rep) => (
+              <div
+                key={rep.id}
+                className="flex items-center gap-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-4 py-3"
+              >
+                <div className="w-8 h-8 rounded-full bg-orange-50 flex items-center justify-center shrink-0">
+                  <span className="text-xs font-bold text-orange-600">
+                    {rep.first_name.charAt(0).toUpperCase()}
+                  </span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-[#0F172A] truncate">
+                    {rep.first_name} {rep.last_name}
+                  </p>
+                  <p className="text-xs text-[#94A3B8] truncate">{rep.email}</p>
+                </div>
+                <StatusBadge status={rep.status} />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── Provider view ── */
+function ProviderTeamTab({ myClinicMembers }: { myClinicMembers: IFacilityMember[] }) {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -46,99 +153,58 @@ export function TeamTab({ members, canManage }: TeamTabProps) {
     }
   }
 
-  if (members.length === 0) {
-    return (
-      <div className="py-10 text-center space-y-3">
-        <div className="w-12 h-12 rounded-full bg-[#F1F5F9] flex items-center justify-center mx-auto">
-          <UserPlus className="w-5 h-5 text-[#94A3B8]" />
-        </div>
-        <p className="text-sm text-[#64748B]">No team members yet.</p>
-        <p className="text-xs text-[#94A3B8]">
-          Use the Onboarding page to generate invite links.
-        </p>
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-2">
-      {members.map((member) => {
-        const profile = member.member_profile;
-        const name = profile
-          ? `${profile.first_name} ${profile.last_name}`
-          : "Unknown";
-
-        return (
-          <div
-            key={member.id}
-            className="flex items-center gap-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-4 py-3"
-          >
-            {/* Avatar */}
-            <div className="w-8 h-8 rounded-full bg-[#EFF6FF] flex items-center justify-center shrink-0">
-              <span className="text-xs font-bold text-[#15689E]">
-                {name.charAt(0).toUpperCase()}
-              </span>
-            </div>
-
-            {/* Info */}
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-[#0F172A] truncate">{name}</p>
-              {profile?.email && (
-                <p className="text-xs text-[#94A3B8] truncate">{profile.email}</p>
-              )}
-            </div>
-
-            {/* Role selector or badge */}
-            {canManage ? (
-              <Select
-                defaultValue={member.role_type}
-                onValueChange={async (value) => {
-                  const fd = new FormData();
-                  fd.set("role", value);
-                  const result = await updateMemberRole(member.id, null, fd);
-                  if (result.success) {
-                    toast.success("Role updated.");
-                  } else {
-                    toast.error(result.error ?? "Failed to update role.");
-                  }
-                }}
+    <div>
+      <SectionHeading title="My Clinic Members" count={myClinicMembers.length} />
+      {myClinicMembers.length === 0 ? (
+        <EmptyState
+          icon={<Users className="w-10 h-10 stroke-1" />}
+          message="No clinic members yet"
+          description="Invite clinical staff from the Onboarding page."
+          className="py-8"
+        />
+      ) : (
+        <div className="space-y-2">
+          {myClinicMembers.map((member) => {
+            const profile = member.member_profile;
+            const name = profile ? `${profile.first_name} ${profile.last_name}` : "Unknown";
+            return (
+              <div
+                key={member.id}
+                className="flex items-center gap-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-4 py-3"
               >
-                <SelectTrigger className="h-7 text-xs w-40 shrink-0 border-[#E2E8F0]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {STAFF_ROLES.map((r) => (
-                    <SelectItem key={r.value} value={r.value} className="text-xs">
-                      {r.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-[#EFF6FF] text-[#15689E] font-medium shrink-0">
-                {ROLE_LABELS[member.role_type as keyof typeof ROLE_LABELS] ?? member.role_type}
-              </span>
-            )}
-
-            {/* Remove */}
-            {canManage && (
-              <button
-                type="button"
-                onClick={() => { setDeleteId(member.id); setConfirmOpen(true); }}
-                disabled={isDeleting && deleteId === member.id}
-                className="w-7 h-7 flex items-center justify-center rounded-md text-[#94A3B8] hover:text-red-600 hover:bg-red-50 transition-colors shrink-0"
-                title="Remove member"
-              >
-                {isDeleting && deleteId === member.id ? (
-                  <div className="size-3.5 rounded-full border-2 border-red-500 border-t-transparent animate-spin" />
-                ) : (
-                  <Trash2 className="w-3.5 h-3.5" />
-                )}
-              </button>
-            )}
-          </div>
-        );
-      })}
+                <div className="w-8 h-8 rounded-full bg-[#EFF6FF] flex items-center justify-center shrink-0">
+                  <span className="text-xs font-bold text-[#15689E]">
+                    {name.charAt(0).toUpperCase()}
+                  </span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-[#0F172A] truncate">{name}</p>
+                  {profile?.email && (
+                    <p className="text-xs text-[#94A3B8] truncate">{profile.email}</p>
+                  )}
+                </div>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-[#EFF6FF] text-[#15689E] font-medium shrink-0">
+                  {ROLE_LABELS[member.role_type as keyof typeof ROLE_LABELS] ?? member.role_type}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => { setDeleteId(member.id); setConfirmOpen(true); }}
+                  disabled={isDeleting && deleteId === member.id}
+                  className="w-7 h-7 flex items-center justify-center rounded-md text-[#94A3B8] hover:text-red-600 hover:bg-red-50 transition-colors shrink-0"
+                  title="Remove member"
+                >
+                  {isDeleting && deleteId === member.id ? (
+                    <div className="size-3.5 rounded-full border-2 border-red-500 border-t-transparent animate-spin" />
+                  ) : (
+                    <Trash2 className="w-3.5 h-3.5" />
+                  )}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       <ConfirmModal
         open={confirmOpen}
@@ -150,4 +216,12 @@ export function TeamTab({ members, canManage }: TeamTabProps) {
       />
     </div>
   );
+}
+
+/* ── Main export ── */
+export function TeamTab({ isRep, myClinicAccounts, mySubReps, myClinicMembers }: TeamTabProps) {
+  if (isRep) {
+    return <RepTeamTab myClinicAccounts={myClinicAccounts} mySubReps={mySubReps} />;
+  }
+  return <ProviderTeamTab myClinicMembers={myClinicMembers} />;
 }

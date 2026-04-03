@@ -1,10 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole } from "@/lib/supabase/auth";
 import { isSalesRep, isClinicalProvider } from "@/utils/helpers/role";
+import type { UserRole } from "@/utils/helpers/role";
 import {
   getMyProfile,
   getMyCredentials,
-  getFacilityMembers,
+  getMyClinicAccounts,
+  getMySubReps,
+  getMyClinicMembers,
 } from "@/app/(dashboard)/dashboard/settings/(services)/actions";
 import { notFound } from "next/navigation";
 import Providers from "./(sections)/Providers";
@@ -19,15 +22,20 @@ export default async function SettingsPage() {
   const profile = await getMyProfile();
   if (!profile) notFound();
 
-  const showCredentials = isClinicalProvider(role);
-  const showTeamTab     = isSalesRep(role) || isClinicalProvider(role);
+  const repUser      = isSalesRep(role as UserRole);
+  const providerUser = isClinicalProvider(role as UserRole);
+  const showCredentials = providerUser;
+  const showTeamTab     = repUser || providerUser;
   // Admin manages all users via the Users page — no Team tab in Settings.
   // Support staff and clinical staff have no team management responsibilities.
 
-  const [members, credentials] = await Promise.all([
-    showTeamTab ? getFacilityMembers() : Promise.resolve([]),
-    showCredentials ? getMyCredentials() : Promise.resolve(null),
-  ]);
+  const [myClinicAccounts, mySubReps, myClinicMembers, credentials] =
+    await Promise.all([
+      repUser      ? getMyClinicAccounts() : Promise.resolve([]),
+      repUser      ? getMySubReps()         : Promise.resolve([]),
+      providerUser ? getMyClinicMembers()   : Promise.resolve([]),
+      showCredentials ? getMyCredentials()  : Promise.resolve(null),
+    ]);
 
   return (
     <div className="p-6 md:p-8 max-w-2xl mx-auto space-y-6">
@@ -43,7 +51,10 @@ export default async function SettingsPage() {
       <Providers>
         <SettingsPageClient
           profile={profile}
-          members={members}
+          isRep={repUser}
+          myClinicAccounts={myClinicAccounts}
+          mySubReps={mySubReps}
+          myClinicMembers={myClinicMembers}
           credentials={credentials}
           showTeamTab={showTeamTab}
           showCredentials={showCredentials}

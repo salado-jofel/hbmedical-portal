@@ -2,8 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentUserOrThrow, getUserRole, requireAdminOrThrow } from "@/lib/supabase/auth";
+import { getCurrentUserOrThrow, getUserRole } from "@/lib/supabase/auth";
 import { isAdmin, isSalesRep, isSupport } from "@/utils/helpers/role";
+import type { UserRole } from "@/utils/helpers/role";
 import { ACCOUNTS_PATH, CONTACTS_TABLE, CONTACT_SELECT } from "@/utils/constants/accounts";
 import {
   createContactSchema,
@@ -63,7 +64,25 @@ export async function createContact(
 ): Promise<IContactFormState> {
   try {
     const supabase = await createClient();
-    await requireAdminOrThrow(supabase);
+    const user = await getCurrentUserOrThrow(supabase);
+    const role = await getUserRole(supabase);
+    const adminUser = isAdmin(role as UserRole);
+    const repUser   = isSalesRep(role as UserRole);
+
+    if (!adminUser && !repUser) {
+      return { error: "Unauthorized.", success: false };
+    }
+
+    if (repUser) {
+      const { data: facility } = await supabase
+        .from("facilities")
+        .select("assigned_rep")
+        .eq("id", facilityId)
+        .single();
+      if (!facility || facility.assigned_rep !== user.id) {
+        return { error: "You can only manage contacts for your own assigned clinics.", success: false };
+      }
+    }
 
     const raw = {
       first_name:        formData.get("first_name") as string,
@@ -128,7 +147,25 @@ export async function updateContact(
 ): Promise<IContactFormState> {
   try {
     const supabase = await createClient();
-    await requireAdminOrThrow(supabase);
+    const user = await getCurrentUserOrThrow(supabase);
+    const role = await getUserRole(supabase);
+    const adminUser = isAdmin(role as UserRole);
+    const repUser   = isSalesRep(role as UserRole);
+
+    if (!adminUser && !repUser) {
+      return { error: "Unauthorized.", success: false };
+    }
+
+    if (repUser) {
+      const { data: facility } = await supabase
+        .from("facilities")
+        .select("assigned_rep")
+        .eq("id", facilityId)
+        .single();
+      if (!facility || facility.assigned_rep !== user.id) {
+        return { error: "You can only manage contacts for your own assigned clinics.", success: false };
+      }
+    }
 
     const raw = {
       first_name:        formData.get("first_name") as string,
@@ -188,7 +225,25 @@ export async function deactivateContact(
   facilityId: string,
 ): Promise<void> {
   const supabase = await createClient();
-  await requireAdminOrThrow(supabase);
+  const user = await getCurrentUserOrThrow(supabase);
+  const role = await getUserRole(supabase);
+  const adminUser = isAdmin(role as UserRole);
+  const repUser   = isSalesRep(role as UserRole);
+
+  if (!adminUser && !repUser) {
+    throw new Error("Unauthorized.");
+  }
+
+  if (repUser) {
+    const { data: facility } = await supabase
+      .from("facilities")
+      .select("assigned_rep")
+      .eq("id", facilityId)
+      .single();
+    if (!facility || facility.assigned_rep !== user.id) {
+      throw new Error("You can only manage contacts for your own assigned clinics.");
+    }
+  }
 
   const { error } = await supabase
     .from(CONTACTS_TABLE)

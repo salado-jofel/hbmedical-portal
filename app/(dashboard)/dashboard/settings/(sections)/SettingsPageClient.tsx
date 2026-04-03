@@ -9,6 +9,8 @@ import { CredentialsTab } from "../(components)/CredentialsTab";
 import type { Profile } from "@/utils/interfaces/profiles";
 import type { IFacilityMember } from "@/utils/interfaces/facility-members";
 import type { IProviderCredentials } from "@/utils/interfaces/provider-credentials";
+import type { ISubRep } from "@/utils/interfaces/sub-reps";
+import type { IClinicAccount } from "@/app/(dashboard)/dashboard/settings/(services)/actions";
 
 type TabKey = "profile" | "team" | "credentials";
 
@@ -20,7 +22,10 @@ interface Tab {
 
 interface SettingsPageClientProps {
   profile: Profile;
-  members: IFacilityMember[];
+  isRep: boolean;
+  myClinicAccounts: IClinicAccount[];
+  mySubReps: ISubRep[];
+  myClinicMembers: IFacilityMember[];
   credentials: IProviderCredentials | null;
   showTeamTab: boolean;
   showCredentials: boolean;
@@ -28,7 +33,10 @@ interface SettingsPageClientProps {
 
 export function SettingsPageClient({
   profile,
-  members,
+  isRep,
+  myClinicAccounts,
+  mySubReps,
+  myClinicMembers,
   credentials,
   showTeamTab,
   showCredentials,
@@ -71,7 +79,12 @@ export function SettingsPageClient({
       <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
         {active === "profile" && <ProfileTab profile={profile} />}
         {active === "team" && (
-          <TeamTab members={members} canManage={false} />
+          <TeamTab
+            isRep={isRep}
+            myClinicAccounts={myClinicAccounts}
+            mySubReps={mySubReps}
+            myClinicMembers={myClinicMembers}
+          />
         )}
         {active === "credentials" && showCredentials && (
           <CredentialsTab credentials={credentials} />

@@ -9,7 +9,11 @@ import {
 } from "@/app/(dashboard)/dashboard/profile/(services)/actions";
 
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentUserOrThrow } from "@/lib/supabase/auth";
+import { getCurrentUserOrThrow, getUserRole } from "@/lib/supabase/auth";
+import { isSalesRep, isClinicalProvider } from "@/utils/helpers/role";
+import type { UserRole } from "@/utils/helpers/role";
+import type { ISubRep } from "@/utils/interfaces/sub-reps";
+import type { AccountStatus } from "@/utils/interfaces/accounts";
 
 import {
   getMyCredentials as _getMyCredentials,
@@ -142,4 +146,136 @@ export async function generateMemberInviteToken(
   formData: FormData,
 ): Promise<IInviteTokenFormState> {
   return generateInviteToken(_prevState, formData);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Team — Rep: clinic accounts                                                 */
+/* -------------------------------------------------------------------------- */
+
+export interface IClinicAccount {
+  id: string;
+  name: string;
+  status: AccountStatus;
+  primaryDoctor: string;
+  doctorEmail: string;
+  memberCount: number;
+}
+
+export async function getMyClinicAccounts(): Promise<IClinicAccount[]> {
+  try {
+    const supabase = await createClient();
+    const user = await getCurrentUserOrThrow(supabase);
+    const role = await getUserRole(supabase);
+
+    if (!isSalesRep(role as UserRole)) return [];
+
+    const { data, error } = await supabase
+      .from("facilities")
+      .select(`
+        id,
+        name,
+        status,
+        owner:profiles!facilities_user_id_fkey (
+          first_name,
+          last_name,
+          email
+        ),
+        facility_members (
+          id
+        )
+      `)
+      .eq("facility_type", "clinic")
+      .eq("assigned_rep", user.id)
+      .order("name", { ascending: true });
+
+    if (error) {
+      console.error("[getMyClinicAccounts]", JSON.stringify(error));
+      return [];
+    }
+
+    return (data ?? []).map((f) => {
+      const owner = Array.isArray(f.owner) ? f.owner[0] : f.owner;
+      return {
+        id: f.id,
+        name: f.name,
+        status: (f.status as AccountStatus) ?? "inactive",
+        primaryDoctor: owner ? `${owner.first_name} ${owner.last_name}` : "Unknown",
+        doctorEmail: owner?.email ?? "",
+        memberCount: Array.isArray(f.facility_members) ? f.facility_members.length : 0,
+      };
+    });
+  } catch (err) {
+    console.error("[getMyClinicAccounts] Unexpected:", err);
+    return [];
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Team — Rep: sub-reps                                                        */
+/* -------------------------------------------------------------------------- */
+
+export async function getMySubReps(): Promise<ISubRep[]> {
+  try {
+    const supabase = await createClient();
+    const user = await getCurrentUserOrThrow(supabase);
+    const role = await getUserRole(supabase);
+
+    if (!isSalesRep(role as UserRole)) return [];
+
+    const { data, error } = await supabase
+      .from("rep_hierarchy")
+      .select(`
+        child_rep_id,
+        child:profiles!rep_hierarchy_child_rep_id_fkey (
+          id,
+          first_name,
+          last_name,
+          email,
+          status,
+          created_at
+        )
+      `)
+      .eq("parent_rep_id", user.id);
+
+    if (error) {
+      console.error("[getMySubReps]", JSON.stringify(error));
+      return [];
+    }
+
+    return (data ?? [])
+      .filter((row) => row.child)
+      .map((row) => {
+        const child = Array.isArray(row.child) ? row.child[0] : row.child;
+        return {
+          id: child.id,
+          first_name: child.first_name,
+          last_name: child.last_name,
+          email: child.email,
+          status: child.status as ISubRep["status"],
+          created_at: child.created_at,
+        };
+      });
+  } catch (err) {
+    console.error("[getMySubReps] Unexpected:", err);
+    return [];
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Team — Provider: clinic members (delegates to getFacilityMembers)          */
+/* -------------------------------------------------------------------------- */
+
+export async function getMyClinicMembers(): Promise<IFacilityMember[]> {
+  try {
+    const supabase = await createClient();
+    const user = await getCurrentUserOrThrow(supabase);
+    const role = await getUserRole(supabase);
+
+    if (!isClinicalProvider(role as UserRole)) return [];
+
+    return _getFacilityMembers(undefined, { excludeUserId: user.id });
+  } catch (err) {
+    console.error("[getMyClinicMembers] Unexpected:", err);
+    return [];
+  }
 }

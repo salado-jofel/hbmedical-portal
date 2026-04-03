@@ -14,12 +14,58 @@ interface InviteTokenCardProps {
   isDeleting: boolean;
 }
 
+/* -------------------------------------------------------------------------- */
+/* Status label logic                                                          */
+/* -------------------------------------------------------------------------- */
+
+function getTokenStatusLabel(token: IInviteToken): string {
+  const isExpired = token.expires_at ? new Date(token.expires_at) < new Date() : false;
+
+  if (!token.used_at) {
+    if (isExpired) return "Expired";
+    switch (token.role_type) {
+      case "clinical_provider":    return "Awaiting provider signup";
+      case "sales_representative": return "Awaiting rep signup";
+      case "clinical_staff":       return "Awaiting staff signup";
+      default:                     return "Pending";
+    }
+  }
+
+  // Token used — check post-signup state
+  switch (token.role_type) {
+    case "clinical_provider":
+      return token.used_by_facility_name ?? "Signup complete";
+
+    case "sales_representative":
+      if (token.used_by_has_completed_setup && token.used_by_facility_name) {
+        return token.used_by_facility_name;
+      }
+      if (token.used_by_has_completed_setup) {
+        return "Rep setup complete";
+      }
+      return "Pending rep setup";
+
+    case "clinical_staff":
+      return "Signup complete";
+
+    default:
+      return "Signup complete";
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Card                                                                        */
+/* -------------------------------------------------------------------------- */
+
 export function InviteTokenCard({ token, baseUrl, onDeleteClick, isDeleting }: InviteTokenCardProps) {
   const [copied, setCopied] = useState(false);
 
   const inviteUrl = `${baseUrl}/invite/${token.token}`;
-  const isUsed = token.used_at !== null;
+  const isUsed    = token.used_at !== null;
   const isExpired = token.expires_at ? new Date(token.expires_at) < new Date() : false;
+  const isActive  = !isUsed && !isExpired;
+
+  const statusLabel = getTokenStatusLabel(token);
 
   function handleCopy() {
     navigator.clipboard.writeText(inviteUrl);
@@ -34,17 +80,13 @@ export function InviteTokenCard({ token, baseUrl, onDeleteClick, isDeleting }: I
         isUsed || isExpired ? "border-[#F1F5F9] opacity-60" : "border-[#E2E8F0]",
       )}
     >
+      {/* ── Top row: label + badges + delete ── */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
+          {/* Primary label */}
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm font-medium text-[#0F172A]">
-              {token.facility?.name ?? (
-                token.role_type === "clinical_provider"
-                  ? (token.used_at ? "Signup complete" : "Pending provider signup")
-                  : token.role_type === "sales_representative"
-                  ? "Pending rep setup"
-                  : "No account linked"
-              )}
+              {statusLabel}
             </span>
             <span className="text-xs px-2 py-0.5 rounded-full bg-[#EFF6FF] text-[#15689E] font-medium">
               {ROLE_LABELS[token.role_type]}
@@ -61,7 +103,15 @@ export function InviteTokenCard({ token, baseUrl, onDeleteClick, isDeleting }: I
             )}
           </div>
 
-          {token.expires_at && !isUsed && !isExpired && (
+          {/* Secondary: "by [name]" for used tokens */}
+          {isUsed && token.used_by_name && (
+            <p className="text-xs text-[#94A3B8] mt-1">
+              by {token.used_by_name}
+            </p>
+          )}
+
+          {/* Expiry for active tokens */}
+          {isActive && token.expires_at && (
             <p className="text-xs text-[#94A3B8] mt-1 flex items-center gap-1">
               <Clock className="w-3 h-3" />
               Expires{" "}
@@ -74,8 +124,9 @@ export function InviteTokenCard({ token, baseUrl, onDeleteClick, isDeleting }: I
           )}
         </div>
 
+        {/* Actions */}
         <div className="flex items-center gap-1 shrink-0">
-          {!isUsed && !isExpired && (
+          {isActive && (
             <Button
               variant="ghost"
               size="icon"
@@ -105,7 +156,8 @@ export function InviteTokenCard({ token, baseUrl, onDeleteClick, isDeleting }: I
         </div>
       </div>
 
-      {!isUsed && !isExpired && (
+      {/* ── Invite URL (active tokens only) ── */}
+      {isActive && (
         <div
           className="flex items-center gap-2 bg-[#F8FAFC] rounded-lg px-3 py-2 cursor-pointer group border border-[#E2E8F0]"
           onClick={handleCopy}
