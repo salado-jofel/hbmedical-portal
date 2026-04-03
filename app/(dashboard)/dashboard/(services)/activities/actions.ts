@@ -81,23 +81,27 @@ export async function createActivity(
       return { error: parsed.error.errors[0]?.message ?? "Invalid input.", success: false };
     }
 
-    const { error } = await supabase.from(ACTIVITIES_TABLE).insert({
-      facility_id: facilityId,
-      logged_by: user.id,
-      type: parsed.data.type,
-      activity_date: parsed.data.activity_date,
-      contact_id: parsed.data.contact_id || null,
-      outcome: parsed.data.outcome,
-      notes: toNullable(parsed.data.notes),
-    });
+    const { data, error } = await supabase
+      .from(ACTIVITIES_TABLE)
+      .insert({
+        facility_id: facilityId,
+        logged_by: user.id,
+        type: parsed.data.type,
+        activity_date: parsed.data.activity_date,
+        contact_id: parsed.data.contact_id || null,
+        outcome: parsed.data.outcome,
+        notes: toNullable(parsed.data.notes),
+      })
+      .select(ACTIVITY_SELECT)
+      .single();
 
     if (error) {
-      console.error("[createActivity] Error:", error);
+      console.error("[createActivity] Error:", JSON.stringify(error));
       return { error: error.message || "Failed to log activity.", success: false };
     }
 
     revalidatePath(`${ACTIVITIES_PATH}/${facilityId}`);
-    return { error: null, success: true };
+    return { error: null, success: true, activity: mapActivity(data as unknown as RawActivityRecord) };
   } catch (err) {
     console.error("[createActivity] Unexpected error:", err);
     return { error: "An unexpected error occurred.", success: false };

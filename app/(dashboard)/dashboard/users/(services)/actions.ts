@@ -4,7 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { requireAdminOrThrow } from "@/lib/supabase/auth";
+import { requireAdminOrThrow, getCurrentUserOrThrow } from "@/lib/supabase/auth";
 import { resend, ACCOUNTS_FROM_EMAIL } from "@/lib/emails/resend";
 import { sendInviteEmail } from "@/lib/emails/send-invite-email";
 import type { IUser, IUserFormState, UserStatus } from "@/utils/interfaces/users";
@@ -288,23 +288,111 @@ export async function deleteUser(userId: string): Promise<IUserFormState> {
     const supabase = await createClient();
     await requireAdminOrThrow(supabase);
 
+    // Guard: admin cannot delete themselves
+    const currentUser = await getCurrentUserOrThrow(supabase);
+    if (userId === currentUser.id) {
+      return { success: false, error: "You cannot delete your own account." };
+    }
+
     const adminClient = createAdminClient();
 
-    // Guard: only pending users may be deleted
+    // 1. Fetch profile to check status and role
     const { data: profile } = await adminClient
       .from("profiles")
-      .select("status")
+      .select("status, role")
       .eq("id", userId)
       .single();
 
-    if (profile?.status !== "pending") {
-      return { success: false, error: "Only pending users can be deleted." };
+    if (!profile) {
+      return { success: false, error: "User not found." };
     }
 
-    const { error } = await adminClient.auth.admin.deleteUser(userId);
-    if (error) {
-      console.error("[deleteUser] Error:", error);
-      return { success: false, error: error.message ?? "Failed to delete user." };
+    // Active users must be deactivated first
+    if (profile.status === "active") {
+      return { success: false, error: "Deactivate this user before deleting." };
+    }
+
+    // 2. Clean up related data in FK-safe order
+
+    // Rep hierarchy (sales reps only)
+    if (profile.role === "sales_representative") {
+      await adminClient
+        .from("rep_hierarchy")
+        .delete()
+        .or(`parent_rep_id.eq.${userId},child_rep_id.eq.${userId}`);
+    }
+
+    // Invite tokens created by this user
+    await adminClient
+      .from("invite_tokens")
+      .delete()
+      .eq("created_by", userId);
+
+    // Facility memberships this user belongs to
+    await adminClient
+      .from("facility_members")
+      .delete()
+      .eq("user_id", userId);
+
+    // Provider credentials
+    await adminClient
+      .from("provider_credentials")
+      .delete()
+      .eq("user_id", userId);
+
+    // Facilities owned by this user — clean children first
+    const { data: userFacilities } = await adminClient
+      .from("facilities")
+      .select("id")
+      .eq("user_id", userId);
+
+    if (userFacilities && userFacilities.length > 0) {
+      const facilityIds = userFacilities.map((f: { id: string }) => f.id);
+
+      await adminClient.from("facility_members").delete().in("facility_id", facilityIds);
+      await adminClient.from("contacts").delete().in("facility_id", facilityIds);
+      await adminClient.from("activities").delete().in("facility_id", facilityIds);
+
+      // Nullify tasks linked to these facilities (don't delete tasks)
+      await adminClient
+        .from("tasks")
+        .update({ facility_id: null })
+        .in("facility_id", facilityIds);
+
+      // Orders + their children
+      try {
+        const { data: facilityOrders } = await adminClient
+          .from("orders")
+          .select("id")
+          .in("facility_id", facilityIds);
+
+        if (facilityOrders && facilityOrders.length > 0) {
+          const orderIds = facilityOrders.map((o: { id: string }) => o.id);
+          await adminClient.from("order_items").delete().in("order_id", orderIds);
+          await adminClient.from("shipments").delete().in("order_id", orderIds);
+          await adminClient.from("payments").delete().in("order_id", orderIds);
+          await adminClient.from("invoices").delete().in("order_id", orderIds);
+          await adminClient.from("orders").delete().in("facility_id", facilityIds);
+        }
+      } catch (err) {
+        console.error("[deleteUser] Order cleanup failed:", err);
+        // Continue — don't block user deletion over order cleanup
+      }
+
+      await adminClient.from("facilities").delete().eq("user_id", userId);
+    }
+
+    // 3. Nullify assigned_rep on any clinics assigned to this user
+    await adminClient
+      .from("facilities")
+      .update({ assigned_rep: null })
+      .eq("assigned_rep", userId);
+
+    // 4. Delete auth user — profile cascades via FK
+    const { error: deleteError } = await adminClient.auth.admin.deleteUser(userId);
+    if (deleteError) {
+      console.error("[deleteUser] Error:", JSON.stringify(deleteError));
+      return { success: false, error: deleteError.message ?? "Failed to delete user." };
     }
 
     revalidatePath("/dashboard/users");

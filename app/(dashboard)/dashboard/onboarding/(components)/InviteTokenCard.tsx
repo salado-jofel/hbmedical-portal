@@ -38,7 +38,13 @@ export function InviteTokenCard({ token, baseUrl, onDeleteClick, isDeleting }: I
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm font-medium text-[#0F172A]">
-              {token.facility?.name ?? "No account linked"}
+              {token.facility?.name ?? (
+                token.role_type === "clinical_provider"
+                  ? (token.used_at ? "Signup complete" : "Pending provider signup")
+                  : token.role_type === "sales_representative"
+                  ? "Pending rep setup"
+                  : "No account linked"
+              )}
             </span>
             <span className="text-xs px-2 py-0.5 rounded-full bg-[#EFF6FF] text-[#15689E] font-medium">
               {ROLE_LABELS[token.role_type]}

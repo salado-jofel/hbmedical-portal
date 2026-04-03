@@ -58,6 +58,7 @@ export interface IActivity {
 export interface IActivityFormState {
   error: string | null;
   success: boolean;
+  activity?: IActivity;
 }
 
 /* -------------------------------------------------------------------------- */

@@ -16,11 +16,6 @@ import { generateInviteToken } from "@/app/(dashboard)/dashboard/onboarding/(ser
 import type { IInviteTokenFormState } from "@/utils/interfaces/invite-tokens";
 import type { RepWithFacility } from "../(services)/actions";
 
-const ROLE_OPTIONS = [
-  { value: "clinical_provider", label: "Clinical Provider" },
-  { value: "clinical_staff", label: "Clinical Staff" },
-];
-
 const EXPIRY_OPTIONS = [
   { value: "7", label: "7 days" },
   { value: "14", label: "14 days" },
@@ -107,23 +102,13 @@ export function InviteClinicForm({ baseUrl, isAdmin = false, repsWithFacilities 
           </div>
         )}
 
-        {/* Role */}
+        {/* Role — always Clinical Provider for admin and rep invites */}
+        <input type="hidden" name="role_type" value="clinical_provider" />
         <div className="space-y-1.5">
-          <Label className="text-xs">
-            Role <span className="text-red-400">*</span>
-          </Label>
-          <Select name="role_type" defaultValue="clinical_staff">
-            <SelectTrigger className="h-9 text-sm">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {ROLE_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value} className="text-sm">
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Label className="text-xs text-[#64748B]">Inviting as</Label>
+          <p className="text-sm h-9 flex items-center px-3 rounded-md bg-[#F8FAFC] border border-[#E2E8F0] text-[#0F172A] font-medium">
+            Clinical Provider
+          </p>
         </div>
 
         {/* Expiry */}

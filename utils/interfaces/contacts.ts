@@ -33,6 +33,7 @@ export interface IContact {
 export interface IContactFormState {
   error: string | null;
   success: boolean;
+  contact?: IContact;
   fieldErrors?: {
     first_name?: string;
     last_name?: string;

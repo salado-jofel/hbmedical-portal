@@ -7,6 +7,7 @@ import {
   getUserRole,
   requireAdminOrThrow,
 } from "@/lib/supabase/auth";
+import { isAdmin as checkIsAdmin, isSalesRep, isSupport } from "@/utils/helpers/role";
 import {
   ACCOUNTS_PATH,
   ACCOUNTS_TABLE,
@@ -35,6 +36,10 @@ export async function getAccounts(
   const supabase = await createClient();
   const user = await getCurrentUserOrThrow(supabase);
   const role = await getUserRole(supabase);
+
+  if (!checkIsAdmin(role) && !isSalesRep(role) && !isSupport(role)) {
+    throw new Error("Unauthorized");
+  }
 
   let query = supabase
     .from(ACCOUNTS_TABLE)
@@ -84,6 +89,10 @@ export async function getAccountById(id: string): Promise<IAccount | null> {
   const supabase = await createClient();
   const user = await getCurrentUserOrThrow(supabase);
   const role = await getUserRole(supabase);
+
+  if (!checkIsAdmin(role) && !isSalesRep(role) && !isSupport(role)) {
+    throw new Error("Unauthorized");
+  }
 
   let query = supabase
     .from(ACCOUNTS_TABLE)

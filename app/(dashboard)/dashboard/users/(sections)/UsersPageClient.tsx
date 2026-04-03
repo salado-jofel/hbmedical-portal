@@ -274,16 +274,27 @@ export function UsersPageClient() {
           );
         }
         return (
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); handleReactivate(user.id); }}
-            disabled={isActing}
-            className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded-lg text-xs font-medium text-[#94A3B8] hover:text-emerald-600 hover:bg-emerald-50 transition-all disabled:opacity-40 opacity-0 group-hover:opacity-100"
-            title="Reactivate user"
-          >
-            <UserCheck className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Reactivate</span>
-          </button>
+          <div className="inline-flex items-center gap-1 justify-end">
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); handleReactivate(user.id); }}
+              disabled={isActing}
+              className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded-lg text-xs font-medium text-[#94A3B8] hover:text-emerald-600 hover:bg-emerald-50 transition-all disabled:opacity-40 opacity-0 group-hover:opacity-100"
+              title="Reactivate user"
+            >
+              <UserCheck className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Reactivate</span>
+            </button>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(user.id); }}
+              disabled={isActing}
+              className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded-lg text-xs font-medium text-red-400 hover:text-red-600 hover:bg-red-50 transition-all disabled:opacity-40 opacity-0 group-hover:opacity-100"
+              title="Delete user"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
         );
       },
     },
@@ -385,8 +396,8 @@ export function UsersPageClient() {
       <ConfirmModal
         open={deleteConfirmId !== null}
         onOpenChange={(open) => { if (!open) setDeleteConfirmId(null); }}
-        title="Delete pending user?"
-        description="This will permanently delete this user's account. This action cannot be undone."
+        title="Delete User?"
+        description="This will permanently remove this user and all their associated data. This action cannot be undone."
         confirmLabel="Delete User"
         isLoading={pendingId === deleteConfirmId && deleteConfirmId !== null}
         onConfirm={() => { if (deleteConfirmId) handleDelete(deleteConfirmId); }}

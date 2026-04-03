@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole } from "@/lib/supabase/auth";
+import { isSalesRep, isClinicalProvider } from "@/utils/helpers/role";
 import {
   getMyProfile,
   getMyCredentials,
@@ -18,14 +19,13 @@ export default async function SettingsPage() {
   const profile = await getMyProfile();
   if (!profile) notFound();
 
-  const showCredentials = role === "clinical_provider";
-
-  const canManageTeam =
-    role === "admin" ||
-    role === "sales_representative";
+  const showCredentials = isClinicalProvider(role);
+  const showTeamTab     = isSalesRep(role) || isClinicalProvider(role);
+  // Admin manages all users via the Users page — no Team tab in Settings.
+  // Support staff and clinical staff have no team management responsibilities.
 
   const [members, credentials] = await Promise.all([
-    getFacilityMembers(),
+    showTeamTab ? getFacilityMembers() : Promise.resolve([]),
     showCredentials ? getMyCredentials() : Promise.resolve(null),
   ]);
 
@@ -45,7 +45,7 @@ export default async function SettingsPage() {
           profile={profile}
           members={members}
           credentials={credentials}
-          canManageTeam={canManageTeam}
+          showTeamTab={showTeamTab}
           showCredentials={showCredentials}
         />
       </Providers>

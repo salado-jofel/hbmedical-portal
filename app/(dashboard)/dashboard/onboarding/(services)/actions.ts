@@ -167,31 +167,35 @@ export async function generateInviteToken(
       Date.now() + parsed.data.expires_in_days * 24 * 60 * 60 * 1000,
     ).toISOString();
 
-    // Resolve facility_id based on role.
-    // clinical_provider always gets NULL — they create their own clinic on signup (CASE C).
-    // clinical_staff gets the rep's facility so they join it directly (CASE A).
-    // sales_representative gets NULL — they create their own rep_office on setup.
+    // Resolve facility_id based on caller role and invite role_type.
+    // clinical_provider → NULL (creates own clinic on signup)
+    // clinical_staff → provider's facility (set in clinical_provider branch below)
+    // sales_representative → NULL (creates own rep_office on setup)
     let resolvedFacilityId: string | null = null;
 
     if (isAdmin(role as UserRole)) {
-      // Admin invites clinical users only via link (Sales rep/admin/support created via Users page)
-      // Both clinical_provider and clinical_staff require a rep to be selected.
-      // clinical_provider: inviteSignUp will create new clinic, assigned_rep = facility owner
-      // clinical_staff: inviteSignUp will link them to the rep's facility directly
+      // Admin can only invite clinical_provider via link.
+      // Admin/rep/support accounts are managed via the Users page.
+      if (parsed.data.role_type !== "clinical_provider") {
+        return { error: "Admin can only invite Clinical Providers via link.", success: false };
+      }
+      // facility_id = selected rep's facility (required — provider is assigned to a rep)
       resolvedFacilityId = parsed.data.facility_id ?? null;
       if (!resolvedFacilityId) {
-        return { error: "Please select a sales rep to assign this invite to.", success: false };
+        return { error: "Please select a sales rep to assign.", success: false };
       }
     } else if (isSalesRep(role as UserRole)) {
+      // Reps can invite clinical_provider or sales_representative (sub-rep).
+      // clinical_staff is NOT allowed for reps — only clinical_provider can invite staff.
       if (parsed.data.role_type === "clinical_staff") {
-        // Staff joins the rep's own facility
-        resolvedFacilityId = await getRepFacilityId(user.id, supabase);
-        if (!resolvedFacilityId) {
-          return { error: "Complete your office setup before inviting staff.", success: false };
-        }
+        return { error: "Only Clinical Providers can invite Clinical Staff.", success: false };
       }
-      // clinical_provider → facility_id stays NULL (creates own clinic)
-      // sales_representative → facility_id stays NULL (creates own rep_office)
+      if (!["clinical_provider", "sales_representative"].includes(parsed.data.role_type)) {
+        return { error: "You can only invite Clinical Providers or Sub-Reps.", success: false };
+      }
+      // clinical_provider → facility_id stays NULL (creates own clinic on signup)
+      // sales_representative → facility_id stays NULL (creates own rep_office on setup)
+      resolvedFacilityId = null;
     } else if (isClinicalProvider(role as UserRole)) {
       // Clinical providers can only invite clinical_staff to their own clinic
       if (parsed.data.role_type !== "clinical_staff") {

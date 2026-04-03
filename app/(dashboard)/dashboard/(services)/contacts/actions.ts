@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUserOrThrow, getUserRole, requireAdminOrThrow } from "@/lib/supabase/auth";
-import { isAdmin, isSalesRep } from "@/utils/helpers/role";
+import { isAdmin, isSalesRep, isSupport } from "@/utils/helpers/role";
 import { ACCOUNTS_PATH, CONTACTS_TABLE, CONTACT_SELECT } from "@/utils/constants/accounts";
 import {
   createContactSchema,
@@ -33,7 +33,7 @@ export async function getContactsByFacility(
   const supabase = await createClient();
   await getCurrentUserOrThrow(supabase);
   const role = await getUserRole(supabase);
-  if (!isAdmin(role) && !isSalesRep(role)) {
+  if (!isAdmin(role) && !isSalesRep(role) && !isSupport(role)) {
     throw new Error("Unauthorized");
   }
 
@@ -97,7 +97,11 @@ export async function createContact(
       is_active:         true,
     };
 
-    const { error } = await supabase.from(CONTACTS_TABLE).insert(payload);
+    const { data, error } = await supabase
+      .from(CONTACTS_TABLE)
+      .insert(payload)
+      .select(CONTACT_SELECT)
+      .single();
 
     if (error) {
       console.error("[createContact] Error:", JSON.stringify(error));
@@ -105,7 +109,7 @@ export async function createContact(
     }
 
     revalidatePath(`${ACCOUNTS_PATH}/${facilityId}`);
-    return { error: null, success: true };
+    return { error: null, success: true, contact: data as IContact };
   } catch (err) {
     console.error("[createContact] Unexpected error:", err);
     return { error: "An unexpected error occurred.", success: false };

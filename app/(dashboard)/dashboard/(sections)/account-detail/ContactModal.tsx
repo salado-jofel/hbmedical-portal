@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState } from "react";
+import toast from "react-hot-toast";
 import { Loader2, Plus, Pencil } from "lucide-react";
 import {
   Dialog,
@@ -26,7 +27,7 @@ import {
   getContactsByFacility,
 } from "@/app/(dashboard)/dashboard/(services)/contacts/actions";
 import { useAppDispatch } from "@/store/hooks";
-import { setContacts } from "@/app/(dashboard)/dashboard/(redux)/contacts-slice";
+import { setContacts, addContactToStore } from "@/app/(dashboard)/dashboard/(redux)/contacts-slice";
 import type { IContact, IContactFormState } from "@/utils/interfaces/contacts";
 import { PhoneInputField } from "@/app/(components)/PhoneInputField";
 
@@ -58,17 +59,26 @@ export function ContactModal({ facilityId, contact }: ContactModalProps) {
     FormData
   >(action, null);
 
-  // On success: close dialog, sync fresh contacts into Redux
+  // On success: close dialog, update Redux
   useEffect(() => {
-    if (!state?.success) return;
-    setOpen(false);
-    formRef.current?.reset();
-    setPhone(contact?.phone ?? "");
-    getContactsByFacility(facilityId).then((fresh) => {
-      dispatch(setContacts(fresh));
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state?.success, facilityId, dispatch]);
+    if (!state) return;
+    if (state.success) {
+      toast.success(isEdit ? "Contact updated." : "Contact added.");
+      setOpen(false);
+      formRef.current?.reset();
+      setPhone(contact?.phone ?? "");
+      if (state.contact) {
+        dispatch(addContactToStore(state.contact));
+      } else {
+        getContactsByFacility(facilityId).then((fresh) => {
+          dispatch(setContacts(fresh));
+        });
+      }
+    } else if (state.error) {
+      toast.error(state.error);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

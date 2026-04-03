@@ -14,7 +14,7 @@ import { OrdersTab } from "../(components)/OrdersTab";
 
 type TabId = "overview" | "contacts" | "activities" | "orders";
 
-const TABS: { id: TabId; label: string }[] = [
+const ALL_TABS: { id: TabId; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "contacts", label: "Contacts" },
   { id: "activities", label: "Activities" },
@@ -27,6 +27,7 @@ interface AccountDetailClientProps {
   orders: DashboardOrder[];
   canEdit: boolean;
   salesReps: IRepProfile[];
+  showActivities: boolean;
 }
 
 export function AccountDetailClient({
@@ -35,14 +36,16 @@ export function AccountDetailClient({
   orders,
   canEdit,
   salesReps,
+  showActivities,
 }: AccountDetailClientProps) {
+  const tabs = ALL_TABS.filter((t) => t.id !== "activities" || showActivities);
   const [activeTab, setActiveTab] = useState<TabId>("overview");
 
   return (
     <div className="space-y-4">
       {/* ── Tab bar ── */}
       <div className="flex border-b border-[#E2E8F0] overflow-x-auto gap-0 mb-6">
-        {TABS.map((tab) => (
+        {tabs.map((tab) => (
           <button
             key={tab.id}
             type="button"

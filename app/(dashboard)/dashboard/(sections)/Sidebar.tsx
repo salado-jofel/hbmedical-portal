@@ -26,7 +26,7 @@ import { signOut } from "../(services)/actions";
 import { closeSidebar } from "../(redux)/dashboard-slice";
 import type { LucideIcon } from "lucide-react";
 import type { UserRole } from "@/utils/helpers/role";
-import { isAdmin, isSalesRep, isClinicalProvider, isClinicalStaff } from "@/utils/helpers/role";
+import { isAdmin, isSalesRep, isSupport, isClinicalProvider, isClinicalStaff } from "@/utils/helpers/role";
 
 interface NavItemDef {
   icon: LucideIcon;
@@ -76,7 +76,7 @@ const navItems: NavItemDef[] = [
     icon: Building2,
     label: "Accounts",
     href: "/dashboard/accounts",
-    visible: (role) => isAdmin(role) || isSalesRep(role),
+    visible: (role) => isAdmin(role) || isSalesRep(role) || isSupport(role),
   },
   {
     icon: ShoppingCart,

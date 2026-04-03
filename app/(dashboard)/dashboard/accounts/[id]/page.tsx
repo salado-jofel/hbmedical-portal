@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole } from "@/lib/supabase/auth";
-import { isAdmin as checkIsAdmin, isSalesRep } from "@/utils/helpers/role";
+import { isAdmin as checkIsAdmin, isSalesRep, isSupport } from "@/utils/helpers/role";
 import {
   getAccountById,
   getSalesReps,
@@ -48,9 +48,11 @@ export default async function AccountDetailPage({
   const supabase = await createClient();
   const role = await getUserRole(supabase);
 
-  const adminUser = checkIsAdmin(role);
-  const repUser   = isSalesRep(role);
-  const canEdit   = adminUser; // only admins may create / update / delete
+  const adminUser   = checkIsAdmin(role);
+  const repUser     = isSalesRep(role);
+  const supportUser = isSupport(role);
+  const canEdit     = adminUser; // only admins may create / update / delete
+  const showActivities = adminUser || repUser; // support staff cannot see activities
 
   const [account, salesReps] = await Promise.all([
     getAccountById(id),
@@ -64,8 +66,8 @@ export default async function AccountDetailPage({
   const [contacts, orders, activities] = await Promise.all([
     getContactsByFacility(account.id),
     getFacilityOrders(account.id),
-    // Both admin and reps may read activities; DB RLS scopes rep results
-    (adminUser || repUser)
+    // Admin and reps may read activities; support staff cannot
+    showActivities
       ? getActivitiesByFacility(account.id)
       : Promise.resolve([]),
   ]);
@@ -84,6 +86,7 @@ export default async function AccountDetailPage({
           orders={orders}
           canEdit={canEdit}
           salesReps={salesReps}
+          showActivities={showActivities}
         />
       </Providers>
     </div>

@@ -1,49 +1,66 @@
 "use server";
 
+import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getCurrentUserOrThrow } from "@/lib/supabase/auth";
 import type {
   Profile,
-  UpdateProfilePayload,
+  IProfileFormState,
 } from "@/utils/interfaces/profiles";
 
-const PROFILE_PATH = "/dashboard/profile";
+const SETTINGS_PATH = "/dashboard/settings";
+
+const updateProfileSchema = z.object({
+  first_name: z
+    .string()
+    .trim()
+    .min(1, "First name is required."),
+  last_name: z
+    .string()
+    .trim()
+    .min(1, "Last name is required."),
+  phone: z
+    .string()
+    .regex(/^\+[1-9][0-9]{7,14}$/, "Enter a valid phone number.")
+    .optional()
+    .or(z.literal("")),
+});
+
+/* -------------------------------------------------------------------------- */
+/* getProfile                                                                 */
+/* -------------------------------------------------------------------------- */
 
 /**
- * READ: Gets the current authenticated user's profile from Auth metadata
+ * Reads the authenticated user's profile from the `profiles` table.
+ * Uses createClient() so RLS (profiles_select_own) scopes results to
+ * the current user automatically.
  */
 export async function getProfile(): Promise<Profile | null> {
   try {
     const supabase = await createClient();
+    const user = await getCurrentUserOrThrow(supabase).catch(() => null);
+    if (!user) return null;
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id, first_name, last_name, email, phone, role")
+      .eq("id", user.id)
+      .single();
 
-    if (authError || !user) {
-      console.error("[getProfile] Auth error:", authError?.message);
+    if (error || !data) {
+      console.error("[getProfile] Error:", JSON.stringify(error));
       return null;
     }
 
-    const firstName =
-      user.user_metadata?.first_name ??
-      user.user_metadata?.full_name?.split(" ")[0] ??
-      "";
-
-    const lastName =
-      user.user_metadata?.last_name ??
-      user.user_metadata?.full_name?.split(" ").slice(1).join(" ") ??
-      "";
-
     return {
-      id: user.id,
-      first_name: firstName,
-      last_name: lastName,
-      email: user.email ?? "",
-      phone: user.user_metadata?.phone ?? "",
-      role: user.user_metadata?.role ?? "sales_representative",
+      id: data.id,
+      first_name: data.first_name,
+      last_name: data.last_name,
+      email: data.email,
+      phone: (data.phone as string | null) ?? null,
+      role: data.role as Profile["role"],
     };
   } catch (err) {
     console.error("[getProfile] Unexpected error:", err);
@@ -51,61 +68,70 @@ export async function getProfile(): Promise<Profile | null> {
   }
 }
 
+/* -------------------------------------------------------------------------- */
+/* updateProfile                                                              */
+/* -------------------------------------------------------------------------- */
+
 /**
- * UPDATE: Saves profile changes using Admin client (service role key)
- * - first_name, last_name, phone → stored in user_metadata
- * - email → updated directly on the auth user
+ * Updates first_name, last_name, phone only.
+ * email and role are NEVER accepted from the form.
  */
-export async function updateProfile(formData: FormData) {
+export async function updateProfile(
+  _prev: IProfileFormState | null,
+  formData: FormData,
+): Promise<IProfileFormState> {
   try {
-    // 1. Get current user ID using the regular session client
     const supabase = await createClient();
+    const user = await getCurrentUserOrThrow(supabase);
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      console.error("[updateProfile] Auth error:", authError?.message);
-      throw new Error("User not authenticated");
-    }
-
-    const payload: UpdateProfilePayload = {
+    const raw = {
       first_name: formData.get("first_name") as string,
-      last_name: formData.get("last_name") as string,
-      email: formData.get("email") as string,
-      phone: formData.get("phone") as string,
+      last_name:  formData.get("last_name") as string,
+      phone:      (formData.get("phone") as string) ?? "",
     };
 
-    // 2. Use admin client to update the user — bypasses key restrictions
-    const admin = createAdminClient();
-
-    const { error: updateError } = await admin.auth.admin.updateUserById(
-      user.id,
-      {
-        email: payload.email || user.email,
-        user_metadata: {
-          first_name: payload.first_name,
-          last_name: payload.last_name,
-          full_name: `${payload.first_name} ${payload.last_name}`.trim(),
-          phone: payload.phone,
-        },
-      },
-    );
-
-    if (updateError) {
-      console.error("[updateProfile] Update error:", updateError.message);
-      throw new Error(updateError.message);
+    const parsed = updateProfileSchema.safeParse(raw);
+    if (!parsed.success) {
+      const fieldErrors: IProfileFormState["fieldErrors"] = {};
+      for (const issue of parsed.error.issues) {
+        const field = issue.path[0] as keyof NonNullable<IProfileFormState["fieldErrors"]>;
+        if (!fieldErrors[field]) fieldErrors[field] = issue.message;
+      }
+      return { error: null, success: false, fieldErrors };
     }
 
-    revalidatePath(PROFILE_PATH);
+    const phoneValue = parsed.data.phone || null; // "" → null (clears phone)
+
+    // 1. Update profiles table (canonical source of truth, RLS scoped to own row)
+    const { error: profileError } = await supabase
+      .from("profiles")
+      .update({
+        first_name: parsed.data.first_name,
+        last_name:  parsed.data.last_name,
+        phone:      phoneValue,
+      })
+      .eq("id", user.id);
+
+    if (profileError) {
+      console.error("[updateProfile] Profile update error:", JSON.stringify(profileError));
+      return { error: profileError.message || "Failed to update profile.", success: false };
+    }
+
+    // 2. Sync user_metadata so Supabase auth.getUser() metadata stays in sync
+    const admin = createAdminClient();
+    await admin.auth.admin.updateUserById(user.id, {
+      user_metadata: {
+        first_name: parsed.data.first_name,
+        last_name:  parsed.data.last_name,
+        full_name:  `${parsed.data.first_name} ${parsed.data.last_name}`.trim(),
+        phone:      phoneValue,
+      },
+    });
+
+    revalidatePath(SETTINGS_PATH);
+    return { success: true, error: null };
   } catch (err) {
     console.error("[updateProfile] Unexpected error:", err);
-    throw new Error(
-      err instanceof Error
-        ? err.message
-        : "An unexpected error occurred while updating the profile",
-    );
+    return { error: "An unexpected error occurred.", success: false };
   }
 }

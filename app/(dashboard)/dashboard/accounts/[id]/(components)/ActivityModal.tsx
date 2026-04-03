@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState } from "react";
+import toast from "react-hot-toast";
 import { Loader2, Plus, Pencil } from "lucide-react";
 import {
   Dialog,
@@ -25,7 +26,7 @@ import {
   getActivitiesByFacility,
 } from "@/app/(dashboard)/dashboard/(services)/activities/actions";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
-import { setActivities } from "@/app/(dashboard)/dashboard/(redux)/activities-slice";
+import { setActivities, addActivityToStore } from "@/app/(dashboard)/dashboard/(redux)/activities-slice";
 import type { IActivity, IActivityFormState } from "@/utils/interfaces/activities";
 
 const TYPE_OPTIONS = [
@@ -66,13 +67,23 @@ export function ActivityModal({ facilityId, activity }: ActivityModalProps) {
   >(action, null);
 
   useEffect(() => {
-    if (!state?.success) return;
-    setOpen(false);
-    formRef.current?.reset();
-    getActivitiesByFacility(facilityId).then((fresh) => {
-      dispatch(setActivities(fresh));
-    });
-  }, [state?.success, facilityId, dispatch]);
+    if (!state) return;
+    if (state.success) {
+      toast.success(isEdit ? "Activity updated." : "Activity logged.");
+      setOpen(false);
+      formRef.current?.reset();
+      if (state.activity) {
+        dispatch(addActivityToStore(state.activity));
+      } else {
+        getActivitiesByFacility(facilityId).then((fresh) => {
+          dispatch(setActivities(fresh));
+        });
+      }
+    } else if (state.error) {
+      toast.error(state.error);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

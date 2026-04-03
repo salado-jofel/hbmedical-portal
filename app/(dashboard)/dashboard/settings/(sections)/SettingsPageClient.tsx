@@ -22,7 +22,7 @@ interface SettingsPageClientProps {
   profile: Profile;
   members: IFacilityMember[];
   credentials: IProviderCredentials | null;
-  canManageTeam: boolean;
+  showTeamTab: boolean;
   showCredentials: boolean;
 }
 
@@ -30,12 +30,14 @@ export function SettingsPageClient({
   profile,
   members,
   credentials,
-  canManageTeam,
+  showTeamTab,
   showCredentials,
 }: SettingsPageClientProps) {
   const tabs: Tab[] = [
     { key: "profile", label: "Profile", icon: User },
-    { key: "team", label: "Team", icon: Users },
+    ...(showTeamTab
+      ? [{ key: "team" as TabKey, label: "Team", icon: Users }]
+      : []),
     ...(showCredentials
       ? [{ key: "credentials" as TabKey, label: "Credentials", icon: ShieldCheck }]
       : []),
@@ -69,7 +71,7 @@ export function SettingsPageClient({
       <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
         {active === "profile" && <ProfileTab profile={profile} />}
         {active === "team" && (
-          <TeamTab members={members} canManage={canManageTeam} />
+          <TeamTab members={members} canManage={false} />
         )}
         {active === "credentials" && showCredentials && (
           <CredentialsTab credentials={credentials} />
