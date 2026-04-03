@@ -97,7 +97,7 @@ export async function createTask(
 
     const parsed = createTaskSchema.safeParse(raw);
     if (!parsed.success) {
-      return { error: parsed.error.errors[0]?.message ?? "Invalid input.", success: false };
+      return { error: parsed.error.issues[0]?.message ?? "Invalid input.", success: false };
     }
 
     const assignedTo = parsed.data.assigned_to || user.id;
@@ -154,7 +154,7 @@ export async function updateTask(
 
     const parsed = updateTaskSchema.safeParse(raw);
     if (!parsed.success) {
-      return { error: parsed.error.errors[0]?.message ?? "Invalid input.", success: false };
+      return { error: parsed.error.issues[0]?.message ?? "Invalid input.", success: false };
     }
 
     const assignedTo = parsed.data.assigned_to || user.id;

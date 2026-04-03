@@ -164,7 +164,7 @@ export async function generateInviteToken(
 
     const parsed = generateInviteTokenSchema.safeParse(raw);
     if (!parsed.success) {
-      const msg = parsed.error?.errors?.[0]?.message ?? "Invalid input.";
+      const msg = parsed.error?.issues?.[0]?.message ?? "Invalid input.";
       return { error: msg, success: false };
     }
 
@@ -378,7 +378,7 @@ export async function inviteSubRep(
 
     const parsed = inviteSubRepSchema.safeParse(raw);
     if (!parsed.success) {
-      const msg = parsed.error.errors[0]?.message ?? "Invalid input.";
+      const msg = parsed.error.issues[0]?.message ?? "Invalid input.";
       return { error: msg, success: false };
     }
 

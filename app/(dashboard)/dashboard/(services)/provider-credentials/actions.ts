@@ -63,7 +63,7 @@ export async function saveCredentials(
 
     const parsed = saveCredentialsSchema.safeParse(raw);
     if (!parsed.success) {
-      return { error: parsed.error.errors[0]?.message ?? "Invalid input.", success: false };
+      return { error: parsed.error.issues[0]?.message ?? "Invalid input.", success: false };
     }
 
     const { error } = await supabase

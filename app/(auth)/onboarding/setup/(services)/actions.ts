@@ -44,7 +44,7 @@ export async function completeRepSetup(
 
     const parsed = repSetupSchema.safeParse(raw);
     if (!parsed.success) {
-      const msg = parsed.error.errors[0]?.message ?? "Invalid input.";
+      const msg = parsed.error.issues[0]?.message ?? "Invalid input.";
       return { error: msg, success: false };
     }
 

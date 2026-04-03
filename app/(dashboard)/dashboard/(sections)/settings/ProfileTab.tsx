@@ -25,7 +25,7 @@ export function ProfileTab({ profile }: ProfileTabProps) {
     setIsPending(true);
     try {
       const formData = new FormData(e.currentTarget);
-      await updateProfile(formData);
+      await updateProfile(null, formData);
       toast.success("Profile updated.");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to update profile.");

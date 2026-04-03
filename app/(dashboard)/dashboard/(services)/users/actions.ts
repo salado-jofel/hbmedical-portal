@@ -75,6 +75,9 @@ export async function getUsers(filters?: {
 
     const fac = Array.isArray(p.facility) ? p.facility[0] : p.facility;
 
+    const isConfirmed = !!authUser?.email_confirmed_at;
+    const status = isBanned ? "inactive" : !isConfirmed ? "pending" : "active";
+
     return {
       id: p.id,
       first_name: p.first_name ?? "",
@@ -83,6 +86,7 @@ export async function getUsers(filters?: {
       role: p.role,
       created_at: p.created_at ?? "",
       is_active: !isBanned,
+      status,
       facility: fac
         ? { id: fac.id, name: fac.name, status: fac.status ?? null, city: fac.city ?? null, state: fac.state ?? null }
         : null,
@@ -116,8 +120,8 @@ const createUserSchema = z.object({
   first_name: z.string().min(1, "First name is required."),
   last_name: z.string().min(1, "Last name is required."),
   email: z.string().email("Enter a valid email."),
-  role: z.enum(["sales_representative", "support_staff"], {
-    errorMap: () => ({ message: "Select a valid role." }),
+  role: z.enum(["sales_representative", "support_staff"] as const, {
+    error: "Select a valid role.",
   }),
 });
 

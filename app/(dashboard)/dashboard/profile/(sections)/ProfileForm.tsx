@@ -41,7 +41,7 @@ export default function ProfileForm() {
 
     setSaving(true);
     try {
-      await updateProfile(formData);
+      await updateProfile(null, formData);
       dispatch(
         updateProfileInStore({
           first_name: formData.get("first_name") as string,

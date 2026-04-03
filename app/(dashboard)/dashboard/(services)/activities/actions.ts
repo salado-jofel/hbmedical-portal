@@ -78,7 +78,7 @@ export async function createActivity(
 
     const parsed = createActivitySchema.safeParse(raw);
     if (!parsed.success) {
-      return { error: parsed.error.errors[0]?.message ?? "Invalid input.", success: false };
+      return { error: parsed.error.issues[0]?.message ?? "Invalid input.", success: false };
     }
 
     const { data, error } = await supabase
@@ -132,7 +132,7 @@ export async function updateActivity(
 
     const parsed = updateActivitySchema.safeParse(raw);
     if (!parsed.success) {
-      return { error: parsed.error.errors[0]?.message ?? "Invalid input.", success: false };
+      return { error: parsed.error.issues[0]?.message ?? "Invalid input.", success: false };
     }
 
     const { error } = await supabase

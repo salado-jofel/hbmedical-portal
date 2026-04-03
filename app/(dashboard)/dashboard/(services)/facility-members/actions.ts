@@ -94,7 +94,7 @@ export async function updateMemberRole(
     const raw = { role_type: formData.get("role_type") as string };
     const parsed = updateMemberRoleSchema.safeParse(raw);
     if (!parsed.success) {
-      return { error: parsed.error.errors[0]?.message ?? "Invalid role.", success: false };
+      return { error: parsed.error.issues[0]?.message ?? "Invalid role.", success: false };
     }
 
     const { error } = await supabase
