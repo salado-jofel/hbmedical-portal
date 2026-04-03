@@ -8,40 +8,33 @@ import { HBLogo } from "@/app/(components)/HBLogo";
 
 export default function VerifyEmailForm() {
   return (
-    <div className="w-full max-w-md select-none rounded-2xl border p-8 text-center bg-white/8 backdrop-blur-2xl border-white/15 shadow-[0_8px_32px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.06)]">
+    <div className="bg-white rounded-2xl shadow-[0_8px_40px_rgba(0,0,0,0.1)] border border-[#E2E8F0] p-8 w-full max-w-md select-none text-center">
 
       {/* Logo above form */}
-      <div className="relative z-10 mb-8 flex items-center justify-center py-10">
-        <HBLogo variant="dark" size="lg" />
+      <div className="mb-6 flex items-center justify-center">
+        <HBLogo variant="light" size="lg" />
       </div>
 
-      {/* Mail icon — orange ring */}
-      <div
-        className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6"
-        style={{
-          background: "rgba(232,130,26,0.1)",
-          border: "1px solid rgba(232,130,26,0.3)",
-        }}
-      >
-        <MailCheck className="w-9 h-9" style={{ color: "#f5a255" }} />
+      {/* Mail icon */}
+      <div className="w-16 h-16 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-6">
+        <MailCheck className="w-8 h-8 text-emerald-600" />
       </div>
 
-      <h2 className="text-xl font-bold text-white mb-3">
+      <h2 className="text-2xl font-bold text-[#0F172A] mb-3">
         Check your email
       </h2>
 
-      <p className="text-sm mb-8 leading-relaxed" style={{ color: "rgba(255,255,255,0.5)" }}>
-        We've sent a verification link to your email address. Please click the
+      <p className="text-sm text-[#64748B] mb-8 leading-relaxed">
+        We&apos;ve sent a verification link to your email address. Please click the
         link to activate your{" "}
-        <span style={{ color: "#f5a255" }}>HB Medical</span> account.
+        <span className="text-[#15689E] font-medium">HB Medical</span> account.
       </p>
 
       <div className="space-y-4">
-        {/* Back to login — outlined orange */}
         <SubmitButton
           type="button"
           variant="outline"
-          size="lg"
+          size="default"
           cta={
             <Link
               href="/sign-in"
@@ -50,16 +43,11 @@ export default function VerifyEmailForm() {
               Back to login
             </Link>
           }
-          classname="h-12 w-full font-bold transition-all active:scale-95"
-          style={{
-            background: "rgba(232,130,26,0.08)",
-            border: "1px solid rgba(232,130,26,0.35)",
-            color: "#f5a255",
-          }}
+          classname="h-9 w-full font-medium border border-[#E2E8F0] text-[#374151] hover:bg-[#F8FAFC] rounded-lg transition-colors"
         />
 
-        <p className="text-xs" style={{ color: "rgba(255,255,255,0.25)" }}>
-          Didn't receive an email? Check your spam folder or try signing up again.
+        <p className="text-xs text-[#94A3B8]">
+          Didn&apos;t receive an email? Check your spam folder or try signing up again.
         </p>
       </div>
     </div>

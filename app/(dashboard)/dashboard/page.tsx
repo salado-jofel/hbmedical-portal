@@ -20,7 +20,7 @@ export default async function DashboardPage() {
   ).length;
 
   return (
-    <div className="p-4 md:p-8 w-full mx-auto space-y-6 select-none">
+    <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-6 select-none">
       <DashboardHeader title="Dashboard" showGreeting />
       <StatsCards totalOrders={totalOrders} totalRevenue={totalRevenue} activeOrders={activeOrders} />
       <RecentOrdersTable initialOrders={orders} />

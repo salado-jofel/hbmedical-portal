@@ -11,6 +11,7 @@ type UserData = {
   email: string;
   initials: string;
   role: UserRole;
+  isSubRep: boolean;
 };
 
 export default function Providers({
@@ -31,6 +32,7 @@ export default function Providers({
         email: userData.email ?? "",
         initials: userData.initials ?? "",
         role: userData.role ?? null,
+        isSubRep: userData.isSubRep ?? false,
       }),
     );
   }, [dispatch, userData]);

@@ -2,14 +2,11 @@ import { CreateOrderModal } from "../(components)/CreateOrderModal";
 
 export default function Header() {
   return (
-    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-      <div className="space-y-1">
-        <h1 className="text-xl md:text-2xl font-bold text-slate-800">
-          Orders Management
-        </h1>
-        <p className="text-slate-500 text-sm">Track and manage your orders</p>
+    <div className="pb-5 border-b border-[#E2E8F0] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div>
+        <h1 className="text-xl font-semibold text-[#0F172A]">Orders</h1>
+        <p className="text-sm text-[#64748B] mt-1">Track and manage your orders</p>
       </div>
-      {/* Button sits inline on sm+, below title on mobile */}
       <div className="shrink-0">
         <CreateOrderModal />
       </div>

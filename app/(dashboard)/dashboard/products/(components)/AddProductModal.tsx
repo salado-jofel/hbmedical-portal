@@ -109,9 +109,9 @@ export function AddProductModal() {
         />
       </DialogTrigger>
 
-      <DialogContent className="w-[calc(100%-2rem)] sm:max-w-2xl">
+      <DialogContent className="w-[calc(100%-2rem)] sm:max-w-2xl sm:rounded-2xl border border-[#E2E8F0] shadow-[0_20px_60px_rgba(0,0,0,0.12)]">
         <DialogHeader>
-          <DialogTitle className="text-lg font-semibold text-slate-800">
+          <DialogTitle className="text-lg font-semibold text-[#0F172A]">
             Add New Product
           </DialogTitle>
         </DialogHeader>
@@ -119,7 +119,7 @@ export function AddProductModal() {
         <form onSubmit={handleSubmit} className="space-y-4 pt-2">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+              <label className="flex items-center gap-2 text-sm font-medium text-[#374151]">
                 <Hash className="w-4 h-4 text-[#15689E]" />
                 SKU
               </label>
@@ -134,7 +134,7 @@ export function AddProductModal() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+              <label className="flex items-center gap-2 text-sm font-medium text-[#374151]">
                 <Package className="w-4 h-4 text-[#15689E]" />
                 Product Name
               </label>
@@ -149,7 +149,7 @@ export function AddProductModal() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+              <label className="flex items-center gap-2 text-sm font-medium text-[#374151]">
                 <Tag className="w-4 h-4 text-[#15689E]" />
                 Category
               </label>
@@ -163,7 +163,7 @@ export function AddProductModal() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+              <label className="flex items-center gap-2 text-sm font-medium text-[#374151]">
                 <DollarSign className="w-4 h-4 text-[#15689E]" />
                 Unit Price
               </label>
@@ -181,7 +181,7 @@ export function AddProductModal() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+              <label className="flex items-center gap-2 text-sm font-medium text-[#374151]">
                 <ArrowUpDown className="w-4 h-4 text-[#15689E]" />
                 Sort Order
               </label>
@@ -198,7 +198,7 @@ export function AddProductModal() {
             </div>
 
             <div className="flex items-end">
-              <label className="flex items-center gap-2 text-sm text-slate-700">
+              <label className="flex items-center gap-2 text-sm text-[#374151]">
                 <input
                   type="checkbox"
                   checked={isActive}
@@ -212,7 +212,7 @@ export function AddProductModal() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+            <label className="flex items-center gap-2 text-sm font-medium text-[#374151]">
               <FileText className="w-4 h-4 text-[#15689E]" />
               Description
             </label>
@@ -223,7 +223,7 @@ export function AddProductModal() {
               rows={4}
               disabled={isSubmitting}
               placeholder="Optional product description..."
-              className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400 disabled:opacity-50"
+              className="w-full rounded-md border border-[#E2E8F0] px-3 py-2 text-sm text-[#0F172A] outline-none focus:border-[#15689E] focus:ring-2 focus:ring-[#15689E]/10 disabled:opacity-50"
             />
           </div>
 
@@ -234,7 +234,7 @@ export function AddProductModal() {
               size="default"
               onClick={() => handleOpenChange(false)}
               disabled={isSubmitting}
-              classname="w-full sm:w-auto text-slate-600 cursor-pointer"
+              classname="w-full sm:w-auto border-[#E2E8F0] text-[#374151] hover:bg-[#F8FAFC] cursor-pointer"
               cta={<span>Cancel</span>}
             />
             <SubmitButton

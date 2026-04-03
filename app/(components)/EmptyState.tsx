@@ -14,11 +14,11 @@ export function EmptyState({
   className = "py-16",
 }: EmptyStateProps) {
   return (
-    <div className={`flex flex-col items-center justify-center ${className}`}>
-      {icon}
-      <p className="text-sm font-medium text-slate-400">{message}</p>
+    <div className={`flex flex-col items-center justify-center gap-3 text-center ${className}`}>
+      <div className="text-[#E2E8F0]">{icon}</div>
+      <p className="text-sm font-medium text-[#94A3B8]">{message}</p>
       {description && (
-        <p className="text-xs text-slate-300 mt-1">{description}</p>
+        <p className="text-xs text-[#94A3B8] mt-1">{description}</p>
       )}
     </div>
   );
