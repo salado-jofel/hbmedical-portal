@@ -9,7 +9,7 @@ export function FulfillmentBadge({
 }) {
   if (delivered) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-700">
+      <span className="inline-flex items-center gap-1 rounded-full bg-[#EFF6FF] px-2 py-0.5 text-xs font-medium text-[#15689E]">
         <BadgeCheck className="h-3.5 w-3.5" />
         Delivered
       </span>
@@ -17,7 +17,7 @@ export function FulfillmentBadge({
   }
 
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+    <span className="inline-flex items-center gap-1 rounded-full bg-[#F1F5F9] px-2 py-0.5 text-xs font-medium text-[#64748B]">
       <Truck className="h-3.5 w-3.5" />
       {label}
     </span>

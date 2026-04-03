@@ -2,6 +2,8 @@ import { getUserData } from "@/app/(dashboard)/dashboard/(services)/actions";
 import { createServerClient } from "@supabase/ssr";
 import { jwtDecode } from "jwt-decode";
 import { type NextRequest, NextResponse } from "next/server";
+import { isSalesRep } from "@/utils/helpers/role";
+import type { UserRole } from "@/utils/helpers/role";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -114,6 +116,30 @@ export async function updateSession(request: NextRequest) {
 
   if (user) {
     const userRole = userData?.role;
+
+    // ── Setup guard ───────────────────────────────────────────────────────────
+    // Sales reps who haven't completed facility setup must finish before
+    // accessing any other route.
+    if (isSalesRep(userRole as UserRole)) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("has_completed_setup")
+        .eq("id", user.id)
+        .single();
+
+      const needsSetup = profile?.has_completed_setup === false;
+      const isSetupPath = currentPath.startsWith("/onboarding/setup");
+      const isAuthPath =
+        currentPath === "/sign-in" ||
+        currentPath === "/sign-out" ||
+        currentPath.startsWith("/api/");
+
+      if (needsSetup && !isSetupPath && !isAuthPath) {
+        const url = request.nextUrl.clone();
+        url.pathname = "/onboarding/setup";
+        return NextResponse.redirect(url);
+      }
+    }
 
     const isAdmin = userRole === "admin";
     // Admin Restricted Routes

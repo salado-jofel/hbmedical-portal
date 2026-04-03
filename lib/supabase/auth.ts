@@ -43,3 +43,16 @@ export async function requireAdminOrThrow(
     throw new Error("You do not have permission to perform this action.");
   }
 }
+
+export async function requireSupportOrAdminOrThrow(
+  supabase: SupabaseServerClient,
+): Promise<void> {
+  const role = await getUserRole(supabase);
+  if (role !== "admin" && role !== "support_staff") {
+    throw new Error("You do not have permission to perform this action.");
+  }
+}
+
+export function isClinicSide(role: UserRole): boolean {
+  return role === "clinical_provider" || role === "clinical_staff";
+}

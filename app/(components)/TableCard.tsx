@@ -19,10 +19,10 @@ export function TableCard({
   footer,
 }: TableCardProps) {
   return (
-    <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+    <div className="bg-white rounded-xl border border-[#E2E8F0] overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[#E2E8F0] bg-[#F8FAFC]">
         <div>
-          <p className="text-sm font-semibold text-slate-700">{title}</p>
+          <p className="text-sm font-semibold text-[#0F172A]">{title}</p>
           {countLabel && (
             <p className="text-xs text-[#15689E] mt-0.5">{countLabel}</p>
           )}
@@ -30,7 +30,7 @@ export function TableCard({
         {onAdd && addLabel && (
           <button
             onClick={onAdd}
-            className="flex items-center gap-1.5 bg-[#15689E] hover:bg-[#0d4a72] text-white text-xs font-semibold px-3.5 py-2 rounded-lg transition-colors"
+            className="flex items-center gap-1.5 bg-[#15689E] hover:bg-[#125d8e] text-white text-xs font-medium h-9 px-4 rounded-lg transition-colors shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
           >
             <Plus className="w-3.5 h-3.5" />
             {addLabel}
@@ -41,7 +41,7 @@ export function TableCard({
       {children}
 
       {footer && (
-        <div className="px-5 py-3 border-t border-slate-100 text-xs text-[#15689E]">
+        <div className="px-4 py-3 border-t border-[#E2E8F0] text-xs text-[#15689E]">
           {footer}
         </div>
       )}

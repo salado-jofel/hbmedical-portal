@@ -60,8 +60,8 @@ export function MaterialCard({
   }
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_4px_14px_rgba(15,23,42,0.08)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_10px_24px_rgba(15,23,42,0.12)]">
-      <div className="relative min-h-[144px] bg-gradient-to-br from-[#1f6da1] to-[#155b8f] px-5 pb-5 pt-5">
+    <div className="overflow-hidden rounded-xl border border-[#E2E8F0] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)] transition-all duration-150 hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] hover:border-[#15689E]/20">
+      <div className="relative min-h-[144px] bg-gradient-to-br from-[#15689E] to-[#125d8e] px-5 pb-5 pt-5">
         <div className="absolute right-0 top-0 h-20 w-20 rounded-bl-[999px] bg-white/8" />
         <div className="absolute right-5 top-5 z-10 flex max-w-[65%] justify-end">
           {(prefix || label) && (
@@ -101,7 +101,7 @@ export function MaterialCard({
           type="button"
           onClick={handleDownloadClick}
           disabled={isDownloading}
-          className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#1f6da1] px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#155b8f] disabled:cursor-not-allowed disabled:opacity-70"
+          className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#15689E] px-4 h-9 text-sm font-medium text-white shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors hover:bg-[#125d8e] disabled:cursor-not-allowed disabled:opacity-70"
         >
           <Download className="h-4 w-4" />
           <span>{isDownloading ? "Preparing..." : "Download"}</span>

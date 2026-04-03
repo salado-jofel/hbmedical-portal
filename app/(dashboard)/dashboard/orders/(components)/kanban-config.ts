@@ -8,14 +8,14 @@ export const STATUS_CONFIG: Record<
   { badge: string; dot: string; tab: string }
 > = {
   "New Orders": {
-    badge: "bg-[#f5a255]/15 text-[#f5a255]",
-    dot: "bg-[#f5a255]",
-    tab: "text-[#f5a255]",
+    badge: "bg-amber-50 text-amber-700",
+    dot: "bg-[#E8821A]",
+    tab: "text-[#E8821A]",
   },
   Delivered: {
-    badge: "bg-slate-100 text-slate-500",
-    dot: "bg-slate-400",
-    tab: "text-slate-500",
+    badge: "bg-[#F1F5F9] text-[#64748B]",
+    dot: "bg-[#94A3B8]",
+    tab: "text-[#64748B]",
   },
 };
 

@@ -1,0 +1,80 @@
+"use client";
+
+import { useState } from "react";
+import { User, Users, ShieldCheck } from "lucide-react";
+import { cn } from "@/utils/utils";
+import { ProfileTab } from "./ProfileTab";
+import { TeamTab } from "./TeamTab";
+import { CredentialsTab } from "./CredentialsTab";
+import type { Profile } from "@/utils/interfaces/profiles";
+import type { IFacilityMember } from "@/utils/interfaces/facility-members";
+import type { IProviderCredentials } from "@/utils/interfaces/provider-credentials";
+
+type TabKey = "profile" | "team" | "credentials";
+
+interface Tab {
+  key: TabKey;
+  label: string;
+  icon: React.ElementType;
+}
+
+interface SettingsClientProps {
+  profile: Profile;
+  members: IFacilityMember[];
+  credentials: IProviderCredentials | null;
+  canManageTeam: boolean;
+  showCredentials: boolean;
+}
+
+export function SettingsClient({
+  profile,
+  members,
+  credentials,
+  canManageTeam,
+  showCredentials,
+}: SettingsClientProps) {
+  const tabs: Tab[] = [
+    { key: "profile", label: "Profile", icon: User },
+    { key: "team", label: "Team", icon: Users },
+    ...(showCredentials
+      ? [{ key: "credentials" as TabKey, label: "Credentials", icon: ShieldCheck }]
+      : []),
+  ];
+
+  const [active, setActive] = useState<TabKey>("profile");
+
+  return (
+    <div className="space-y-6">
+      {/* Tab bar */}
+      <div className="flex gap-1 bg-slate-100 rounded-xl p-1 w-fit">
+        {tabs.map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            onClick={() => setActive(tab.key)}
+            className={cn(
+              "flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all",
+              active === tab.key
+                ? "bg-white text-[#15689E] shadow-sm"
+                : "text-slate-500 hover:text-slate-700",
+            )}
+          >
+            <tab.icon className="w-4 h-4" />
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab content */}
+      <div className="bg-white border border-slate-200 rounded-xl p-5">
+        {active === "profile" && <ProfileTab profile={profile} />}
+        {active === "team" && (
+          <TeamTab members={members} canManage={canManageTeam} />
+        )}
+        {active === "credentials" && showCredentials && (
+          <CredentialsTab credentials={credentials} />
+        )}
+      </div>
+    </div>
+  );
+}

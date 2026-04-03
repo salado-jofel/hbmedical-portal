@@ -25,39 +25,30 @@ export default function ForgotPasswordForm() {
 
   if (state?.success) {
     return (
-      <div className="w-full max-w-md select-none rounded-2xl border p-8 text-center bg-white/8 backdrop-blur-2xl border-white/15 shadow-[0_8px_32px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.06)]">
+      <div className="bg-white rounded-2xl shadow-[0_8px_40px_rgba(0,0,0,0.1)] border border-[#E2E8F0] p-8 w-full max-w-md select-none text-center">
         {/* Logo */}
-        <div className="relative z-10 mb-8 flex items-center justify-center py-10">
-          <HBLogo variant="dark" size="lg" />
+        <div className="mb-6 flex items-center justify-center">
+          <HBLogo variant="light" size="lg" />
         </div>
 
         {/* Mail icon */}
-        <div
-          className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6"
-          style={{
-            background: "rgba(232,130,26,0.1)",
-            border: "1px solid rgba(232,130,26,0.3)",
-          }}
-        >
-          <MailCheck className="w-9 h-9" style={{ color: "#f5a255" }} />
+        <div className="w-16 h-16 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-6">
+          <MailCheck className="w-8 h-8 text-emerald-600" />
         </div>
 
-        <h2 className="text-xl font-bold text-white mb-3">Check your email</h2>
+        <h2 className="text-2xl font-bold text-[#0F172A] mb-3">Check your email</h2>
 
-        <p
-          className="text-sm mb-8 leading-relaxed"
-          style={{ color: "rgba(255,255,255,0.5)" }}
-        >
+        <p className="text-sm text-[#64748B] mb-8 leading-relaxed">
           We&apos;ve sent a password reset link to your email. Click the link to
           set a new password for your{" "}
-          <span style={{ color: "#f5a255" }}>HB Medical</span> account.
+          <span className="text-[#15689E] font-medium">HB Medical</span> account.
         </p>
 
         <div className="space-y-4">
           <SubmitButton
             type="button"
             variant="outline"
-            size="lg"
+            size="default"
             cta={
               <Link
                 href="/sign-in"
@@ -66,15 +57,10 @@ export default function ForgotPasswordForm() {
                 Back to login
               </Link>
             }
-            classname="h-12 w-full font-bold transition-all active:scale-95"
-            style={{
-              background: "rgba(232,130,26,0.08)",
-              border: "1px solid rgba(232,130,26,0.35)",
-              color: "#f5a255",
-            }}
+            classname="h-9 w-full font-medium border border-[#E2E8F0] text-[#374151] hover:bg-[#F8FAFC] rounded-lg transition-colors"
           />
 
-          <p className="text-xs" style={{ color: "rgba(255,255,255,0.25)" }}>
+          <p className="text-xs text-[#94A3B8]">
             Didn&apos;t receive an email? Check your spam folder or try again.
           </p>
         </div>
@@ -83,25 +69,23 @@ export default function ForgotPasswordForm() {
   }
 
   return (
-    <div className="w-full max-w-md select-none rounded-2xl border p-8 md:p-10 bg-white/8 backdrop-blur-2xl border-white/15 shadow-[0_8px_32px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.06)]">
+    <div className="bg-white rounded-2xl shadow-[0_8px_40px_rgba(0,0,0,0.1)] border border-[#E2E8F0] p-8 w-full max-w-md select-none">
       {/* Logo */}
-      <div className="relative z-10 mb-8 flex items-center justify-center py-10">
-        <HBLogo variant="dark" size="lg" />
+      <div className="mb-6 flex items-center justify-center">
+        <HBLogo variant="light" size="lg" />
       </div>
 
-      <div className="mb-6">
-        <h2 className="text-xl font-bold text-white mb-2">Forgot password?</h2>
-        <p className="text-sm" style={{ color: "rgba(255,255,255,0.5)" }}>
-          Enter your email and we&apos;ll send you a reset link.
-        </p>
-      </div>
+      <h2 className="text-2xl font-bold text-[#0F172A] text-center">Forgot password?</h2>
+      <p className="text-sm text-[#64748B] text-center mt-1.5 mb-8">
+        Enter your email and we&apos;ll send you a reset link.
+      </p>
 
       <form action={formAction} className="space-y-5">
         <AuthField
           id="email"
           name="email"
           label="Email"
-          icon={<Mail className="w-4 h-4" style={{ color: "#f5a255" }} />}
+          icon={<Mail className="w-4 h-4" />}
           type="email"
           placeholder="Enter your email"
           value={email}
@@ -114,23 +98,13 @@ export default function ForgotPasswordForm() {
 
         <div className="space-y-3 pt-1">
           <SubmitButton
-            classname="h-12 w-full font-bold transition-all active:scale-95 text-white"
-            style={{
-              background: "linear-gradient(135deg, #e8821a, #d4741a)",
-              boxShadow: isFormValid
-                ? "0 4px 15px rgba(232,130,26,0.35)"
-                : "none",
-              ...(!isFormValid && {
-                opacity: 0.45,
-                cursor: "not-allowed",
-              }),
-            }}
+            classname="h-9 w-full font-medium bg-[#15689E] hover:bg-[#125d8e] text-white rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             isPending={isPending}
             disabled={!isFormValid}
             type="submit"
             cta="Send Reset Link"
             variant="default"
-            size="lg"
+            size="default"
             isPendingMesssage="Sending..."
           />
         </div>
@@ -140,12 +114,7 @@ export default function ForgotPasswordForm() {
       <div className="mt-8 text-center">
         <Link
           href="/sign-in"
-          className="inline-flex items-center gap-2 text-sm font-medium transition-colors"
-          style={{ color: "rgba(255,255,255,0.35)" }}
-          onMouseEnter={(e) => (e.currentTarget.style.color = "#f5a255")}
-          onMouseLeave={(e) =>
-            (e.currentTarget.style.color = "rgba(255,255,255,0.35)")
-          }
+          className="inline-flex items-center gap-2 text-sm font-medium text-[#64748B] hover:text-[#15689E] transition-colors"
         >
           <ArrowLeft className="w-4 h-4" /> Back to Sign In
         </Link>

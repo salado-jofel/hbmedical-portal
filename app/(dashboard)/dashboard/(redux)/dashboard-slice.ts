@@ -10,6 +10,7 @@ const dashboardSlice = createSlice({
       state.email = action.payload.email;
       state.initials = action.payload.initials;
       state.role = action.payload.role;
+      state.isSubRep = action.payload.isSubRep;
     },
     openSidebar(state) {
       state.isSidebarOpen = true;

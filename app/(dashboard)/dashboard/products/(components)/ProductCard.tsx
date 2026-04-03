@@ -75,10 +75,10 @@ export function ProductCard({ product }: { product: Product }) {
         onConfirm={handleConfirmDelete}
       />
 
-      <div className="p-4 border-b border-slate-100 last:border-0">
+      <div className="p-4 border-b border-[#F1F5F9] last:border-0">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-3 flex-1 min-w-0">
-            <div className="w-9 h-9 rounded-lg bg-[#15689E]/10 flex items-center justify-center shrink-0 mt-0.5">
+            <div className="w-9 h-9 rounded-lg bg-[#EFF6FF] flex items-center justify-center shrink-0 mt-0.5">
               <Package className="w-4 h-4 text-[#15689E]" />
             </div>
 
@@ -109,21 +109,21 @@ export function ProductCard({ product }: { product: Product }) {
                 </div>
               ) : (
                 <>
-                  <p className="text-sm font-semibold text-slate-800 truncate">
+                  <p className="text-sm font-semibold text-[#0F172A] truncate">
                     {product.name}
                   </p>
-                  <p className="text-xs text-slate-400 truncate">
+                  <p className="text-xs text-[#94A3B8] truncate">
                     {product.sku}
                   </p>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-medium text-[#f5a255]">
+                    <span className="text-sm font-medium text-[#E8821A]">
                       ${Number(product.unit_price).toFixed(2)}
                     </span>
                     <span
                       className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${
                         product.is_active
                           ? "bg-emerald-50 text-emerald-700"
-                          : "bg-slate-100 text-slate-600"
+                          : "bg-[#F1F5F9] text-[#64748B]"
                       }`}
                     >
                       {product.is_active ? "Active" : "Inactive"}
@@ -146,7 +146,7 @@ export function ProductCard({ product }: { product: Product }) {
                     setIsEditing(false);
                   }}
                   disabled={isSaving}
-                  className="p-1.5 text-slate-400 hover:text-slate-600 rounded cursor-pointer"
+                  className="p-1.5 text-[#94A3B8] hover:text-[#64748B] rounded cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -168,7 +168,7 @@ export function ProductCard({ product }: { product: Product }) {
                   type="button"
                   onClick={() => setIsEditing(true)}
                   disabled={isDeleting}
-                  className="p-1.5 text-slate-300 hover:text-[#15689E] rounded cursor-pointer"
+                  className="p-1.5 text-[#94A3B8] hover:text-[#15689E] rounded cursor-pointer"
                 >
                   <Pencil className="w-4 h-4" />
                 </button>
@@ -177,7 +177,7 @@ export function ProductCard({ product }: { product: Product }) {
                   type="button"
                   onClick={() => setConfirmOpen(true)}
                   disabled={isDeleting}
-                  className="p-1.5 text-slate-300 hover:text-red-500 rounded cursor-pointer"
+                  className="p-1.5 text-[#94A3B8] hover:text-red-600 rounded cursor-pointer"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>

@@ -32,13 +32,12 @@ export function AuthField({
   required,
 }: AuthFieldProps) {
   return (
-    <div className="space-y-2">
+    <div className="space-y-1.5">
       <Label
         htmlFor={id}
-        className="flex items-center gap-2 text-sm font-medium"
-        style={{ color: "rgba(255,255,255,0.7)" }}
+        className="flex items-center gap-2 text-xs font-medium text-[#374151] mb-1.5"
       >
-        {icon && icon}
+        {icon && <span className="text-[#15689E]">{icon}</span>}
         {label}
       </Label>
       <div className="relative">
@@ -50,18 +49,10 @@ export function AuthField({
           required={required}
           {...(value !== undefined && { value })}
           {...(onChange !== undefined && { onChange })}
-          className={`${height} text-white placeholder:text-white/25 focus-visible:ring-0 focus-visible:ring-offset-0`}
+          className={`${height} h-9 text-sm text-[#0F172A] placeholder:text-[#94A3B8] border border-[#E2E8F0] bg-white rounded-lg px-3 focus-visible:ring-2 focus-visible:ring-[#15689E]/10 focus-visible:border-[#15689E] transition-colors`}
           style={{
-            background: "rgba(255,255,255,0.06)",
-            border: "1px solid rgba(0,212,200,0.2)",
             paddingRight: rightElement ? "2.5rem" : undefined,
           }}
-          onFocus={(e) =>
-            (e.currentTarget.style.borderColor = "rgba(0,212,200,0.6)")
-          }
-          onBlur={(e) =>
-            (e.currentTarget.style.borderColor = "rgba(0,212,200,0.2)")
-          }
         />
         {rightElement && (
           <div className="absolute right-3 top-1/2 -translate-y-1/2">
