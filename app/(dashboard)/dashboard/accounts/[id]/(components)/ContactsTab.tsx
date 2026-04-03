@@ -22,14 +22,13 @@ const PREFERRED_LABELS: Record<ContactPreferredContact, string> = {
 
 interface ContactsTabProps {
   facilityId: string;
-  isAdmin: boolean;
-  isAssignedRep: boolean;
+  canEdit: boolean;
 }
 
-export function ContactsTab({ facilityId, isAdmin, isAssignedRep }: ContactsTabProps) {
+export function ContactsTab({ facilityId, canEdit }: ContactsTabProps) {
   const dispatch = useAppDispatch();
   const contacts = useAppSelector((s) => s.contacts.items);
-  const canManage = isAdmin || isAssignedRep;
+  const canManage = canEdit;
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);

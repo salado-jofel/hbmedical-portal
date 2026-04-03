@@ -6,6 +6,7 @@ export interface UserState {
   email: string;
   initials: string;
   role: UserRole;
+  isSubRep: boolean;
   isSidebarOpen: boolean;
 }
 
@@ -14,5 +15,6 @@ export const initialState: UserState = {
   email: "",
   initials: "",
   role: null,
+  isSubRep: false,
   isSidebarOpen: false,
 };

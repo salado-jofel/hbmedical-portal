@@ -42,7 +42,7 @@ export interface ITask {
   created_by: string;
   assigned_to: string | null;
   title: string;
-  due_date: string | null; // YYYY-MM-DD
+  due_date: string; // YYYY-MM-DD
   priority: TaskPriority;
   status: TaskStatus;
   notes: string | null;
@@ -70,7 +70,7 @@ export interface ITaskFormState {
 
 export const createTaskSchema = z.object({
   title: z.string().trim().min(1, "Title is required."),
-  due_date: z.string().trim().nullable().optional().or(z.literal("")),
+  due_date: z.string().trim().min(1, "Due date is required."),
   priority: taskPrioritySchema.default("medium"),
   assigned_to: z.string().uuid().nullable().optional().or(z.literal("")),
   facility_id: z.string().uuid().nullable().optional().or(z.literal("")),
@@ -94,7 +94,7 @@ export type RawTaskRecord = {
   created_by: string;
   assigned_to: string | null;
   title: string;
-  due_date: string | null;
+  due_date: string;
   priority: string;
   status: string;
   notes: string | null;
@@ -156,10 +156,6 @@ export function groupTasksByDue(tasks: ITask[]): Record<TaskGroup, ITask[]> {
   for (const task of tasks) {
     if (task.status === "done") {
       groups.done.push(task);
-      continue;
-    }
-    if (!task.due_date) {
-      groups.upcoming.push(task);
       continue;
     }
     const due = new Date(task.due_date + "T00:00:00");

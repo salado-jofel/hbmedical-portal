@@ -1,21 +1,21 @@
 "use client";
 
 import { useState } from "react";
-import { Copy, Check, Trash2, Clock } from "lucide-react";
+import { Copy, Check, Trash2, Clock, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/utils/utils";
-import { deleteInviteToken } from "@/app/(dashboard)/dashboard/onboarding/(services)/actions";
 import { ROLE_LABELS } from "@/utils/helpers/role";
 import type { IInviteToken } from "@/utils/interfaces/invite-tokens";
 
 interface InviteTokenCardProps {
   token: IInviteToken;
   baseUrl: string;
+  onDeleteClick: () => void;
+  isDeleting: boolean;
 }
 
-export function InviteTokenCard({ token, baseUrl }: InviteTokenCardProps) {
+export function InviteTokenCard({ token, baseUrl, onDeleteClick, isDeleting }: InviteTokenCardProps) {
   const [copied, setCopied] = useState(false);
-  const [deleting, setDeleting] = useState(false);
 
   const inviteUrl = `${baseUrl}/invite/${token.token}`;
   const isUsed = token.used_at !== null;
@@ -25,15 +25,6 @@ export function InviteTokenCard({ token, baseUrl }: InviteTokenCardProps) {
     navigator.clipboard.writeText(inviteUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  }
-
-  async function handleDelete() {
-    setDeleting(true);
-    try {
-      await deleteInviteToken(token.id);
-    } finally {
-      setDeleting(false);
-    }
   }
 
   return (
@@ -95,12 +86,15 @@ export function InviteTokenCard({ token, baseUrl }: InviteTokenCardProps) {
           )}
           <button
             type="button"
-            onClick={handleDelete}
-            disabled={deleting}
-            className="w-7 h-7 flex items-center justify-center rounded-md text-[#94A3B8] hover:text-red-600 hover:bg-red-50 transition-colors"
+            onClick={onDeleteClick}
+            disabled={isDeleting}
+            className="w-7 h-7 flex items-center justify-center rounded-md text-[#94A3B8] hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-40"
             title="Delete token"
           >
-            <Trash2 className="w-3.5 h-3.5" />
+            {isDeleting
+              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              : <Trash2 className="w-3.5 h-3.5" />
+            }
           </button>
         </div>
       </div>

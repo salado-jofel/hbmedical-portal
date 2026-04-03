@@ -2,12 +2,14 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole, getCurrentUserOrThrow } from "@/lib/supabase/auth";
-import { isSalesRep, isAdmin } from "@/utils/helpers/role";
+import { isSalesRep, isAdmin, isClinicalProvider } from "@/utils/helpers/role";
 import {
   getMyInviteTokens,
   getSalesRepsWithFacilities,
+  getMySubReps,
   type RepWithFacility,
 } from "@/app/(dashboard)/dashboard/onboarding/(services)/actions";
+import type { ISubRep } from "@/utils/interfaces/sub-reps";
 import Providers from "./(sections)/Providers";
 import { OnboardingPageClient } from "./(sections)/OnboardingPageClient";
 
@@ -18,7 +20,7 @@ export default async function OnboardingPage() {
   const role = await getUserRole(supabase);
 
   const adminUser = isAdmin(role);
-  if (!isSalesRep(role) && !adminUser) redirect("/dashboard");
+  if (!isSalesRep(role) && !adminUser && !isClinicalProvider(role)) redirect("/dashboard");
 
   const headersList = await headers();
   const host = headersList.get("host") ?? "localhost:3000";
@@ -37,10 +39,14 @@ export default async function OnboardingPage() {
     hasCompletedSetup = profile?.has_completed_setup ?? false;
   }
 
-  const [tokens, repsWithFacilities] = await Promise.all([
+  const [tokens, repsWithFacilities, subReps] = await Promise.all([
     getMyInviteTokens(),
     adminUser ? getSalesRepsWithFacilities() : Promise.resolve([] as RepWithFacility[]),
+    isSalesRep(role) ? getMySubReps() : Promise.resolve([] as ISubRep[]),
   ]);
+
+  const isSalesRepUser = isSalesRep(role);
+  const isClinicalProviderUser = isClinicalProvider(role);
 
   return (
     <Providers tokens={tokens}>
@@ -49,7 +55,10 @@ export default async function OnboardingPage() {
         baseUrl={baseUrl}
         hasCompletedSetup={hasCompletedSetup}
         isAdmin={adminUser}
+        isSalesRep={isSalesRepUser}
+        isClinicalProvider={isClinicalProviderUser}
         repsWithFacilities={repsWithFacilities}
+        subReps={subReps}
       />
     </Providers>
   );

@@ -87,7 +87,7 @@ export async function createTask(
 
     const raw = {
       title: formData.get("title") as string,
-      due_date: toNullable(formData.get("due_date") as string),
+      due_date: (formData.get("due_date") as string) ?? "",
       priority: formData.get("priority") as string || "medium",
       assigned_to: toNullable(formData.get("assigned_to") as string),
       facility_id: toNullable(formData.get("facility_id") as string),
@@ -104,7 +104,7 @@ export async function createTask(
 
     const { error } = await supabase.from(TASKS_TABLE).insert({
       title: parsed.data.title,
-      due_date: parsed.data.due_date || null,
+      due_date: parsed.data.due_date,
       priority: parsed.data.priority,
       status: "open",
       created_by: user.id,
@@ -144,7 +144,7 @@ export async function updateTask(
 
     const raw = {
       title: formData.get("title") as string,
-      due_date: toNullable(formData.get("due_date") as string),
+      due_date: (formData.get("due_date") as string) ?? "",
       priority: formData.get("priority") as string || "medium",
       assigned_to: toNullable(formData.get("assigned_to") as string),
       facility_id: toNullable(formData.get("facility_id") as string),
@@ -163,7 +163,7 @@ export async function updateTask(
       .from(TASKS_TABLE)
       .update({
         title: parsed.data.title,
-        due_date: parsed.data.due_date || null,
+        due_date: parsed.data.due_date,
         priority: parsed.data.priority,
         assigned_to: assignedTo,
         facility_id: parsed.data.facility_id || null,

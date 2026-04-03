@@ -44,7 +44,7 @@ function groupOrdersByBoardStatus(
   );
 }
 
-export function OrdersPageClient() {
+export function OrdersPageClient({ canSign }: { canSign: boolean }) {
   const router = useRouter();
   const orders = useAppSelector((state) => state.orders.items);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -110,7 +110,7 @@ export function OrdersPageClient() {
     <div className="space-y-6">
       <Header />
       <div className="md:hidden">
-        <MobileKanbanTabs grouped={grouped} />
+        <MobileKanbanTabs grouped={grouped} canSign={canSign} />
       </div>
 
       <div className="hidden gap-4 overflow-x-auto pb-2 md:flex">
@@ -119,6 +119,7 @@ export function OrdersPageClient() {
             key={status}
             status={status}
             orders={grouped[status] ?? []}
+            canSign={canSign}
           />
         ))}
       </div>

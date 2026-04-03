@@ -7,9 +7,10 @@ interface SidebarUserCardProps {
   email?: string | null;
   initials?: string | null;
   role?: string | null;
+  isSubRep?: boolean;
 }
 
-function getRoleBadge(role: string) {
+function getRoleBadge(role: string, isSubRep?: boolean) {
   if (role === "admin") {
     return {
       className: "bg-[#EFF6FF] text-[#15689E]",
@@ -21,7 +22,7 @@ function getRoleBadge(role: string) {
     return {
       className: "bg-orange-50 text-[#E8821A]",
       icon: <BriefcaseMedical className="w-3 h-3" />,
-      label: "SALES REP",
+      label: isSubRep ? "SUB SALES REP" : "SALES REP",
     };
   }
   if (role === "support_staff") {
@@ -57,6 +58,7 @@ export function SidebarUserCard({
   email,
   initials,
   role,
+  isSubRep,
 }: SidebarUserCardProps) {
   return (
     <div className="px-3 py-3 border-t border-[#E2E8F0] mt-auto flex items-center gap-3">
@@ -75,7 +77,7 @@ export function SidebarUserCard({
         </span>
 
         {role != null && (() => {
-          const badge = getRoleBadge(role);
+          const badge = getRoleBadge(role, isSubRep);
           return (
             <div
               className={`inline-flex items-center gap-1 mt-0.5 w-fit px-1.5 py-0.5 rounded-sm text-[9px] font-bold uppercase tracking-wide ${badge.className}`}

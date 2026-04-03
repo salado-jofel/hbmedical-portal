@@ -9,9 +9,11 @@ import { STATUS_CONFIG, type BoardStatus } from "../(components)/kanban-config";
 export function KanbanColumn({
   status,
   orders,
+  canSign,
 }: {
   status: BoardStatus;
   orders: DashboardOrder[];
+  canSign: boolean;
 }) {
   const config = STATUS_CONFIG[status];
 
@@ -35,7 +37,7 @@ export function KanbanColumn({
             message="No orders"
           />
         ) : (
-          orders.map((order) => <OrderCard key={order.id} order={order} />)
+          orders.map((order) => <OrderCard key={order.id} order={order} canSign={canSign} />)
         )}
       </div>
     </div>

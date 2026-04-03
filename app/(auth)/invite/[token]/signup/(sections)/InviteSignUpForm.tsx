@@ -2,11 +2,20 @@
 
 import { useActionState, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronRight, ChevronLeft, UserCheck, User, Lock, FileCheck, Building2, Eye, EyeOff, Loader2 } from "lucide-react";
+import { ChevronRight, ChevronLeft, UserCheck, User, Lock, FileCheck, Building2, Loader2 } from "lucide-react";
 import { HBLogo } from "@/app/(components)/HBLogo";
 import { AuthField } from "@/app/(components)/AuthField";
+import { AuthCard } from "@/app/(components)/AuthCard";
+import { PasswordInput } from "@/app/(components)/PasswordInput";
 import { ROLE_LABELS } from "@/utils/helpers/role";
 import { PhoneInputField } from "@/app/(components)/PhoneInputField";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { inviteSignUp, type InviteSignUpState } from "../(services)/actions";
 import type { InviteTokenRole } from "@/utils/interfaces/invite-tokens";
 
@@ -17,6 +26,18 @@ interface InviteSignUpFormProps {
   facilityName: string | null;
   invitedBy: string;
 }
+
+const CREDENTIAL_OPTIONS = [
+  { value: "MD", label: "MD — Medical Doctor" },
+  { value: "DO", label: "DO — Doctor of Osteopathic Medicine" },
+  { value: "ARNP", label: "ARNP — Advanced Registered Nurse Practitioner" },
+  { value: "PA", label: "PA — Physician Assistant" },
+  { value: "RN", label: "RN — Registered Nurse" },
+  { value: "CCA", label: "CCA — Certified Coding Associate" },
+  { value: "LPN", label: "LPN — Licensed Practical Nurse" },
+  { value: "Admin", label: "Admin" },
+  { value: "Other", label: "Other" },
+];
 
 const slideVariants = {
   enter: (dir: number) => ({
@@ -51,7 +72,7 @@ export default function InviteSignUpForm({
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  // Office info state (only used when facilityId is null)
+  // Office info state — only used for clinical_provider (never for sales_rep or clinical_staff)
   const [officeName, setOfficeName] = useState("");
   const [officePhone, setOfficePhone] = useState("");
   const [officeAddress, setOfficeAddress] = useState("");
@@ -61,37 +82,38 @@ export default function InviteSignUpForm({
   // Security state
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
-  // PIN state (clinical_provider only)
+  // PIN + NPI + credential state (clinical_provider only)
   const needsPin = role === "clinical_provider";
   const [pin, setPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
-  const [showPin, setShowPin] = useState(false);
-  const [showConfirmPin, setShowConfirmPin] = useState(false);
+  const [npiNumber, setNpiNumber] = useState("");
+  const [credential, setCredential] = useState("");
   // Agreement state
   const [agreed, setAgreed] = useState(false);
   const [clientError, setClientError] = useState("");
 
-  // Compute step layout based on whether we need the office step
-  const STEPS = facilityId
+  // Office step only for clinical_provider WITHOUT a pre-assigned facility
+  // (sales_rep and clinical_staff never get an office step here)
+  const needsOfficeStep = role === "clinical_provider" && !facilityId;
+
+  const STEPS = needsOfficeStep
     ? [
         { label: "Role", icon: UserCheck },
         { label: "Info", icon: User },
+        { label: "Office", icon: Building2 },
         { label: "Security", icon: Lock },
         { label: "Agree", icon: FileCheck },
       ]
     : [
         { label: "Role", icon: UserCheck },
         { label: "Info", icon: User },
-        { label: "Office", icon: Building2 },
         { label: "Security", icon: Lock },
         { label: "Agree", icon: FileCheck },
       ];
 
-  const officeStepIndex = facilityId ? null : 2;
-  const securityStepIndex = facilityId ? 2 : 3;
-  const agreeStepIndex = facilityId ? 3 : 4;
+  const officeStepIndex = needsOfficeStep ? 2 : null;
+  const securityStepIndex = needsOfficeStep ? 3 : 2;
+  const agreeStepIndex = needsOfficeStep ? 4 : 3;
 
   function goNext() {
     setClientError("");
@@ -128,6 +150,10 @@ export default function InviteSignUpForm({
         return;
       }
       if (needsPin) {
+        if (!/^\d{10}$/.test(npiNumber)) {
+          setClientError("NPI must be exactly 10 digits.");
+          return;
+        }
         if (!/^\d{4,6}$/.test(pin)) {
           setClientError("PIN must be 4–6 digits.");
           return;
@@ -150,12 +176,11 @@ export default function InviteSignUpForm({
   }
 
   // On the security step, password errors render inline below the confirm field.
-  // The global error block only shows server-side errors or non-password client errors.
   const inlinePasswordError = step === securityStepIndex;
   const error = (inlinePasswordError ? null : clientError) || state?.error;
 
   return (
-    <div className="bg-white rounded-2xl shadow-[0_8px_40px_rgba(0,0,0,0.1)] border border-[#E2E8F0] p-8 space-y-6">
+    <AuthCard className="space-y-6">
       {/* Logo */}
       <div className="flex justify-center">
         <HBLogo variant="light" size="sm" />
@@ -323,42 +348,20 @@ export default function InviteSignUpForm({
             {step === securityStepIndex && (
               <div className="space-y-4">
                 <h2 className="text-lg font-semibold text-[#0F172A] text-center">Create a password</h2>
-                <AuthField
-                  id="password"
+                <PasswordInput
+                  id="password_display"
                   label="Password"
-                  name="password_display"
-                  type={showPassword ? "text" : "password"}
+                  placeholder="Min. 8 characters"
                   value={password}
                   onChange={(e) => { setPassword(e.target.value); setClientError(""); }}
-                  placeholder="Min. 8 characters"
-                  rightElement={
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword((p) => !p)}
-                      className="text-[#94A3B8] hover:text-[#64748B]"
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  }
                 />
                 <div>
-                  <AuthField
-                    id="confirm_password"
+                  <PasswordInput
+                    id="confirm_password_display"
                     label="Confirm password"
-                    name="confirm_password_display"
-                    type={showConfirm ? "text" : "password"}
+                    placeholder="Repeat password"
                     value={confirmPassword}
                     onChange={(e) => { setConfirmPassword(e.target.value); setClientError(""); }}
-                    placeholder="Repeat password"
-                    rightElement={
-                      <button
-                        type="button"
-                        onClick={() => setShowConfirm((p) => !p)}
-                        className="text-white/40 hover:text-white/70"
-                      >
-                        {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    }
                   />
                   {!needsPin && clientError && (
                     <p className="mt-1.5 text-xs text-red-500">{clientError}</p>
@@ -367,6 +370,51 @@ export default function InviteSignUpForm({
 
                 {needsPin && (
                   <>
+                    <div className="border-t border-[#E2E8F0] pt-4 space-y-3">
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold text-[#374151] uppercase tracking-wide">
+                          Credential Type
+                        </p>
+                        <p className="text-xs text-[#94A3B8]">
+                          Select your professional credential.
+                        </p>
+                      </div>
+                      <Select value={credential} onValueChange={setCredential}>
+                        <SelectTrigger className="h-9 text-sm border-[#E2E8F0] bg-white text-[#0F172A] rounded-lg">
+                          <SelectValue placeholder="Select credential..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {CREDENTIAL_OPTIONS.map((o) => (
+                            <SelectItem key={o.value} value={o.value} className="text-sm">
+                              {o.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="border-t border-[#E2E8F0] pt-4 space-y-3">
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold text-[#374151] uppercase tracking-wide">
+                          NPI Number
+                        </p>
+                        <p className="text-xs text-[#94A3B8]">
+                          Your 10-digit National Provider Identifier.
+                        </p>
+                      </div>
+                      <AuthField
+                        id="npi_number"
+                        label="NPI Number"
+                        name="npi_number_display"
+                        type="text"
+                        value={npiNumber}
+                        onChange={(e) => {
+                          const v = e.target.value.replace(/\D/g, "").slice(0, 10);
+                          setNpiNumber(v);
+                          setClientError("");
+                        }}
+                        placeholder="10 digits"
+                      />
+                    </div>
                     <div className="border-t border-[#E2E8F0] pt-4 space-y-1">
                       <p className="text-xs font-semibold text-[#374151] uppercase tracking-wide">
                         Digital signature PIN
@@ -375,50 +423,28 @@ export default function InviteSignUpForm({
                         Your 4–6 digit PIN is your digital signature for signing orders.
                       </p>
                     </div>
-                    <AuthField
-                      id="pin"
+                    <PasswordInput
+                      id="pin_display"
                       label="Create your PIN"
-                      name="pin_display"
-                      type={showPin ? "text" : "password"}
+                      placeholder="4–6 digits"
                       value={pin}
                       onChange={(e) => {
                         const v = e.target.value.replace(/\D/g, "").slice(0, 6);
                         setPin(v);
                         setClientError("");
                       }}
-                      placeholder="4–6 digits"
-                      rightElement={
-                        <button
-                          type="button"
-                          onClick={() => setShowPin((p) => !p)}
-                          className="text-[#94A3B8] hover:text-[#64748B]"
-                        >
-                          {showPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                        </button>
-                      }
                     />
                     <div>
-                      <AuthField
-                        id="confirm_pin"
+                      <PasswordInput
+                        id="confirm_pin_display"
                         label="Confirm PIN"
-                        name="confirm_pin_display"
-                        type={showConfirmPin ? "text" : "password"}
+                        placeholder="Repeat PIN"
                         value={confirmPin}
                         onChange={(e) => {
                           const v = e.target.value.replace(/\D/g, "").slice(0, 6);
                           setConfirmPin(v);
                           setClientError("");
                         }}
-                        placeholder="Repeat PIN"
-                        rightElement={
-                          <button
-                            type="button"
-                            onClick={() => setShowConfirmPin((p) => !p)}
-                            className="text-[#94A3B8] hover:text-[#64748B]"
-                          >
-                            {showConfirmPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                          </button>
-                        }
                       />
                       {clientError && (
                         <p className="mt-1.5 text-xs text-red-500">{clientError}</p>
@@ -474,7 +500,9 @@ export default function InviteSignUpForm({
           <input type="hidden" name="password" value={password} />
           <input type="hidden" name="agreed" value={agreed ? "true" : "false"} />
           {needsPin && <input type="hidden" name="pin" value={pin} />}
-          {!facilityId && (
+          {needsPin && <input type="hidden" name="npi_number" value={npiNumber} />}
+          {needsPin && <input type="hidden" name="credential" value={credential} />}
+          {needsOfficeStep && (
             <>
               <input type="hidden" name="office_name" value={officeName} />
               <input type="hidden" name="office_phone" value={officePhone} />
@@ -522,6 +550,6 @@ export default function InviteSignUpForm({
           </button>
         )}
       </div>
-    </div>
+    </AuthCard>
   );
 }

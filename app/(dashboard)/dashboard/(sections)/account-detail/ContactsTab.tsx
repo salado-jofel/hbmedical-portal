@@ -1,6 +1,7 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState } from "react";
+import toast from "react-hot-toast";
 import { motion } from "framer-motion";
 import { Mail, Phone, User, Trash2 } from "lucide-react";
 import { useAppSelector, useAppDispatch } from "@/store/hooks";
@@ -8,6 +9,7 @@ import { removeContactFromStore } from "@/app/(dashboard)/dashboard/(redux)/cont
 import { deactivateContact } from "@/app/(dashboard)/dashboard/(services)/contacts/actions";
 import { ContactModal } from "./ContactModal";
 import { EmptyState } from "@/app/(components)/EmptyState";
+import ConfirmModal from "@/app/(components)/ConfirmModal";
 import { staggerContainer, fadeUp } from "@/components/ui/animations";
 import { cn } from "@/utils/utils";
 import type { ContactPreferredContact } from "@/utils/interfaces/contacts";
@@ -29,17 +31,24 @@ export function ContactsTab({ facilityId, isAdmin, isAssignedRep }: ContactsTabP
   const contacts = useAppSelector((s) => s.contacts.items);
   const canManage = isAdmin || isAssignedRep;
 
-  const [, startTransition] = useTransition();
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  function handleDeactivate(contactId: string) {
-    startTransition(async () => {
-      try {
-        await deactivateContact(contactId, facilityId);
-        dispatch(removeContactFromStore(contactId));
-      } catch {
-        // Silent — user stays on page
-      }
-    });
+  async function handleDeleteConfirm() {
+    if (!deleteId) return;
+    setIsDeleting(true);
+    try {
+      await deactivateContact(deleteId, facilityId);
+      dispatch(removeContactFromStore(deleteId));
+      toast.success("Contact removed.");
+      setConfirmOpen(false);
+    } catch {
+      toast.error("Failed to remove contact.");
+    } finally {
+      setIsDeleting(false);
+      setDeleteId(null);
+    }
   }
 
   return (
@@ -88,11 +97,16 @@ export function ContactsTab({ facilityId, isAdmin, isAssignedRep }: ContactsTabP
                     <ContactModal facilityId={facilityId} contact={contact} />
                     <button
                       type="button"
-                      onClick={() => handleDeactivate(contact.id)}
+                      onClick={() => { setDeleteId(contact.id); setConfirmOpen(true); }}
+                      disabled={isDeleting && deleteId === contact.id}
                       className="w-7 h-7 flex items-center justify-center rounded-md text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
                       title="Remove contact"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      {isDeleting && deleteId === contact.id ? (
+                        <div className="size-3.5 rounded-full border-2 border-red-500 border-t-transparent animate-spin" />
+                      ) : (
+                        <Trash2 className="w-3.5 h-3.5" />
+                      )}
                     </button>
                   </div>
                 )}
@@ -144,6 +158,14 @@ export function ContactsTab({ facilityId, isAdmin, isAssignedRep }: ContactsTabP
           ))}
         </motion.div>
       )}
+      <ConfirmModal
+        open={confirmOpen}
+        onOpenChange={(v) => { if (!isDeleting) setConfirmOpen(v); }}
+        onConfirm={handleDeleteConfirm}
+        isLoading={isDeleting}
+        title="Delete Contact"
+        description="This contact will be permanently removed."
+      />
     </div>
   );
 }

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUserOrThrow, getUserRole } from "@/lib/supabase/auth";
+import { isSalesRep, type UserRole } from "@/utils/helpers/role";
 import { TASKS_TABLE, TASK_SELECT, TASKS_PATH } from "@/utils/constants/activities";
 import {
   createTaskSchema,
@@ -44,7 +45,7 @@ export async function getTasks(filters?: {
     .order("created_at", { ascending: false });
 
   // Sales reps only see their assigned tasks
-  if (role === "sales_representative") {
+  if (isSalesRep(role as UserRole)) {
     query = query.eq("assigned_to", user.id);
   }
 
@@ -93,7 +94,7 @@ export async function createTask(
 
     const raw = {
       title: formData.get("title") as string,
-      due_date: toNullable(formData.get("due_date") as string),
+      due_date: (formData.get("due_date") as string) ?? "",
       priority: formData.get("priority") as string || "medium",
       assigned_to: toNullable(formData.get("assigned_to") as string),
       facility_id: toNullable(formData.get("facility_id") as string),
@@ -108,13 +109,13 @@ export async function createTask(
 
     // Sales reps always assign to themselves
     const assignedTo =
-      role === "sales_representative"
+      isSalesRep(role as UserRole)
         ? user.id
         : parsed.data.assigned_to || user.id;
 
     const { error } = await supabase.from(TASKS_TABLE).insert({
       title: parsed.data.title,
-      due_date: parsed.data.due_date || null,
+      due_date: parsed.data.due_date,
       priority: parsed.data.priority,
       status: "open",
       created_by: user.id,
@@ -154,7 +155,7 @@ export async function updateTask(
 
     const raw = {
       title: formData.get("title") as string,
-      due_date: toNullable(formData.get("due_date") as string),
+      due_date: (formData.get("due_date") as string) ?? "",
       priority: formData.get("priority") as string || "medium",
       assigned_to: toNullable(formData.get("assigned_to") as string),
       facility_id: toNullable(formData.get("facility_id") as string),
@@ -168,7 +169,7 @@ export async function updateTask(
     }
 
     const assignedTo =
-      role === "sales_representative"
+      isSalesRep(role as UserRole)
         ? user.id
         : parsed.data.assigned_to || user.id;
 
@@ -176,7 +177,7 @@ export async function updateTask(
       .from(TASKS_TABLE)
       .update({
         title: parsed.data.title,
-        due_date: parsed.data.due_date || null,
+        due_date: parsed.data.due_date,
         priority: parsed.data.priority,
         assigned_to: assignedTo,
         facility_id: parsed.data.facility_id || null,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import toast, { Toaster } from "react-hot-toast";
+import toast from "react-hot-toast";
 import { motion } from "framer-motion";
 import { cva } from "class-variance-authority";
 import {
@@ -23,6 +23,7 @@ import {
 } from "@/app/(dashboard)/dashboard/(services)/tasks/actions";
 import { TaskModal } from "./TaskModal";
 import { EmptyState } from "@/app/(components)/EmptyState";
+import ConfirmModal from "@/app/(components)/ConfirmModal";
 import { staggerContainer, fadeUp } from "@/components/ui/animations";
 import { cn } from "@/utils/utils";
 import {
@@ -103,6 +104,7 @@ function TaskCard({
   salesReps,
   isAdmin,
   togglingId,
+  deletingId,
   onToggle,
   onDelete,
 }: {
@@ -111,11 +113,13 @@ function TaskCard({
   salesReps: IRepProfile[];
   isAdmin: boolean;
   togglingId: string | null;
+  deletingId: string | null;
   onToggle: (task: ITask) => void;
   onDelete: (taskId: string) => void;
 }) {
   const isDone = task.status === "done";
   const isToggling = togglingId === task.id;
+  const isDeleting = deletingId === task.id;
 
   return (
     <motion.div
@@ -165,10 +169,15 @@ function TaskCard({
           <button
             type="button"
             onClick={() => onDelete(task.id)}
+            disabled={isDeleting}
             className="w-7 h-7 flex items-center justify-center rounded-md text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
             title="Delete task"
           >
-            <Trash2 className="w-3.5 h-3.5" />
+            {isDeleting ? (
+              <div className="size-3.5 rounded-full border-2 border-red-500 border-t-transparent animate-spin" />
+            ) : (
+              <Trash2 className="w-3.5 h-3.5" />
+            )}
           </button>
         </div>
       </div>
@@ -229,6 +238,9 @@ export function TasksBoard({ accounts, salesReps, isAdmin }: TasksBoardProps) {
   const [statusFilter, setStatusFilter] = useState<TaskStatus | "all">("all");
   const [priorityFilter, setPriorityFilter] = useState<TaskPriority | "all">("all");
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const filtered = useMemo(() => {
     let result = tasks;
@@ -252,12 +264,19 @@ export function TasksBoard({ accounts, salesReps, isAdmin }: TasksBoardProps) {
     }
   }
 
-  async function handleDelete(taskId: string) {
+  async function handleDeleteConfirm() {
+    if (!deleteId) return;
+    setIsDeleting(true);
     try {
-      await deleteTask(taskId);
-      dispatch(removeTaskFromStore(taskId));
+      await deleteTask(deleteId);
+      dispatch(removeTaskFromStore(deleteId));
+      toast.success("Task deleted.");
+      setConfirmOpen(false);
     } catch {
       toast.error("Failed to delete task.");
+    } finally {
+      setIsDeleting(false);
+      setDeleteId(null);
     }
   }
 
@@ -265,8 +284,6 @@ export function TasksBoard({ accounts, salesReps, isAdmin }: TasksBoardProps) {
 
   return (
     <div className="space-y-5">
-      {/* Diagnostic: local Toaster to confirm react-hot-toast renders in this client tree */}
-      <Toaster position="top-center" />
       {/* ── Toolbar ── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex overflow-x-auto gap-2 pb-1 flex-nowrap [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
@@ -371,8 +388,9 @@ export function TasksBoard({ accounts, salesReps, isAdmin }: TasksBoardProps) {
                         salesReps={salesReps}
                         isAdmin={isAdmin}
                         togglingId={togglingId}
+                        deletingId={isDeleting ? deleteId : null}
                         onToggle={handleToggle}
-                        onDelete={handleDelete}
+                        onDelete={(id) => { setDeleteId(id); setConfirmOpen(true); }}
                       />
                     ))
                   )}
@@ -382,6 +400,15 @@ export function TasksBoard({ accounts, salesReps, isAdmin }: TasksBoardProps) {
           })}
         </div>
       )}
+
+      <ConfirmModal
+        open={confirmOpen}
+        onOpenChange={(v) => { if (!isDeleting) setConfirmOpen(v); }}
+        onConfirm={handleDeleteConfirm}
+        isLoading={isDeleting}
+        title="Delete Task"
+        description="This task will be permanently removed."
+      />
     </div>
   );
 }

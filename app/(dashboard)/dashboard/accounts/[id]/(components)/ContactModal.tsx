@@ -180,7 +180,7 @@ export function ContactModal({ facilityId, contact }: ContactModalProps) {
             theme="light"
             error={state?.fieldErrors?.phone}
           />
-          {phone && <input required type="hidden" name="phone" value={phone} />}
+          <input type="hidden" name="phone" value={phone} />
 
           {/* ── Preferred contact ── */}
           <div className="space-y-1.5">

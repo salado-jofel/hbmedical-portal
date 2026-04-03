@@ -5,9 +5,11 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUserOrThrow, getUserRole, requireAdminOrThrow } from "@/lib/supabase/auth";
-import { isAdmin } from "@/utils/helpers/role";
+import { isAdmin, isSalesRep, isClinicalProvider } from "@/utils/helpers/role";
 import type { UserRole } from "@/utils/helpers/role";
-import { resend, PAYMENTS_FROM_EMAIL } from "@/lib/emails/resend";
+import type { ISubRep } from "@/utils/interfaces/sub-reps";
+import { resend, ACCOUNTS_FROM_EMAIL } from "@/lib/emails/resend";
+import { sendInviteEmail } from "@/lib/emails/send-invite-email";
 import {
   generateInviteTokenSchema,
   mapInviteToken,
@@ -138,7 +140,7 @@ export async function generateInviteToken(
     const user = await getCurrentUserOrThrow(supabase);
     const role = await getUserRole(supabase);
 
-    if (role !== "sales_representative" && role !== "admin") {
+    if (!isSalesRep(role as UserRole) && !isAdmin(role as UserRole) && !isClinicalProvider(role as UserRole)) {
       return { error: "Unauthorized.", success: false };
     }
 
@@ -165,20 +167,45 @@ export async function generateInviteToken(
       Date.now() + parsed.data.expires_in_days * 24 * 60 * 60 * 1000,
     ).toISOString();
 
-    // Resolve facility_id based on role
-    let resolvedFacilityId: string | null;
+    // Resolve facility_id based on role.
+    // clinical_provider always gets NULL — they create their own clinic on signup (CASE C).
+    // clinical_staff gets the rep's facility so they join it directly (CASE A).
+    // sales_representative gets NULL — they create their own rep_office on setup.
+    let resolvedFacilityId: string | null = null;
+
     if (isAdmin(role as UserRole)) {
-      // Admin must select a rep's facility from the dropdown
+      // Admin invites clinical users only via link (Sales rep/admin/support created via Users page)
+      // Both clinical_provider and clinical_staff require a rep to be selected.
+      // clinical_provider: inviteSignUp will create new clinic, assigned_rep = facility owner
+      // clinical_staff: inviteSignUp will link them to the rep's facility directly
       resolvedFacilityId = parsed.data.facility_id ?? null;
       if (!resolvedFacilityId) {
         return { error: "Please select a sales rep to assign this invite to.", success: false };
       }
-    } else {
-      // Sales rep — resolve their own facility
-      resolvedFacilityId = await getRepFacilityId(user.id, supabase);
-      if (!resolvedFacilityId) {
-        return { error: "You need to complete your office setup before inviting clinic users.", success: false };
+    } else if (isSalesRep(role as UserRole)) {
+      if (parsed.data.role_type === "clinical_staff") {
+        // Staff joins the rep's own facility
+        resolvedFacilityId = await getRepFacilityId(user.id, supabase);
+        if (!resolvedFacilityId) {
+          return { error: "Complete your office setup before inviting staff.", success: false };
+        }
       }
+      // clinical_provider → facility_id stays NULL (creates own clinic)
+      // sales_representative → facility_id stays NULL (creates own rep_office)
+    } else if (isClinicalProvider(role as UserRole)) {
+      // Clinical providers can only invite clinical_staff to their own clinic
+      if (parsed.data.role_type !== "clinical_staff") {
+        return { error: "Clinical providers can only invite clinical staff.", success: false };
+      }
+      const { data: ownedFacility } = await supabase
+        .from("facilities")
+        .select("id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (!ownedFacility?.id) {
+        return { error: "Complete your clinic setup first.", success: false };
+      }
+      resolvedFacilityId = ownedFacility.id;
     }
 
     const { data: inserted, error } = await supabase
@@ -219,8 +246,8 @@ export async function getMyInviteTokens(): Promise<IInviteToken[]> {
     .select(INVITE_TOKEN_SELECT)
     .order("created_at", { ascending: false });
 
-  // Sales reps see only their own tokens; admins see all
-  if (role === "sales_representative") {
+  // Sales reps and clinical providers see only their own tokens; admins see all
+  if (isSalesRep(role as UserRole) || isClinicalProvider(role as UserRole)) {
     query = query.eq("created_by", user.id);
   }
 
@@ -295,12 +322,13 @@ export async function consumeInviteToken(
 
 export async function deleteInviteToken(tokenId: string): Promise<void> {
   const supabase = await createClient();
-  await getCurrentUserOrThrow(supabase);
+  const user = await getCurrentUserOrThrow(supabase);
 
   const { error } = await supabase
     .from(INVITE_TOKENS_TABLE)
     .delete()
-    .eq("id", tokenId);
+    .eq("id", tokenId)
+    .eq("created_by", user.id);
 
   if (error) {
     console.error("[deleteInviteToken] Error:", JSON.stringify(error));
@@ -329,7 +357,7 @@ export async function inviteSubRep(
     const user = await getCurrentUserOrThrow(supabase);
     const role = await getUserRole(supabase);
 
-    if (role !== "sales_representative" && role !== "admin") {
+    if (!isSalesRep(role as UserRole)) {
       return { error: "Unauthorized.", success: false };
     }
 
@@ -350,18 +378,27 @@ export async function inviteSubRep(
     const adminClient = createAdminClient();
 
     // Generate invite link
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL
+      ?? process.env.NEXT_PUBLIC_SITE_URL
+      ?? "http://localhost:3000";
+
     const { data: linkData, error: linkError } =
       await adminClient.auth.admin.generateLink({
         type: "invite",
         email,
         options: {
           data: { first_name, last_name, invited_by: user.id },
-          redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? ""}/sign-in`,
+          redirectTo: `${appUrl}/set-password`,
         },
       });
 
     if (linkError || !linkData?.user) {
       console.error("[inviteSubRep] generateLink error:", linkError);
+      // Supabase returns "User already registered" when the email already exists
+      if (linkError?.message?.toLowerCase().includes("already registered") ||
+          linkError?.message?.toLowerCase().includes("already exists")) {
+        return { error: "An account with this email already exists.", success: false };
+      }
       return { error: linkError?.message ?? "Failed to create invite.", success: false };
     }
 
@@ -377,6 +414,24 @@ export async function inviteSubRep(
       role: "sales_representative",
     });
 
+    // Link parent → child in rep_hierarchy
+    const { error: hierarchyError } = await adminClient
+      .from("rep_hierarchy")
+      .insert({
+        parent_rep_id: user.id,
+        child_rep_id: userId,
+        created_by: user.id,
+      });
+
+    if (hierarchyError) {
+      await adminClient.auth.admin.deleteUser(userId);
+      console.error("[inviteSubRep] rep_hierarchy insert failed:", JSON.stringify(hierarchyError));
+      return {
+        error: "Failed to link sub-rep hierarchy. Please try again.",
+        success: false,
+      };
+    }
+
     // Record invite token for tracking
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
     await supabase.from(INVITE_TOKENS_TABLE).insert({
@@ -389,7 +444,7 @@ export async function inviteSubRep(
     // Send invite email via Resend
     if (actionLink) {
       await resend.emails.send({
-        from: PAYMENTS_FROM_EMAIL,
+        from: ACCOUNTS_FROM_EMAIL,
         to: email,
         subject: "You've been invited to join HB Medical as a Sales Rep",
         html: `
@@ -431,6 +486,283 @@ p{margin:0 0 14px;font-size:14px;}
     return { success: true, error: null };
   } catch (err) {
     console.error("[inviteSubRep] Unexpected error:", err);
+    return { error: "An unexpected error occurred.", success: false };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* getMySubReps                                                               */
+/* -------------------------------------------------------------------------- */
+
+export async function getMySubReps(): Promise<ISubRep[]> {
+  const supabase = await createClient();
+  const user = await getCurrentUserOrThrow(supabase);
+  const adminClient = createAdminClient();
+
+  const { data, error } = await adminClient
+    .from("rep_hierarchy")
+    .select(`
+      child:profiles!rep_hierarchy_child_rep_id_fkey(
+        id, first_name, last_name, email, status, created_at
+      )
+    `)
+    .eq("parent_rep_id", user.id)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("[getMySubReps]", JSON.stringify(error));
+    throw new Error(error.message ?? "Failed to fetch sub-reps.");
+  }
+
+  return (data ?? []).map((row: any) => {
+    const c = Array.isArray(row.child) ? row.child[0] : row.child;
+    return {
+      id: c.id,
+      first_name: c.first_name,
+      last_name: c.last_name,
+      email: c.email,
+      status: c.status,
+      created_at: c.created_at,
+    };
+  });
+}
+
+/* -------------------------------------------------------------------------- */
+/* generateClinicMemberInvite — clinical_provider invites clinical_staff     */
+/* -------------------------------------------------------------------------- */
+
+export async function generateClinicMemberInvite(
+  _prevState: IInviteTokenFormState | null,
+  formData: FormData,
+): Promise<IInviteTokenFormState> {
+  try {
+    const supabase = await createClient();
+    const user = await getCurrentUserOrThrow(supabase);
+    const role = await getUserRole(supabase);
+
+    if (!isClinicalProvider(role as UserRole)) {
+      return { error: "Unauthorized.", success: false };
+    }
+
+    // Clinical provider owns their clinic directly via facilities.user_id
+    const { data: ownedFacility } = await supabase
+      .from("facilities")
+      .select("id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (!ownedFacility?.id) {
+      return { error: "No clinic found. Complete your setup first.", success: false };
+    }
+
+    const expiresIn = Number(formData.get("expires_in_days") ?? "30");
+    const expiresAt = new Date(Date.now() + expiresIn * 24 * 60 * 60 * 1000).toISOString();
+
+    const { data: inserted, error } = await supabase
+      .from(INVITE_TOKENS_TABLE)
+      .insert({
+        created_by: user.id,
+        facility_id: ownedFacility.id,
+        role_type: "clinical_staff",
+        expires_at: expiresAt,
+      })
+      .select("token")
+      .single();
+
+    if (error) {
+      console.error("[generateClinicMemberInvite] Error:", JSON.stringify(error));
+      return { error: error.message ?? "Failed to generate invite.", success: false };
+    }
+
+    revalidatePath("/dashboard/onboarding");
+    return { error: null, success: true, token: inserted.token };
+  } catch (err) {
+    console.error("[generateClinicMemberInvite] Unexpected error:", err);
+    return { error: "An unexpected error occurred.", success: false };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* updateSubRepStatus                                                         */
+/* -------------------------------------------------------------------------- */
+
+export async function updateSubRepStatus(
+  subRepId: string,
+  status: "active" | "inactive",
+): Promise<IInviteTokenFormState> {
+  try {
+    const supabase = await createClient();
+    const user = await getCurrentUserOrThrow(supabase);
+    const role = await getUserRole(supabase);
+
+    if (!isSalesRep(role as UserRole)) {
+      return { error: "Unauthorized.", success: false };
+    }
+
+    const adminClient = createAdminClient();
+
+    // Verify this sub-rep is a direct child of the caller
+    const { data: link, error: linkError } = await adminClient
+      .from("rep_hierarchy")
+      .select("id")
+      .eq("parent_rep_id", user.id)
+      .eq("child_rep_id", subRepId)
+      .single();
+
+    if (linkError || !link) {
+      return { error: "You can only manage your own sub-reps.", success: false };
+    }
+
+    // Update profile status
+    const { error: profileError } = await adminClient
+      .from("profiles")
+      .update({ status })
+      .eq("id", subRepId);
+
+    if (profileError) {
+      console.error("[updateSubRepStatus] profile update error:", JSON.stringify(profileError));
+      return { error: profileError.message ?? "Failed to update status.", success: false };
+    }
+
+    // Ban/unban in auth to prevent or restore login
+    if (status === "inactive") {
+      await adminClient.auth.admin.updateUserById(subRepId, {
+        ban_duration: "876600h", // ~100 years
+      });
+    } else {
+      await adminClient.auth.admin.updateUserById(subRepId, {
+        ban_duration: "none",
+      });
+    }
+
+    revalidatePath("/dashboard/onboarding");
+    return { success: true, error: null };
+  } catch (err) {
+    console.error("[updateSubRepStatus] Unexpected error:", err);
+    return { error: "An unexpected error occurred.", success: false };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* deleteSubRep — pending-only; cascades via auth.admin.deleteUser            */
+/* -------------------------------------------------------------------------- */
+
+export async function deleteSubRep(subRepId: string): Promise<IInviteTokenFormState> {
+  try {
+    const supabase = await createClient();
+    const user = await getCurrentUserOrThrow(supabase);
+    const role = await getUserRole(supabase);
+
+    if (!isSalesRep(role as UserRole)) {
+      return { error: "Unauthorized.", success: false };
+    }
+
+    const adminClient = createAdminClient();
+
+    // Verify this sub-rep is a direct child of the caller
+    const { data: link, error: linkError } = await adminClient
+      .from("rep_hierarchy")
+      .select("id")
+      .eq("parent_rep_id", user.id)
+      .eq("child_rep_id", subRepId)
+      .single();
+
+    if (linkError || !link) {
+      return { error: "You can only manage your own sub-reps.", success: false };
+    }
+
+    // Verify sub-rep is pending (only pending sub-reps may be deleted)
+    const { data: profile, error: profileError } = await adminClient
+      .from("profiles")
+      .select("status")
+      .eq("id", subRepId)
+      .single();
+
+    if (profileError || !profile) {
+      return { error: "Sub-rep not found.", success: false };
+    }
+
+    if (profile.status === "active") {
+      return { error: "Deactivate this sub-rep before deleting.", success: false };
+    }
+    // pending and inactive are both allowed to be deleted
+
+    // Delete auth user — cascades profile + rep_hierarchy via FK
+    const { error: deleteError } = await adminClient.auth.admin.deleteUser(subRepId);
+
+    if (deleteError) {
+      console.error("[deleteSubRep] deleteUser error:", deleteError);
+      return { error: deleteError.message ?? "Failed to delete sub-rep.", success: false };
+    }
+
+    revalidatePath("/dashboard/onboarding");
+    return { success: true, error: null };
+  } catch (err) {
+    console.error("[deleteSubRep] Unexpected error:", err);
+    return { error: "An unexpected error occurred.", success: false };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* resendSubRepInvite — pending-only; generates recovery link + sends email  */
+/* -------------------------------------------------------------------------- */
+
+export async function resendSubRepInvite(
+  subRepId: string,
+  email: string,
+  firstName: string,
+): Promise<IInviteTokenFormState> {
+  try {
+    const supabase = await createClient();
+    const user = await getCurrentUserOrThrow(supabase);
+    const role = await getUserRole(supabase);
+
+    if (!isSalesRep(role as UserRole)) {
+      return { error: "Unauthorized.", success: false };
+    }
+
+    const adminClient = createAdminClient();
+
+    // Verify this sub-rep is a direct child of the caller
+    const { data: link, error: linkError } = await adminClient
+      .from("rep_hierarchy")
+      .select("id")
+      .eq("parent_rep_id", user.id)
+      .eq("child_rep_id", subRepId)
+      .single();
+
+    if (linkError || !link) {
+      return { error: "You can only manage your own sub-reps.", success: false };
+    }
+
+    // Generate a recovery link for the pending user
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL
+      ?? process.env.NEXT_PUBLIC_SITE_URL
+      ?? "http://localhost:3000";
+
+    const { data: linkData, error: genError } = await adminClient.auth.admin.generateLink({
+      type: "recovery",
+      email,
+      options: {
+        redirectTo: `${appUrl}/set-password`,
+      },
+    });
+
+    if (genError || !linkData?.properties?.action_link) {
+      console.error("[resendSubRepInvite] generateLink error:", genError);
+      return { error: genError?.message ?? "Failed to generate invite link.", success: false };
+    }
+
+    await sendInviteEmail({
+      to: email,
+      firstName,
+      role: "sales_representative",
+      resetLink: linkData.properties.action_link,
+    });
+
+    return { success: true, error: null };
+  } catch (err) {
+    console.error("[resendSubRepInvite] Unexpected error:", err);
     return { error: "An unexpected error occurred.", success: false };
   }
 }

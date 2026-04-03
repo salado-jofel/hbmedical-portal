@@ -25,8 +25,7 @@ interface AccountDetailClientProps {
   account: IAccount;
   contacts: IContact[];
   orders: DashboardOrder[];
-  isAdmin: boolean;
-  isAssignedRep: boolean;
+  canEdit: boolean;
   salesReps: IRepProfile[];
 }
 
@@ -34,8 +33,7 @@ export function AccountDetailClient({
   account,
   contacts,
   orders,
-  isAdmin,
-  isAssignedRep,
+  canEdit,
   salesReps,
 }: AccountDetailClientProps) {
   const [activeTab, setActiveTab] = useState<TabId>("overview");
@@ -74,15 +72,13 @@ export function AccountDetailClient({
         {activeTab === "contacts" && (
           <ContactsTab
             facilityId={account.id}
-            isAdmin={isAdmin}
-            isAssignedRep={isAssignedRep}
+            canEdit={canEdit}
           />
         )}
         {activeTab === "activities" && (
           <ActivitiesTab
             facilityId={account.id}
-            isAdmin={isAdmin}
-            isAssignedRep={isAssignedRep}
+            canEdit={canEdit}
           />
         )}
         {activeTab === "orders" && <OrdersTab orders={orders} />}

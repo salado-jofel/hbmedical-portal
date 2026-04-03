@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentUserOrThrow, getUserRole } from "@/lib/supabase/auth";
+import { getCurrentUserOrThrow, getUserRole, requireAdminOrThrow } from "@/lib/supabase/auth";
+import { isAdmin, isSalesRep } from "@/utils/helpers/role";
 import { ACCOUNTS_PATH, CONTACTS_TABLE, CONTACT_SELECT } from "@/utils/constants/accounts";
 import {
   createContactSchema,
@@ -22,26 +23,6 @@ function toNullable(val: string | null | undefined): string | null {
   return val.trim();
 }
 
-async function canManageContacts(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  userId: string,
-  facilityId: string,
-): Promise<boolean> {
-  const role = await getUserRole(supabase);
-  if (role === "admin") return true;
-
-  if (role === "sales_representative") {
-    const { data } = await supabase
-      .from("facilities")
-      .select("assigned_rep")
-      .eq("id", facilityId)
-      .maybeSingle();
-    return data?.assigned_rep === userId;
-  }
-
-  return false;
-}
-
 /* -------------------------------------------------------------------------- */
 /* getContactsByFacility                                                     */
 /* -------------------------------------------------------------------------- */
@@ -51,6 +32,10 @@ export async function getContactsByFacility(
 ): Promise<IContact[]> {
   const supabase = await createClient();
   await getCurrentUserOrThrow(supabase);
+  const role = await getUserRole(supabase);
+  if (!isAdmin(role) && !isSalesRep(role)) {
+    throw new Error("Unauthorized");
+  }
 
   const { data, error } = await supabase
     .from(CONTACTS_TABLE)
@@ -78,12 +63,7 @@ export async function createContact(
 ): Promise<IContactFormState> {
   try {
     const supabase = await createClient();
-    const user = await getCurrentUserOrThrow(supabase);
-
-    const allowed = await canManageContacts(supabase, user.id, facilityId);
-    if (!allowed) {
-      return { error: "You do not have permission to add contacts to this account.", success: false };
-    }
+    await requireAdminOrThrow(supabase);
 
     const raw = {
       first_name:        formData.get("first_name") as string,
@@ -144,12 +124,7 @@ export async function updateContact(
 ): Promise<IContactFormState> {
   try {
     const supabase = await createClient();
-    const user = await getCurrentUserOrThrow(supabase);
-
-    const allowed = await canManageContacts(supabase, user.id, facilityId);
-    if (!allowed) {
-      return { error: "You do not have permission to edit this contact.", success: false };
-    }
+    await requireAdminOrThrow(supabase);
 
     const raw = {
       first_name:        formData.get("first_name") as string,
@@ -209,12 +184,7 @@ export async function deactivateContact(
   facilityId: string,
 ): Promise<void> {
   const supabase = await createClient();
-  const user = await getCurrentUserOrThrow(supabase);
-
-  const allowed = await canManageContacts(supabase, user.id, facilityId);
-  if (!allowed) {
-    throw new Error("You do not have permission to remove this contact.");
-  }
+  await requireAdminOrThrow(supabase);
 
   const { error } = await supabase
     .from(CONTACTS_TABLE)

@@ -131,6 +131,36 @@ export async function getMyInviteTokens(): Promise<IInviteToken[]> {
 }
 
 /* -------------------------------------------------------------------------- */
+/* getInviteTokenStatus — differentiate not_found / expired / used / valid   */
+/* -------------------------------------------------------------------------- */
+
+export type InviteTokenInvalidReason = "not_found" | "expired" | "used";
+
+export async function getInviteTokenStatus(token: string): Promise<
+  | { valid: true; inviteToken: IInviteToken }
+  | { valid: false; reason: InviteTokenInvalidReason }
+> {
+  const supabase = createAdminClient();
+
+  const { data } = await supabase
+    .from(INVITE_TOKENS_TABLE)
+    .select(INVITE_TOKEN_SELECT)
+    .eq("token", token)
+    .maybeSingle();
+
+  if (!data) return { valid: false, reason: "not_found" };
+
+  const record = data as unknown as RawInviteTokenRecord;
+
+  if (record.used_at) return { valid: false, reason: "used" };
+  if (record.expires_at && new Date(record.expires_at) < new Date()) {
+    return { valid: false, reason: "expired" };
+  }
+
+  return { valid: true, inviteToken: mapInviteToken(record) };
+}
+
+/* -------------------------------------------------------------------------- */
 /* validateInviteToken — public (no auth required)                           */
 /* -------------------------------------------------------------------------- */
 
@@ -250,13 +280,17 @@ export async function inviteSubRep(
     const adminClient = createAdminClient();
 
     // Generate invite link
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL
+      ?? process.env.NEXT_PUBLIC_SITE_URL
+      ?? "http://localhost:3000";
+
     const { data: linkData, error: linkError } =
       await adminClient.auth.admin.generateLink({
         type: "invite",
         email,
         options: {
           data: { first_name, last_name, invited_by: user.id },
-          redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? ""}/sign-in`,
+          redirectTo: `${appUrl}/set-password`,
         },
       });
 

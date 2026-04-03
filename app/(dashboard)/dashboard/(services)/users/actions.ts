@@ -192,10 +192,17 @@ export async function createUser(
 
     // Step 3 — Generate a password-reset (recovery) link so the user can
     // set their own password. This does NOT trigger any Supabase email.
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL
+      ?? process.env.NEXT_PUBLIC_SITE_URL
+      ?? "http://localhost:3000";
+
     const { data: linkData, error: linkError } =
       await adminClient.auth.admin.generateLink({
         type: "recovery",
         email,
+        options: {
+          redirectTo: `${appUrl}/set-password`,
+        },
       });
 
     if (linkError || !linkData?.properties?.action_link) {

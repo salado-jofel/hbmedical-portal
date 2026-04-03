@@ -11,12 +11,21 @@ import { PasswordToggle } from "@/app/(components)/PasswordToggle";
 import { HBLogo } from "@/app/(components)/HBLogo";
 import { validatePasswordsMatch } from "@/utils/validators/signup";
 
-type PageStatus = "loading" | "ready" | "error";
-
 export default function SetPasswordForm() {
   const supabase = createClient();
 
-  const [pageStatus, setPageStatus] = useState<PageStatus>("loading");
+  // Tokens are extracted from the URL hash but NOT used to create a session
+  // until the user actually submits the form. Calling setSession() on mount
+  // would immediately write auth cookies, causing Next.js background requests
+  // to trigger the middleware setup-guard (isSalesRep && !has_completed_setup)
+  // which redirects to /onboarding/setup before the form is ever shown.
+  const [tokens, setTokens] = useState<{
+    access_token: string;
+    refresh_token: string;
+  } | null>(null);
+  const [ready, setReady] = useState(false);
+  const [tokenError, setTokenError] = useState("");
+
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [clientError, setClientError] = useState("");
@@ -26,24 +35,27 @@ export default function SetPasswordForm() {
     confirmPassword: "",
   });
 
-  // Read access_token + refresh_token from the URL hash that Supabase appends
-  // after verifying the invite/recovery link, then establish the session.
+  // Extract tokens from the URL hash — do NOT call setSession here.
   useEffect(() => {
     const hash = window.location.hash.substring(1);
     const params = new URLSearchParams(hash);
-    const access_token = params.get("access_token");
-    const refresh_token = params.get("refresh_token");
+    const accessToken  = params.get("access_token");
+    const refreshToken = params.get("refresh_token") ?? "";
+    const type         = params.get("type");
 
-    if (!access_token || !refresh_token) {
-      setPageStatus("error");
-      return;
+    if (
+      accessToken &&
+      (type === "recovery" || type === "invite" || type === "signup")
+    ) {
+      setTokens({ access_token: accessToken, refresh_token: refreshToken });
+      setReady(true);
+      // Remove the tokens from the URL bar (cosmetic — prevents accidental sharing)
+      window.history.replaceState(null, "", window.location.pathname);
+    } else {
+      setTokenError(
+        "This link is invalid or has expired. Please request a new invite.",
+      );
     }
-
-    supabase.auth
-      .setSession({ access_token, refresh_token })
-      .then(({ error }) => {
-        setPageStatus(error ? "error" : "ready");
-      });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -59,6 +71,7 @@ export default function SetPasswordForm() {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!tokens) return;
 
     const mismatch = validatePasswordsMatch(
       formValues.password,
@@ -75,23 +88,49 @@ export default function SetPasswordForm() {
     }
 
     setIsSubmitting(true);
+    setClientError("");
 
-    const { error } = await supabase.auth.updateUser({
-      password: formValues.password,
-    });
+    try {
+      // Step 1: Establish session using the stored tokens.
+      // We do this here (not on mount) so no session cookie exists while the
+      // user is just viewing the form — preventing background middleware redirects.
+      const { error: sessionError } = await supabase.auth.setSession({
+        access_token:  tokens.access_token,
+        refresh_token: tokens.refresh_token,
+      });
 
-    if (error) {
-      setClientError(error.message);
+      if (sessionError) {
+        setClientError("This link has expired. Please request a new invite.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Step 2: Set the new password while the session is active.
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: formValues.password,
+      });
+
+      if (updateError) {
+        setClientError(updateError.message ?? "Failed to set password.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Step 3: Sign out to clear the recovery/invite session.
+      // Without this, the middleware's recovery-session guard would intercept
+      // the next navigation and redirect to /reset-password.
+      await supabase.auth.signOut();
+
+      // Step 4: Hard-navigate to sign-in with a success banner.
+      window.location.href = "/sign-in?message=password_updated";
+    } catch {
+      setClientError("An unexpected error occurred. Please try again.");
       setIsSubmitting(false);
-      return;
     }
-
-    // Hard navigation so middleware sees the freshly-set session cookie.
-    window.location.href = "/dashboard";
   };
 
-  // ── Loading state ──────────────────────────────────────────────────────────
-  if (pageStatus === "loading") {
+  // ── Token extraction in progress (synchronous — only flickers on slow devices) ──
+  if (!ready && !tokenError) {
     return (
       <div className="bg-white rounded-2xl shadow-[0_8px_40px_rgba(0,0,0,0.1)] border border-[#E2E8F0] p-8 w-full max-w-md select-none flex flex-col items-center justify-center gap-4">
         <div className="mb-2 flex items-center justify-center">
@@ -103,8 +142,8 @@ export default function SetPasswordForm() {
     );
   }
 
-  // ── Error state ────────────────────────────────────────────────────────────
-  if (pageStatus === "error") {
+  // ── Invalid / missing token ────────────────────────────────────────────────
+  if (tokenError) {
     return (
       <div className="bg-white rounded-2xl shadow-[0_8px_40px_rgba(0,0,0,0.1)] border border-[#E2E8F0] p-8 w-full max-w-md select-none text-center">
         <div className="mb-6 flex items-center justify-center">
@@ -118,8 +157,7 @@ export default function SetPasswordForm() {
         <h2 className="text-2xl font-bold text-[#0F172A] mb-3">Link expired</h2>
 
         <p className="text-sm text-[#64748B] mb-8 leading-relaxed">
-          This invite link is invalid or has expired. Please contact your
-          administrator for a new invitation.
+          {tokenError}
         </p>
 
         <SubmitButton

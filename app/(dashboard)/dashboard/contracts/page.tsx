@@ -1,3 +1,7 @@
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import { getUserRole } from "@/lib/supabase/auth";
+import { isAdmin, isSalesRep } from "@/utils/helpers/role";
 import { getContractMaterials } from "./(services)/actions";
 import Providers from "./(sections)/Providers";
 import { DashboardHeader } from "@/app/(components)/DashboardHeader";
@@ -9,6 +13,10 @@ export const metadata: Metadata = {
 };
 
 export default async function ContractsPage() {
+  const supabase = await createClient();
+  const role = await getUserRole(supabase);
+  if (!isAdmin(role) && !isSalesRep(role)) redirect("/dashboard");
+
   const contracts = await getContractMaterials();
 
   return (

@@ -101,7 +101,7 @@ const createUserSchema = z.object({
   first_name: z.string().min(1, "First name is required."),
   last_name: z.string().min(1, "Last name is required."),
   email: z.string().email("Enter a valid email."),
-  role: z.enum(["sales_representative", "support_staff", "admin"], {
+  role: z.enum(["admin", "sales_representative", "support_staff"], {
     errorMap: () => ({ message: "Select a valid role." }),
   }),
 });
@@ -181,7 +181,7 @@ export async function createUser(
         type: "recovery",
         email,
         options: {
-          redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/set-password`,
+          redirectTo: `${process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"}/set-password`,
         },
       });
 
@@ -348,7 +348,7 @@ export async function resendInvite(
         type: "recovery",
         email,
         options: {
-          redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/set-password`,
+          redirectTo: `${process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"}/set-password`,
         },
       });
 

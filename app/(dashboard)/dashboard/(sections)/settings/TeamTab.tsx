@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import { removeFacilityMember, updateMemberRole } from "@/app/(dashboard)/dashboard/(services)/facility-members/actions";
 import { ROLE_LABELS } from "@/utils/helpers/role";
+import ConfirmModal from "@/app/(components)/ConfirmModal";
 import type { IFacilityMember } from "@/utils/interfaces/facility-members";
 
 interface TeamTabProps {
@@ -26,17 +27,22 @@ const STAFF_ROLES = [
 ];
 
 export function TeamTab({ members, canManage }: TeamTabProps) {
-  const [removingId, setRemovingId] = useState<string | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  async function handleRemove(memberId: string) {
-    setRemovingId(memberId);
+  async function handleDeleteConfirm() {
+    if (!deleteId) return;
+    setIsDeleting(true);
     try {
-      await removeFacilityMember(memberId);
+      await removeFacilityMember(deleteId);
       toast.success("Member removed.");
+      setConfirmOpen(false);
     } catch {
       toast.error("Failed to remove member.");
     } finally {
-      setRemovingId(null);
+      setIsDeleting(false);
+      setDeleteId(null);
     }
   }
 
@@ -118,17 +124,30 @@ export function TeamTab({ members, canManage }: TeamTabProps) {
             {canManage && (
               <button
                 type="button"
-                onClick={() => handleRemove(member.id)}
-                disabled={removingId === member.id}
+                onClick={() => { setDeleteId(member.id); setConfirmOpen(true); }}
+                disabled={isDeleting && deleteId === member.id}
                 className="w-7 h-7 flex items-center justify-center rounded-md text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors shrink-0"
                 title="Remove member"
               >
-                <Trash2 className="w-3.5 h-3.5" />
+                {isDeleting && deleteId === member.id ? (
+                  <div className="size-3.5 rounded-full border-2 border-red-500 border-t-transparent animate-spin" />
+                ) : (
+                  <Trash2 className="w-3.5 h-3.5" />
+                )}
               </button>
             )}
           </div>
         );
       })}
+
+      <ConfirmModal
+        open={confirmOpen}
+        onOpenChange={(v) => { if (!isDeleting) setConfirmOpen(v); }}
+        onConfirm={handleDeleteConfirm}
+        isLoading={isDeleting}
+        title="Remove Member"
+        description="This member will be removed from your team."
+      />
     </div>
   );
 }

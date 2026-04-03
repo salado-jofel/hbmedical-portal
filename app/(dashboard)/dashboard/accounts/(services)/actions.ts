@@ -39,12 +39,8 @@ export async function getAccounts(
   let query = supabase
     .from(ACCOUNTS_TABLE)
     .select(ACCOUNT_SELECT)
+    .eq("facility_type", "clinic")   // Accounts = clinic clients only; rep_office facilities must never appear
     .order("name", { ascending: true });
-
-  // Sales reps only see their assigned accounts
-  if (role === "sales_representative") {
-    query = query.eq("assigned_rep", user.id);
-  }
 
   // Status filter
   if (filters?.status && filters.status !== "all") {
@@ -92,12 +88,8 @@ export async function getAccountById(id: string): Promise<IAccount | null> {
   let query = supabase
     .from(ACCOUNTS_TABLE)
     .select(ACCOUNT_SELECT)
-    .eq("id", id);
-
-  // Sales reps can only view their assigned accounts
-  if (role === "sales_representative") {
-    query = query.eq("assigned_rep", user.id);
-  }
+    .eq("id", id)
+    .eq("facility_type", "clinic");  // Guard: prevents opening a rep_office via direct URL
 
   const { data, error } = await query.maybeSingle();
 

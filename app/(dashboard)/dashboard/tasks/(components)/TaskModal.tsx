@@ -155,12 +155,13 @@ export function TaskModal({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="due_date" className="text-xs">
-                Due date
+                Due date <span className="text-red-400">*</span>
               </Label>
               <input
                 id="due_date"
                 name="due_date"
                 type="date"
+                required
                 defaultValue={task?.due_date ?? ""}
                 className="h-9 w-full rounded-md border border-[#E2E8F0] bg-white px-3 py-1 text-sm text-[#0F172A] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#15689E]/10 focus-visible:border-[#15689E]"
               />

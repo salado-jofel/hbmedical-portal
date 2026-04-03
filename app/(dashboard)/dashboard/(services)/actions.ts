@@ -5,12 +5,14 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
 import type { UserRole } from "@/utils/helpers/role";
+import { isSalesRep } from "@/utils/helpers/role";
 
 export type UserData = {
   name: string;
   email: string;
   initials: string;
   role: UserRole;
+  isSubRep: boolean;
 };
 
 export async function signOut() {
@@ -50,10 +52,25 @@ export async function getUserData(): Promise<UserData | null> {
     .eq("id", user.id)
     .maybeSingle();
 
+  const role: UserRole = profile?.role ?? user.user_metadata?.role ?? "sales_representative";
+
+  // Check if this sales rep is a sub-rep (appears as child_rep_id in rep_hierarchy).
+  // Uses createClient() with RLS — rep_own_hierarchy policy allows reps to read their own rows.
+  let isSubRep = false;
+  if (isSalesRep(role)) {
+    const { data: hierarchy } = await supabase
+      .from("rep_hierarchy")
+      .select("id")
+      .eq("child_rep_id", user.id)
+      .maybeSingle();
+    isSubRep = !!hierarchy;
+  }
+
   return {
     name: fullName,
     email: user.email || "",
     initials,
-    role: profile?.role ?? user.user_metadata?.role ?? "sales_representative",
+    role,
+    isSubRep,
   };
 }

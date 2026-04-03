@@ -105,6 +105,17 @@ export function AccountHeader({ accountId, isAdmin, salesReps }: AccountHeaderPr
           <AccountStatusBadge status={account.status} className="shrink-0" />
         </div>
 
+        {/* Rep view — assigned rep as plain text */}
+        {!isAdmin && account.assigned_rep_profile && (
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-xs text-[#94A3B8]">Assigned rep:</span>
+            <span className="text-sm font-medium text-[#64748B]">
+              {account.assigned_rep_profile.first_name}{" "}
+              {account.assigned_rep_profile.last_name}
+            </span>
+          </div>
+        )}
+
         {/* Admin controls */}
         {isAdmin && (
           <div className="flex flex-wrap items-center gap-2 shrink-0">

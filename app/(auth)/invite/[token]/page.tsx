@@ -1,8 +1,7 @@
-import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
-import { CheckCircle, Building2, UserCheck } from "lucide-react";
-import { validateInviteToken } from "@/app/(dashboard)/dashboard/(services)/invite-tokens/actions";
-import { BackgroundDots } from "@/app/(components)/BackgroundDots";
+import { notFound } from "next/navigation";
+import { CheckCircle, Building2, UserCheck, XCircle, Clock } from "lucide-react";
+import { getInviteTokenStatus } from "@/app/(dashboard)/dashboard/(services)/invite-tokens/actions";
 import { HBLogo } from "@/app/(components)/HBLogo";
 import { ROLE_LABELS } from "@/utils/helpers/role";
 
@@ -13,11 +12,54 @@ interface PageProps {
 export default async function InviteLandingPage({ params }: PageProps) {
   const { token } = await params;
 
-  const inviteToken = await validateInviteToken(token);
+  const result = await getInviteTokenStatus(token);
 
-  if (!inviteToken) {
-    notFound();
+  if (!result.valid) {
+    if (result.reason === "not_found") {
+      notFound();
+    }
+
+    const isExpired = result.reason === "expired";
+
+    return (
+      <main className="min-h-screen bg-gradient-to-br from-[#F0F7FF] to-[#F8FAFC] flex items-center justify-center p-4">
+        <div className="w-full max-w-md space-y-6">
+          <div className="flex justify-center">
+            <HBLogo variant="light" size="md" />
+          </div>
+          <div className="bg-white rounded-2xl shadow-[0_8px_40px_rgba(0,0,0,0.1)] border border-[#E2E8F0] p-8 space-y-6 text-center">
+            <div className="flex justify-center">
+              <div className={`w-16 h-16 rounded-full flex items-center justify-center ${isExpired ? "bg-amber-50" : "bg-red-50"}`}>
+                {isExpired
+                  ? <Clock className="w-8 h-8 text-amber-500" />
+                  : <XCircle className="w-8 h-8 text-red-500" />
+                }
+              </div>
+            </div>
+            <div className="space-y-2">
+              <h1 className="text-2xl font-bold text-[#0F172A]">
+                {isExpired ? "Invite link expired" : "Invite already used"}
+              </h1>
+              <p className="text-sm text-[#64748B] leading-relaxed">
+                {isExpired
+                  ? "This invite link has expired. Please ask your representative to send a new one."
+                  : "This invite link has already been used to create an account."
+                }
+              </p>
+            </div>
+            <Link
+              href="/sign-in"
+              className="block w-full text-center rounded-lg bg-[#15689E] hover:bg-[#125d8e] text-white font-medium h-9 flex items-center justify-center text-sm transition-colors shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
+            >
+              Back to Sign In
+            </Link>
+          </div>
+        </div>
+      </main>
+    );
   }
+
+  const { inviteToken } = result;
 
   const invitedBy = inviteToken.created_by_profile
     ? `${inviteToken.created_by_profile.first_name} ${inviteToken.created_by_profile.last_name}`

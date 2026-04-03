@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { Loader2, ShieldCheck, ShieldAlert } from "lucide-react";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import {
   deleteCredentials,
 } from "@/app/(dashboard)/dashboard/(services)/provider-credentials/actions";
 import type { IProviderCredentials, IProviderCredentialsFormState } from "@/utils/interfaces/provider-credentials";
+import ConfirmModal from "@/app/(components)/ConfirmModal";
 
 interface CredentialsTabProps {
   credentials: IProviderCredentials | null;
@@ -22,18 +23,25 @@ export function CredentialsTab({ credentials }: CredentialsTabProps) {
     FormData
   >(saveCredentials, null);
 
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   useEffect(() => {
     if (!state) return;
     if (state.success) toast.success("Credentials saved.");
     else if (state.error) toast.error(state.error);
   }, [state]);
 
-  async function handleDelete() {
+  async function handleDeleteConfirm() {
+    setIsDeleting(true);
     try {
       await deleteCredentials();
       toast.success("Credentials removed.");
+      setConfirmOpen(false);
     } catch {
       toast.error("Failed to remove credentials.");
+    } finally {
+      setIsDeleting(false);
     }
   }
 
@@ -112,7 +120,7 @@ export function CredentialsTab({ credentials }: CredentialsTabProps) {
           {credentials && (
             <button
               type="button"
-              onClick={handleDelete}
+              onClick={() => setConfirmOpen(true)}
               className="text-xs text-red-400 hover:text-red-600 transition-colors"
             >
               Remove all credentials
@@ -129,6 +137,15 @@ export function CredentialsTab({ credentials }: CredentialsTabProps) {
           </Button>
         </div>
       </form>
+
+      <ConfirmModal
+        open={confirmOpen}
+        onOpenChange={(v) => { if (!isDeleting) setConfirmOpen(v); }}
+        onConfirm={handleDeleteConfirm}
+        isLoading={isDeleting}
+        title="Remove Credentials"
+        description="All your credentials will be permanently removed."
+      />
     </div>
   );
 }

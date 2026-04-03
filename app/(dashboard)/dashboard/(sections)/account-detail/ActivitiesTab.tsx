@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState } from "react";
+import toast from "react-hot-toast";
 import { motion } from "framer-motion";
 import { cva } from "class-variance-authority";
 import {
@@ -16,6 +17,7 @@ import { removeActivityFromStore } from "@/app/(dashboard)/dashboard/(redux)/act
 import { deleteActivity } from "@/app/(dashboard)/dashboard/(services)/activities/actions";
 import { ActivityModal } from "./ActivityModal";
 import { EmptyState } from "@/app/(components)/EmptyState";
+import ConfirmModal from "@/app/(components)/ConfirmModal";
 import { staggerContainer, fadeUp } from "@/components/ui/animations";
 import { cn } from "@/utils/utils";
 import type { ActivityType, ActivityOutcome } from "@/utils/interfaces/activities";
@@ -104,22 +106,29 @@ export function ActivitiesTab({
   const canManage = isAdmin || isAssignedRep;
 
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
-  const [, startTransition] = useTransition();
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const filtered = useMemo(() => {
     if (typeFilter === "all") return activities;
     return activities.filter((a) => a.type === typeFilter);
   }, [activities, typeFilter]);
 
-  function handleDelete(activityId: string) {
-    startTransition(async () => {
-      try {
-        await deleteActivity(activityId, facilityId);
-        dispatch(removeActivityFromStore(activityId));
-      } catch {
-        // silent
-      }
-    });
+  async function handleDeleteConfirm() {
+    if (!deleteId) return;
+    setIsDeleting(true);
+    try {
+      await deleteActivity(deleteId, facilityId);
+      dispatch(removeActivityFromStore(deleteId));
+      toast.success("Activity deleted.");
+      setConfirmOpen(false);
+    } catch {
+      toast.error("Failed to delete activity.");
+    } finally {
+      setIsDeleting(false);
+      setDeleteId(null);
+    }
   }
 
   return (
@@ -250,11 +259,16 @@ export function ActivitiesTab({
                       />
                       <button
                         type="button"
-                        onClick={() => handleDelete(activity.id)}
+                        onClick={() => { setDeleteId(activity.id); setConfirmOpen(true); }}
+                        disabled={isDeleting && deleteId === activity.id}
                         className="w-7 h-7 flex items-center justify-center rounded-md text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
                         title="Delete activity"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        {isDeleting && deleteId === activity.id ? (
+                          <div className="size-3.5 rounded-full border-2 border-red-500 border-t-transparent animate-spin" />
+                        ) : (
+                          <Trash2 className="w-3.5 h-3.5" />
+                        )}
                       </button>
                     </div>
                   )}
@@ -269,6 +283,15 @@ export function ActivitiesTab({
         {filtered.length} of {activities.length} activit
         {activities.length !== 1 ? "ies" : "y"}
       </p>
+
+      <ConfirmModal
+        open={confirmOpen}
+        onOpenChange={(v) => { if (!isDeleting) setConfirmOpen(v); }}
+        onConfirm={handleDeleteConfirm}
+        isLoading={isDeleting}
+        title="Delete Activity"
+        description="This activity log will be permanently removed."
+      />
     </div>
   );
 }

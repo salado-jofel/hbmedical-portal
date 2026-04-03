@@ -129,13 +129,20 @@ export async function inviteSignUp(
 
       await consumeInviteToken(token, createdUserId);
     } else {
-      // ── CASE A — Clinical role with a pre-linked facility ──────────────────
-      // Hash and store PIN for clinical providers
+      // ── Clinical roles (clinical_provider or clinical_staff) ──────────────
+
+      // Step 1 — PIN + NPI credentials for clinical_provider
       if (inviteToken.role_type === "clinical_provider") {
         const pin = (formData.get("pin") as string)?.trim();
+        const npiNumber = (formData.get("npi_number") as string)?.trim();
+        const credential = (formData.get("credential") as string)?.trim() || null;
         if (!pin || !/^\d{4,6}$/.test(pin)) {
           await supabaseAdmin.auth.admin.deleteUser(createdUserId);
           return { error: "A valid 4–6 digit PIN is required for clinical providers." };
+        }
+        if (!npiNumber || !/^\d{10}$/.test(npiNumber)) {
+          await supabaseAdmin.auth.admin.deleteUser(createdUserId);
+          return { error: "NPI must be exactly 10 digits." };
         }
         const pinHash = await bcrypt.hash(pin, 10);
         const now = new Date().toISOString();
@@ -144,6 +151,8 @@ export async function inviteSignUp(
           .insert({
             user_id: createdUserId,
             pin_hash: pinHash,
+            npi_number: npiNumber,
+            credential: credential,
             baa_signed_at: now,
             terms_signed_at: now,
           });
@@ -154,15 +163,98 @@ export async function inviteSignUp(
         }
       }
 
-      if (inviteToken.facility_id) {
-        // Token carries the facility — link directly
+      if (inviteToken.role_type === "clinical_provider") {
+        // ── CASE C / CASE D — clinical_provider ALWAYS creates their own clinic ──
+        //
+        // CASE C: rep invited (facility_id = null) → assigned_rep = token.created_by
+        // CASE D: admin invited (facility_id = rep's facility) → look up rep via facility
+        let assignedRepId: string | null = null;
+
+        if (inviteToken.facility_id) {
+          // CASE D: admin-invited — resolve the rep who owns the selected facility
+          const { data: repFacility, error: repFacErr } = await supabaseAdmin
+            .from("facilities")
+            .select("user_id")
+            .eq("id", inviteToken.facility_id)
+            .single();
+          if (repFacErr || !repFacility) {
+            console.error("[inviteSignUp] Failed to resolve rep facility:", repFacErr);
+            await supabaseAdmin.auth.admin.deleteUser(createdUserId);
+            return { error: "Failed to resolve assigned rep. Please try again." };
+          }
+          assignedRepId = repFacility.user_id;
+        } else {
+          // CASE C: rep-invited — the token creator is the rep
+          assignedRepId = inviteToken.created_by;
+        }
+
+        const officeName = (formData.get("office_name") as string)?.trim();
+        const officePhone = toE164((formData.get("office_phone") as string) ?? "");
+        const officeAddress = (formData.get("office_address") as string)?.trim();
+        const officeCity = (formData.get("office_city") as string)?.trim();
+        const officeState = (formData.get("office_state") as string)?.trim();
+        const officePostalCode = (formData.get("office_postal_code") as string)?.trim();
+
+        // Idempotency: check if clinic already exists for this user (double-submit protection)
+        const { data: existingClinic } = await supabaseAdmin
+          .from("facilities")
+          .select("id")
+          .eq("user_id", createdUserId)
+          .maybeSingle();
+
+        let clinicId: string;
+
+        if (existingClinic?.id) {
+          clinicId = existingClinic.id;
+        } else {
+          const { data: newFacility, error: facilityError } = await supabaseAdmin
+            .from("facilities")
+            .insert({
+              user_id: createdUserId,
+              name: officeName || `${firstName} ${lastName}'s Practice`,
+              contact: `${firstName} ${lastName}`,
+              phone: officePhone || phone,
+              address_line_1: officeAddress || "",
+              city: officeCity || "",
+              state: officeState || "",
+              postal_code: officePostalCode || "",
+              country: "US",
+              status: "active",
+              facility_type: "clinic",
+              assigned_rep: assignedRepId,
+            })
+            .select("id")
+            .single();
+
+          if (facilityError) {
+            console.error("[inviteSignUp] Facility creation error:", JSON.stringify(facilityError));
+            await supabaseAdmin.auth.admin.deleteUser(createdUserId);
+            return { error: friendlyDbError(facilityError, "Failed to create facility. Please check your information.") };
+          }
+
+          clinicId = newFacility.id;
+        }
+
+        createdFacilityId = clinicId;
+        await addFacilityMember(clinicId, createdUserId, "clinical_provider", {
+          isPrimary: true,
+          invitedBy: inviteToken.created_by,
+        });
+
+        await supabaseAdmin
+          .from("profiles")
+          .update({ has_completed_setup: true })
+          .eq("id", createdUserId);
+
+      } else if (inviteToken.facility_id) {
+        // ── CASE A — clinical_staff joins an existing facility ─────────────────
         const { error: memberError } = await supabaseAdmin
           .from("facility_members")
           .insert({
             facility_id: inviteToken.facility_id,
             user_id: createdUserId,
             role_type: inviteToken.role_type,
-            can_sign_orders: inviteToken.role_type === "clinical_provider",
+            can_sign_orders: false,
             is_primary: false,
             invited_by: inviteToken.created_by,
           });
@@ -177,45 +269,11 @@ export async function inviteSignUp(
           .from("profiles")
           .update({ has_completed_setup: true })
           .eq("id", createdUserId);
+
       } else {
-        // ── CASE C — Fallback: create a new facility from form data ───────────
-        const officeName = (formData.get("office_name") as string)?.trim();
-        const officePhone = toE164((formData.get("office_phone") as string) ?? "");
-        const officeAddress = (formData.get("office_address") as string)?.trim();
-        const officeCity = (formData.get("office_city") as string)?.trim();
-        const officeState = (formData.get("office_state") as string)?.trim();
-        const officePostalCode = (formData.get("office_postal_code") as string)?.trim();
-
-        const { data: newFacility, error: facilityError } = await supabaseAdmin
-          .from("facilities")
-          .insert({
-            user_id: createdUserId,
-            name: officeName || `${firstName} ${lastName}'s Practice`,
-            contact: `${firstName} ${lastName}`,
-            phone: officePhone || phone,
-            address_line_1: officeAddress || "",
-            city: officeCity || "",
-            state: officeState || "",
-            postal_code: officePostalCode || "",
-            country: "US",
-            status: "active",
-          })
-          .select("id")
-          .single();
-
-        if (facilityError) {
-          console.error("[inviteSignUp] Facility creation error:", JSON.stringify(facilityError));
-          await supabaseAdmin.auth.admin.deleteUser(createdUserId);
-          return { error: friendlyDbError(facilityError, "Failed to create facility. Please check your information.") };
-        }
-
-        createdFacilityId = newFacility.id;
-        await addFacilityMember(newFacility.id, createdUserId, inviteToken.role_type);
-
-        await supabaseAdmin
-          .from("profiles")
-          .update({ has_completed_setup: true })
-          .eq("id", createdUserId);
+        // Edge case: clinical_staff with no facility_id (should not happen after fixes)
+        await supabaseAdmin.auth.admin.deleteUser(createdUserId);
+        return { error: "Invalid invite: no facility assigned. Please contact your rep." };
       }
 
       await consumeInviteToken(token, createdUserId);

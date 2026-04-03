@@ -94,7 +94,7 @@ const navItems: NavItemDef[] = [
     icon: Share2,
     label: "Onboarding",
     href: "/dashboard/onboarding",
-    visible: (role) => isSalesRep(role) || isAdmin(role),
+    visible: (role) => isSalesRep(role) || isAdmin(role) || isClinicalProvider(role),
   },
   {
     icon: Users,
@@ -122,6 +122,7 @@ export function Sidebar() {
   const userData = useAppSelector((state) => state.dashboard);
 
   const role = userData.role as UserRole;
+  const isSubRep = userData.isSubRep ?? false;
 
   useEffect(() => {
     dispatch(closeSidebar());
@@ -184,6 +185,7 @@ export function Sidebar() {
             email={userData.email}
             initials={userData.initials}
             role={userData.role}
+            isSubRep={isSubRep}
           />
 
           <div className="px-3 pb-3">

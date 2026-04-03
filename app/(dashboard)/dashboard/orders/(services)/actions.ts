@@ -350,6 +350,18 @@ export async function submitOrderPaymentChoice(
   const parsed = parseSubmitOrderPaymentChoiceInput(input);
 
   const facility = await getUserFacilityOrThrow(supabase, user.id);
+
+  const { data: membership } = await supabase
+    .from("facility_members")
+    .select("can_sign_orders")
+    .eq("user_id", user.id)
+    .eq("facility_id", facility.id)
+    .single();
+
+  if (!membership?.can_sign_orders) {
+    throw new Error("You are not authorized to sign orders.");
+  }
+
   const existing = await getFacilityOwnedOrderByIdOrThrow(
     supabase,
     parsed.id,

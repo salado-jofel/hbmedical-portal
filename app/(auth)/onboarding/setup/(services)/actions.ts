@@ -64,25 +64,37 @@ export async function completeRepSetup(
       ? `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim()
       : "";
 
-    // Create facility owned by this rep
-    const { error: facilityError } = await adminClient
+    // Idempotency: if the rep already has a facility, skip INSERT and just mark setup complete.
+    const { data: existingFacility } = await adminClient
       .from("facilities")
-      .insert({
-        user_id: user.id,
-        name: practice_name,
-        contact: contactName,
-        phone,
-        address_line_1,
-        city,
-        state,
-        postal_code,
-        country: "US",
-        status: "active",
-      });
+      .select("id")
+      .eq("user_id", user.id)
+      .maybeSingle();
 
-    if (facilityError) {
-      console.error("[completeRepSetup] Facility error:", JSON.stringify(facilityError));
-      return { error: "Failed to save practice information. Please try again.", success: false };
+    if (!existingFacility) {
+      // Create facility owned by this rep.
+      // facility_type is always "rep_office" for sales representatives —
+      // never taken from form input and never allowed to be "clinic".
+      const { error: facilityError } = await adminClient
+        .from("facilities")
+        .insert({
+          user_id: user.id,
+          name: practice_name,
+          contact: contactName,
+          phone,
+          address_line_1,
+          city,
+          state,
+          postal_code,
+          country: "US",
+          status: "active",
+          facility_type: "rep_office",
+        });
+
+      if (facilityError) {
+        console.error("[completeRepSetup] Facility error:", JSON.stringify(facilityError));
+        return { error: "Failed to save practice information. Please try again.", success: false };
+      }
     }
 
     // Mark setup as complete
@@ -94,6 +106,35 @@ export async function completeRepSetup(
     if (profileError) {
       console.error("[completeRepSetup] Profile update error:", JSON.stringify(profileError));
       return { error: "Setup saved but profile update failed. Please contact support.", success: false };
+    }
+
+    // Best-effort: mark the sub-rep's tracking token as used.
+    // inviteSubRep inserts a sales_representative token when it sends the invite,
+    // but since the sub-rep signs up via Supabase Auth (not the /invite/:token flow),
+    // consumeInviteToken is never called automatically. We do it here instead.
+    try {
+      const { data: pendingToken } = await adminClient
+        .from("invite_tokens")
+        .select("id")
+        .eq("role_type", "sales_representative")
+        .is("used_at", null)
+        .is("used_by", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (pendingToken?.id) {
+        await adminClient
+          .from("invite_tokens")
+          .update({
+            used_by: user.id,
+            used_at: new Date().toISOString(),
+          })
+          .eq("id", pendingToken.id);
+      }
+    } catch (tokenErr) {
+      // Non-fatal — tracking failure must never block setup completion
+      console.error("[completeRepSetup] Token tracking error (non-fatal):", tokenErr);
     }
 
     return { success: true, error: null };

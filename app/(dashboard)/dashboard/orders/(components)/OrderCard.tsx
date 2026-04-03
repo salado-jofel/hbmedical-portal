@@ -166,7 +166,7 @@ function getNet30DueMeta(order: DashboardOrder, nowMs = Date.now()) {
   };
 }
 
-export function OrderCard({ order }: { order: DashboardOrder }) {
+export function OrderCard({ order, canSign }: { order: DashboardOrder; canSign: boolean }) {
   console.log("order test: ", order);
   const dispatch = useAppDispatch();
   const actionOrder = order as OrderCardActionMeta;
@@ -456,6 +456,20 @@ export function OrderCard({ order }: { order: DashboardOrder }) {
     }
 
     if (canChoosePayment) {
+      if (!canSign) {
+        return (
+          <Button
+            type="button"
+            size="sm"
+            disabled
+            className="h-9 bg-[#94A3B8] text-white hover:bg-[#94A3B8]"
+          >
+            <Clock3 className="mr-1 h-4 w-4" />
+            Awaiting Payment
+          </Button>
+        );
+      }
+
       return (
         <div className="relative" ref={paymentMenuRef}>
           <Button

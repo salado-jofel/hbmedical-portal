@@ -53,3 +53,13 @@ export const ROLE_LABELS: Record<NonNullable<UserRole>, string> = {
   clinical_provider: "Clinical Provider",
   clinical_staff: "Clinical Staff",
 };
+
+export function getRepDisplayLabel(
+  role: UserRole,
+  isSubRep: boolean,
+): string {
+  if (role === "sales_representative" && isSubRep) {
+    return "Sub Sales Rep";
+  }
+  return role ? (ROLE_LABELS[role] ?? role) : "";
+}

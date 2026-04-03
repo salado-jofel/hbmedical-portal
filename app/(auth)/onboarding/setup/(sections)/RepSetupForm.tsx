@@ -7,6 +7,7 @@ import { HBLogo } from "@/app/(components)/HBLogo";
 import { AuthField } from "@/app/(components)/AuthField";
 import SubmitButton from "@/app/(components)/SubmitButton";
 import ErrorAlert from "@/app/(components)/ErrorAlert";
+import { AuthCard } from "@/app/(components)/AuthCard";
 import { completeRepSetup, type RepSetupState } from "../(services)/actions";
 
 export default function RepSetupForm() {
@@ -24,7 +25,7 @@ export default function RepSetupForm() {
   }, [state.success]);
 
   return (
-    <div className="bg-white rounded-2xl shadow-[0_8px_40px_rgba(0,0,0,0.1)] border border-[#E2E8F0] p-8 w-full max-w-md select-none">
+    <AuthCard>
       {/* Logo */}
       <div className="mb-6 flex items-center justify-center">
         <HBLogo variant="light" size="lg" />
@@ -105,6 +106,6 @@ export default function RepSetupForm() {
           />
         </div>
       </form>
-    </div>
+    </AuthCard>
   );
 }

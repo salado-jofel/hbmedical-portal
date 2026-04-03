@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentUserOrThrow, requireAdminOrThrow } from "@/lib/supabase/auth";
+import { getCurrentUserOrThrow, getUserRole, requireAdminOrThrow } from "@/lib/supabase/auth";
+import { isAdmin, isSalesRep } from "@/utils/helpers/role";
 import {
   ACTIVITIES_TABLE,
   ACTIVITY_SELECT,
@@ -31,7 +32,12 @@ export async function getActivitiesByFacility(
   facilityId: string,
 ): Promise<IActivity[]> {
   const supabase = await createClient();
-  await requireAdminOrThrow(supabase);
+  const role = await getUserRole(supabase);
+  if (!isAdmin(role) && !isSalesRep(role)) {
+    throw new Error("You do not have permission to view activities.");
+  }
+  // DB RLS (rep_read_hierarchy_activities) scopes what reps can see —
+  // no manual filter needed; createClient() + RLS handles it
 
   const { data, error } = await supabase
     .from(ACTIVITIES_TABLE)

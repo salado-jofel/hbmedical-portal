@@ -1,8 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole } from "@/lib/supabase/auth";
-import { isAdmin as checkIsAdmin } from "@/utils/helpers/role";
-import { getCurrentUserOrThrow } from "@/lib/supabase/auth";
+import { isAdmin as checkIsAdmin, isSalesRep } from "@/utils/helpers/role";
 import {
   getAccountById,
   getSalesReps,
@@ -47,16 +46,15 @@ export default async function AccountDetailPage({
   const { id } = await params;
 
   const supabase = await createClient();
-  const [role, user] = await Promise.all([
-    getUserRole(supabase),
-    getCurrentUserOrThrow(supabase),
-  ]);
+  const role = await getUserRole(supabase);
 
-  const admin = checkIsAdmin(role);
+  const adminUser = checkIsAdmin(role);
+  const repUser   = isSalesRep(role);
+  const canEdit   = adminUser; // only admins may create / update / delete
 
   const [account, salesReps] = await Promise.all([
     getAccountById(id),
-    admin ? getSalesReps() : Promise.resolve([]),
+    adminUser ? getSalesReps() : Promise.resolve([]),
   ]);
 
   if (!account) {
@@ -66,25 +64,25 @@ export default async function AccountDetailPage({
   const [contacts, orders, activities] = await Promise.all([
     getContactsByFacility(account.id),
     getFacilityOrders(account.id),
-    getActivitiesByFacility(account.id),
+    // Both admin and reps may read activities; DB RLS scopes rep results
+    (adminUser || repUser)
+      ? getActivitiesByFacility(account.id)
+      : Promise.resolve([]),
   ]);
-
-  const isAssignedRep = account.assigned_rep === user.id;
 
   return (
     <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-6">
       <Providers account={account} contacts={contacts} activities={activities}>
         <AccountHeader
           accountId={account.id}
-          isAdmin={admin}
+          isAdmin={adminUser}
           salesReps={salesReps}
         />
         <AccountDetailClient
           account={account}
           contacts={contacts}
           orders={orders}
-          isAdmin={admin}
-          isAssignedRep={isAssignedRep}
+          canEdit={canEdit}
           salesReps={salesReps}
         />
       </Providers>

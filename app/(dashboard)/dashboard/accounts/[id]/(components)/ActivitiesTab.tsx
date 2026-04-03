@@ -92,18 +92,16 @@ const TYPE_FILTER_OPTIONS: { value: TypeFilter; label: string }[] = [
 
 interface ActivitiesTabProps {
   facilityId: string;
-  isAdmin: boolean;
-  isAssignedRep: boolean;
+  canEdit: boolean;
 }
 
 export function ActivitiesTab({
   facilityId,
-  isAdmin,
-  isAssignedRep,
+  canEdit,
 }: ActivitiesTabProps) {
   const dispatch = useAppDispatch();
   const activities = useAppSelector((s) => s.activities.items);
-  const canManage = isAdmin || isAssignedRep;
+  const canManage = canEdit;
 
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [confirmOpen, setConfirmOpen] = useState(false);

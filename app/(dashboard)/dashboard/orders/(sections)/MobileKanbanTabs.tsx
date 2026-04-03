@@ -13,8 +13,10 @@ import {
 
 export function MobileKanbanTabs({
   grouped,
+  canSign,
 }: {
   grouped: Record<BoardStatus, DashboardOrder[]>;
+  canSign: boolean;
 }) {
   const [activeTab, setActiveTab] = useState<BoardStatus>("New Orders");
   const config = STATUS_CONFIG[activeTab];
@@ -83,7 +85,7 @@ export function MobileKanbanTabs({
           </div>
         ) : (
           grouped[activeTab].map((order) => (
-            <OrderCard key={order.id} order={order} />
+            <OrderCard key={order.id} order={order} canSign={canSign} />
           ))
         )}
       </div>

@@ -26,6 +26,16 @@ export default function SignInForm() {
     setFormValues((prev) => ({ ...prev, [name]: value }));
   };
 
+  // Safety net: if an invite/recovery token lands on this page instead of
+  // /set-password, forward it immediately so the token isn't lost.
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash.includes("access_token")) {
+      window.location.replace(`/set-password${hash}`);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (state?.error) {
       setFormValues((prev) => ({ ...prev, password: "" }));
