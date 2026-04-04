@@ -1,10 +1,11 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import { Loader2, Plus, Copy, Check, Info } from "lucide-react";
+import { Loader2, Send, Info, CheckCircle } from "lucide-react";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -24,39 +25,51 @@ const EXPIRY_OPTIONS = [
 ];
 
 interface InviteClinicFormProps {
-  baseUrl: string;
   isAdmin?: boolean;
   repsWithFacilities?: RepWithFacility[];
 }
 
-export function InviteClinicForm({ baseUrl, isAdmin = false, repsWithFacilities = [] }: InviteClinicFormProps) {
+export function InviteClinicForm({ isAdmin = false, repsWithFacilities = [] }: InviteClinicFormProps) {
   const [state, formAction, isPending] = useActionState<
     IInviteTokenFormState | null,
     FormData
   >(generateInviteToken, null);
 
-  const [copied, setCopied] = useState(false);
   const [selectedFacilityId, setSelectedFacilityId] = useState<string>(
     repsWithFacilities[0]?.facilityId ?? ""
   );
+  const [sentEmail, setSentEmail] = useState<string | null>(null);
 
   const hasNoReps = isAdmin && repsWithFacilities.length === 0;
 
-  const generatedUrl =
-    state?.success && state.token ? `${baseUrl}/invite/${state.token}` : null;
-
   useEffect(() => {
     if (!state) return;
-    if (state.error) {
+    if (state.success && state.invitedEmail) {
+      setSentEmail(state.invitedEmail);
+    } else if (state.error) {
       toast.error(state.error);
     }
   }, [state]);
 
-  function handleCopy() {
-    if (!generatedUrl) return;
-    navigator.clipboard.writeText(generatedUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  function resetForm() {
+    setSentEmail(null);
+  }
+
+  if (sentEmail) {
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 border border-green-100 text-green-700 text-sm">
+          <CheckCircle className="w-4 h-4 shrink-0" />
+          Invite sent to <span className="font-medium">{sentEmail}</span>
+        </div>
+        <button
+          onClick={resetForm}
+          className="text-sm text-[#64748B] underline underline-offset-2 hover:text-[#0F172A] transition-colors"
+        >
+          Send another invite
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -111,6 +124,24 @@ export function InviteClinicForm({ baseUrl, isAdmin = false, repsWithFacilities 
           </p>
         </div>
 
+        {/* Email */}
+        <div className="space-y-1.5">
+          <Label htmlFor="clinic_invite_email" className="text-xs">
+            Email <span className="text-red-400">*</span>
+          </Label>
+          <Input
+            id="clinic_invite_email"
+            type="email"
+            name="email"
+            placeholder="doctor@clinic.com"
+            required
+            className="h-9 text-sm"
+          />
+          {state?.fieldErrors?.email && (
+            <p className="text-xs text-red-500">{state.fieldErrors.email}</p>
+          )}
+        </div>
+
         {/* Expiry */}
         <div className="space-y-1.5">
           <Label className="text-xs">Link expires in</Label>
@@ -143,41 +174,11 @@ export function InviteClinicForm({ baseUrl, isAdmin = false, repsWithFacilities 
           {isPending ? (
             <Loader2 className="w-3.5 h-3.5 animate-spin" />
           ) : (
-            <Plus className="w-3.5 h-3.5" />
+            <Send className="w-3.5 h-3.5" />
           )}
-          Generate invite link
+          Send invite
         </Button>
       </form>
-
-      {/* Show generated link immediately */}
-      {generatedUrl && (
-        <div className="space-y-2">
-          <p className="text-xs text-[#64748B] font-medium">Your invite link is ready:</p>
-          <div
-            className="flex items-center gap-2 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2 cursor-pointer group"
-            onClick={handleCopy}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => e.key === "Enter" && handleCopy()}
-          >
-            <p className="text-xs text-emerald-700 font-mono truncate flex-1">{generatedUrl}</p>
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); handleCopy(); }}
-              className="shrink-0"
-            >
-              {copied ? (
-                <Check className="w-3.5 h-3.5 text-emerald-600" />
-              ) : (
-                <Copy className="w-3.5 h-3.5 text-emerald-500 group-hover:text-emerald-700" />
-              )}
-            </button>
-          </div>
-          <p className="text-xs text-[#94A3B8]">
-            This link is now saved below. Share it with the clinic user to join the portal.
-          </p>
-        </div>
-      )}
     </div>
   );
 }

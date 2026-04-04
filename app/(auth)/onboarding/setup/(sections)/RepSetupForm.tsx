@@ -1,7 +1,9 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import { Building2, MapPin } from "lucide-react";
+import { Building2, MapPin, User } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { PhoneInputField } from "@/app/(components)/PhoneInputField";
 import { HBLogo } from "@/app/(components)/HBLogo";
 import { AuthField } from "@/app/(components)/AuthField";
@@ -37,6 +39,40 @@ export default function RepSetupForm() {
       </p>
 
       <form action={formAction} className="space-y-4">
+        {/* Name fields — sub-rep enters their real name here */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="setup_first_name" className="text-xs font-medium text-[#0F172A]">
+              First Name <span className="text-red-400">*</span>
+            </Label>
+            <Input
+              id="setup_first_name"
+              name="first_name"
+              placeholder="John"
+              required
+              className="h-9 text-sm"
+            />
+            {state.fieldErrors?.first_name && (
+              <p className="text-xs text-red-500">{state.fieldErrors.first_name}</p>
+            )}
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="setup_last_name" className="text-xs font-medium text-[#0F172A]">
+              Last Name <span className="text-red-400">*</span>
+            </Label>
+            <Input
+              id="setup_last_name"
+              name="last_name"
+              placeholder="Doe"
+              required
+              className="h-9 text-sm"
+            />
+            {state.fieldErrors?.last_name && (
+              <p className="text-xs text-red-500">{state.fieldErrors.last_name}</p>
+            )}
+          </div>
+        </div>
+
         <AuthField
           id="practice_name"
           name="practice_name"

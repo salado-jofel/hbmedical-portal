@@ -4,5 +4,6 @@ export interface ISubRep {
   last_name: string;
   email: string;
   status: "pending" | "active" | "inactive";
+  has_completed_setup: boolean;
   created_at: string;
 }

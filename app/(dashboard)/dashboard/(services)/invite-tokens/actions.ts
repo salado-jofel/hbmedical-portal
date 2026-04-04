@@ -245,9 +245,7 @@ const LOGO_URL =
   "https://eyrefohymvvabazvmemq.supabase.co/storage/v1/object/public/spearhead-assets/assets/email/hb-logo-name-2.png";
 
 const inviteSubRepSchema = z.object({
-  first_name: z.string().min(1, "First name is required."),
-  last_name: z.string().min(1, "Last name is required."),
-  email: z.string().email("Enter a valid email."),
+  email: z.string().email("Enter a valid email address.").min(1, "Email is required."),
 });
 
 export async function inviteSubRep(
@@ -264,18 +262,19 @@ export async function inviteSubRep(
     }
 
     const raw = {
-      first_name: formData.get("first_name") as string,
-      last_name: formData.get("last_name") as string,
       email: formData.get("email") as string,
     };
 
     const parsed = inviteSubRepSchema.safeParse(raw);
     if (!parsed.success) {
-      const msg = parsed.error.issues[0]?.message ?? "Invalid input.";
-      return { error: msg, success: false };
+      const emailIssue = parsed.error.issues.find((i) => i.path[0] === "email");
+      if (emailIssue) {
+        return { error: null, success: false, fieldErrors: { email: emailIssue.message } };
+      }
+      return { error: parsed.error.issues[0]?.message ?? "Invalid input.", success: false };
     }
 
-    const { first_name, last_name, email } = parsed.data;
+    const { email } = parsed.data;
 
     const adminClient = createAdminClient();
 
@@ -289,7 +288,7 @@ export async function inviteSubRep(
         type: "invite",
         email,
         options: {
-          data: { first_name, last_name, invited_by: user.id },
+          data: { first_name: "Pending", last_name: "Setup", invited_by: user.id },
           redirectTo: `${appUrl}/set-password`,
         },
       });
@@ -302,11 +301,11 @@ export async function inviteSubRep(
     const userId = linkData.user.id;
     const actionLink = linkData.properties?.action_link ?? "";
 
-    // Create profile with sales_representative role
+    // Create profile with placeholder name — sub-rep provides real name during setup
     await adminClient.from("profiles").upsert({
       id: userId,
-      first_name,
-      last_name,
+      first_name: "Pending",
+      last_name: "Setup",
       email,
       role: "sales_representative",
     });
@@ -318,6 +317,7 @@ export async function inviteSubRep(
       facility_id: null,
       role_type: "sales_representative",
       expires_at: expiresAt,
+      invited_email: email,
     });
 
     // Send invite email via Resend
@@ -348,9 +348,8 @@ p{margin:0 0 14px;font-size:14px;}
 <div class="header"><img src="${LOGO_URL}" alt="HB Medical" width="176" class="logo-img" /></div>
 <div class="content">
 <h1 class="h1">You're invited to HB Medical Portal</h1>
-<p>Hi ${first_name} ${last_name},</p>
 <p>You've been invited to join the <strong>HB Medical Portal</strong> as a <strong>Sales Representative</strong>. Click below to set your password and get started.</p>
-<div class="btn-row"><a href="${actionLink}" class="btn" target="_blank" rel="noopener noreferrer">Set Password &amp; Sign In</a></div>
+<div class="btn-row"><a href="${actionLink}" class="btn" target="_blank" rel="noopener noreferrer">Accept Invitation &rarr;</a></div>
 <p>This invitation expires in 7 days. If you did not expect this, you can safely ignore it.</p>
 <p class="muted">Questions? Contact your HB Medical admin.</p>
 </div>

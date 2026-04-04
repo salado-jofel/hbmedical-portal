@@ -449,9 +449,9 @@ export async function resendInvite(
 
     await sendInviteEmail({
       to: email,
-      firstName,
-      role: ROLE_LABELS[role as NonNullable<UserRole>] ?? role,
-      resetLink,
+      inviteUrl: resetLink,
+      roleType: role,
+      inviterName: "HB Medical",
     });
 
     return { success: true, error: null };

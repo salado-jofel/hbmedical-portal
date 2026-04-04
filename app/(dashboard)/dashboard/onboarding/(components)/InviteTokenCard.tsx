@@ -1,55 +1,37 @@
 "use client";
 
-import { useState } from "react";
-import { Copy, Check, Trash2, Clock, Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Trash2, Clock, Loader2, Mail } from "lucide-react";
 import { cn } from "@/utils/utils";
 import { ROLE_LABELS } from "@/utils/helpers/role";
 import type { IInviteToken } from "@/utils/interfaces/invite-tokens";
 
 interface InviteTokenCardProps {
   token: IInviteToken;
-  baseUrl: string;
   onDeleteClick: () => void;
   isDeleting: boolean;
+  onResendClick?: () => void;
+  isResending?: boolean;
 }
 
 /* -------------------------------------------------------------------------- */
-/* Status label logic                                                          */
+/* Primary label logic                                                         */
 /* -------------------------------------------------------------------------- */
 
-function getTokenStatusLabel(token: IInviteToken): string {
-  const isExpired = token.expires_at ? new Date(token.expires_at) < new Date() : false;
-
-  if (!token.used_at) {
-    if (isExpired) return "Expired";
-    switch (token.role_type) {
-      case "clinical_provider":    return "Awaiting provider signup";
-      case "sales_representative": return "Awaiting rep signup";
-      case "clinical_staff":       return "Awaiting staff signup";
-      default:                     return "Pending";
-    }
+function getTokenPrimaryLabel(token: IInviteToken): string {
+  // Used token — show what was created
+  if (token.used_at) {
+    if (token.used_by_facility_name) return token.used_by_facility_name;
+    if (token.used_by_has_completed_setup) return "Setup complete";
+    return "Pending setup";
   }
-
-  // Token used — check post-signup state
+  // Unused token — show who was invited
+  if (token.invited_email) return token.invited_email;
+  // Fallback for old tokens without email
   switch (token.role_type) {
-    case "clinical_provider":
-      return token.used_by_facility_name ?? "Signup complete";
-
-    case "sales_representative":
-      if (token.used_by_has_completed_setup && token.used_by_facility_name) {
-        return token.used_by_facility_name;
-      }
-      if (token.used_by_has_completed_setup) {
-        return "Rep setup complete";
-      }
-      return "Pending rep setup";
-
-    case "clinical_staff":
-      return "Signup complete";
-
-    default:
-      return "Signup complete";
+    case "clinical_provider":    return "Awaiting provider signup";
+    case "sales_representative": return "Awaiting rep signup";
+    case "clinical_staff":       return "Awaiting staff signup";
+    default:                     return "Pending";
   }
 }
 
@@ -57,21 +39,18 @@ function getTokenStatusLabel(token: IInviteToken): string {
 /* Card                                                                        */
 /* -------------------------------------------------------------------------- */
 
-export function InviteTokenCard({ token, baseUrl, onDeleteClick, isDeleting }: InviteTokenCardProps) {
-  const [copied, setCopied] = useState(false);
-
-  const inviteUrl = `${baseUrl}/invite/${token.token}`;
+export function InviteTokenCard({
+  token,
+  onDeleteClick,
+  isDeleting,
+  onResendClick,
+  isResending = false,
+}: InviteTokenCardProps) {
   const isUsed    = token.used_at !== null;
   const isExpired = token.expires_at ? new Date(token.expires_at) < new Date() : false;
   const isActive  = !isUsed && !isExpired;
 
-  const statusLabel = getTokenStatusLabel(token);
-
-  function handleCopy() {
-    navigator.clipboard.writeText(inviteUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
+  const primaryLabel = getTokenPrimaryLabel(token);
 
   return (
     <div
@@ -80,13 +59,13 @@ export function InviteTokenCard({ token, baseUrl, onDeleteClick, isDeleting }: I
         isUsed || isExpired ? "border-[#F1F5F9] opacity-60" : "border-[#E2E8F0]",
       )}
     >
-      {/* ── Top row: label + badges + delete ── */}
+      {/* ── Top row: label + badges + actions ── */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           {/* Primary label */}
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm font-medium text-[#0F172A]">
-              {statusLabel}
+              {primaryLabel}
             </span>
             <span className="text-xs px-2 py-0.5 rounded-full bg-[#EFF6FF] text-[#15689E] font-medium">
               {ROLE_LABELS[token.role_type]}
@@ -126,20 +105,22 @@ export function InviteTokenCard({ token, baseUrl, onDeleteClick, isDeleting }: I
 
         {/* Actions */}
         <div className="flex items-center gap-1 shrink-0">
-          {isActive && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="w-7 h-7"
-              onClick={handleCopy}
-              title="Copy invite link"
+          {/* Resend email — only for unused tokens that have an email */}
+          {!isUsed && token.invited_email && onResendClick && (
+            <button
+              type="button"
+              onClick={onResendClick}
+              disabled={isResending || isDeleting}
+              className="h-7 px-2 inline-flex items-center gap-1.5 rounded-md text-xs text-[#94A3B8] hover:text-[#15689E] hover:bg-[#EFF6FF] transition-colors disabled:opacity-40"
+              title="Resend invite email"
             >
-              {copied ? (
-                <Check className="w-3.5 h-3.5 text-green-500" />
+              {isResending ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
               ) : (
-                <Copy className="w-3.5 h-3.5" />
+                <Mail className="w-3.5 h-3.5" />
               )}
-            </Button>
+              <span className="hidden sm:inline">Resend</span>
+            </button>
           )}
           <button
             type="button"
@@ -155,21 +136,6 @@ export function InviteTokenCard({ token, baseUrl, onDeleteClick, isDeleting }: I
           </button>
         </div>
       </div>
-
-      {/* ── Invite URL (active tokens only) ── */}
-      {isActive && (
-        <div
-          className="flex items-center gap-2 bg-[#F8FAFC] rounded-lg px-3 py-2 cursor-pointer group border border-[#E2E8F0]"
-          onClick={handleCopy}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => e.key === "Enter" && handleCopy()}
-          title="Click to copy"
-        >
-          <p className="text-xs text-[#64748B] font-mono truncate flex-1">{inviteUrl}</p>
-          <Copy className="w-3 h-3 text-[#94A3B8] group-hover:text-[#15689E] shrink-0 transition-colors" />
-        </div>
-      )}
     </div>
   );
 }

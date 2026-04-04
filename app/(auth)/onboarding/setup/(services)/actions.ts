@@ -9,9 +9,15 @@ import { isSalesRep } from "@/utils/helpers/role";
 export interface RepSetupState {
   error: string | null;
   success: boolean;
+  fieldErrors?: {
+    first_name?: string;
+    last_name?: string;
+  };
 }
 
 const repSetupSchema = z.object({
+  first_name: z.string().min(1, "First name is required.").transform((s) => s.trim()),
+  last_name: z.string().min(1, "Last name is required.").transform((s) => s.trim()),
   practice_name: z.string().min(1, "Practice name is required."),
   phone: z.string().min(1, "Phone number is required."),
   address_line_1: z.string().min(1, "Address is required."),
@@ -34,6 +40,8 @@ export async function completeRepSetup(
     }
 
     const raw = {
+      first_name: formData.get("first_name") as string,
+      last_name: formData.get("last_name") as string,
       practice_name: (formData.get("practice_name") as string)?.trim(),
       phone: (formData.get("phone") as string)?.trim(),
       address_line_1: (formData.get("address_line_1") as string)?.trim(),
@@ -44,25 +52,27 @@ export async function completeRepSetup(
 
     const parsed = repSetupSchema.safeParse(raw);
     if (!parsed.success) {
+      const fieldErrors: RepSetupState["fieldErrors"] = {};
+      for (const issue of parsed.error.issues) {
+        const field = issue.path[0] as keyof NonNullable<RepSetupState["fieldErrors"]>;
+        if (field === "first_name" || field === "last_name") {
+          fieldErrors[field] = issue.message;
+        }
+      }
+      if (Object.keys(fieldErrors).length > 0) {
+        return { error: null, success: false, fieldErrors };
+      }
       const msg = parsed.error.issues[0]?.message ?? "Invalid input.";
       return { error: msg, success: false };
     }
 
-    const { practice_name, phone, address_line_1, city, state, postal_code } =
+    const { first_name, last_name, practice_name, phone, address_line_1, city, state, postal_code } =
       parsed.data;
 
     const adminClient = createAdminClient();
 
-    // Get rep's name for facility contact field
-    const { data: profile } = await adminClient
-      .from("profiles")
-      .select("first_name, last_name")
-      .eq("id", user.id)
-      .single();
-
-    const contactName = profile
-      ? `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim()
-      : "";
+    // Use the rep's real name (entered in this form) as the facility contact
+    const contactName = `${first_name} ${last_name}`.trim();
 
     // Idempotency: if the rep already has a facility, skip INSERT and just mark setup complete.
     const { data: existingFacility } = await adminClient
@@ -97,16 +107,25 @@ export async function completeRepSetup(
       }
     }
 
-    // Mark setup as complete
+    // Update profile with the rep's real name and mark setup complete
     const { error: profileError } = await adminClient
       .from("profiles")
-      .update({ has_completed_setup: true })
+      .update({
+        first_name,
+        last_name,
+        has_completed_setup: true,
+      })
       .eq("id", user.id);
 
     if (profileError) {
       console.error("[completeRepSetup] Profile update error:", JSON.stringify(profileError));
-      return { error: "Setup saved but profile update failed. Please contact support.", success: false };
+      return { error: "Failed to save your name. Please try again.", success: false };
     }
+
+    // Update auth user metadata so the sidebar shows the real name immediately
+    await adminClient.auth.admin.updateUserById(user.id, {
+      user_metadata: { first_name, last_name },
+    });
 
     // Best-effort: mark the sub-rep's tracking token as used.
     // inviteSubRep inserts a sales_representative token when it sends the invite,
