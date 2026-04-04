@@ -322,6 +322,7 @@ export interface IOrder {
   isPatientAtSnf: boolean;
   icd10Code: string | null;
   followupDays: number | null;
+  symptoms: string[];
   // joined relations
   patient: IPatient | null;
   items: IOrderItem[];
@@ -452,6 +453,7 @@ export type RawOrderRecord = {
   is_patient_at_snf: boolean | null;
   icd10_code: string | null;
   followup_days: number | null;
+  symptoms: string[] | null;
   ai_extracted: boolean | null;
   ai_extracted_at: string | null;
   order_form_locked: boolean | null;
@@ -660,6 +662,7 @@ export type DashboardOrder = {
   is_patient_at_snf: boolean;
   icd10_code: string | null;
   followup_days: number | null;
+  symptoms: string[];
   // from order_items (first item, for backwards compat)
   product_id: string | null;
   product_name: string;
@@ -755,6 +758,7 @@ export function mapOrder(raw: RawOrderRecord): DashboardOrder {
     is_patient_at_snf: raw.is_patient_at_snf ?? false,
     icd10_code: raw.icd10_code ?? null,
     followup_days: raw.followup_days ?? null,
+    symptoms: raw.symptoms ?? [],
     // item fields
     product_id: firstItem?.product_id ?? null,
     product_name: firstItem?.product_name ?? "",

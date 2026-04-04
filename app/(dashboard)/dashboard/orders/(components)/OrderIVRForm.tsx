@@ -11,6 +11,7 @@ import { cn } from "@/utils/utils";
 interface OrderIVRFormProps {
   orderId: string;
   canEdit: boolean;
+  onSaveStatus?: (status: SaveStatus) => void;
 }
 
 type IVRFieldKey = keyof Omit<
@@ -20,7 +21,7 @@ type IVRFieldKey = keyof Omit<
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 
-export function OrderIVRForm({ orderId, canEdit }: OrderIVRFormProps) {
+export function OrderIVRForm({ orderId, canEdit, onSaveStatus }: OrderIVRFormProps) {
   const [ivr, setIvr] = useState<Partial<IOrderIVR>>({});
   const [loading, setLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
@@ -39,14 +40,17 @@ export function OrderIVRForm({ orderId, canEdit }: OrderIVRFormProps) {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(async () => {
         setSaveStatus("saving");
+        onSaveStatus?.("saving");
         const result = await upsertOrderIVR(orderId, {
           [field]: value,
         } as Partial<IOrderIVR>);
         if (result.success) {
           setSaveStatus("saved");
+          onSaveStatus?.("saved");
           setTimeout(() => setSaveStatus("idle"), 2000);
         } else {
           setSaveStatus("error");
+          onSaveStatus?.("idle");
           setTimeout(() => setSaveStatus("idle"), 3000);
         }
       }, 800);

@@ -127,7 +127,7 @@ const ORDER_WITH_RELATIONS_SELECT = `
   patient_id, assigned_provider_id,
   wound_visit_number, chief_complaint,
   has_vasculitis_or_burns, is_receiving_home_health,
-  is_patient_at_snf, icd10_code, followup_days,
+  is_patient_at_snf, icd10_code, followup_days, symptoms,
   ai_extracted, ai_extracted_at, order_form_locked,
   patients (id, facility_id, first_name, last_name, date_of_birth, patient_ref, notes, is_active, created_at, updated_at),
   order_items (id, order_id, product_id, product_name, product_sku, unit_price, quantity, shipping_amount, tax_amount, subtotal, total_amount, created_at, updated_at),
@@ -1532,4 +1532,49 @@ export async function addOrderItems(
 
 export async function startOrderNet30(orderId: string): Promise<DashboardOrder> {
   throw new Error("Stripe Net 30 is not available in the new workflow.");
+}
+
+/* -------------------------------------------------------------------------- */
+/* updateOrderClinicalFields                                                   */
+/* -------------------------------------------------------------------------- */
+
+export async function updateOrderClinicalFields(
+  orderId: string,
+  data: {
+    chief_complaint?: string | null;
+    has_vasculitis_or_burns?: boolean | null;
+    is_receiving_home_health?: boolean | null;
+    is_patient_at_snf?: boolean | null;
+    icd10_code?: string | null;
+    followup_days?: number | null;
+    symptoms?: string[];
+  },
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { userId } = await requireIVREditRole();
+    const adminClient = createAdminClient();
+
+    const payload: Record<string, unknown> = {};
+    if ("chief_complaint" in data) payload.chief_complaint = data.chief_complaint;
+    if ("has_vasculitis_or_burns" in data) payload.has_vasculitis_or_burns = data.has_vasculitis_or_burns;
+    if ("is_receiving_home_health" in data) payload.is_receiving_home_health = data.is_receiving_home_health;
+    if ("is_patient_at_snf" in data) payload.is_patient_at_snf = data.is_patient_at_snf;
+    if ("icd10_code" in data) payload.icd10_code = data.icd10_code;
+    if ("followup_days" in data) payload.followup_days = data.followup_days;
+    if ("symptoms" in data) payload.symptoms = data.symptoms;
+
+    if (!Object.keys(payload).length) return { success: true };
+
+    const { error } = await adminClient
+      .from("orders")
+      .update(payload)
+      .eq("id", orderId);
+
+    if (error) throw new Error(error.message);
+
+    revalidatePath(ORDERS_PATH);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  }
 }

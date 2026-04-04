@@ -238,7 +238,7 @@ export async function createOrderCheckoutSession(
     throw new Error("Canceled orders cannot be paid.");
   }
 
-  if (order.order_status !== "submitted") {
+  if ((order.order_status as string) !== "submitted") {
     throw new Error("Order must be submitted before checkout.");
   }
 

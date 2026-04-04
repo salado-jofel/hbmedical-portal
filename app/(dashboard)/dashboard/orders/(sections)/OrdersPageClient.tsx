@@ -1,12 +1,11 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useMemo, useEffect } from "react";
 import { useAppSelector } from "@/store/hooks";
 import type { DashboardOrder, OrderStatus } from "@/utils/interfaces/orders";
 import { CreateOrderModal } from "../(components)/CreateOrderModal";
 import { OrderCard } from "../(components)/OrderCard";
-import { OrderDetailSheet } from "../(components)/OrderDetailSheet";
+import { OrderDetailModal } from "../(components)/OrderDetailModal";
 import { OrderStatusBadge } from "../(components)/OrderStatusBadge";
 import {
   CLINICAL_STATUSES,
@@ -43,20 +42,34 @@ export function OrdersPageClient({
   isAdmin,
   isRep,
   isSupport,
-  currentUserId,
   currentUserName,
 }: OrdersPageClientProps) {
-  const router = useRouter();
   const orders = useAppSelector((state) => state.orders.items);
 
   const [selectedOrder, setSelectedOrder] = useState<DashboardOrder | null>(null);
-  const [detailOpen, setDetailOpen] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+
+  // Keep the open modal's order in sync with Redux store (so updateOrderInStore refreshes it)
+  useEffect(() => {
+    if (!selectedOrder || !modalOpen) return;
+    const latest = orders.find((o) => o.id === selectedOrder.id);
+    if (latest && latest !== selectedOrder) setSelectedOrder(latest);
+  }, [orders, modalOpen]); // eslint-disable-line react-hooks/exhaustive-deps
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<OrderStatus | "all">("all");
   const [mobileTab, setMobileTab] = useState<OrderStatus>("draft");
 
-  const isClinic = canCreate || canSign;
   const showTableView = isAdmin || isRep || isSupport;
+
+  function handleOrderClick(order: DashboardOrder) {
+    setSelectedOrder(order);
+    setModalOpen(true);
+  }
+
+  function handleSummaryClose() {
+    setModalOpen(false);
+    setSelectedOrder(null);
+  }
 
   // Filter orders
   const filtered = useMemo(() => {
@@ -64,10 +77,13 @@ export function OrdersPageClient({
       const matchSearch =
         !search ||
         o.order_number.toLowerCase().includes(search.toLowerCase()) ||
-        (o.patient_full_name ?? "").toLowerCase().includes(search.toLowerCase()) ||
+        (o.patient_full_name ?? "")
+          .toLowerCase()
+          .includes(search.toLowerCase()) ||
         (o.facility_name ?? "").toLowerCase().includes(search.toLowerCase());
 
-      const matchStatus = statusFilter === "all" || o.order_status === statusFilter;
+      const matchStatus =
+        statusFilter === "all" || o.order_status === statusFilter;
 
       return matchSearch && matchStatus;
     });
@@ -75,10 +91,19 @@ export function OrdersPageClient({
 
   const grouped = useMemo(() => groupOrdersByStatus(filtered), [filtered]);
 
-  function openDetail(order: DashboardOrder) {
-    setSelectedOrder(order);
-    setDetailOpen(true);
-  }
+  /* ── Order detail modal ── */
+  const sheetPortal = selectedOrder && (
+    <OrderDetailModal
+      open={modalOpen}
+      onClose={handleSummaryClose}
+      order={selectedOrder}
+      canSign={canSign}
+      isAdmin={isAdmin}
+      isClinical={canCreate}
+      canEdit={canCreate}
+      currentUserName={currentUserName}
+    />
+  );
 
   /* ── TABLE VIEW (admin / rep / support) ── */
   if (showTableView) {
@@ -88,7 +113,9 @@ export function OrdersPageClient({
         <div className="pb-4 border-b border-[#E2E8F0] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-xl font-semibold text-[#0F172A]">Orders</h1>
-            <p className="text-sm text-[#64748B] mt-1">All orders across facilities</p>
+            <p className="text-sm text-[#64748B] mt-1">
+              All orders across facilities
+            </p>
           </div>
         </div>
 
@@ -106,7 +133,9 @@ export function OrdersPageClient({
           <div className="relative">
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as OrderStatus | "all")}
+              onChange={(e) =>
+                setStatusFilter(e.target.value as OrderStatus | "all")
+              }
               className="appearance-none border border-slate-200 rounded-lg px-3 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-[#15689E]/20 focus:border-[#15689E] bg-white"
             >
               <option value="all">All Statuses</option>
@@ -132,12 +161,24 @@ export function OrdersPageClient({
             <table className="w-full text-sm">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Order #</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Patient</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide hidden md:table-cell">Facility</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide hidden lg:table-cell">Wound</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide hidden lg:table-cell">DOS</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                    Order #
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                    Patient
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide hidden md:table-cell">
+                    Facility
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide hidden lg:table-cell">
+                    Wound
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide hidden lg:table-cell">
+                    DOS
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                    Status
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -145,7 +186,7 @@ export function OrdersPageClient({
                   <tr
                     key={order.id}
                     className="hover:bg-slate-50 cursor-pointer transition-colors"
-                    onClick={() => openDetail(order)}
+                    onClick={() => handleOrderClick(order)}
                   >
                     <td className="px-4 py-3 font-mono font-semibold text-[#15689E] text-xs">
                       {order.order_number}
@@ -172,18 +213,7 @@ export function OrdersPageClient({
           </div>
         )}
 
-        {/* Detail sheet */}
-        {selectedOrder && (
-          <OrderDetailSheet
-            open={detailOpen}
-            onOpenChange={setDetailOpen}
-            order={selectedOrder}
-            canCreate={canCreate}
-            isAdmin={isAdmin}
-            canSign={canSign}
-            isSupport={isSupport}
-          />
-        )}
+        {sheetPortal}
       </div>
     );
   }
@@ -195,7 +225,9 @@ export function OrdersPageClient({
       <div className="pb-4 border-b border-[#E2E8F0] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold text-[#0F172A]">Orders</h1>
-          <p className="text-sm text-[#64748B] mt-1">Track and manage your orders</p>
+          <p className="text-sm text-[#64748B] mt-1">
+            Track and manage your orders
+          </p>
         </div>
         <div className="shrink-0">
           <CreateOrderModal />
@@ -232,7 +264,9 @@ export function OrdersPageClient({
                     <span
                       className={cn(
                         "ml-0.5 rounded-full text-[10px] px-1.5 py-0.5 font-bold",
-                        mobileTab === status ? "bg-white/20 text-white" : "bg-slate-200 text-slate-600",
+                        mobileTab === status
+                          ? "bg-white/20 text-white"
+                          : "bg-slate-200 text-slate-600",
                       )}
                     >
                       {count}
@@ -255,12 +289,7 @@ export function OrdersPageClient({
                   <OrderCard
                     key={order.id}
                     order={order}
-                    canSign={canSign}
-                    canCreate={canCreate}
-                    isAdmin={isAdmin}
-                    currentUserId={currentUserId}
-                    currentUserName={currentUserName}
-                    onClick={() => openDetail(order)}
+                    onClick={() => handleOrderClick(order)}
                   />
                 ))
               )}
@@ -280,7 +309,9 @@ export function OrdersPageClient({
                   <div className="flex items-center justify-between px-4 py-3 border-b border-[#E2E8F0]">
                     <div className="flex items-center gap-2">
                       <div className={cn("w-2 h-2 rounded-full", cfg.dot)} />
-                      <span className="text-xs font-semibold text-[#0F172A]">{cfg.label}</span>
+                      <span className="text-xs font-semibold text-[#0F172A]">
+                        {cfg.label}
+                      </span>
                     </div>
                     <span className="min-w-5.5 h-5.5 flex items-center justify-center rounded-full bg-[#15689E] text-white text-xs font-bold px-1.5">
                       {columnOrders.length}
@@ -298,12 +329,7 @@ export function OrdersPageClient({
                         <OrderCard
                           key={order.id}
                           order={order}
-                          canSign={canSign}
-                          canCreate={canCreate}
-                          isAdmin={isAdmin}
-                          currentUserId={currentUserId}
-                          currentUserName={currentUserName}
-                          onClick={() => openDetail(order)}
+                          onClick={() => handleOrderClick(order)}
                         />
                       ))
                     )}
@@ -315,18 +341,7 @@ export function OrdersPageClient({
         </>
       )}
 
-      {/* Detail sheet */}
-      {selectedOrder && (
-        <OrderDetailSheet
-          open={detailOpen}
-          onOpenChange={setDetailOpen}
-          order={selectedOrder}
-          canCreate={canCreate}
-          isAdmin={isAdmin}
-          canSign={canSign}
-          isSupport={isSupport}
-        />
-      )}
+      {sheetPortal}
     </div>
   );
 }
