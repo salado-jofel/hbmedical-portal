@@ -4,8 +4,9 @@ import type {
   OrderFulfillmentStatus,
   OrderInvoiceStatus,
   OrderPaymentStatus,
-  OrderStatus,
 } from "../interfaces/orders";
+
+type OrderStatus = "draft" | "pending_signature" | "manufacturer_review" | "additional_info_needed" | "approved" | "shipped" | "canceled";
 
 export const ORDER_TABLE = "orders";
 export const ORDER_ITEMS_TABLE = "order_items";
