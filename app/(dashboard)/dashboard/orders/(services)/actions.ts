@@ -2,558 +2,1534 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-
+import { createAdminClient } from "@/lib/supabase/admin";
 import {
-  FACILITY_SELECT,
-  FACILITY_TABLE,
-  ORDER_ITEMS_TABLE,
-  ORDER_TABLE,
-  ORDER_WITH_RELATIONS_SELECT,
-  ORDERS_PATH,
-  PRODUCT_SELECT,
-  PRODUCT_TABLE,
-  DEFAULT_DELIVERY_STATUS,
-  DEFAULT_FULFILLMENT_STATUS,
-  DEFAULT_INVOICE_STATUS,
-  DEFAULT_ORDER_STATUS,
-  DEFAULT_PAYMENT_STATUS,
-} from "@/utils/constants/orders";
-
-import {
-  calculateOrderAmounts,
-  generateOrderNumber,
-  getDeliveredAtForStatus,
-  getInvoiceStatusForSubmittedPaymentMethod,
-  getPaidAtForStatus,
-  mapDashboardOrder,
-  mapDashboardOrders,
-  parseCancelOrderInput,
-  parseCreateOrderInput,
-  parseEditOrderInput,
-  parseSubmitOrderPaymentChoiceInput,
-  parseUpdateOrderStatusInput,
-  toNullableString,
-} from "@/utils/helpers/orders";
-
-import type {
-  CancelOrderInput,
-  CancelOrderPayload,
-  CreateOrderInput,
-  DashboardOrder,
-  EditOrderInput,
-  EditOrderPayload,
-  ExistingOrderRecord,
-  FacilityRecord,
-  InsertOrderItemPayload,
-  InsertOrderPayload,
-  ProductRecord,
-  RawOrderRecord,
-  SubmitOrderPaymentChoiceInput,
-  SubmitOrderPaymentChoicePayload,
-  UpdateOrderStatusInput,
-  UpdateOrderStatusPayload,
-} from "@/utils/interfaces/orders";
-import {
-  SupabaseServerClient,
   getCurrentUserOrThrow,
+  getUserRole,
 } from "@/lib/supabase/auth";
 import {
-  createOrderCheckoutSession,
-  createOrResumeOrderCheckout,
-} from "@/lib/stripe/payments/create-order-checkout-session";
-import { createStripeNet30Invoice } from "@/lib/stripe/invoices/create-order-net30-invoice";
+  isAdmin,
+  isClinicalProvider,
+  isClinicalStaff,
+  isClinicSide,
+} from "@/utils/helpers/role";
+import type {
+  DashboardOrder,
+  IOrderDocument,
+  IOrderHistory,
+  IOrderIVR,
+  IOrderMessage,
+  IPatient,
+  IOrderFormState,
+  InsertOrderPayload,
+  InsertOrderItemPayload,
+  ProductRecord,
+  RawOrderRecord,
+  WoundType,
+  OrderStatus,
+} from "@/utils/interfaces/orders";
+import { mapOrder, mapOrders } from "@/utils/interfaces/orders";
 
-async function getUserFacilityRecord(
-  supabase: SupabaseServerClient,
-  userId: string,
-): Promise<FacilityRecord | null> {
-  const { data, error } = await supabase
-    .from(FACILITY_TABLE)
-    .select(FACILITY_SELECT)
-    .eq("user_id", userId)
-    .maybeSingle();
+const ORDERS_PATH = "/dashboard/orders";
+const BUCKET = "hbmedical-bucket-private";
 
-  if (error) {
-    console.error("[orders.getUserFacilityRecord] Error:", error);
-    throw new Error(error.message || "Failed to fetch your facility.");
-  }
+/* -------------------------------------------------------------------------- */
+/* Helpers                                                                   */
+/* -------------------------------------------------------------------------- */
 
-  return (data as FacilityRecord | null) ?? null;
+function generateOrderNumber(): string {
+  const now = new Date();
+  const year = now.getUTCFullYear();
+  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(now.getUTCDate()).padStart(2, "0");
+  const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
+  return `HBM-${year}${month}${day}-${rand}`;
 }
 
-async function getUserFacilityOrThrow(
-  supabase: SupabaseServerClient,
-  userId: string,
-): Promise<FacilityRecord> {
-  const facility = await getUserFacilityRecord(supabase, userId);
+async function getUserFacilityId(userId: string): Promise<string | null> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("facility_members")
+    .select("facility_id")
+    .eq("user_id", userId)
+    .in("role_type", ["clinical_provider", "clinical_staff"])
+    .maybeSingle();
+  return data?.facility_id ?? null;
+}
 
-  if (!facility) {
+async function requireClinicRole(): Promise<{
+  userId: string;
+  facilityId: string;
+  role: string;
+}> {
+  const supabase = await createClient();
+  const user = await getCurrentUserOrThrow(supabase);
+  const role = await getUserRole(supabase);
+
+  if (!isClinicSide(role)) {
+    throw new Error("Only clinical providers and staff can perform this action.");
+  }
+
+  const facilityId = await getUserFacilityId(user.id);
+  if (!facilityId) {
     throw new Error("No facility is assigned to your account.");
   }
 
-  if (facility.status !== "active") {
-    throw new Error("Your facility is inactive.");
-  }
-
-  return facility;
+  return { userId: user.id, facilityId, role: role! };
 }
 
-async function getProductByIdOrThrow(
-  supabase: SupabaseServerClient,
-  productId: string,
-): Promise<ProductRecord> {
-  const { data, error } = await supabase
-    .from(PRODUCT_TABLE)
-    .select(PRODUCT_SELECT)
-    .eq("id", productId)
-    .single();
-
-  if (error || !data) {
-    console.error("[orders.getProductByIdOrThrow] Error:", error);
-    throw new Error("Selected product was not found.");
-  }
-
-  const product = data as ProductRecord;
-
-  if (!product.is_active) {
-    throw new Error("Selected product is inactive.");
-  }
-
-  if (!product.sku?.trim()) {
-    throw new Error("Selected product is missing a SKU.");
-  }
-
-  return product;
-}
-
-async function getFacilityOwnedOrderByIdOrThrow(
-  supabase: SupabaseServerClient,
-  orderId: string,
-  facilityId: string,
-): Promise<ExistingOrderRecord> {
-  const { data, error } = await supabase
-    .from(ORDER_TABLE)
-    .select(
-      `
-      id,
-      facility_id,
-      order_status,
-      payment_method,
-      payment_status,
-      invoice_status,
-      fulfillment_status,
-      delivery_status,
-      tracking_number,
-      notes,
-      paid_at,
-      delivered_at
-    `,
-    )
-    .eq("id", orderId)
-    .eq("facility_id", facilityId)
-    .single();
-
-  if (error || !data) {
-    console.error("[orders.getFacilityOwnedOrderByIdOrThrow] Error:", error);
-    throw new Error("Order was not found.");
-  }
-
-  return data as ExistingOrderRecord;
-}
-
-async function getFacilityOwnedDashboardOrderByIdOrThrow(
-  supabase: SupabaseServerClient,
-  orderId: string,
-  facilityId: string,
-): Promise<DashboardOrder> {
-  const { data, error } = await supabase
-    .from(ORDER_TABLE)
-    .select(ORDER_WITH_RELATIONS_SELECT)
-    .eq("id", orderId)
-    .eq("facility_id", facilityId)
-    .single();
-
-  if (error || !data) {
-    console.error(
-      "[orders.getFacilityOwnedDashboardOrderByIdOrThrow] Error:",
-      error,
-    );
-    throw new Error("Order was not found.");
-  }
-
-  return mapDashboardOrder(data as unknown as RawOrderRecord);
-}
-
-export async function getUserFacility(): Promise<FacilityRecord | null> {
+async function requireIVREditRole(): Promise<{
+  userId: string;
+  role: string;
+}> {
   const supabase = await createClient();
   const user = await getCurrentUserOrThrow(supabase);
+  const role = await getUserRole(supabase);
 
-  return getUserFacilityRecord(supabase, user.id);
+  const allowed =
+    isClinicSide(role) ||
+    role === "support_staff";
+  if (!allowed) {
+    throw new Error("Only clinical staff, providers, or support staff can edit IVR records.");
+  }
+
+  return { userId: user.id, role: role! };
 }
 
-export async function getActiveProducts(): Promise<ProductRecord[]> {
+async function insertOrderHistory(
+  adminClient: ReturnType<typeof createAdminClient>,
+  orderId: string,
+  action: string,
+  oldStatus: string | null,
+  newStatus: string | null,
+  performedBy: string | null,
+  notes?: string | null,
+): Promise<void> {
+  const { error } = await adminClient.from("order_history").insert({
+    order_id: orderId,
+    action,
+    old_status: oldStatus,
+    new_status: newStatus,
+    performed_by: performedBy,
+    notes: notes ?? null,
+  });
+  if (error) {
+    console.error("[insertOrderHistory]", JSON.stringify(error));
+  }
+}
+
+const ORDER_WITH_RELATIONS_SELECT = `
+  id, order_number, facility_id, order_status,
+  payment_method, payment_status, invoice_status,
+  fulfillment_status, delivery_status, tracking_number,
+  notes, placed_at, paid_at, delivered_at, created_at, updated_at,
+  created_by, signed_by, signed_at, wound_type, date_of_service,
+  patient_id, assigned_provider_id,
+  wound_visit_number, chief_complaint,
+  has_vasculitis_or_burns, is_receiving_home_health,
+  is_patient_at_snf, icd10_code, followup_days,
+  ai_extracted, ai_extracted_at, order_form_locked,
+  patients (id, facility_id, first_name, last_name, date_of_birth, patient_ref, notes, is_active, created_at, updated_at),
+  order_items (id, order_id, product_id, product_name, product_sku, unit_price, quantity, shipping_amount, tax_amount, subtotal, total_amount, created_at, updated_at),
+  facilities (id, name)
+`;
+
+/* -------------------------------------------------------------------------- */
+/* getOrders                                                                  */
+/* -------------------------------------------------------------------------- */
+
+export async function getOrders(): Promise<DashboardOrder[]> {
+  const supabase = await createClient();
+  const user = await getCurrentUserOrThrow(supabase);
+  const role = await getUserRole(supabase);
+
+  let query = supabase
+    .from("orders")
+    .select(ORDER_WITH_RELATIONS_SELECT)
+    .order("placed_at", { ascending: false });
+
+  // Clinic side: scope to their facility
+  if (isClinicSide(role)) {
+    const facilityId = await getUserFacilityId(user.id);
+    if (!facilityId) return [];
+    query = query.eq("facility_id", facilityId);
+  }
+  // Admin/rep/support: see all orders (no facility filter)
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error("[getOrders]", JSON.stringify(error));
+    throw new Error(error.message ?? "Failed to fetch orders.");
+  }
+
+  return mapOrders((data ?? []) as unknown as RawOrderRecord[]);
+}
+
+// Legacy alias
+export const getAllOrders = getOrders;
+
+/* -------------------------------------------------------------------------- */
+/* getOrderById                                                               */
+/* -------------------------------------------------------------------------- */
+
+export async function getOrderById(orderId: string): Promise<DashboardOrder | null> {
   const supabase = await createClient();
 
   const { data, error } = await supabase
-    .from(PRODUCT_TABLE)
-    .select(PRODUCT_SELECT)
+    .from("orders")
+    .select(ORDER_WITH_RELATIONS_SELECT)
+    .eq("id", orderId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[getOrderById]", JSON.stringify(error));
+    return null;
+  }
+
+  if (!data) return null;
+  return mapOrder(data as unknown as RawOrderRecord);
+}
+
+/* -------------------------------------------------------------------------- */
+/* createOrder                                                                */
+/* -------------------------------------------------------------------------- */
+
+export async function createOrder(data: {
+  wound_type: "chronic" | "post_surgical";
+  date_of_service: string;
+  notes?: string | null;
+}): Promise<IOrderFormState> {
+  try {
+    const { userId, facilityId } = await requireClinicRole();
+
+    if (!data.wound_type) return { success: false, error: "Wound type is required." };
+    if (!data.date_of_service) return { success: false, error: "Date of service is required." };
+
+    const adminClient = createAdminClient();
+    const orderNumber = generateOrderNumber();
+
+    const { data: orderRow, error: orderErr } = await adminClient
+      .from("orders")
+      .insert({
+        order_number: orderNumber,
+        facility_id: facilityId,
+        order_status: "draft",
+        payment_method: null,
+        payment_status: "pending",
+        invoice_status: "not_applicable",
+        fulfillment_status: "pending",
+        delivery_status: "not_shipped",
+        tracking_number: null,
+        notes: data.notes?.trim() || null,
+        placed_at: new Date().toISOString(),
+        paid_at: null,
+        delivered_at: null,
+        created_by: userId,
+        wound_type: data.wound_type,
+        date_of_service: data.date_of_service,
+        patient_id: null,
+        assigned_provider_id: null,
+        ai_extracted: false,
+        order_form_locked: false,
+      })
+      .select("id")
+      .single();
+
+    if (orderErr || !orderRow) {
+      console.error("[createOrder] order insert:", JSON.stringify(orderErr));
+      return { success: false, error: "Failed to create order." };
+    }
+
+    const orderId = orderRow.id;
+    await insertOrderHistory(adminClient, orderId, "Order created as draft", null, "draft", userId);
+
+    revalidatePath(ORDERS_PATH);
+    return { success: true, error: null, orderId };
+  } catch (err) {
+    console.error("[createOrder] unexpected:", err);
+    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* assignProvider                                                             */
+/* -------------------------------------------------------------------------- */
+
+export async function assignProvider(
+  orderId: string,
+  providerId: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { userId } = await requireClinicRole();
+    const adminClient = createAdminClient();
+
+    // Get the order to find its facility
+    const { data: order } = await adminClient
+      .from("orders")
+      .select("id, facility_id, order_status")
+      .eq("id", orderId)
+      .maybeSingle();
+
+    if (!order) return { success: false, error: "Order not found." };
+    if (order.order_status !== "draft") return { success: false, error: "Only draft orders can be reassigned." };
+
+    // Verify provider is in the same facility
+    const { data: member } = await adminClient
+      .from("facility_members")
+      .select("id")
+      .eq("user_id", providerId)
+      .eq("facility_id", order.facility_id)
+      .eq("role_type", "clinical_provider")
+      .maybeSingle();
+
+    if (!member) return { success: false, error: "Provider not found in this facility." };
+
+    const { error } = await adminClient
+      .from("orders")
+      .update({ assigned_provider_id: providerId })
+      .eq("id", orderId);
+
+    if (error) {
+      console.error("[assignProvider]", JSON.stringify(error));
+      return { success: false, error: "Failed to assign provider." };
+    }
+
+    await insertOrderHistory(adminClient, orderId, "Provider assigned", null, null, userId);
+    revalidatePath(ORDERS_PATH);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* submitForSignature                                                         */
+/* -------------------------------------------------------------------------- */
+
+export async function submitForSignature(
+  orderId: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { userId } = await requireClinicRole();
+    const adminClient = createAdminClient();
+
+    const { data: order } = await adminClient
+      .from("orders")
+      .select("id, order_status")
+      .eq("id", orderId)
+      .maybeSingle();
+
+    if (!order) return { success: false, error: "Order not found." };
+    if (order.order_status !== "draft") return { success: false, error: "Only draft orders can be submitted." };
+
+    const { error } = await adminClient
+      .from("orders")
+      .update({ order_status: "pending_signature" })
+      .eq("id", orderId);
+
+    if (error) {
+      console.error("[submitForSignature]", JSON.stringify(error));
+      return { success: false, error: "Failed to submit order." };
+    }
+
+    await insertOrderHistory(adminClient, orderId, "Submitted for signature", "draft", "pending_signature", userId);
+    revalidatePath(ORDERS_PATH);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* recallOrder                                                                */
+/* -------------------------------------------------------------------------- */
+
+export async function recallOrder(
+  orderId: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { userId } = await requireClinicRole();
+    const adminClient = createAdminClient();
+
+    const { data: order } = await adminClient
+      .from("orders")
+      .select("id, order_status")
+      .eq("id", orderId)
+      .maybeSingle();
+
+    if (!order) return { success: false, error: "Order not found." };
+    if (order.order_status !== "pending_signature") {
+      return { success: false, error: "Only pending_signature orders can be recalled." };
+    }
+
+    const { error } = await adminClient
+      .from("orders")
+      .update({ order_status: "draft" })
+      .eq("id", orderId);
+
+    if (error) {
+      console.error("[recallOrder]", JSON.stringify(error));
+      return { success: false, error: "Failed to recall order." };
+    }
+
+    await insertOrderHistory(adminClient, orderId, "Order recalled to draft", "pending_signature", "draft", userId);
+    revalidatePath(ORDERS_PATH);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* signOrder                                                                  */
+/* -------------------------------------------------------------------------- */
+
+export async function signOrder(
+  orderId: string,
+  pin: string,
+): Promise<{ success: boolean; error?: string; noPinSet?: boolean }> {
+  try {
+    const supabase = await createClient();
+    const user = await getCurrentUserOrThrow(supabase);
+    const role = await getUserRole(supabase);
+
+    if (!isClinicalProvider(role)) {
+      return { success: false, error: "Only clinical providers can sign orders." };
+    }
+
+    // Get PIN hash
+    const adminClient = createAdminClient();
+    const { data: creds } = await adminClient
+      .from("provider_credentials")
+      .select("pin_hash")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (!creds?.pin_hash) {
+      return { success: false, error: "No PIN set. Please set up your provider PIN.", noPinSet: true };
+    }
+
+    const bcrypt = await import("bcryptjs");
+    const valid = await bcrypt.compare(pin, creds.pin_hash);
+    if (!valid) {
+      return { success: false, error: "Incorrect PIN. Please try again." };
+    }
+
+    const { data: order } = await adminClient
+      .from("orders")
+      .select("id, order_status, facility_id")
+      .eq("id", orderId)
+      .maybeSingle();
+
+    if (!order) return { success: false, error: "Order not found." };
+    if (order.order_status !== "pending_signature") {
+      return { success: false, error: "Order is not pending signature." };
+    }
+
+    // Verify the signing user is a clinical_provider in this order's facility
+    const { data: membership } = await adminClient
+      .from("facility_members")
+      .select("user_id")
+      .eq("user_id", user.id)
+      .eq("facility_id", order.facility_id)
+      .eq("role_type", "clinical_provider")
+      .maybeSingle();
+
+    if (!membership) {
+      return { success: false, error: "You are not a clinical provider for this facility." };
+    }
+
+    const { error } = await adminClient
+      .from("orders")
+      .update({
+        order_status: "manufacturer_review",
+        signed_by: user.id,
+        signed_at: new Date().toISOString(),
+      })
+      .eq("id", orderId);
+
+    if (error) {
+      console.error("[signOrder]", JSON.stringify(error));
+      return { success: false, error: "Failed to sign order." };
+    }
+
+    await insertOrderHistory(
+      adminClient,
+      orderId,
+      "Order signed by provider",
+      "pending_signature",
+      "manufacturer_review",
+      user.id,
+    );
+    revalidatePath(ORDERS_PATH);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* approveOrder                                                               */
+/* -------------------------------------------------------------------------- */
+
+export async function approveOrder(
+  orderId: string,
+  paymentMethod: "pay_now" | "net_30",
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await createClient();
+    const user = await getCurrentUserOrThrow(supabase);
+    const role = await getUserRole(supabase);
+
+    if (!isAdmin(role)) {
+      return { success: false, error: "Only admins can approve orders." };
+    }
+
+    const adminClient = createAdminClient();
+
+    const { data: order } = await adminClient
+      .from("orders")
+      .select("id, order_status")
+      .eq("id", orderId)
+      .maybeSingle();
+
+    if (!order) return { success: false, error: "Order not found." };
+    if (order.order_status !== "manufacturer_review") {
+      return { success: false, error: "Order must be in manufacturer_review to approve." };
+    }
+
+    const { error } = await adminClient
+      .from("orders")
+      .update({
+        order_status: "approved",
+        payment_method: paymentMethod,
+        invoice_status: paymentMethod === "net_30" ? "draft" : "not_applicable",
+      })
+      .eq("id", orderId);
+
+    if (error) {
+      console.error("[approveOrder]", JSON.stringify(error));
+      return { success: false, error: "Failed to approve order." };
+    }
+
+    await insertOrderHistory(
+      adminClient,
+      orderId,
+      `Order approved — payment: ${paymentMethod}`,
+      "manufacturer_review",
+      "approved",
+      user.id,
+    );
+    revalidatePath(ORDERS_PATH);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* requestAdditionalInfo                                                      */
+/* -------------------------------------------------------------------------- */
+
+export async function requestAdditionalInfo(
+  orderId: string,
+  notes?: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await createClient();
+    const user = await getCurrentUserOrThrow(supabase);
+    const role = await getUserRole(supabase);
+
+    if (!isAdmin(role)) {
+      return { success: false, error: "Only admins can request additional info." };
+    }
+
+    const adminClient = createAdminClient();
+
+    const { data: order } = await adminClient
+      .from("orders")
+      .select("id, order_status")
+      .eq("id", orderId)
+      .maybeSingle();
+
+    if (!order) return { success: false, error: "Order not found." };
+    if (order.order_status !== "manufacturer_review") {
+      return { success: false, error: "Order must be in manufacturer_review." };
+    }
+
+    const { error } = await adminClient
+      .from("orders")
+      .update({
+        order_status: "additional_info_needed",
+        notes: notes ?? null,
+      })
+      .eq("id", orderId);
+
+    if (error) {
+      console.error("[requestAdditionalInfo]", JSON.stringify(error));
+      return { success: false, error: "Failed to update order." };
+    }
+
+    await insertOrderHistory(
+      adminClient,
+      orderId,
+      "Additional info requested",
+      "manufacturer_review",
+      "additional_info_needed",
+      user.id,
+      notes,
+    );
+    revalidatePath(ORDERS_PATH);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* resubmitForReview                                                          */
+/* -------------------------------------------------------------------------- */
+
+export async function resubmitForReview(
+  orderId: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { userId } = await requireClinicRole();
+    const adminClient = createAdminClient();
+
+    const { data: order } = await adminClient
+      .from("orders")
+      .select("id, order_status")
+      .eq("id", orderId)
+      .maybeSingle();
+
+    if (!order) return { success: false, error: "Order not found." };
+    if (order.order_status !== "additional_info_needed") {
+      return { success: false, error: "Order must be in additional_info_needed to resubmit." };
+    }
+
+    const { error } = await adminClient
+      .from("orders")
+      .update({ order_status: "manufacturer_review" })
+      .eq("id", orderId);
+
+    if (error) {
+      console.error("[resubmitForReview]", JSON.stringify(error));
+      return { success: false, error: "Failed to resubmit order." };
+    }
+
+    await insertOrderHistory(
+      adminClient,
+      orderId,
+      "Resubmitted for manufacturer review",
+      "additional_info_needed",
+      "manufacturer_review",
+      userId,
+    );
+    revalidatePath(ORDERS_PATH);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* addShippingInfo                                                            */
+/* -------------------------------------------------------------------------- */
+
+export async function addShippingInfo(
+  orderId: string,
+  data: {
+    carrier: string;
+    trackingNumber: string;
+    shippedAt: string;
+    estimatedDeliveryAt?: string;
+  },
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await createClient();
+    const user = await getCurrentUserOrThrow(supabase);
+    const role = await getUserRole(supabase);
+
+    if (!isAdmin(role)) {
+      return { success: false, error: "Only admins can add shipping info." };
+    }
+
+    const adminClient = createAdminClient();
+
+    const { data: order } = await adminClient
+      .from("orders")
+      .select("id, order_status")
+      .eq("id", orderId)
+      .maybeSingle();
+
+    if (!order) return { success: false, error: "Order not found." };
+    if (order.order_status !== "approved") {
+      return { success: false, error: "Order must be approved before shipping." };
+    }
+
+    // Insert into shipments
+    const { error: shipErr } = await adminClient.from("shipments").insert({
+      order_id: orderId,
+      carrier: data.carrier || null,
+      tracking_number: data.trackingNumber || null,
+      status: "in_transit",
+      shipped_at: data.shippedAt || null,
+      estimated_delivery_at: data.estimatedDeliveryAt || null,
+    });
+
+    if (shipErr) {
+      console.error("[addShippingInfo] shipments insert:", JSON.stringify(shipErr));
+      // Non-fatal, continue
+    }
+
+    // Update order
+    const { error } = await adminClient
+      .from("orders")
+      .update({
+        order_status: "shipped",
+        tracking_number: data.trackingNumber || null,
+        delivery_status: "in_transit",
+        fulfillment_status: "fulfilled",
+      })
+      .eq("id", orderId);
+
+    if (error) {
+      console.error("[addShippingInfo]", JSON.stringify(error));
+      return { success: false, error: "Failed to update order shipping info." };
+    }
+
+    await insertOrderHistory(
+      adminClient,
+      orderId,
+      `Order shipped — ${data.carrier} ${data.trackingNumber}`,
+      "approved",
+      "shipped",
+      user.id,
+    );
+    revalidatePath(ORDERS_PATH);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* cancelOrder                                                                */
+/* -------------------------------------------------------------------------- */
+
+export async function cancelOrder(
+  orderId: string,
+  notes?: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await createClient();
+    const user = await getCurrentUserOrThrow(supabase);
+    const role = await getUserRole(supabase);
+
+    const adminClient = createAdminClient();
+
+    const { data: order } = await adminClient
+      .from("orders")
+      .select("id, order_status, facility_id, created_by")
+      .eq("id", orderId)
+      .maybeSingle();
+
+    if (!order) return { success: false, error: "Order not found." };
+    if (order.order_status === "canceled") return { success: false, error: "Order is already canceled." };
+    if (order.order_status === "shipped") return { success: false, error: "Shipped orders cannot be canceled." };
+
+    // Clinic side can only cancel their own facility's orders in draft/pending/additional_info
+    if (!isAdmin(role)) {
+      const allowedStatuses: OrderStatus[] = ["draft", "pending_signature", "additional_info_needed"];
+      if (!allowedStatuses.includes(order.order_status as OrderStatus)) {
+        return { success: false, error: "You cannot cancel an order at this stage." };
+      }
+    }
+
+    const { error } = await adminClient
+      .from("orders")
+      .update({
+        order_status: "canceled",
+        fulfillment_status: "canceled",
+        delivery_status: "canceled",
+        notes: notes ?? null,
+      })
+      .eq("id", orderId);
+
+    if (error) {
+      console.error("[cancelOrder]", JSON.stringify(error));
+      return { success: false, error: "Failed to cancel order." };
+    }
+
+    await insertOrderHistory(
+      adminClient,
+      orderId,
+      "Order canceled",
+      order.order_status,
+      "canceled",
+      user.id,
+      notes,
+    );
+    revalidatePath(ORDERS_PATH);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* deleteOrder                                                                */
+/* -------------------------------------------------------------------------- */
+
+export async function deleteOrder(orderId: string): Promise<void> {
+  const { userId, facilityId } = await requireClinicRole();
+  const adminClient = createAdminClient();
+
+  const { data: order } = await adminClient
+    .from("orders")
+    .select("id, order_status, facility_id")
+    .eq("id", orderId)
+    .maybeSingle();
+
+  if (!order) throw new Error("Order not found.");
+  if (order.facility_id !== facilityId) throw new Error("You can only delete orders for your facility.");
+  if (order.order_status !== "draft") throw new Error("Only draft orders can be deleted.");
+
+  // Delete related records
+  await adminClient.from("order_items").delete().eq("order_id", orderId);
+  await adminClient.from("order_history").delete().eq("order_id", orderId);
+  await adminClient.from("order_messages").delete().eq("order_id", orderId);
+  await adminClient.from("order_documents").delete().eq("order_id", orderId);
+
+  const { error } = await adminClient.from("orders").delete().eq("id", orderId);
+
+  if (error) {
+    console.error("[deleteOrder]", JSON.stringify(error));
+    throw new Error("Failed to delete order.");
+  }
+
+  revalidatePath(ORDERS_PATH);
+}
+
+/* -------------------------------------------------------------------------- */
+/* getPatients                                                                */
+/* -------------------------------------------------------------------------- */
+
+export async function getPatients(): Promise<IPatient[]> {
+  const { facilityId } = await requireClinicRole();
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("patients")
+    .select("*")
+    .eq("facility_id", facilityId)
     .eq("is_active", true)
-    .order("sort_order", { ascending: true })
+    .order("last_name");
+
+  if (error) {
+    console.error("[getPatients]", JSON.stringify(error));
+    throw new Error("Failed to fetch patients.");
+  }
+
+  return (data ?? []).map((p) => ({
+    id: p.id,
+    facilityId: p.facility_id,
+    firstName: p.first_name,
+    lastName: p.last_name,
+    dateOfBirth: p.date_of_birth,
+    patientRef: p.patient_ref,
+    notes: p.notes,
+    isActive: p.is_active,
+    createdAt: p.created_at,
+    updatedAt: p.updated_at,
+    fullName: `${p.first_name} ${p.last_name}`,
+  }));
+}
+
+/* -------------------------------------------------------------------------- */
+/* createPatient                                                              */
+/* -------------------------------------------------------------------------- */
+
+export async function createPatient(
+  data: {
+    first_name: string;
+    last_name: string;
+    date_of_birth?: string | null;
+    patient_ref?: string | null;
+  },
+): Promise<{ success: boolean; error: string | null; patient?: IPatient }> {
+  try {
+    const { facilityId } = await requireClinicRole();
+    const adminClient = createAdminClient();
+
+    const firstName = data.first_name.trim();
+    const lastName = data.last_name.trim();
+    const dob = data.date_of_birth || null;
+    const patientRef = data.patient_ref?.trim() || null;
+
+    if (!firstName || !lastName) {
+      return { success: false, error: "First and last name are required." };
+    }
+
+    const { data: row, error } = await adminClient
+      .from("patients")
+      .insert({
+        facility_id: facilityId,
+        first_name: firstName,
+        last_name: lastName,
+        date_of_birth: dob,
+        patient_ref: patientRef,
+        is_active: true,
+      })
+      .select("id, facility_id, first_name, last_name, date_of_birth, patient_ref, notes, is_active, created_at, updated_at")
+      .single();
+
+    if (error || !row) {
+      console.error("[createPatient]", JSON.stringify(error));
+      return { success: false, error: "Failed to create patient." };
+    }
+
+    const patient: IPatient = {
+      id: row.id,
+      facilityId: row.facility_id,
+      firstName: row.first_name,
+      lastName: row.last_name,
+      dateOfBirth: row.date_of_birth,
+      patientRef: row.patient_ref,
+      notes: row.notes,
+      isActive: row.is_active,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      fullName: `${row.first_name} ${row.last_name}`,
+    };
+
+    return { success: true, error: null, patient };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* uploadOrderDocument                                                        */
+/* -------------------------------------------------------------------------- */
+
+export async function uploadOrderDocument(
+  orderId: string,
+  documentType: string,
+  file: FormData,
+): Promise<{ success: boolean; error?: string; document?: IOrderDocument }> {
+  try {
+    const supabase = await createClient();
+    const user = await getCurrentUserOrThrow(supabase);
+    const adminClient = createAdminClient();
+
+    const fileEntry = file.get("file") as File | null;
+    if (!fileEntry) return { success: false, error: "No file provided." };
+
+    const timestamp = Date.now();
+    const safeName = fileEntry.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const filePath = `order-documents/${orderId}/${documentType}/${timestamp}-${safeName}`;
+
+    const { error: uploadErr } = await adminClient.storage
+      .from(BUCKET)
+      .upload(filePath, fileEntry, {
+        contentType: fileEntry.type,
+        upsert: false,
+      });
+
+    if (uploadErr) {
+      console.error("[uploadOrderDocument] storage:", JSON.stringify(uploadErr));
+      return { success: false, error: "Failed to upload file." };
+    }
+
+    const { data: docRow, error: dbErr } = await adminClient
+      .from("order_documents")
+      .insert({
+        order_id: orderId,
+        document_type: documentType,
+        bucket: BUCKET,
+        file_path: filePath,
+        file_name: fileEntry.name,
+        mime_type: fileEntry.type || null,
+        file_size: fileEntry.size || null,
+        uploaded_by: user.id,
+      })
+      .select("*")
+      .single();
+
+    if (dbErr || !docRow) {
+      console.error("[uploadOrderDocument] db:", JSON.stringify(dbErr));
+      // Clean up storage
+      await adminClient.storage.from(BUCKET).remove([filePath]);
+      return { success: false, error: "Failed to save document record." };
+    }
+
+    revalidatePath(ORDERS_PATH);
+    return {
+      success: true,
+      document: {
+        id: docRow.id,
+        orderId: docRow.order_id,
+        documentType: docRow.document_type,
+        bucket: docRow.bucket,
+        filePath: docRow.file_path,
+        fileName: docRow.file_name,
+        mimeType: docRow.mime_type,
+        fileSize: docRow.file_size,
+        uploadedBy: docRow.uploaded_by,
+        createdAt: docRow.created_at,
+      },
+    };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* getDocumentSignedUrl                                                       */
+/* -------------------------------------------------------------------------- */
+
+export async function getDocumentSignedUrl(
+  filePath: string,
+): Promise<{ url: string | null; error?: string }> {
+  try {
+    const adminClient = createAdminClient();
+    const { data, error } = await adminClient.storage
+      .from(BUCKET)
+      .createSignedUrl(filePath, 3600);
+
+    if (error) {
+      console.error("[getDocumentSignedUrl]", JSON.stringify(error));
+      return { url: null, error: "Failed to generate signed URL." };
+    }
+
+    return { url: data.signedUrl };
+  } catch (err) {
+    return { url: null, error: err instanceof Error ? err.message : "Unexpected error." };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* deleteOrderDocument                                                        */
+/* -------------------------------------------------------------------------- */
+
+export async function deleteOrderDocument(
+  docId: string,
+  filePath: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const adminClient = createAdminClient();
+
+    const { error: storageErr } = await adminClient.storage
+      .from(BUCKET)
+      .remove([filePath]);
+
+    if (storageErr) {
+      console.error("[deleteOrderDocument] storage:", JSON.stringify(storageErr));
+      // Non-fatal
+    }
+
+    const { error } = await adminClient
+      .from("order_documents")
+      .delete()
+      .eq("id", docId);
+
+    if (error) {
+      console.error("[deleteOrderDocument] db:", JSON.stringify(error));
+      return { success: false, error: "Failed to delete document." };
+    }
+
+    revalidatePath(ORDERS_PATH);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* sendOrderMessage                                                           */
+/* -------------------------------------------------------------------------- */
+
+export async function sendOrderMessage(
+  orderId: string,
+  message: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await createClient();
+    const user = await getCurrentUserOrThrow(supabase);
+    const adminClient = createAdminClient();
+
+    if (!message.trim()) return { success: false, error: "Message cannot be empty." };
+
+    const { error } = await adminClient.from("order_messages").insert({
+      order_id: orderId,
+      sender_id: user.id,
+      message: message.trim(),
+    });
+
+    if (error) {
+      console.error("[sendOrderMessage]", JSON.stringify(error));
+      return { success: false, error: "Failed to send message." };
+    }
+
+    revalidatePath(ORDERS_PATH);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* getOrderMessages                                                           */
+/* -------------------------------------------------------------------------- */
+
+export async function getOrderMessages(
+  orderId: string,
+): Promise<IOrderMessage[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("order_messages")
+    .select("*, profiles:sender_id (full_name, role)")
+    .eq("order_id", orderId)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    console.error("[getOrderMessages]", JSON.stringify(error));
+    return [];
+  }
+
+  return (data ?? []).map((m) => {
+    const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
+    return {
+      id: m.id,
+      orderId: m.order_id,
+      senderId: m.sender_id,
+      message: m.message,
+      createdAt: m.created_at,
+      updatedAt: m.updated_at,
+      senderName: (profile as { full_name?: string } | null)?.full_name ?? null,
+      senderRole: (profile as { role?: string } | null)?.role ?? null,
+    };
+  });
+}
+
+/* -------------------------------------------------------------------------- */
+/* getOrderHistory                                                            */
+/* -------------------------------------------------------------------------- */
+
+export async function getOrderHistory(
+  orderId: string,
+): Promise<IOrderHistory[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("order_history")
+    .select("*, profiles:performed_by (full_name)")
+    .eq("order_id", orderId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("[getOrderHistory]", JSON.stringify(error));
+    return [];
+  }
+
+  return (data ?? []).map((h) => {
+    const profile = Array.isArray(h.profiles) ? h.profiles[0] : h.profiles;
+    return {
+      id: h.id,
+      orderId: h.order_id,
+      performedBy: h.performed_by,
+      action: h.action,
+      oldStatus: h.old_status,
+      newStatus: h.new_status,
+      notes: h.notes,
+      createdAt: h.created_at,
+      performedByName: (profile as { full_name?: string } | null)?.full_name ?? null,
+    };
+  });
+}
+
+/* -------------------------------------------------------------------------- */
+/* getOrderDocuments                                                          */
+/* -------------------------------------------------------------------------- */
+
+export async function getOrderDocuments(
+  orderId: string,
+): Promise<IOrderDocument[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("order_documents")
+    .select("*")
+    .eq("order_id", orderId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("[getOrderDocuments]", JSON.stringify(error));
+    return [];
+  }
+
+  return (data ?? []).map((d) => ({
+    id: d.id,
+    orderId: d.order_id,
+    documentType: d.document_type,
+    bucket: d.bucket,
+    filePath: d.file_path,
+    fileName: d.file_name,
+    mimeType: d.mime_type,
+    fileSize: d.file_size,
+    uploadedBy: d.uploaded_by,
+    createdAt: d.created_at,
+  }));
+}
+
+/* -------------------------------------------------------------------------- */
+/* upsertForm1500                                                             */
+/* -------------------------------------------------------------------------- */
+
+export async function upsertForm1500(
+  orderId: string,
+  formData: Record<string, unknown>,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await createClient();
+    await getCurrentUserOrThrow(supabase);
+    const adminClient = createAdminClient();
+
+    const { error } = await adminClient.from("order_form_1500").upsert(
+      {
+        order_id: orderId,
+        ...formData,
+      },
+      { onConflict: "order_id" },
+    );
+
+    if (error) {
+      console.error("[upsertForm1500]", JSON.stringify(error));
+      return { success: false, error: "Failed to save form." };
+    }
+
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* getForm1500                                                                */
+/* -------------------------------------------------------------------------- */
+
+export async function getForm1500(orderId: string) {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("order_form_1500")
+    .select("*")
+    .eq("order_id", orderId)
+    .maybeSingle();
+  return data ?? null;
+}
+
+/* -------------------------------------------------------------------------- */
+/* getClinicProviders                                                         */
+/* -------------------------------------------------------------------------- */
+
+export async function getClinicProviders(): Promise<
+  Array<{ id: string; name: string; npi: string | null }>
+> {
+  try {
+    const supabase = await createClient();
+    const user = await getCurrentUserOrThrow(supabase);
+    const role = await getUserRole(supabase);
+
+    if (!isClinicSide(role)) return [];
+
+    const facilityId = await getUserFacilityId(user.id);
+    if (!facilityId) return [];
+
+    const adminClient = createAdminClient();
+
+    const { data: members, error: membersErr } = await adminClient
+      .from("facility_members")
+      .select("user_id")
+      .eq("facility_id", facilityId)
+      .eq("role_type", "clinical_provider");
+
+    if (membersErr || !members?.length) return [];
+
+    const userIds = members.map((m) => m.user_id);
+
+    const { data: profiles } = await adminClient
+      .from("profiles")
+      .select("id, first_name, last_name")
+      .in("id", userIds);
+
+    return (profiles ?? []).map((p) => ({
+      id: p.id,
+      name: `${p.first_name} ${p.last_name}`.trim(),
+      npi: null,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* getProducts (for order creation)                                          */
+/* -------------------------------------------------------------------------- */
+
+export async function getProducts(): Promise<ProductRecord[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("products")
+    .select("id, sku, name, category, unit_price, is_active, sort_order, created_at, updated_at")
+    .eq("is_active", true)
+    .order("sort_order", { ascending: true, nullsFirst: false })
     .order("name", { ascending: true });
 
   if (error) {
-    console.error("[getActiveProducts] Error:", error);
-    throw new Error(error.message || "Failed to fetch products.");
+    console.error("[getProducts]", JSON.stringify(error));
+    return [];
   }
 
   return (data ?? []) as ProductRecord[];
 }
 
-export async function getAllOrders(): Promise<DashboardOrder[]> {
-  const supabase = await createClient();
-  const user = await getCurrentUserOrThrow(supabase);
-  const facility = await getUserFacilityRecord(supabase, user.id);
+// Legacy alias
+export const getActiveProducts = getProducts;
 
-  if (!facility) {
-    return [];
+/* -------------------------------------------------------------------------- */
+/* getUserFacility (legacy alias used by old CreateOrderModal)               */
+/* -------------------------------------------------------------------------- */
+
+export async function getUserFacility() {
+  try {
+    const supabase = await createClient();
+    const user = await getCurrentUserOrThrow(supabase);
+    const facilityId = await getUserFacilityId(user.id);
+    if (!facilityId) return null;
+
+    const { data } = await supabase
+      .from("facilities")
+      .select("*")
+      .eq("id", facilityId)
+      .maybeSingle();
+
+    return data ?? null;
+  } catch {
+    return null;
   }
-
-  const { data, error } = await supabase
-    .from(ORDER_TABLE)
-    .select(ORDER_WITH_RELATIONS_SELECT)
-    .eq("facility_id", facility.id)
-    .order("placed_at", { ascending: false });
-
-  if (error) {
-    console.error("[getAllOrders] Error:", error);
-    throw new Error(error.message || "Failed to fetch orders.");
-  }
-
-  return mapDashboardOrders((data ?? []) as unknown as RawOrderRecord[]);
 }
 
-export async function createOrder(
-  input: FormData | CreateOrderInput,
+/* -------------------------------------------------------------------------- */
+/* Legacy stubs — kept for backwards compat with EditOrderModal              */
+/* -------------------------------------------------------------------------- */
+
+export async function editOrder(
+  input: FormData | { id: string; product_id: string; quantity: number },
 ): Promise<DashboardOrder> {
-  const supabase = await createClient();
-  const user = await getCurrentUserOrThrow(supabase);
-  const parsed = parseCreateOrderInput(input);
-
-  const facility = await getUserFacilityOrThrow(supabase, user.id);
-  const product = await getProductByIdOrThrow(supabase, parsed.product_id);
-  const amounts = calculateOrderAmounts(product.unit_price, parsed.quantity);
-
-  const orderPayload: InsertOrderPayload = {
-    order_number: generateOrderNumber(),
-    facility_id: facility.id,
-    order_status: DEFAULT_ORDER_STATUS,
-    payment_method: null,
-    payment_status: DEFAULT_PAYMENT_STATUS,
-    invoice_status: DEFAULT_INVOICE_STATUS,
-    fulfillment_status: DEFAULT_FULFILLMENT_STATUS,
-    delivery_status: DEFAULT_DELIVERY_STATUS,
-    tracking_number: null,
-    notes: toNullableString(parsed.notes),
-    placed_at: new Date().toISOString(),
-    paid_at: null,
-    delivered_at: null,
-  };
-
-  const { data, error } = await supabase
-    .from(ORDER_TABLE)
-    .insert(orderPayload)
-    .select("id")
-    .single();
-
-  if (error || !data) {
-    console.error("[createOrder] Order insert error:", error);
-    throw new Error(error?.message || "Failed to create draft order.");
-  }
-
-  const itemPayload: InsertOrderItemPayload = {
-    order_id: data.id,
-    product_id: product.id,
-    product_name: product.name,
-    product_sku: product.sku,
-    unit_price: amounts.unit_price,
-    quantity: parsed.quantity,
-    shipping_amount: amounts.shipping_amount,
-    tax_amount: amounts.tax_amount,
-  };
-
-  const { error: itemError } = await supabase
-    .from(ORDER_ITEMS_TABLE)
-    .insert(itemPayload);
-
-  if (itemError) {
-    console.error("[createOrder] Order item insert error:", itemError);
-    // Roll back the order row so we don't leave orphaned records
-    await supabase.from(ORDER_TABLE).delete().eq("id", data.id);
-    throw new Error(itemError.message || "Failed to create order item.");
-  }
-
-  revalidatePath(ORDERS_PATH);
-
-  return getFacilityOwnedDashboardOrderByIdOrThrow(
-    supabase,
-    data.id,
-    facility.id,
-  );
-}
-
-export async function deleteOrder(orderId: string): Promise<void> {
-  const supabase = await createClient();
-  const user = await getCurrentUserOrThrow(supabase);
-
-  const facility = await getUserFacilityOrThrow(supabase, user.id);
-  const existing = await getFacilityOwnedOrderByIdOrThrow(
-    supabase,
-    orderId,
-    facility.id,
-  );
-
-  if (existing.order_status === "canceled") {
-    throw new Error("Canceled orders cannot be deleted.");
-  }
-
-  if (
-    existing.payment_status === "paid" ||
-    existing.payment_status === "refunded" ||
-    existing.payment_status === "partially_refunded"
-  ) {
-    throw new Error("Paid or refunded orders cannot be deleted.");
-  }
-
-  if (existing.invoice_status !== "not_applicable") {
-    throw new Error("Orders with invoices cannot be deleted.");
-  }
-
-  const { error } = await supabase
-    .from(ORDER_TABLE)
-    .delete()
-    .eq("id", orderId)
-    .eq("facility_id", facility.id);
-
-  if (error) {
-    console.error("[deleteOrder] Error:", error);
-    throw new Error(error.message || "Failed to delete order.");
-  }
-
-  revalidatePath(ORDERS_PATH);
+  throw new Error("editOrder is not supported in the new clinical workflow. Orders are read-only after creation.");
 }
 
 export async function submitOrderPaymentChoice(
-  input: FormData | SubmitOrderPaymentChoiceInput,
+  input: FormData | { id: string; payment_method: string },
 ): Promise<DashboardOrder> {
-  const supabase = await createClient();
-  const user = await getCurrentUserOrThrow(supabase);
-  const parsed = parseSubmitOrderPaymentChoiceInput(input);
-
-  const facility = await getUserFacilityOrThrow(supabase, user.id);
-
-  const { data: membership } = await supabase
-    .from("facility_members")
-    .select("can_sign_orders")
-    .eq("user_id", user.id)
-    .eq("facility_id", facility.id)
-    .single();
-
-  if (!membership?.can_sign_orders) {
-    throw new Error("You are not authorized to sign orders.");
-  }
-
-  const existing = await getFacilityOwnedOrderByIdOrThrow(
-    supabase,
-    parsed.id,
-    facility.id,
-  );
-
-  if (existing.order_status === "canceled") {
-    throw new Error("Canceled orders cannot be submitted.");
-  }
-
-  if (existing.order_status === "submitted") {
-    if (existing.payment_method === parsed.payment_method) {
-      return getFacilityOwnedDashboardOrderByIdOrThrow(
-        supabase,
-        parsed.id,
-        facility.id,
-      );
-    }
-
-    throw new Error("This order has already been submitted.");
-  }
-
-  const payload: SubmitOrderPaymentChoicePayload = {
-    order_status: "submitted",
-    payment_method: parsed.payment_method,
-    payment_status: "pending",
-    invoice_status: getInvoiceStatusForSubmittedPaymentMethod(
-      parsed.payment_method,
-    ),
-  };
-
-  const { error } = await supabase
-    .from(ORDER_TABLE)
-    .update(payload)
-    .eq("id", parsed.id)
-    .eq("facility_id", facility.id);
-
-  if (error) {
-    console.error("[submitOrderPaymentChoice] Error:", error);
-    throw new Error(error.message || "Failed to submit payment choice.");
-  }
-
-  revalidatePath(ORDERS_PATH);
-
-  return getFacilityOwnedDashboardOrderByIdOrThrow(
-    supabase,
-    parsed.id,
-    facility.id,
-  );
+  throw new Error("submitOrderPaymentChoice is not supported in the new workflow.");
 }
 
 export async function updateOrderStatus(
-  input: FormData | UpdateOrderStatusInput,
+  input: FormData | { id: string },
 ): Promise<DashboardOrder> {
-  const supabase = await createClient();
-  const user = await getCurrentUserOrThrow(supabase);
-  const parsed = parseUpdateOrderStatusInput(input);
-
-  const facility = await getUserFacilityOrThrow(supabase, user.id);
-  const existing = await getFacilityOwnedOrderByIdOrThrow(
-    supabase,
-    parsed.id,
-    facility.id,
-  );
-
-  if (existing.order_status === "draft") {
-    throw new Error(
-      "Draft orders must be submitted before their statuses can be updated.",
-    );
-  }
-
-  if (existing.order_status === "canceled") {
-    throw new Error("Canceled orders cannot be updated.");
-  }
-
-  const nextPaymentStatus = parsed.payment_status ?? existing.payment_status;
-  const nextInvoiceStatus = parsed.invoice_status ?? existing.invoice_status;
-  const nextFulfillmentStatus =
-    parsed.fulfillment_status ?? existing.fulfillment_status;
-  const nextDeliveryStatus = parsed.delivery_status ?? existing.delivery_status;
-  const nextTrackingNumber =
-    parsed.tracking_number !== undefined
-      ? toNullableString(parsed.tracking_number)
-      : existing.tracking_number;
-
-  const payload: UpdateOrderStatusPayload = {
-    payment_status: nextPaymentStatus,
-    invoice_status: nextInvoiceStatus,
-    fulfillment_status: nextFulfillmentStatus,
-    delivery_status: nextDeliveryStatus,
-    tracking_number: nextTrackingNumber,
-    paid_at:
-      parsed.payment_status !== undefined
-        ? getPaidAtForStatus(nextPaymentStatus, existing.paid_at)
-        : existing.paid_at,
-    delivered_at:
-      parsed.delivery_status !== undefined
-        ? getDeliveredAtForStatus(nextDeliveryStatus, existing.delivered_at)
-        : existing.delivered_at,
-    ...(Object.prototype.hasOwnProperty.call(parsed, "notes")
-      ? { notes: toNullableString(parsed.notes) }
-      : {}),
-  };
-
-  const { error } = await supabase
-    .from(ORDER_TABLE)
-    .update(payload)
-    .eq("id", parsed.id)
-    .eq("facility_id", facility.id);
-
-  if (error) {
-    console.error("[updateOrderStatus] Error:", error);
-    throw new Error(error.message || "Failed to update order status.");
-  }
-
-  revalidatePath(ORDERS_PATH);
-
-  return getFacilityOwnedDashboardOrderByIdOrThrow(
-    supabase,
-    parsed.id,
-    facility.id,
-  );
+  throw new Error("updateOrderStatus is not supported in the new workflow.");
 }
 
-export async function editOrder(
-  input: FormData | EditOrderInput,
-): Promise<DashboardOrder> {
-  const supabase = await createClient();
-  const user = await getCurrentUserOrThrow(supabase);
-  const parsed = parseEditOrderInput(input);
-
-  const facility = await getUserFacilityOrThrow(supabase, user.id);
-  const existing = await getFacilityOwnedOrderByIdOrThrow(
-    supabase,
-    parsed.id,
-    facility.id,
-  );
-
-  if (existing.order_status === "canceled") {
-    throw new Error("Canceled orders cannot be edited.");
-  }
-
-  if (
-    existing.payment_status === "paid" ||
-    existing.payment_status === "refunded" ||
-    existing.payment_status === "partially_refunded"
-  ) {
-    throw new Error("Paid or refunded orders cannot be edited.");
-  }
-
-  if (existing.invoice_status !== "not_applicable") {
-    throw new Error("Orders with invoices cannot be edited.");
-  }
-
-  const product = await getProductByIdOrThrow(supabase, parsed.product_id);
-  const amounts = calculateOrderAmounts(product.unit_price, parsed.quantity);
-
-  const payload: EditOrderPayload = {
-    product_id: product.id,
-    product_name: product.name,
-    product_sku: product.sku,
-    quantity: parsed.quantity,
-    unit_price: amounts.unit_price,
-    shipping_amount: amounts.shipping_amount,
-    tax_amount: amounts.tax_amount,
-  };
-
-  const { error } = await supabase
-    .from(ORDER_ITEMS_TABLE)
-    .update(payload)
-    .eq("order_id", parsed.id);
-
-  if (error) {
-    console.error("[editOrder] Error:", error);
-    throw new Error(error.message || "Failed to edit order.");
-  }
-
-  revalidatePath(ORDERS_PATH);
-
-  return getFacilityOwnedDashboardOrderByIdOrThrow(
-    supabase,
-    parsed.id,
-    facility.id,
-  );
+export async function createOrderCheckout(orderId: string): Promise<{ url: string | null }> {
+  throw new Error("Stripe checkout is not available in the new workflow.");
 }
 
-export async function createOrderCheckout(orderId: string) {
-  return createOrResumeOrderCheckout(orderId);
-}
+/* -------------------------------------------------------------------------- */
+/* getOrderIVR                                                                 */
+/* -------------------------------------------------------------------------- */
 
-export async function startOrderNet30(
+export async function getOrderIVR(
   orderId: string,
-): Promise<DashboardOrder> {
-  return createStripeNet30Invoice(orderId);
+): Promise<IOrderIVR | null> {
+  try {
+    const supabase = await createClient();
+    await getCurrentUserOrThrow(supabase);
+
+    const adminClient = createAdminClient();
+    const { data, error } = await adminClient
+      .from("order_ivr")
+      .select("*")
+      .eq("order_id", orderId)
+      .maybeSingle();
+
+    if (error) {
+      console.error("[getOrderIVR]", JSON.stringify(error));
+      return null;
+    }
+    if (!data) return null;
+
+    return {
+      id: data.id,
+      orderId: data.order_id,
+      insuranceProvider: data.insurance_provider,
+      insurancePhone: data.insurance_phone,
+      memberId: data.member_id,
+      groupNumber: data.group_number,
+      planName: data.plan_name,
+      planType: data.plan_type,
+      subscriberName: data.subscriber_name,
+      subscriberDob: data.subscriber_dob,
+      subscriberRelationship: data.subscriber_relationship,
+      coverageStartDate: data.coverage_start_date,
+      coverageEndDate: data.coverage_end_date,
+      deductibleAmount: data.deductible_amount != null ? Number(data.deductible_amount) : null,
+      deductibleMet: data.deductible_met != null ? Number(data.deductible_met) : null,
+      outOfPocketMax: data.out_of_pocket_max != null ? Number(data.out_of_pocket_max) : null,
+      outOfPocketMet: data.out_of_pocket_met != null ? Number(data.out_of_pocket_met) : null,
+      copayAmount: data.copay_amount != null ? Number(data.copay_amount) : null,
+      coinsurancePercent: data.coinsurance_percent != null ? Number(data.coinsurance_percent) : null,
+      dmeCovered: data.dme_covered ?? false,
+      woundCareCovered: data.wound_care_covered ?? false,
+      priorAuthRequired: data.prior_auth_required ?? false,
+      priorAuthNumber: data.prior_auth_number,
+      priorAuthStartDate: data.prior_auth_start_date,
+      priorAuthEndDate: data.prior_auth_end_date,
+      unitsAuthorized: data.units_authorized,
+      verifiedBy: data.verified_by,
+      verifiedDate: data.verified_date,
+      verificationReference: data.verification_reference,
+      notes: data.notes,
+      aiExtracted: data.ai_extracted ?? false,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+    };
+  } catch (err) {
+    console.error("[getOrderIVR] unexpected:", err);
+    return null;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* upsertOrderIVR                                                              */
+/* -------------------------------------------------------------------------- */
+
+export async function upsertOrderIVR(
+  orderId: string,
+  data: Partial<IOrderIVR>,
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    await requireIVREditRole();
+    const adminClient = createAdminClient();
+
+    const payload: Record<string, unknown> = { order_id: orderId };
+    if (data.insuranceProvider !== undefined) payload.insurance_provider = data.insuranceProvider;
+    if (data.insurancePhone !== undefined) payload.insurance_phone = data.insurancePhone;
+    if (data.memberId !== undefined) payload.member_id = data.memberId;
+    if (data.groupNumber !== undefined) payload.group_number = data.groupNumber;
+    if (data.planName !== undefined) payload.plan_name = data.planName;
+    if (data.planType !== undefined) payload.plan_type = data.planType;
+    if (data.subscriberName !== undefined) payload.subscriber_name = data.subscriberName;
+    if (data.subscriberDob !== undefined) payload.subscriber_dob = data.subscriberDob;
+    if (data.subscriberRelationship !== undefined) payload.subscriber_relationship = data.subscriberRelationship;
+    if (data.coverageStartDate !== undefined) payload.coverage_start_date = data.coverageStartDate;
+    if (data.coverageEndDate !== undefined) payload.coverage_end_date = data.coverageEndDate;
+    if (data.deductibleAmount !== undefined) payload.deductible_amount = data.deductibleAmount;
+    if (data.deductibleMet !== undefined) payload.deductible_met = data.deductibleMet;
+    if (data.outOfPocketMax !== undefined) payload.out_of_pocket_max = data.outOfPocketMax;
+    if (data.outOfPocketMet !== undefined) payload.out_of_pocket_met = data.outOfPocketMet;
+    if (data.copayAmount !== undefined) payload.copay_amount = data.copayAmount;
+    if (data.coinsurancePercent !== undefined) payload.coinsurance_percent = data.coinsurancePercent;
+    if (data.dmeCovered !== undefined) payload.dme_covered = data.dmeCovered;
+    if (data.woundCareCovered !== undefined) payload.wound_care_covered = data.woundCareCovered;
+    if (data.priorAuthRequired !== undefined) payload.prior_auth_required = data.priorAuthRequired;
+    if (data.priorAuthNumber !== undefined) payload.prior_auth_number = data.priorAuthNumber;
+    if (data.priorAuthStartDate !== undefined) payload.prior_auth_start_date = data.priorAuthStartDate;
+    if (data.priorAuthEndDate !== undefined) payload.prior_auth_end_date = data.priorAuthEndDate;
+    if (data.unitsAuthorized !== undefined) payload.units_authorized = data.unitsAuthorized;
+    if (data.verifiedBy !== undefined) payload.verified_by = data.verifiedBy;
+    if (data.verifiedDate !== undefined) payload.verified_date = data.verifiedDate;
+    if (data.verificationReference !== undefined) payload.verification_reference = data.verificationReference;
+    if (data.notes !== undefined) payload.notes = data.notes;
+
+    const { error } = await adminClient
+      .from("order_ivr")
+      .upsert(payload, { onConflict: "order_id" });
+
+    if (error) {
+      console.error("[upsertOrderIVR]", JSON.stringify(error));
+      return { success: false, error: error.message ?? "Failed to save IVR." };
+    }
+
+    revalidatePath(ORDERS_PATH);
+    return { success: true, error: null };
+  } catch (err) {
+    console.error("[upsertOrderIVR] unexpected:", err);
+    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* addOrderItems                                                               */
+/* -------------------------------------------------------------------------- */
+
+export async function addOrderItems(
+  orderId: string,
+  items: Array<{
+    product_id: string;
+    product_name: string;
+    product_sku: string;
+    unit_price: number;
+    quantity: number;
+  }>,
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const { userId } = await requireClinicRole();
+    const adminClient = createAdminClient();
+
+    const { data: order } = await adminClient
+      .from("orders")
+      .select("id, order_status")
+      .eq("id", orderId)
+      .maybeSingle();
+
+    if (!order) return { success: false, error: "Order not found." };
+    if (order.order_status !== "draft") {
+      return { success: false, error: "Products can only be added to draft orders." };
+    }
+
+    const itemPayloads = items.map((item) => ({
+      order_id: orderId,
+      product_id: item.product_id,
+      product_name: item.product_name,
+      product_sku: item.product_sku,
+      unit_price: item.unit_price,
+      quantity: item.quantity,
+      shipping_amount: 0,
+      tax_amount: 0,
+    }));
+
+    const { error } = await adminClient.from("order_items").insert(itemPayloads);
+
+    if (error) {
+      console.error("[addOrderItems]", JSON.stringify(error));
+      return { success: false, error: "Failed to add products." };
+    }
+
+    await insertOrderHistory(adminClient, orderId, "Products added to order", null, null, userId);
+    revalidatePath(ORDERS_PATH);
+    return { success: true, error: null };
+  } catch (err) {
+    console.error("[addOrderItems] unexpected:", err);
+    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  }
+}
+
+export async function startOrderNet30(orderId: string): Promise<DashboardOrder> {
+  throw new Error("Stripe Net 30 is not available in the new workflow.");
 }
