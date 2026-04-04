@@ -966,6 +966,13 @@ export async function uploadOrderDocument(
       return { success: false, error: "Failed to save document record." };
     }
 
+    // Non-blocking AI extraction for facesheet and clinical_docs
+    if (["facesheet", "clinical_docs"].includes(documentType)) {
+      triggerAiExtraction(orderId, documentType, filePath).catch((err) =>
+        console.error("[uploadOrderDocument] AI trigger:", err),
+      );
+    }
+
     revalidatePath(ORDERS_PATH);
     return {
       success: true,
@@ -1556,10 +1563,9 @@ export async function updateOrderItemQuantity(
       .single();
 
     if (!item) return { success: false, error: "Item not found." };
-    const orderRecord = Array.isArray((item as { orders: unknown }).orders)
-      ? ((item as { orders: { order_status: string }[] }).orders[0])
-      : ((item as { orders: { order_status: string } }).orders);
-    if (orderRecord?.order_status !== "draft") {
+    const rawOrders = (item as { orders: unknown }).orders;
+    const orderRecord = Array.isArray(rawOrders) ? rawOrders[0] : rawOrders;
+    if ((orderRecord as { order_status: string } | null)?.order_status !== "draft") {
       return { success: false, error: "Can only edit items on draft orders." };
     }
 
@@ -1600,10 +1606,9 @@ export async function deleteOrderItem(
       .single();
 
     if (!item) return { success: false, error: "Item not found." };
-    const orderRecord = Array.isArray((item as { orders: unknown }).orders)
-      ? ((item as { orders: { order_status: string }[] }).orders[0])
-      : ((item as { orders: { order_status: string } }).orders);
-    if (orderRecord?.order_status !== "draft") {
+    const rawOrders2 = (item as { orders: unknown }).orders;
+    const orderRecord2 = Array.isArray(rawOrders2) ? rawOrders2[0] : rawOrders2;
+    if ((orderRecord2 as { order_status: string } | null)?.order_status !== "draft") {
       return { success: false, error: "Can only remove items from draft orders." };
     }
 
@@ -1623,6 +1628,44 @@ export async function deleteOrderItem(
   } catch (err) {
     console.error("[deleteOrderItem] unexpected:", err);
     return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* triggerAiExtraction                                                         */
+/* -------------------------------------------------------------------------- */
+
+export async function triggerAiExtraction(
+  orderId: string,
+  documentType: string,
+  filePath: string,
+): Promise<{ success: boolean; error: string | null; skipped?: boolean }> {
+  try {
+    if (!["facesheet", "clinical_docs"].includes(documentType)) {
+      return { success: true, error: null, skipped: true };
+    }
+
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+
+    const response = await fetch(`${baseUrl}/api/ai/extract-document`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId, documentType, filePath, bucket: BUCKET }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || data.error) {
+      console.error("[triggerAiExtraction]", data.error);
+      return { success: false, error: data.error, skipped: false };
+    }
+
+    revalidatePath(ORDERS_PATH);
+    return { success: true, error: null };
+  } catch (err) {
+    console.error("[triggerAiExtraction] unexpected:", err);
+    // Non-fatal — upload already succeeded; user can fill form manually
+    return { success: false, error: "AI extraction failed — fill form manually." };
   }
 }
 

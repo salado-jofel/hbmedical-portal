@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useTransition } from "react";
 import { useAppDispatch } from "@/store/hooks";
+import { createClient } from "@/lib/supabase/client";
 import { removeOrderFromStore, updateOrderInStore } from "../(redux)/orders-slice";
 // Use raw Radix primitive so we own 100% of the sizing — shadcn DialogContent
 // bakes in `sm:max-w-sm` via @media which cannot be overridden with className.
@@ -163,6 +164,11 @@ export function OrderDetailModal({
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
 
+  /* -- AI extraction status -- */
+  const [aiStatus, setAiStatus] = useState<"idle" | "processing" | "done">(
+    order.ai_extracted ? "done" : "idle",
+  );
+
   /* -- Sub-modal flags -- */
   const [signOpen, setSignOpen] = useState(false);
   const [approveOpen, setApproveOpen] = useState(false);
@@ -233,6 +239,34 @@ export function OrderDetailModal({
     setLoadingProducts(true);
     getProducts().then((p) => { setProducts(p); setLoadingProducts(false); });
   }, [showProductPicker]);
+
+  /* ── Realtime: watch ai_extracted on this order ── */
+  useEffect(() => {
+    if (!open || order.ai_extracted) return;
+
+    const supabase = createClient();
+    setAiStatus("processing");
+
+    const channel = supabase
+      .channel(`order-ai-${order.id}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "orders", filter: `id=eq.${order.id}` },
+        (payload) => {
+          if (payload.new.ai_extracted) {
+            setAiStatus("done");
+            toast.success("AI extraction complete — Order Form updated.");
+            refreshOrder();
+            supabase.removeChannel(channel);
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [open, order.id, order.ai_extracted]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── Handlers ── */
 
@@ -722,6 +756,25 @@ export function OrderDetailModal({
                     {/* ORDER FORM (AI-extracted, read-only) */}
                     {tab === "order-form" && (
                       <div className="absolute inset-0 overflow-y-auto px-6 py-6 space-y-5">
+                        {/* AI status banner */}
+                        {aiStatus === "processing" && (
+                          <div className="p-4 rounded-2xl bg-blue-50 border border-blue-200">
+                            <div className="flex items-center gap-2 text-blue-700 font-semibold text-sm mb-1">
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              AI is reading your document...
+                            </div>
+                            <p className="text-blue-600 text-xs">
+                              This usually takes 10–30 seconds. The form will update automatically when done.
+                            </p>
+                          </div>
+                        )}
+                        {aiStatus === "done" && order.ai_extracted && (
+                          <div className="p-3 rounded-2xl bg-green-50 border border-green-200 flex items-center gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
+                            <p className="text-green-700 text-xs font-medium">AI extraction complete — data auto-filled below.</p>
+                          </div>
+                        )}
+
                         {!order.ai_extracted ? (
                           <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200">
                             <div className="flex items-center gap-2 text-amber-700 font-semibold text-sm mb-1.5">
