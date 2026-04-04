@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useEffect, useTransition } from "react";
+import { useState, useEffect, useTransition, useRef } from "react";
 import { useAppDispatch } from "@/store/hooks";
-import { createClient } from "@/lib/supabase/client";
 import { removeOrderFromStore, updateOrderInStore } from "../(redux)/orders-slice";
 // Use raw Radix primitive so we own 100% of the sizing — shadcn DialogContent
 // bakes in `sm:max-w-sm` via @media which cannot be overridden with className.
@@ -29,12 +28,14 @@ import {
   AlertTriangle,
   Paperclip,
   Download,
+  Clock,
 } from "lucide-react";
 import type {
   DashboardOrder,
   IOrderHistory,
   IOrderMessage,
   IOrderDocument,
+  IOrderForm,
   DocumentType,
   ProductRecord,
 } from "@/utils/interfaces/orders";
@@ -57,6 +58,7 @@ import {
   updateOrderItemQuantity,
   deleteOrderItem,
   updateOrderClinicalFields,
+  getOrderAiStatus,
 } from "../(services)/actions";
 import { OrderStatusBadge } from "./OrderStatusBadge";
 import { OrderIVRForm } from "./OrderIVRForm";
@@ -101,6 +103,7 @@ const TABS = [
 
 type TabValue = (typeof TABS)[number]["value"];
 type SaveStatus = "idle" | "saving" | "saved" | "error";
+type AiStatus = "idle" | "processing" | "complete" | "error";
 
 /* ── Props ── */
 
@@ -164,10 +167,58 @@ export function OrderDetailModal({
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
 
-  /* -- AI extraction status -- */
-  const [aiStatus, setAiStatus] = useState<"idle" | "processing" | "done">(
-    order.ai_extracted ? "done" : "idle",
+  /* -- Patient name (updates after AI links patient to order) -- */
+  const [patientName, setPatientName] = useState<string | null>(
+    order.patient_full_name ?? null,
   );
+
+  /* -- AI extraction status + order_form data -- */
+  const [aiStatus, setAiStatus] = useState<AiStatus>("idle");
+  const [orderForm, setOrderForm] = useState<IOrderForm | null>(null);
+
+  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollCountRef = useRef(0);
+
+  function beginPolling() {
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+    }
+    pollCountRef.current = 0;
+
+    pollingIntervalRef.current = setInterval(async () => {
+      pollCountRef.current += 1;
+      try {
+        const result = await getOrderAiStatus(order.id);
+        if (result.aiExtracted && result.orderForm) {
+          setOrderForm(result.orderForm);
+          setAiStatus("complete");
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+            pollingIntervalRef.current = null;
+          }
+          setTab("order-form");
+          toast.success("AI extraction complete — please review the data", { duration: 5000 });
+          // Refresh patient name — AI may have just linked a patient to this order
+          getOrderById(order.id).then((updated) => {
+            if (updated?.patient_full_name) {
+              setPatientName(updated.patient_full_name);
+              dispatch(updateOrderInStore(updated));
+            }
+          });
+          return;
+        }
+      } catch (err) {
+        console.error("[polling]", err);
+      }
+      if (pollCountRef.current >= 20) {
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
+        setAiStatus("error");
+      }
+    }, 3000);
+  }
 
   /* -- Sub-modal flags -- */
   const [signOpen, setSignOpen] = useState(false);
@@ -181,11 +232,12 @@ export function OrderDetailModal({
   const [isDeleting, setIsDeleting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  /* ── Sync local items + notes when order prop updates ── */
+  /* ── Sync local items, notes, and patient name when order prop updates ── */
   useEffect(() => {
     setLocalItems(order.all_items ?? []);
     setNotes(order.notes ?? "");
-  }, [order.id, order.all_items, order.notes]);
+    if (order.patient_full_name) setPatientName(order.patient_full_name);
+  }, [order.id, order.all_items, order.notes, order.patient_full_name]);
 
   /* ── Load documents when modal opens ── */
   useEffect(() => {
@@ -201,6 +253,7 @@ export function OrderDetailModal({
     getOrderDocuments(order.id).then(async (docs) => {
       setDocuments(docs);
       setLoadingDocs(false);
+
       const photos = docs.filter((d) => d.documentType === "wound_pictures");
       const urlMap: Record<string, string> = {};
       await Promise.all(
@@ -210,8 +263,55 @@ export function OrderDetailModal({
         }),
       );
       setWoundPhotoUrls(urlMap);
+
+      // If AI not done yet but trigger docs exist — start polling
+      if (!order.ai_extracted) {
+        const hasTriggerDoc = docs.some((d) =>
+          ["facesheet", "clinical_docs"].includes(d.documentType),
+        );
+        if (hasTriggerDoc) {
+          setAiStatus("processing");
+          beginPolling();
+        }
+      }
     });
-  }, [open, order.id]);
+  }, [open, order.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ── Master AI effect — runs when modal opens or order changes ── */
+  useEffect(() => {
+    if (!open) {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+      return;
+    }
+
+    // Clear any existing polling
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+    pollCountRef.current = 0;
+    setOrderForm(null);
+
+    if (order.ai_extracted) {
+      setAiStatus("complete");
+      getOrderAiStatus(order.id).then((result) => {
+        if (result.orderForm) setOrderForm(result.orderForm);
+      });
+      return;
+    }
+
+    setAiStatus("idle");
+
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+    };
+  }, [open, order.id, order.ai_extracted]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── Lazy load messages / history on tab switch ── */
   useEffect(() => {
@@ -239,34 +339,6 @@ export function OrderDetailModal({
     setLoadingProducts(true);
     getProducts().then((p) => { setProducts(p); setLoadingProducts(false); });
   }, [showProductPicker]);
-
-  /* ── Realtime: watch ai_extracted on this order ── */
-  useEffect(() => {
-    if (!open || order.ai_extracted) return;
-
-    const supabase = createClient();
-    setAiStatus("processing");
-
-    const channel = supabase
-      .channel(`order-ai-${order.id}`)
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "orders", filter: `id=eq.${order.id}` },
-        (payload) => {
-          if (payload.new.ai_extracted) {
-            setAiStatus("done");
-            toast.success("AI extraction complete — Order Form updated.");
-            refreshOrder();
-            supabase.removeChannel(channel);
-          }
-        },
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [open, order.id, order.ai_extracted]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── Handlers ── */
 
@@ -315,6 +387,11 @@ export function OrderDetailModal({
     if (result.success && result.document) {
       setDocuments((prev) => [result.document!, ...prev]);
       toast.success("Document uploaded.");
+      // Start AI polling for extractable doc types
+      if (["facesheet", "clinical_docs"].includes(docType)) {
+        setAiStatus("processing");
+        beginPolling();
+      }
       if (docType === "wound_pictures") {
         const { url } = await getDocumentSignedUrl(result.document.filePath);
         if (url) setWoundPhotoUrls((prev) => ({ ...prev, [result.document!.id]: url }));
@@ -504,7 +581,7 @@ export function OrderDetailModal({
               <div className="flex-shrink-0 px-8 py-5 border-b border-gray-100 flex items-center justify-between bg-white">
                 <div className="min-w-0">
                   <h2 className="text-2xl font-extrabold tracking-tight text-gray-900 truncate">
-                    {order.patient_full_name ?? "No Patient"}
+                    {patientName ?? "No Patient"}
                   </h2>
                   <p className="text-gray-400 text-sm mt-0.5">
                     Order #{order.order_number}
@@ -755,71 +832,96 @@ export function OrderDetailModal({
 
                     {/* ORDER FORM (AI-extracted, read-only) */}
                     {tab === "order-form" && (
-                      <div className="absolute inset-0 overflow-y-auto px-6 py-6 space-y-5">
-                        {/* AI status banner */}
+                      <div className="absolute inset-0 overflow-y-auto px-6 py-6 space-y-4">
+
+                        {/* SPINNER: AI processing */}
                         {aiStatus === "processing" && (
-                          <div className="p-4 rounded-2xl bg-blue-50 border border-blue-200">
-                            <div className="flex items-center gap-2 text-blue-700 font-semibold text-sm mb-1">
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                              AI is reading your document...
+                          <div className="flex items-center gap-4 p-5 rounded-2xl bg-blue-50 border border-blue-100">
+                            <div className="w-10 h-10 rounded-full border-[3px] border-blue-200 border-t-blue-500 animate-spin shrink-0" />
+                            <div>
+                              <p className="text-sm font-bold text-blue-700">AI is reading your document...</p>
+                              <p className="text-xs text-blue-500 mt-1">
+                                Extracting clinical data. Takes 10–30 seconds. This will update automatically — no refresh needed.
+                              </p>
                             </div>
-                            <p className="text-blue-600 text-xs">
-                              This usually takes 10–30 seconds. The form will update automatically when done.
-                            </p>
-                          </div>
-                        )}
-                        {aiStatus === "done" && order.ai_extracted && (
-                          <div className="p-3 rounded-2xl bg-green-50 border border-green-200 flex items-center gap-2">
-                            <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
-                            <p className="text-green-700 text-xs font-medium">AI extraction complete — data auto-filled below.</p>
                           </div>
                         )}
 
-                        {!order.ai_extracted ? (
-                          <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200">
-                            <div className="flex items-center gap-2 text-amber-700 font-semibold text-sm mb-1.5">
-                              <AlertCircle className="w-4 h-4" />
-                              AI extraction pending
-                            </div>
-                            <p className="text-amber-600 text-xs">
-                              Upload the patient facesheet and doctor&apos;s note. The AI will automatically extract patient and clinical information.
-                            </p>
-                            {docCount > 0 && (
-                              <p className="text-amber-600 text-xs mt-1 italic">
-                                Documents uploaded. You can proceed to fill the IVR and HCFA forms.
-                              </p>
-                            )}
-                          </div>
-                        ) : (
+                        {/* SUCCESS: show extracted data */}
+                        {aiStatus === "complete" && orderForm && (
                           <>
-                            <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">Patient Information (AI-extracted)</h3>
-                            <div className="rounded-2xl border border-gray-100 overflow-hidden divide-y divide-gray-50">
-                              {[
-                                { label: "Patient Name",          value: order.patient_full_name ?? "—" },
-                                { label: "Date of Service",       value: order.date_of_service ?? "—" },
-                                { label: "Wound Visit #",         value: order.wound_visit_number != null ? String(order.wound_visit_number) : "—" },
-                                { label: "Chief Complaint",       value: order.chief_complaint ?? "—" },
-                                { label: "Active Vasculitis/Burns?", value: order.has_vasculitis_or_burns ? "Yes" : "No" },
-                                { label: "Receiving Home Health?",value: order.is_receiving_home_health ? "Yes" : "No" },
-                                { label: "Patient at SNF?",       value: order.is_patient_at_snf ? "Yes" : "No" },
-                                { label: "ICD-10 Code",           value: order.icd10_code ?? "—" },
-                                { label: "Follow-up Days",        value: order.followup_days != null ? String(order.followup_days) : "—" },
-                              ].map(({ label, value }) => (
-                                <div key={label} className="flex items-center justify-between px-4 py-3">
-                                  <span className="text-xs text-gray-400">{label}</span>
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="text-sm font-semibold text-gray-800">{value}</span>
-                                    <Lock className="w-3 h-3 text-gray-300" />
-                                  </div>
-                                </div>
-                              ))}
+                            <div className="flex items-center gap-3 p-4 rounded-xl bg-green-50 border border-green-100">
+                              <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0" />
+                              <div>
+                                <p className="text-sm font-semibold text-green-700">AI extraction complete</p>
+                                <p className="text-xs text-green-500 mt-0.5">
+                                  Review the auto-filled fields below and correct any errors before signing.
+                                </p>
+                              </div>
                             </div>
-                            <p className="text-xs text-gray-400 flex items-center gap-1">
-                              <Lock className="w-3 h-3" />
-                              AI-extracted. Corrections must be made in your clinic system.
-                            </p>
+
+                            <div className="rounded-xl border border-gray-100 overflow-hidden">
+                              {[
+                                { label: "Chief Complaint",    value: orderForm.chiefComplaint },
+                                { label: "ICD-10 Code",        value: orderForm.icd10Code },
+                                { label: "Wound Visit #",      value: orderForm.woundVisitNumber != null ? `#${orderForm.woundVisitNumber}` : null },
+                                { label: "Wound Site",         value: orderForm.woundSite },
+                                { label: "Wound Stage",        value: orderForm.woundStage },
+                                { label: "Measurements",       value: orderForm.woundLengthCm != null ? `${orderForm.woundLengthCm}L × ${orderForm.woundWidthCm}W × ${orderForm.woundDepthCm}D cm` : null },
+                                { label: "Vasculitis/Burns",   value: orderForm.hasVasculitisOrBurns ? "Yes" : "No" },
+                                { label: "Home Health",        value: orderForm.isReceivingHomeHealth ? "Yes" : "No" },
+                                { label: "At SNF",             value: orderForm.isPatientAtSnf ? "Yes" : "No" },
+                                { label: "Follow-up",          value: orderForm.followupDays != null ? `${orderForm.followupDays} days` : null },
+                                { label: "Symptoms",           value: orderForm.subjectiveSymptoms?.length ? orderForm.subjectiveSymptoms.join(", ") : null },
+                                { label: "Clinical Notes",     value: orderForm.clinicalNotes },
+                              ]
+                                .filter((f) => f.value != null && f.value !== "")
+                                .map((field, i) => (
+                                  <div
+                                    key={field.label}
+                                    className={cn(
+                                      "flex items-start gap-4 px-4 py-3 border-b border-gray-50 last:border-0",
+                                      i % 2 === 0 ? "bg-white" : "bg-gray-50/40",
+                                    )}
+                                  >
+                                    <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider w-32 shrink-0 pt-0.5">
+                                      {field.label}
+                                    </span>
+                                    <span className="text-sm text-gray-800 flex-1 leading-relaxed">
+                                      {field.value}
+                                    </span>
+                                  </div>
+                                ))}
+                            </div>
                           </>
                         )}
+
+                        {/* PENDING: no docs uploaded yet */}
+                        {aiStatus === "idle" && (
+                          <div className="flex items-center gap-3 p-4 rounded-xl bg-amber-50 border border-amber-100">
+                            <Clock className="w-4 h-4 text-amber-500 shrink-0" />
+                            <div>
+                              <p className="text-sm font-semibold text-amber-700">AI extraction pending</p>
+                              <p className="text-xs text-amber-600 mt-0.5">
+                                Upload patient facesheet or clinical documentation. AI will extract data automatically.
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* ERROR: timeout */}
+                        {aiStatus === "error" && (
+                          <div className="flex items-center gap-3 p-4 rounded-xl bg-red-50 border border-red-100">
+                            <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                            <div>
+                              <p className="text-sm font-semibold text-red-600">AI extraction timed out</p>
+                              <p className="text-xs text-red-500 mt-0.5">
+                                Please fill the form manually or try uploading the document again.
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
                       </div>
                     )}
 

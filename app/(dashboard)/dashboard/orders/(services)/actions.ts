@@ -27,6 +27,7 @@ import type {
   RawOrderRecord,
   WoundType,
   OrderStatus,
+  IOrderForm,
 } from "@/utils/interfaces/orders";
 import { mapOrder, mapOrders } from "@/utils/interfaces/orders";
 
@@ -1660,7 +1661,6 @@ export async function triggerAiExtraction(
       return { success: false, error: data.error, skipped: false };
     }
 
-    revalidatePath(ORDERS_PATH);
     return { success: true, error: null };
   } catch (err) {
     console.error("[triggerAiExtraction] unexpected:", err);
@@ -1714,4 +1714,62 @@ export async function updateOrderClinicalFields(
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/* getOrderAiStatus                                                            */
+/* -------------------------------------------------------------------------- */
+
+export async function getOrderAiStatus(
+  orderId: string,
+): Promise<{ aiExtracted: boolean; orderForm: IOrderForm | null }> {
+  const supabase = await createClient();
+  await getCurrentUserOrThrow(supabase);
+
+  const { data: order } = await supabase
+    .from("orders")
+    .select("ai_extracted")
+    .eq("id", orderId)
+    .single();
+
+  if (!order?.ai_extracted) {
+    return { aiExtracted: false, orderForm: null };
+  }
+
+  const { data: form } = await supabase
+    .from("order_form")
+    .select("*")
+    .eq("order_id", orderId)
+    .single();
+
+  if (!form) {
+    return { aiExtracted: true, orderForm: null };
+  }
+
+  return {
+    aiExtracted: true,
+    orderForm: {
+      id:                    form.id,
+      orderId:               form.order_id,
+      woundVisitNumber:      form.wound_visit_number ?? null,
+      chiefComplaint:        form.chief_complaint ?? null,
+      hasVasculitisOrBurns:  form.has_vasculitis_or_burns ?? false,
+      isReceivingHomeHealth: form.is_receiving_home_health ?? false,
+      isPatientAtSnf:        form.is_patient_at_snf ?? false,
+      icd10Code:             form.icd10_code ?? null,
+      followupDays:          form.followup_days ?? null,
+      woundSite:             form.wound_site ?? null,
+      woundStage:            form.wound_stage ?? null,
+      woundLengthCm:         form.wound_length_cm ?? null,
+      woundWidthCm:          form.wound_width_cm ?? null,
+      woundDepthCm:          form.wound_depth_cm ?? null,
+      subjectiveSymptoms:    form.subjective_symptoms ?? [],
+      clinicalNotes:         form.clinical_notes ?? null,
+      aiExtracted:           form.ai_extracted ?? false,
+      aiExtractedAt:         form.ai_extracted_at ?? null,
+      isLocked:              form.is_locked ?? false,
+      lockedAt:              form.locked_at ?? null,
+      lockedBy:              form.locked_by ?? null,
+    },
+  };
 }

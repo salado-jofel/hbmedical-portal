@@ -286,6 +286,30 @@ export interface IOrderForm1500 {
   updatedAt: string;
 }
 
+export interface IOrderForm {
+  id: string;
+  orderId: string;
+  woundVisitNumber: number | null;
+  chiefComplaint: string | null;
+  hasVasculitisOrBurns: boolean;
+  isReceivingHomeHealth: boolean;
+  isPatientAtSnf: boolean;
+  icd10Code: string | null;
+  followupDays: number | null;
+  woundSite: string | null;
+  woundStage: string | null;
+  woundLengthCm: number | null;
+  woundWidthCm: number | null;
+  woundDepthCm: number | null;
+  subjectiveSymptoms: string[];
+  clinicalNotes: string | null;
+  aiExtracted: boolean;
+  aiExtractedAt: string | null;
+  isLocked: boolean;
+  lockedAt: string | null;
+  lockedBy: string | null;
+}
+
 export interface IOrder {
   id: string;
   orderNumber: string;

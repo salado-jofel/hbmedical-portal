@@ -1,16 +1,169 @@
-import { anthropic } from "@ai-sdk/anthropic";
+// ── ANTHROPIC CLAUDE (active) ─────────────────────────────────────────────
+import { createAnthropic } from "@ai-sdk/anthropic";
 import { generateText } from "ai";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 
+const anthropic = createAnthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+// ── GOOGLE GEMINI (commented out — restore if needed) ─────────────────────
+// import { createGoogleGenerativeAI } from "@ai-sdk/google";
+// const google = createGoogleGenerativeAI({ apiKey: process.env.GEMINI_API_KEY });
+
 export const maxDuration = 60;
+
+/* ── Field sanitizers ── */
+
+const ORDER_FORM_ALLOWED_FIELDS = new Set([
+  "wound_visit_number",
+  "chief_complaint",
+  "has_vasculitis_or_burns",
+  "is_receiving_home_health",
+  "is_patient_at_snf",
+  "icd10_code",
+  "followup_days",
+  "wound_site",
+  "wound_stage",
+  "wound_length_cm",
+  "wound_width_cm",
+  "wound_depth_cm",
+  "subjective_symptoms",
+  "clinical_notes",
+]);
+
+const ORDER_FORM_FIELD_ALIASES: Record<string, string> = {
+  is_receiving_health: "is_receiving_home_health",
+  receiving_home_health: "is_receiving_home_health",
+  home_health: "is_receiving_home_health",
+  is_home_health: "is_receiving_home_health",
+  vasculitis_or_burns: "has_vasculitis_or_burns",
+  has_vasculitis: "has_vasculitis_or_burns",
+  vasculitis: "has_vasculitis_or_burns",
+  patient_at_snf: "is_patient_at_snf",
+  snf: "is_patient_at_snf",
+  icd10: "icd10_code",
+  icd_10_code: "icd10_code",
+  icd_10: "icd10_code",
+  diagnosis_code: "icd10_code",
+  followup: "followup_days",
+  follow_up_days: "followup_days",
+  follow_up: "followup_days",
+  visit_number: "wound_visit_number",
+  wound_visit: "wound_visit_number",
+  wound_length: "wound_length_cm",
+  wound_width: "wound_width_cm",
+  wound_depth: "wound_depth_cm",
+  length_cm: "wound_length_cm",
+  width_cm: "wound_width_cm",
+  depth_cm: "wound_depth_cm",
+  symptoms: "subjective_symptoms",
+  notes: "clinical_notes",
+  complaint: "chief_complaint",
+};
+
+function sanitizeOrderFormFields(
+  raw: Record<string, unknown>,
+): Record<string, unknown> {
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (value === null || value === undefined) continue;
+    const mappedKey = ORDER_FORM_FIELD_ALIASES[key] ?? key;
+    if (ORDER_FORM_ALLOWED_FIELDS.has(mappedKey)) {
+      sanitized[mappedKey] = value;
+    } else {
+      console.warn(
+        `[extract-document] Unknown order_form field ignored: ${key}`,
+      );
+    }
+  }
+  return sanitized;
+}
+
+const ORDER_FORM_1500_ALLOWED_FIELDS = new Set([
+  "insurance_type",
+  "insured_id_number",
+  "patient_last_name",
+  "patient_first_name",
+  "patient_middle_initial",
+  "patient_dob",
+  "patient_sex",
+  "insured_last_name",
+  "insured_first_name",
+  "insured_middle_initial",
+  "patient_address",
+  "patient_city",
+  "patient_state",
+  "patient_zip",
+  "patient_phone",
+  "patient_relationship",
+  "insured_address",
+  "insured_city",
+  "insured_state",
+  "insured_zip",
+  "insured_phone",
+  "insured_policy_group",
+  "insured_dob",
+  "insured_sex",
+  "insured_employer",
+  "insured_plan_name",
+  "another_health_benefit",
+  "accept_assignment",
+  "federal_tax_id",
+  "patient_account_number",
+  "billing_provider_name",
+  "billing_provider_address",
+  "billing_provider_phone",
+  "billing_provider_npi",
+]);
+
+const ORDER_FORM_1500_ALIASES: Record<string, string> = {
+  patient_date_of_birth: "patient_dob",
+  date_of_birth: "patient_dob",
+  dob: "patient_dob",
+  gender: "patient_sex",
+  sex: "patient_sex",
+  insurance: "insurance_type",
+  plan_type: "insurance_type",
+  member_id: "insured_id_number",
+  policy_number: "insured_id_number",
+  subscriber_id: "insured_id_number",
+  group_number: "insured_policy_group",
+  group_no: "insured_policy_group",
+  plan_name: "insured_plan_name",
+  employer: "insured_employer",
+  relationship: "patient_relationship",
+  patient_rel: "patient_relationship",
+};
+
+function sanitizeForm1500Fields(
+  raw: Record<string, unknown>,
+): Record<string, unknown> {
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (value === null || value === undefined) continue;
+    const mappedKey = ORDER_FORM_1500_ALIASES[key] ?? key;
+    if (ORDER_FORM_1500_ALLOWED_FIELDS.has(mappedKey)) {
+      sanitized[mappedKey] = value;
+    } else {
+      console.warn(
+        `[extract-document] Unknown order_form_1500 field ignored: ${key}`,
+      );
+    }
+  }
+  return sanitized;
+}
+
+/* ── Route handler ── */
 
 export async function POST(req: NextRequest) {
   try {
     const { orderId, documentType, filePath, bucket } = await req.json();
 
     if (!orderId || !documentType || !filePath) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Missing required fields" },
+        { status: 400 },
+      );
     }
 
     if (!["facesheet", "clinical_docs"].includes(documentType)) {
@@ -44,20 +197,18 @@ export async function POST(req: NextRequest) {
           ? "image/heic"
           : "image/jpeg";
 
-    /* -- Call Claude -- */
-    const prompt = documentType === "facesheet" ? FACESHEET_PROMPT : CLINICAL_DOCS_PROMPT;
+    /* -- Call model -- */
+    const prompt =
+      documentType === "facesheet" ? FACESHEET_PROMPT : CLINICAL_DOCS_PROMPT;
 
+    // ── CLAUDE (active) ───────────────────────────────────────────────────
     const { text } = await generateText({
       model: anthropic("claude-sonnet-4-6"),
       messages: [
         {
           role: "user",
           content: [
-            {
-              type: "file",
-              data: base64,
-              mediaType: mimeType,
-            },
+            { type: "file", data: base64, mediaType: mimeType as "application/pdf" | "image/png" | "image/jpeg" | "image/heic" },
             { type: "text", text: prompt },
           ],
         },
@@ -72,38 +223,103 @@ export async function POST(req: NextRequest) {
       extractedFields = JSON.parse(jsonStr.trim());
     } catch {
       console.error("[extract-document] JSON parse failed:", text);
-      return NextResponse.json({ error: "Failed to parse AI response as JSON" }, { status: 500 });
+      return NextResponse.json(
+        { error: "Failed to parse AI response as JSON" },
+        { status: 500 },
+      );
     }
 
-    /* -- Filter out nulls so we don't overwrite existing data -- */
-    const cleanFields = Object.fromEntries(
-      Object.entries(extractedFields).filter(([, v]) => v !== null && v !== undefined),
-    );
-
-    /* -- Write to appropriate table -- */
+    /* -- Write to appropriate table using sanitized fields only -- */
     if (documentType === "facesheet") {
-      const { error } = await adminClient
-        .from("order_form_1500")
-        .upsert({ order_id: orderId, ...cleanFields }, { onConflict: "order_id" });
+      const safeFields = sanitizeForm1500Fields(extractedFields);
 
-      if (error) {
-        return NextResponse.json({ error: `DB write failed: ${error.message}` }, { status: 500 });
-      }
-    } else {
-      const { error } = await adminClient
-        .from("order_form")
+      const { error: form1500Error } = await adminClient
+        .from("order_form_1500")
         .upsert(
-          {
-            order_id: orderId,
-            ai_extracted: true,
-            ai_extracted_at: new Date().toISOString(),
-            ...cleanFields,
-          },
+          { order_id: orderId, ...safeFields },
           { onConflict: "order_id" },
         );
 
+      if (form1500Error) {
+        return NextResponse.json(
+          { error: `DB write failed: ${form1500Error.message}` },
+          { status: 500 },
+        );
+      }
+
+      /* -- Auto-create patient from extracted facesheet data -- */
+      const firstName = safeFields.patient_first_name as string | undefined;
+      const lastName  = safeFields.patient_last_name  as string | undefined;
+      const dob       = safeFields.patient_dob        as string | undefined;
+
+      if (firstName && lastName) {
+        const { data: orderRow } = await adminClient
+          .from("orders")
+          .select("facility_id, patient_id")
+          .eq("id", orderId)
+          .single();
+
+        if (orderRow && !orderRow.patient_id) {
+          // Check if patient already exists in this facility
+          const { data: existingPatient } = await adminClient
+            .from("patients")
+            .select("id")
+            .eq("facility_id", orderRow.facility_id)
+            .ilike("first_name", firstName.trim())
+            .ilike("last_name", lastName.trim())
+            .maybeSingle();
+
+          let patientId: string | undefined;
+
+          if (existingPatient) {
+            patientId = existingPatient.id;
+          } else {
+            const { data: newPatient, error: patientError } = await adminClient
+              .from("patients")
+              .insert({
+                facility_id:   orderRow.facility_id,
+                first_name:    firstName.trim(),
+                last_name:     lastName.trim(),
+                date_of_birth: dob ?? null,
+                is_active:     true,
+              })
+              .select("id")
+              .single();
+
+            if (patientError || !newPatient) {
+              console.error("[extract-document] Failed to create patient:", patientError);
+              // Non-fatal — continue without patient link
+            } else {
+              patientId = newPatient.id;
+            }
+          }
+
+          if (patientId) {
+            await adminClient
+              .from("orders")
+              .update({ patient_id: patientId })
+              .eq("id", orderId);
+          }
+        }
+      }
+    } else {
+      const safeFields = sanitizeOrderFormFields(extractedFields);
+
+      const { error } = await adminClient.from("order_form").upsert(
+        {
+          order_id: orderId,
+          ai_extracted: true,
+          ai_extracted_at: new Date().toISOString(),
+          ...safeFields,
+        },
+        { onConflict: "order_id" },
+      );
+
       if (error) {
-        return NextResponse.json({ error: `DB write failed: ${error.message}` }, { status: 500 });
+        return NextResponse.json(
+          { error: `DB write failed: ${error.message}` },
+          { status: 500 },
+        );
       }
     }
 
@@ -113,7 +329,7 @@ export async function POST(req: NextRequest) {
       .update({ ai_extracted: true, ai_extracted_at: new Date().toISOString() })
       .eq("id", orderId);
 
-    return NextResponse.json({ success: true, documentType, extractedFields: cleanFields });
+    return NextResponse.json({ success: true, documentType, extractedFields });
   } catch (err) {
     console.error("[extract-document API]", err);
     return NextResponse.json({ error: String(err) }, { status: 500 });
@@ -159,9 +375,13 @@ Return ONLY a valid JSON object. Use null for any field not found. No text outsi
 
 const CLINICAL_DOCS_PROMPT = `
 You are a medical data extraction specialist.
-Extract clinical information from this doctor's note or clinical documentation.
+Extract clinical information from this doctor's note.
 
-Return ONLY a valid JSON object. Use null for fields not found. Use false for booleans not mentioned. No text outside the JSON.
+IMPORTANT: Return ONLY a valid JSON object.
+Use EXACTLY these field names (no abbreviations).
+Use null for fields not found.
+Use false for boolean fields not mentioned.
+No text outside the JSON.
 
 {
   "chief_complaint": string | null,
@@ -179,6 +399,12 @@ Return ONLY a valid JSON object. Use null for fields not found. Use false for bo
   "subjective_symptoms": string[],
   "clinical_notes": string | null
 }
+
+CRITICAL: Use the EXACT field names above including all underscores. For example:
+  "is_receiving_home_health" NOT "is_receiving_health"
+  "has_vasculitis_or_burns" NOT "has_vasculitis"
+  "icd10_code" NOT "icd10" or "icd_10"
+  "subjective_symptoms" NOT "symptoms"
 
 For subjective_symptoms only use values from: ["Pain", "Numbness", "Fever", "Chills", "Nausea"]
 `.trim();
