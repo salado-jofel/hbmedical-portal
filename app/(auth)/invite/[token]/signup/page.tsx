@@ -5,6 +5,7 @@ import { getInviteTokenStatus } from "@/app/(dashboard)/dashboard/(services)/inv
 import { HBLogo } from "@/app/(components)/HBLogo";
 import { BackgroundDots } from "@/app/(components)/BackgroundDots";
 import InviteSignUpForm from "./(sections)/InviteSignUpForm";
+import { getContractSignedUrls } from "./(services)/actions";
 
 interface PageProps {
   params: Promise<{ token: string }>;
@@ -99,6 +100,11 @@ export default async function InviteSignUpPage({ params }: PageProps) {
     ? `${inviteToken.created_by_profile.first_name} ${inviteToken.created_by_profile.last_name}`
     : "HB Medical";
 
+  // Fetch signed PDF URLs for clinical_provider terms step
+  const contractUrls = inviteToken.role_type === "clinical_provider"
+    ? await getContractSignedUrls()
+    : { baaUrl: null, productServicesUrl: null, error: null };
+
   // clinical_provider always creates their own clinic on signup.
   // The token's facility_id (when set) is the inviting rep's facility used only to
   // resolve assigned_rep on the server — never shown to the user or used to skip the Office step.
@@ -115,6 +121,9 @@ export default async function InviteSignUpPage({ params }: PageProps) {
           facilityId={formFacilityId}
           facilityName={formFacilityName}
           invitedBy={invitedBy}
+          baaUrl={contractUrls.baaUrl}
+          productServicesUrl={contractUrls.productServicesUrl}
+          contractsError={contractUrls.error}
         />
       </div>
     </main>

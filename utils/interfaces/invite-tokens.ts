@@ -25,6 +25,7 @@ export interface IInviteToken {
   used_at: string | null;
   expires_at: string | null;
   created_at: string;
+  invited_email: string | null;
   // Joined
   created_by_profile: {
     id: string;
@@ -49,6 +50,10 @@ export interface IInviteTokenFormState {
   error: string | null;
   success: boolean;
   token?: string;
+  invitedEmail?: string;
+  fieldErrors?: {
+    email?: string;
+  };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -56,6 +61,7 @@ export interface IInviteTokenFormState {
 /* -------------------------------------------------------------------------- */
 
 export const generateInviteTokenSchema = z.object({
+  email: z.string().email("Enter a valid email address.").min(1, "Email is required."),
   facility_id: z.string().uuid("Invalid account.").nullable().optional(),
   role_type: z.enum(["clinical_provider", "clinical_staff"]),
   expires_in_days: z.coerce.number().int().min(1).max(365).default(30),
@@ -77,6 +83,7 @@ export type RawInviteTokenRecord = {
   used_at: string | null;
   expires_at: string | null;
   created_at: string;
+  invited_email: string | null;
   created_by_profile: {
     id: string;
     first_name: string;
@@ -122,6 +129,7 @@ export function mapInviteToken(raw: RawInviteTokenRecord): IInviteToken {
     used_at: raw.used_at,
     expires_at: raw.expires_at,
     created_at: raw.created_at,
+    invited_email: raw.invited_email ?? null,
     created_by_profile: raw.created_by_profile ?? null,
     facility: raw.facility ?? null,
     used_by_name: usedByProfile

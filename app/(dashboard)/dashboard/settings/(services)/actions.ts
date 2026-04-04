@@ -232,6 +232,7 @@ export async function getMySubReps(): Promise<ISubRep[]> {
           last_name,
           email,
           status,
+          has_completed_setup,
           created_at
         )
       `)
@@ -252,6 +253,7 @@ export async function getMySubReps(): Promise<ISubRep[]> {
           last_name: child.last_name,
           email: child.email,
           status: child.status as ISubRep["status"],
+          has_completed_setup: child.has_completed_setup ?? false,
           created_at: child.created_at,
         };
       });

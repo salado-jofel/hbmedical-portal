@@ -161,7 +161,11 @@ export function UsersPageClient() {
       label: "User",
       headerClassName: "pl-11",
       render: (user) => {
-        const initials = `${user.first_name.charAt(0)}${user.last_name.charAt(0)}`.toUpperCase();
+        const isPendingSetup = user.first_name === "Pending" && user.last_name === "Setup";
+        const displayName = isPendingSetup ? user.email : `${user.first_name} ${user.last_name}`;
+        const initials = isPendingSetup
+          ? (user.email?.[0] ?? "U").toUpperCase()
+          : `${user.first_name.charAt(0)}${user.last_name.charAt(0)}`.toUpperCase();
         const colors = ROLE_COLORS[user.role as NonNullable<UserRole>] ?? ROLE_COLORS.clinical_staff;
         return (
           <div className="flex items-center gap-3 min-w-0">
@@ -170,7 +174,7 @@ export function UsersPageClient() {
             </div>
             <div className="min-w-0">
               <p className={`text-sm font-medium truncate ${user.is_active ? "text-[#0F172A]" : "text-[#94A3B8]"}`}>
-                {user.first_name} {user.last_name}
+                {displayName}
               </p>
               <p className="text-xs text-[#94A3B8] truncate">
                 {user.facility?.name ?? <span className="italic">No facility</span>}

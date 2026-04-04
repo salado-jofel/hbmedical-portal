@@ -299,14 +299,23 @@ export function Sidebar() {
 
         {/* ── Footer ── */}
         <div className="flex flex-col">
-          <SidebarUserCard
-            name={userData.name}
-            email={userData.email}
-            initials={userData.initials}
-            role={userData.role}
-            isSubRep={isSubRep}
-            collapsed={collapsed}
-          />
+          {(() => {
+            const isPendingSetup = userData.name === "Pending Setup" || !userData.name;
+            const displayName = isPendingSetup ? userData.email ?? "—" : userData.name;
+            const displayInitials = isPendingSetup
+              ? (userData.email?.[0] ?? "U").toUpperCase()
+              : userData.initials;
+            return (
+              <SidebarUserCard
+                name={displayName}
+                email={userData.email}
+                initials={displayInitials}
+                role={userData.role}
+                isSubRep={isSubRep}
+                collapsed={collapsed}
+              />
+            );
+          })()}
 
           <div className={cn("pb-3", collapsed ? "px-[10px]" : "px-2")}>
             <SubmitButton
