@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   X,
-  Package,
   Send,
   Upload,
   Trash2,
@@ -54,6 +53,9 @@ import {
   deleteOrder,
   requestAdditionalInfo,
   getOrderById,
+  updateOrderItemQuantity,
+  deleteOrderItem,
+  updateOrderClinicalFields,
 } from "../(services)/actions";
 import { OrderStatusBadge } from "./OrderStatusBadge";
 import { OrderIVRForm } from "./OrderIVRForm";
@@ -154,6 +156,13 @@ export function OrderDetailModal({
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [addingProducts, setAddingProducts] = useState(false);
 
+  /* -- Local order items (optimistic) + notes -- */
+  const [localItems, setLocalItems] = useState(order.all_items ?? []);
+  const [notes, setNotes] = useState(order.notes ?? "");
+  const [updatingItemId, setUpdatingItemId] = useState<string | null>(null);
+  const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
+
   /* -- Sub-modal flags -- */
   const [signOpen, setSignOpen] = useState(false);
   const [approveOpen, setApproveOpen] = useState(false);
@@ -165,6 +174,12 @@ export function OrderDetailModal({
   const [isActing, setIsActing] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  /* ── Sync local items + notes when order prop updates ── */
+  useEffect(() => {
+    setLocalItems(order.all_items ?? []);
+    setNotes(order.notes ?? "");
+  }, [order.id, order.all_items, order.notes]);
 
   /* ── Load documents when modal opens ── */
   useEffect(() => {
@@ -286,9 +301,10 @@ export function OrderDetailModal({
     setAddingProducts(true);
     const result = await addOrderItems(order.id, items);
     if (result.success) {
-      toast.success("Products added. Reload to see updated items.");
+      toast.success("Products added.");
       setShowProductPicker(false);
       setQuantities({});
+      await refreshOrder();
     } else {
       toast.error(result.error ?? "Failed to add products.");
     }
@@ -297,7 +313,7 @@ export function OrderDetailModal({
 
   async function handleEditAndSubmit() {
     const hasFacesheet = documents.some((d) => d.documentType === "facesheet");
-    const hasProducts = (order.all_items?.length ?? 0) > 0;
+    const hasProducts = localItems.length > 0;
     if (!hasFacesheet || !hasProducts || !order.date_of_service || !order.wound_type) {
       setCompletionOpen(true);
       return;
@@ -322,6 +338,42 @@ export function OrderDetailModal({
       setIsDeleting(false);
       setDeleteOpen(false);
     }
+  }
+
+  async function handleQtyChange(itemId: string, newQty: number) {
+    if (newQty < 1) return;
+    setUpdatingItemId(itemId);
+    const result = await updateOrderItemQuantity(itemId, newQty);
+    if (result.success) {
+      setLocalItems((prev) =>
+        prev.map((i) =>
+          i.id === itemId
+            ? { ...i, quantity: newQty, subtotal: newQty * i.unitPrice, totalAmount: newQty * i.unitPrice }
+            : i,
+        ),
+      );
+    } else {
+      toast.error(result.error ?? "Failed to update quantity.");
+    }
+    setUpdatingItemId(null);
+  }
+
+  async function handleDeleteItem(itemId: string) {
+    setDeletingItemId(itemId);
+    const result = await deleteOrderItem(itemId);
+    if (result.success) {
+      setLocalItems((prev) => prev.filter((i) => i.id !== itemId));
+    } else {
+      toast.error(result.error ?? "Failed to remove item.");
+    }
+    setDeletingItemId(null);
+  }
+
+  async function handleNotesSave() {
+    if (notes === (order.notes ?? "")) return;
+    const result = await updateOrderClinicalFields(order.id, { notes: notes || null });
+    if (!result.success) toast.error(result.error ?? "Failed to save notes.");
+    else await refreshOrder();
   }
 
   async function refreshOrder() {
@@ -350,6 +402,9 @@ export function OrderDetailModal({
 
   /* ── Derived ── */
   const status = order.order_status;
+  const orderTotal = localItems.reduce((sum, item) => {
+    return sum + (item.subtotal ?? item.unitPrice * item.quantity);
+  }, 0);
   const docCount = documents.length;
   const msgCount = messages.length;
   const additionalDocs = documents.filter(
@@ -380,6 +435,19 @@ export function OrderDetailModal({
         confirmLabel="Delete"
         isLoading={isDeleting}
         onConfirm={handleDelete}
+      />
+      <ConfirmModal
+        open={!!itemToDelete}
+        onOpenChange={(v) => { if (!v) setItemToDelete(null); }}
+        title="Remove Product"
+        description={`Remove "${itemToDelete?.name}" from this order? This cannot be undone.`}
+        confirmLabel="Remove"
+        isLoading={!!deletingItemId}
+        onConfirm={async () => {
+          if (!itemToDelete) return;
+          await handleDeleteItem(itemToDelete.id);
+          setItemToDelete(null);
+        }}
       />
       <SignOrderModal open={signOpen} onOpenChange={setSignOpen} order={order} providerName={currentUserName ?? "Provider"} onSuccess={refreshOrder} />
       <ApproveOrderModal open={approveOpen} onOpenChange={setApproveOpen} order={order} onSuccess={refreshOrder} />
@@ -461,136 +529,193 @@ export function OrderDetailModal({
                     {/* OVERVIEW */}
                     {tab === "overview" && (
                       <div className="absolute inset-0 overflow-y-auto px-6 py-6 space-y-5">
-                        <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">
-                          Order Items
-                        </h3>
-                        <div className="rounded-2xl border border-gray-100 overflow-hidden">
-                          {(order.all_items?.length ?? 0) > 0 ? (
-                            <div className="divide-y divide-gray-50">
-                              {order.all_items.map((item) => (
-                                <div key={item.id} className="flex items-center justify-between px-4 py-3">
-                                  <div className="flex items-center gap-2.5">
-                                    <Package className="w-4 h-4 text-gray-300" />
-                                    <div>
-                                      <p className="text-sm font-semibold text-gray-800">{item.productName}</p>
-                                      <p className="text-xs text-gray-400">{item.productSku}</p>
-                                    </div>
-                                  </div>
-                                  <div className="text-right">
-                                    <p className="text-sm font-bold text-gray-700">×{item.quantity}</p>
-                                    <p className="text-xs text-gray-400">${item.unitPrice.toFixed(2)} ea</p>
-                                  </div>
-                                </div>
-                              ))}
+
+                        {/* ── Order Items ── */}
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">
+                              Order Items
+                              {localItems.length > 0 && (
+                                <span className="ml-2 text-gray-300 normal-case font-normal">
+                                  ({localItems.length} item{localItems.length !== 1 ? "s" : ""})
+                                </span>
+                              )}
+                            </h3>
+                          </div>
+
+                          {localItems.length === 0 ? (
+                            <div className="py-8 text-center rounded-xl border-2 border-dashed border-gray-200">
+                              <p className="text-sm text-gray-400">No products added yet.</p>
+                              <p className="text-xs text-gray-300 mt-1">Use &quot;+ Add Product&quot; to add items to this order.</p>
                             </div>
                           ) : (
-                            <p className="text-sm text-gray-400 text-center py-6">No products added yet.</p>
-                          )}
-
-                          {canEdit && status === "draft" && (
-                            <div className="border-t border-gray-50 px-4 py-2.5">
-                              {!showProductPicker ? (
-                                <button
-                                  type="button"
-                                  onClick={() => setShowProductPicker(true)}
-                                  className="text-xs text-[#15689E] hover:underline flex items-center gap-1 font-semibold"
-                                >
-                                  <Plus className="w-3 h-3" /> Add Product
-                                </button>
-                              ) : (
-                                <div className="space-y-3 py-1">
-                                  {loadingProducts ? (
-                                    <div className="flex items-center gap-2 text-xs text-gray-400 py-2">
-                                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading products...
-                                    </div>
-                                  ) : products.length === 0 ? (
-                                    <p className="text-xs text-gray-400">No products available.</p>
-                                  ) : (
-                                    products.map((prod) => {
-                                      const qty = quantities[prod.id] ?? 0;
-                                      return (
-                                        <div
-                                          key={prod.id}
-                                          className={cn(
-                                            "flex items-center gap-2 p-2 rounded-xl border transition-all",
-                                            qty > 0 ? "border-[#15689E] bg-blue-50" : "border-gray-100",
+                            <div className="rounded-xl border border-gray-100 overflow-hidden">
+                              {/* Scrollable items list */}
+                              <div className="max-h-[280px] overflow-y-auto">
+                                <table className="w-full text-sm">
+                                  <thead className="sticky top-0 bg-gray-50 border-b border-gray-100 z-10">
+                                    <tr>
+                                      <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider">Product</th>
+                                      <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider w-32">Qty</th>
+                                      <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider w-20">Unit</th>
+                                      <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider w-20">Total</th>
+                                      {canEdit && status === "draft" && <th className="w-10" />}
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-gray-50">
+                                    {localItems.map((item) => (
+                                      <tr key={item.id} className="hover:bg-gray-50/50 transition-colors">
+                                        <td className="px-4 py-3">
+                                          <p className="font-medium text-gray-900 text-sm max-w-[180px] truncate" title={item.productName}>{item.productName}</p>
+                                          <p className="text-xs text-gray-400 mt-0.5">{item.productSku}</p>
+                                        </td>
+                                        <td className="px-4 py-3">
+                                          {canEdit && status === "draft" ? (
+                                            <div className="flex items-center justify-end gap-1.5">
+                                              <button
+                                                type="button"
+                                                disabled={item.quantity <= 1 || updatingItemId === item.id}
+                                                onClick={() => handleQtyChange(item.id, item.quantity - 1)}
+                                                className="w-6 h-6 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:border-gray-300 hover:bg-gray-50 disabled:opacity-30 transition-colors text-xs"
+                                              >
+                                                <Minus className="w-2.5 h-2.5" />
+                                              </button>
+                                              <span className="w-8 text-center text-sm font-medium tabular-nums">
+                                                {updatingItemId === item.id
+                                                  ? <Loader2 className="w-3 h-3 animate-spin mx-auto" />
+                                                  : item.quantity}
+                                              </span>
+                                              <button
+                                                type="button"
+                                                disabled={updatingItemId === item.id}
+                                                onClick={() => handleQtyChange(item.id, item.quantity + 1)}
+                                                className="w-6 h-6 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:border-gray-300 hover:bg-gray-50 disabled:opacity-30 transition-colors text-xs"
+                                              >
+                                                <Plus className="w-2.5 h-2.5" />
+                                              </button>
+                                            </div>
+                                          ) : (
+                                            <p className="text-right text-sm tabular-nums text-gray-700">×{item.quantity}</p>
                                           )}
-                                        >
-                                          <div className="flex-1 min-w-0">
-                                            <p className="text-xs font-semibold text-gray-800 truncate">{prod.name}</p>
-                                            <p className="text-[11px] text-gray-400">${Number(prod.unit_price).toFixed(2)}</p>
-                                          </div>
-                                          <div className="flex items-center gap-1.5 shrink-0">
+                                        </td>
+                                        <td className="px-4 py-3 text-right text-sm tabular-nums text-gray-600">${item.unitPrice.toFixed(2)}</td>
+                                        <td className="px-4 py-3 text-right text-sm font-medium tabular-nums text-gray-900">
+                                          ${(item.subtotal ?? item.unitPrice * item.quantity).toFixed(2)}
+                                        </td>
+                                        {canEdit && status === "draft" && (
+                                          <td className="px-2 py-3">
                                             <button
                                               type="button"
-                                              disabled={qty === 0}
-                                              onClick={() => setQuantities((p) => { const n = { ...p }; if (qty <= 1) delete n[prod.id]; else n[prod.id] = qty - 1; return n; })}
-                                              className="w-6 h-6 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50 disabled:opacity-40"
+                                              onClick={() => setItemToDelete({ id: item.id, name: item.productName })}
+                                              className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors"
+                                              title="Remove item"
                                             >
-                                              <Minus className="w-2.5 h-2.5" />
+                                              <X className="w-3.5 h-3.5" />
                                             </button>
-                                            <span className="w-5 text-center text-xs font-bold">{qty}</span>
-                                            <button
-                                              type="button"
-                                              onClick={() => setQuantities((p) => ({ ...p, [prod.id]: qty + 1 }))}
-                                              className="w-6 h-6 rounded-full bg-[#15689E] flex items-center justify-center text-white"
-                                            >
-                                              <Plus className="w-2.5 h-2.5" />
-                                            </button>
-                                          </div>
-                                        </div>
-                                      );
-                                    })
-                                  )}
-                                  <div className="flex gap-2">
-                                    <Button variant="outline" size="sm" className="flex-1 text-xs" onClick={() => { setShowProductPicker(false); setQuantities({}); }}>Cancel</Button>
-                                    <Button size="sm" className="flex-1 text-xs bg-[#15689E] text-white" disabled={!Object.values(quantities).some((q) => q > 0) || addingProducts} onClick={handleAddProducts}>
-                                      {addingProducts ? <Loader2 className="w-3 h-3 animate-spin" /> : "Add to Order"}
-                                    </Button>
-                                  </div>
+                                          </td>
+                                        )}
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                              {/* Order total — always visible below scroll */}
+                              <div className="border-t border-gray-100 px-4 py-3 bg-gray-50/50 flex justify-end">
+                                <div className="flex items-center gap-8">
+                                  <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Order Total</span>
+                                  <span className="text-base font-bold text-gray-900 tabular-nums">${orderTotal.toFixed(2)}</span>
                                 </div>
-                              )}
+                              </div>
                             </div>
                           )}
+
+                          {/* Add product — draft only */}
+                          {canEdit && status === "draft" && !showProductPicker && (
+                            <button
+                              type="button"
+                              onClick={() => setShowProductPicker(true)}
+                              className="text-sm text-[#15689E] font-medium hover:underline flex items-center gap-1"
+                            >
+                              <Plus className="w-3.5 h-3.5" /> Add Product
+                            </button>
+                          )}
+
+                          {/* Product picker */}
+                          {canEdit && status === "draft" && showProductPicker && (() => {
+                            const addedProductIds = new Set(localItems.map((i) => i.productId).filter(Boolean));
+                            const availableProducts = products.filter((p) => !addedProductIds.has(p.id));
+                            const hasCartItems = Object.values(quantities).some((q) => q > 0);
+                            return (
+                              <div className="rounded-xl border border-gray-100 p-3 space-y-3">
+                                {loadingProducts ? (
+                                  <div className="flex items-center gap-2 text-xs text-gray-400 py-2">
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading products...
+                                  </div>
+                                ) : availableProducts.length === 0 ? (
+                                  <div className="py-6 text-center">
+                                    <p className="text-sm text-gray-400">All available products have been added to this order.</p>
+                                  </div>
+                                ) : (
+                                  availableProducts.map((prod) => {
+                                    const qty = quantities[prod.id] ?? 0;
+                                    return (
+                                      <div
+                                        key={prod.id}
+                                        className={cn(
+                                          "flex items-center justify-between py-2.5 border-b border-gray-50 last:border-0",
+                                        )}
+                                      >
+                                        <div className="flex-1 min-w-0 pr-4">
+                                          <p className="text-sm font-medium text-gray-900 truncate">{prod.name}</p>
+                                          <p className="text-xs text-gray-400">{prod.sku} · ${Number(prod.unit_price).toFixed(2)}/unit</p>
+                                        </div>
+                                        <div className="flex items-center gap-2 shrink-0">
+                                          <button
+                                            type="button"
+                                            disabled={qty === 0}
+                                            onClick={() => setQuantities((p) => { const n = { ...p }; if (qty <= 1) delete n[prod.id]; else n[prod.id] = qty - 1; return n; })}
+                                            className="w-7 h-7 rounded-lg border border-gray-200 flex items-center justify-center text-sm text-gray-500 hover:bg-gray-50 disabled:opacity-30 transition-colors"
+                                          >
+                                            <Minus className="w-3 h-3" />
+                                          </button>
+                                          <span className="w-8 text-center text-sm font-medium tabular-nums">{qty}</span>
+                                          <button
+                                            type="button"
+                                            onClick={() => setQuantities((p) => ({ ...p, [prod.id]: qty + 1 }))}
+                                            className="w-7 h-7 rounded-lg border border-gray-200 flex items-center justify-center text-sm text-gray-500 hover:bg-gray-50 transition-colors"
+                                          >
+                                            <Plus className="w-3 h-3" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    );
+                                  })
+                                )}
+                                <div className="flex gap-2 pt-1">
+                                  <Button variant="outline" size="sm" className="flex-1 text-xs" onClick={() => { setShowProductPicker(false); setQuantities({}); }}>Cancel</Button>
+                                  <Button size="sm" className="flex-1 text-xs bg-[#15689E] text-white" disabled={!hasCartItems || addingProducts} onClick={handleAddProducts}>
+                                    {addingProducts ? <Loader2 className="w-3 h-3 animate-spin" /> : "Add to Order"}
+                                  </Button>
+                                </div>
+                              </div>
+                            );
+                          })()}
                         </div>
 
-                        {/* Action buttons */}
+                        {/* ── Notes ── */}
                         <div className="space-y-2">
-                          {isClinical && status === "draft" && (
-                            <Button className="w-full bg-[#15689E] hover:bg-[#125d8e] text-white" disabled={submitting} onClick={handleEditAndSubmit}>
-                              {submitting && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
-                              Edit and Submit Order
-                            </Button>
-                          )}
-                          {canSign && status === "pending_signature" && (
-                            <Button className="w-full bg-[#15689E] hover:bg-[#125d8e] text-white" onClick={() => setSignOpen(true)}>Sign Order</Button>
-                          )}
-                          {isClinical && status === "pending_signature" && (
-                            <Button variant="outline" className="w-full" disabled={isActing} onClick={() => handleAction(() => recallOrder(order.id), "Order recalled to draft.")}>Recall to Draft</Button>
-                          )}
-                          {isClinical && status === "additional_info_needed" && (
-                            <Button className="w-full bg-purple-600 hover:bg-purple-700 text-white" disabled={isActing} onClick={() => handleAction(() => resubmitForReview(order.id), "Resubmitted for review.")}>Resubmit for Review</Button>
-                          )}
-                          {isAdmin && status === "manufacturer_review" && (
-                            <>
-                              <Button className="w-full bg-green-600 hover:bg-green-700 text-white" onClick={() => setApproveOpen(true)}>Approve Order</Button>
-                              <Button variant="outline" className="w-full" disabled={isActing} onClick={() => handleAction(() => requestAdditionalInfo(order.id), "Additional info requested.")}>Request More Info</Button>
-                            </>
-                          )}
-                          {isAdmin && status === "approved" && (
-                            <Button className="w-full bg-teal-600 hover:bg-teal-700 text-white" onClick={() => setShipOpen(true)}>Add Shipping Info</Button>
-                          )}
-                          {isClinical && status === "draft" && (
-                            <Button variant="ghost" className="w-full text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => setDeleteOpen(true)}>Delete Order</Button>
-                          )}
+                          <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">Notes</h3>
+                          <textarea
+                            value={notes}
+                            onChange={(e) => setNotes(e.target.value)}
+                            onBlur={handleNotesSave}
+                            disabled={!canEdit || status !== "draft"}
+                            placeholder={canEdit && status === "draft" ? "Add clinical notes..." : ""}
+                            rows={3}
+                            className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm text-gray-700 border border-gray-100 focus:outline-none focus:ring-2 focus:ring-[#15689E]/20 resize-none disabled:opacity-60 disabled:cursor-default transition-shadow"
+                          />
                         </div>
 
-                        {order.notes && (
-                          <div>
-                            <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Notes</h3>
-                            <p className="text-sm text-gray-600 whitespace-pre-wrap bg-gray-50 rounded-xl border border-gray-100 px-4 py-3">{order.notes}</p>
-                          </div>
-                        )}
                       </div>
                     )}
 
@@ -786,8 +911,9 @@ export function OrderDetailModal({
 
                   </div>{/* end tab content */}
 
-                  {/* ── Left footer: auto-save + action ── */}
+                  {/* ── Footer: auto-save indicator + all action buttons ── */}
                   <div className="flex-shrink-0 px-6 py-4 border-t border-gray-100 flex items-center justify-between bg-white">
+                    {/* Left: auto-save indicator */}
                     <div className="flex items-center gap-2">
                       {ivrSaveStatus !== "idle" && (
                         <>
@@ -801,7 +927,21 @@ export function OrderDetailModal({
                         </>
                       )}
                     </div>
-                    <div className="flex gap-3">
+
+                    {/* Right: action buttons */}
+                    <div className="flex items-center gap-3">
+
+                      {/* Delete Order — draft, clinic only */}
+                      {isClinical && status === "draft" && (
+                        <button
+                          onClick={() => setDeleteOpen(true)}
+                          className="px-5 py-2.5 text-red-500 font-semibold text-sm hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors"
+                        >
+                          Delete Order
+                        </button>
+                      )}
+
+                      {/* Edit and Submit Order — draft, clinic only */}
                       {isClinical && status === "draft" && (
                         <button
                           onClick={handleEditAndSubmit}
@@ -812,6 +952,19 @@ export function OrderDetailModal({
                           Edit and Submit Order
                         </button>
                       )}
+
+                      {/* Recall to Draft — pending_signature, clinic only */}
+                      {isClinical && status === "pending_signature" && (
+                        <button
+                          onClick={() => handleAction(() => recallOrder(order.id), "Order recalled to draft.")}
+                          disabled={isActing}
+                          className="px-5 py-2.5 text-gray-500 font-semibold text-sm hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors disabled:opacity-60"
+                        >
+                          Recall to Draft
+                        </button>
+                      )}
+
+                      {/* Sign Order — pending_signature, provider only */}
                       {canSign && status === "pending_signature" && (
                         <button
                           onClick={() => setSignOpen(true)}
@@ -820,6 +973,47 @@ export function OrderDetailModal({
                           Sign Order
                         </button>
                       )}
+
+                      {/* Resubmit for Review — additional_info_needed, clinic only */}
+                      {isClinical && status === "additional_info_needed" && (
+                        <button
+                          onClick={() => handleAction(() => resubmitForReview(order.id), "Resubmitted for review.")}
+                          disabled={isActing}
+                          className="px-8 py-2.5 bg-purple-600 text-white font-bold rounded-xl shadow-lg shadow-purple-600/20 hover:bg-purple-700 active:scale-[0.98] transition-all text-sm disabled:opacity-60"
+                        >
+                          Resubmit for Review
+                        </button>
+                      )}
+
+                      {/* Admin: manufacturer_review actions */}
+                      {isAdmin && status === "manufacturer_review" && (
+                        <>
+                          <button
+                            onClick={() => handleAction(() => requestAdditionalInfo(order.id), "Additional info requested.")}
+                            disabled={isActing}
+                            className="px-5 py-2.5 text-gray-500 font-semibold text-sm hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors disabled:opacity-60"
+                          >
+                            Request Info
+                          </button>
+                          <button
+                            onClick={() => setApproveOpen(true)}
+                            className="px-8 py-2.5 bg-green-600 text-white font-bold rounded-xl shadow-lg shadow-green-600/20 hover:bg-green-700 active:scale-[0.98] transition-all text-sm"
+                          >
+                            Approve Order
+                          </button>
+                        </>
+                      )}
+
+                      {/* Admin: add shipping */}
+                      {isAdmin && status === "approved" && (
+                        <button
+                          onClick={() => setShipOpen(true)}
+                          className="px-8 py-2.5 bg-[#15689E] text-white font-bold rounded-xl hover:bg-[#15689E]/90 active:scale-[0.98] transition-all text-sm"
+                        >
+                          Add Shipping Info
+                        </button>
+                      )}
+
                     </div>
                   </div>
 
@@ -835,15 +1029,6 @@ export function OrderDetailModal({
                       <span className="text-sm text-gray-500 border border-gray-200 rounded-full px-3 py-0.5 text-xs font-medium capitalize">
                         {status.replace(/_/g, " ")}
                       </span>
-                      {isClinical && status === "draft" && (
-                        <button
-                          type="button"
-                          onClick={() => setDeleteOpen(true)}
-                          className="text-xs font-semibold text-red-400 hover:text-red-500 transition-colors"
-                        >
-                          Archive
-                        </button>
-                      )}
                     </div>
                     <div className="flex gap-5">
                       <div>

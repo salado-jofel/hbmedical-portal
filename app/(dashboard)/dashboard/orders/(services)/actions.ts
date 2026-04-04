@@ -1535,6 +1535,98 @@ export async function startOrderNet30(orderId: string): Promise<DashboardOrder> 
 }
 
 /* -------------------------------------------------------------------------- */
+/* updateOrderItemQuantity                                                     */
+/* -------------------------------------------------------------------------- */
+
+export async function updateOrderItemQuantity(
+  itemId: string,
+  quantity: number,
+): Promise<{ success: boolean; error: string | null }> {
+  if (quantity < 1) {
+    return { success: false, error: "Quantity must be at least 1." };
+  }
+  try {
+    const { userId } = await requireClinicRole();
+    const adminClient = createAdminClient();
+
+    const { data: item } = await adminClient
+      .from("order_items")
+      .select("order_id, orders!order_items_order_id_fkey(order_status)")
+      .eq("id", itemId)
+      .single();
+
+    if (!item) return { success: false, error: "Item not found." };
+    const orderRecord = Array.isArray((item as { orders: unknown }).orders)
+      ? ((item as { orders: { order_status: string }[] }).orders[0])
+      : ((item as { orders: { order_status: string } }).orders);
+    if (orderRecord?.order_status !== "draft") {
+      return { success: false, error: "Can only edit items on draft orders." };
+    }
+
+    const { error } = await adminClient
+      .from("order_items")
+      .update({ quantity })
+      .eq("id", itemId);
+
+    if (error) {
+      console.error("[updateOrderItemQuantity]", JSON.stringify(error));
+      return { success: false, error: "Failed to update quantity." };
+    }
+
+    await insertOrderHistory(adminClient, (item as { order_id: string }).order_id, "Item quantity updated", null, null, userId);
+    revalidatePath(ORDERS_PATH);
+    return { success: true, error: null };
+  } catch (err) {
+    console.error("[updateOrderItemQuantity] unexpected:", err);
+    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* deleteOrderItem                                                             */
+/* -------------------------------------------------------------------------- */
+
+export async function deleteOrderItem(
+  itemId: string,
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const { userId } = await requireClinicRole();
+    const adminClient = createAdminClient();
+
+    const { data: item } = await adminClient
+      .from("order_items")
+      .select("order_id, orders!order_items_order_id_fkey(order_status)")
+      .eq("id", itemId)
+      .single();
+
+    if (!item) return { success: false, error: "Item not found." };
+    const orderRecord = Array.isArray((item as { orders: unknown }).orders)
+      ? ((item as { orders: { order_status: string }[] }).orders[0])
+      : ((item as { orders: { order_status: string } }).orders);
+    if (orderRecord?.order_status !== "draft") {
+      return { success: false, error: "Can only remove items from draft orders." };
+    }
+
+    const { error } = await adminClient
+      .from("order_items")
+      .delete()
+      .eq("id", itemId);
+
+    if (error) {
+      console.error("[deleteOrderItem]", JSON.stringify(error));
+      return { success: false, error: "Failed to remove item." };
+    }
+
+    await insertOrderHistory(adminClient, (item as { order_id: string }).order_id, "Item removed from order", null, null, userId);
+    revalidatePath(ORDERS_PATH);
+    return { success: true, error: null };
+  } catch (err) {
+    console.error("[deleteOrderItem] unexpected:", err);
+    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
 /* updateOrderClinicalFields                                                   */
 /* -------------------------------------------------------------------------- */
 
@@ -1548,6 +1640,7 @@ export async function updateOrderClinicalFields(
     icd10_code?: string | null;
     followup_days?: number | null;
     symptoms?: string[];
+    notes?: string | null;
   },
 ): Promise<{ success: boolean; error?: string }> {
   try {
@@ -1562,6 +1655,7 @@ export async function updateOrderClinicalFields(
     if ("icd10_code" in data) payload.icd10_code = data.icd10_code;
     if ("followup_days" in data) payload.followup_days = data.followup_days;
     if ("symptoms" in data) payload.symptoms = data.symptoms;
+    if ("notes" in data) payload.notes = data.notes;
 
     if (!Object.keys(payload).length) return { success: true };
 
