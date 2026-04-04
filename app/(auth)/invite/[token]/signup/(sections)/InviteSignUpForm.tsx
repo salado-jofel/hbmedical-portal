@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronRight, ChevronLeft, UserCheck, User, Lock, FileCheck, Building2, Loader2 } from "lucide-react";
+import { ChevronRight, ChevronLeft, UserCheck, User, Lock, FileCheck, Building2, Loader2, AlertCircle } from "lucide-react";
 import { HBLogo } from "@/app/(components)/HBLogo";
 import { AuthField } from "@/app/(components)/AuthField";
 import { AuthCard } from "@/app/(components)/AuthCard";
@@ -16,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { inviteSignUp, type InviteSignUpState } from "../(services)/actions";
+import { inviteSignUp, getContractSignedUrls, type InviteSignUpState } from "../(services)/actions";
 import type { InviteTokenRole } from "@/utils/interfaces/invite-tokens";
 
 interface InviteSignUpFormProps {
@@ -25,6 +25,9 @@ interface InviteSignUpFormProps {
   facilityId: string | null;
   facilityName: string | null;
   invitedBy: string;
+  baaUrl: string | null;
+  productServicesUrl: string | null;
+  contractsError: string | null;
 }
 
 const CREDENTIAL_OPTIONS = [
@@ -57,6 +60,9 @@ export default function InviteSignUpForm({
   facilityId,
   facilityName,
   invitedBy,
+  baaUrl: initialBaaUrl,
+  productServicesUrl: initialProductServicesUrl,
+  contractsError: initialContractsError,
 }: InviteSignUpFormProps) {
   const boundAction = inviteSignUp.bind(null, token);
   const [state, formAction, isPending] = useActionState<InviteSignUpState, FormData>(
@@ -90,6 +96,14 @@ export default function InviteSignUpForm({
   const [credential, setCredential] = useState("");
   // Agreement state
   const [agreed, setAgreed] = useState(false);
+  // PDF agreement state — clinical_provider only
+  const [baaAgreed, setBaaAgreed] = useState(false);
+  const [termsAgreed, setTermsAgreed] = useState(false);
+  // Signed URL state — initialized from server props, refreshable via retry
+  const [baaUrl, setBaaUrl] = useState<string | null>(initialBaaUrl);
+  const [productServicesUrl, setProductServicesUrl] = useState<string | null>(initialProductServicesUrl);
+  const [contractsError, setContractsError] = useState<string | null>(initialContractsError);
+  const [isRetrying, setIsRetrying] = useState(false);
   const [clientError, setClientError] = useState("");
 
   // Office step only for clinical_provider WITHOUT a pre-assigned facility
@@ -114,6 +128,17 @@ export default function InviteSignUpForm({
   const officeStepIndex = needsOfficeStep ? 2 : null;
   const securityStepIndex = needsOfficeStep ? 3 : 2;
   const agreeStepIndex = needsOfficeStep ? 4 : 3;
+
+  async function handleRetry(e: React.MouseEvent) {
+    e.preventDefault();
+    setIsRetrying(true);
+    setContractsError(null);
+    const result = await getContractSignedUrls();
+    setBaaUrl(result.baaUrl);
+    setProductServicesUrl(result.productServicesUrl);
+    setContractsError(result.error);
+    setIsRetrying(false);
+  }
 
   function goNext() {
     setClientError("");
@@ -163,6 +188,13 @@ export default function InviteSignUpForm({
           return;
         }
       }
+    }
+
+    // Reset agreement checkboxes whenever entering the agree step
+    if (step === securityStepIndex) {
+      setBaaAgreed(false);
+      setTermsAgreed(false);
+      setAgreed(false);
     }
 
     setDir(1);
@@ -458,25 +490,137 @@ export default function InviteSignUpForm({
             {step === agreeStepIndex && (
               <div className="space-y-4">
                 <h2 className="text-lg font-semibold text-[#0F172A] text-center">Terms &amp; Agreements</h2>
-                <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 max-h-36 overflow-y-auto text-xs text-[#64748B] leading-relaxed">
-                  By creating an account, you agree to HB Medical&apos;s Terms of Service
-                  and Privacy Policy. You confirm that the information provided is accurate
-                  and that you are authorized to access the HB Medical portal on behalf of
-                  your organization. Unauthorized use of this platform is strictly prohibited.
-                </div>
-                <label className="flex items-start gap-3 cursor-pointer group">
-                  <div className="mt-0.5">
-                    <input
-                      type="checkbox"
-                      checked={agreed}
-                      onChange={(e) => setAgreed(e.target.checked)}
-                      className="w-4 h-4 accent-[#15689E] cursor-pointer"
-                    />
+
+                {role === "clinical_provider" ? (
+                  <div className="space-y-5">
+                    {/* BAA Section */}
+                    <div className="space-y-3">
+                      <h3 className="text-sm font-medium text-[#0F172A]">
+                        Business Associates Agreement (BAA) <span className="text-red-400">*</span>
+                      </h3>
+
+                      {contractsError ? (
+                        <div className="flex items-center gap-2 p-3 rounded-lg border border-red-200 bg-red-50 text-sm text-red-700">
+                          <AlertCircle className="w-4 h-4 shrink-0" />
+                          {contractsError}
+                          <a
+                            href="#"
+                            onClick={handleRetry}
+                            className="underline ml-1 flex items-center gap-1"
+                          >
+                            {isRetrying && <Loader2 className="w-3 h-3 animate-spin" />}
+                            Retry
+                          </a>
+                        </div>
+                      ) : !baaUrl ? (
+                        <div className="h-[280px] md:h-[340px] rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] flex items-center justify-center">
+                          <Loader2 className="w-5 h-5 animate-spin text-[#94A3B8]" />
+                        </div>
+                      ) : (
+                        <div className="rounded-lg border border-[#E2E8F0] overflow-hidden">
+                          <iframe
+                            src={baaUrl}
+                            className="w-full h-[280px] md:h-[340px]"
+                            title="Business Associates Agreement"
+                          />
+                        </div>
+                      )}
+
+                      {baaUrl && (
+                        <a
+                          href={baaUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block text-xs text-[#15689E] underline"
+                        >
+                          Open in new tab ↗
+                        </a>
+                      )}
+
+                      <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={baaAgreed}
+                          onChange={(e) => setBaaAgreed(e.target.checked)}
+                          disabled={!baaUrl}
+                          className="mt-0.5 h-4 w-4 rounded border-[#E2E8F0] accent-[#15689E] disabled:opacity-40 cursor-pointer"
+                        />
+                        <span className="text-sm text-[#64748B]">
+                          I have read and agree to the <strong>Business Associates Agreement</strong>
+                        </span>
+                      </label>
+                    </div>
+
+                    <div className="border-t border-[#E2E8F0]" />
+
+                    {/* Product & Services Section */}
+                    <div className="space-y-3">
+                      <h3 className="text-sm font-medium text-[#0F172A]">
+                        Product &amp; Services Agreement <span className="text-red-400">*</span>
+                      </h3>
+
+                      {!productServicesUrl ? (
+                        <div className="h-[280px] md:h-[340px] rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] flex items-center justify-center">
+                          <Loader2 className="w-5 h-5 animate-spin text-[#94A3B8]" />
+                        </div>
+                      ) : (
+                        <div className="rounded-lg border border-[#E2E8F0] overflow-hidden">
+                          <iframe
+                            src={productServicesUrl}
+                            className="w-full h-[280px] md:h-[340px]"
+                            title="Product and Services Agreement"
+                          />
+                        </div>
+                      )}
+
+                      {productServicesUrl && (
+                        <a
+                          href={productServicesUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block text-xs text-[#15689E] underline"
+                        >
+                          Open in new tab ↗
+                        </a>
+                      )}
+
+                      <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={termsAgreed}
+                          onChange={(e) => setTermsAgreed(e.target.checked)}
+                          disabled={!productServicesUrl}
+                          className="mt-0.5 h-4 w-4 rounded border-[#E2E8F0] accent-[#15689E] disabled:opacity-40 cursor-pointer"
+                        />
+                        <span className="text-sm text-[#64748B]">
+                          I have read and agree to the <strong>Product &amp; Services Agreement</strong>
+                        </span>
+                      </label>
+                    </div>
                   </div>
-                  <span className="text-sm text-[#64748B] group-hover:text-[#0F172A] transition-colors">
-                    I agree to the Terms of Service and Privacy Policy
-                  </span>
-                </label>
+                ) : (
+                  <>
+                    <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 max-h-36 overflow-y-auto text-xs text-[#64748B] leading-relaxed">
+                      By creating an account, you agree to HB Medical&apos;s Terms of Service
+                      and Privacy Policy. You confirm that the information provided is accurate
+                      and that you are authorized to access the HB Medical portal on behalf of
+                      your organization. Unauthorized use of this platform is strictly prohibited.
+                    </div>
+                    <label className="flex items-start gap-3 cursor-pointer group">
+                      <div className="mt-0.5">
+                        <input
+                          type="checkbox"
+                          checked={agreed}
+                          onChange={(e) => setAgreed(e.target.checked)}
+                          className="w-4 h-4 accent-[#15689E] cursor-pointer"
+                        />
+                      </div>
+                      <span className="text-sm text-[#64748B] group-hover:text-[#0F172A] transition-colors">
+                        I agree to the Terms of Service and Privacy Policy
+                      </span>
+                    </label>
+                  </>
+                )}
               </div>
             )}
           </motion.div>
@@ -498,7 +642,15 @@ export default function InviteSignUpForm({
           <input type="hidden" name="email" value={email} />
           <input type="hidden" name="phone" value={phone} />
           <input type="hidden" name="password" value={password} />
-          <input type="hidden" name="agreed" value={agreed ? "true" : "false"} />
+          <input
+            type="hidden"
+            name="agreed"
+            value={
+              role === "clinical_provider"
+                ? baaAgreed && termsAgreed ? "true" : "false"
+                : agreed ? "true" : "false"
+            }
+          />
           {needsPin && <input type="hidden" name="pin" value={pin} />}
           {needsPin && <input type="hidden" name="npi_number" value={npiNumber} />}
           {needsPin && <input type="hidden" name="credential" value={credential} />}
@@ -515,7 +667,10 @@ export default function InviteSignUpForm({
 
           <button
             type="submit"
-            disabled={isPending || !agreed}
+            disabled={
+              isPending ||
+              (role === "clinical_provider" ? !baaAgreed || !termsAgreed : !agreed)
+            }
             className="w-full rounded-lg bg-[#15689E] hover:bg-[#125d8e] disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium h-9 text-sm transition-colors flex items-center justify-center gap-2 shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
           >
             {isPending && <Loader2 className="w-4 h-4 animate-spin" />}

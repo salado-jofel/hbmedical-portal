@@ -1,4 +1,3 @@
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole, getCurrentUserOrThrow } from "@/lib/supabase/auth";
@@ -21,11 +20,6 @@ export default async function OnboardingPage() {
 
   const adminUser = isAdmin(role);
   if (!isSalesRep(role) && !adminUser && !isClinicalProvider(role)) redirect("/dashboard");
-
-  const headersList = await headers();
-  const host = headersList.get("host") ?? "localhost:3000";
-  const proto = headersList.get("x-forwarded-proto") ?? "http";
-  const baseUrl = `${proto}://${host}`;
 
   const user = await getCurrentUserOrThrow(supabase);
 
@@ -52,7 +46,6 @@ export default async function OnboardingPage() {
     <Providers tokens={tokens}>
       <OnboardingPageClient
         role={role}
-        baseUrl={baseUrl}
         hasCompletedSetup={hasCompletedSetup}
         isAdmin={adminUser}
         isSalesRep={isSalesRepUser}

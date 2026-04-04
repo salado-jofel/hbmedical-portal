@@ -45,6 +45,10 @@ const INVITE_TOKEN_SELECT = `
   )
 `;
 
+function getBaseUrl(): string {
+  return process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+}
+
 const LOGO_URL =
   "https://eyrefohymvvabazvmemq.supabase.co/storage/v1/object/public/spearhead-assets/assets/email/hb-logo-name-2.png";
 
@@ -139,7 +143,6 @@ export async function generateInviteToken(
   _prevState: IInviteTokenFormState | null,
   formData: FormData,
 ): Promise<IInviteTokenFormState> {
-  console.log("[generateInviteToken] called, formData:", Object.fromEntries(formData));
   try {
     const supabase = await createClient();
     const user = await getCurrentUserOrThrow(supabase);
@@ -157,6 +160,7 @@ export async function generateInviteToken(
         : rawFacilityId.trim();
 
     const raw = {
+      email: formData.get("email") as string,
       facility_id: facilityId,
       role_type: formData.get("role_type") as string,
       expires_in_days: formData.get("expires_in_days") ?? "30",
@@ -164,6 +168,10 @@ export async function generateInviteToken(
 
     const parsed = generateInviteTokenSchema.safeParse(raw);
     if (!parsed.success) {
+      const emailIssue = parsed.error.issues.find((i) => i.path[0] === "email");
+      if (emailIssue) {
+        return { error: null, success: false, fieldErrors: { email: emailIssue.message } };
+      }
       const msg = parsed.error?.issues?.[0]?.message ?? "Invalid input.";
       return { error: msg, success: false };
     }
@@ -217,6 +225,40 @@ export async function generateInviteToken(
       resolvedFacilityId = ownedFacility.id;
     }
 
+    const adminClient = createAdminClient();
+
+    // Edge case A: check if email already has an account
+    const { data: existingProfile } = await adminClient
+      .from("profiles")
+      .select("id")
+      .eq("email", parsed.data.email)
+      .maybeSingle();
+    if (existingProfile) {
+      return { error: "An account with this email already exists.", success: false };
+    }
+
+    // Edge case B: check for duplicate pending invite
+    const { data: pendingInvite } = await supabase
+      .from(INVITE_TOKENS_TABLE)
+      .select("id, expires_at")
+      .eq("invited_email", parsed.data.email)
+      .eq("role_type", parsed.data.role_type)
+      .is("used_at", null)
+      .gt("expires_at", new Date().toISOString())
+      .maybeSingle();
+
+    if (pendingInvite) {
+      return { error: "A pending invite already exists for this email.", success: false };
+    }
+
+    // Fetch inviter name for the email
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("first_name, last_name")
+      .eq("id", user.id)
+      .single();
+    const inviterName = profile ? `${profile.first_name} ${profile.last_name}` : "HB Medical";
+
     const { data: inserted, error } = await supabase
       .from(INVITE_TOKENS_TABLE)
       .insert({
@@ -224,8 +266,9 @@ export async function generateInviteToken(
         facility_id: resolvedFacilityId,
         role_type: parsed.data.role_type,
         expires_at: expiresAt,
+        invited_email: parsed.data.email,
       })
-      .select("token")
+      .select("id, token")
       .single();
 
     if (error) {
@@ -233,8 +276,22 @@ export async function generateInviteToken(
       return { error: error.message ?? error.code ?? "Failed to generate invite token.", success: false };
     }
 
+    const inviteUrl = `${getBaseUrl()}/invite/${inserted.token}`;
+    const { error: emailError } = await sendInviteEmail({
+      to: parsed.data.email,
+      inviteUrl,
+      roleType: parsed.data.role_type,
+      inviterName,
+    });
+
+    if (emailError) {
+      // Rollback: delete the token we just created
+      await supabase.from(INVITE_TOKENS_TABLE).delete().eq("id", inserted.id);
+      return { error: "Failed to send invite email. Please try again.", success: false };
+    }
+
     revalidatePath("/dashboard/onboarding");
-    return { error: null, success: true, token: inserted.token };
+    return { error: null, success: true, invitedEmail: parsed.data.email };
   } catch (err) {
     console.error("[generateInviteToken] Unexpected error:", err);
     return { error: "An unexpected error occurred.", success: false };
@@ -352,9 +409,7 @@ export async function deleteInviteToken(tokenId: string): Promise<void> {
 /* -------------------------------------------------------------------------- */
 
 const inviteSubRepSchema = z.object({
-  first_name: z.string().min(1, "First name is required."),
-  last_name: z.string().min(1, "Last name is required."),
-  email: z.string().email("Enter a valid email."),
+  email: z.string().email("Enter a valid email address.").min(1, "Email is required."),
 });
 
 export async function inviteSubRep(
@@ -371,18 +426,19 @@ export async function inviteSubRep(
     }
 
     const raw = {
-      first_name: formData.get("first_name") as string,
-      last_name: formData.get("last_name") as string,
       email: formData.get("email") as string,
     };
 
     const parsed = inviteSubRepSchema.safeParse(raw);
     if (!parsed.success) {
-      const msg = parsed.error.issues[0]?.message ?? "Invalid input.";
-      return { error: msg, success: false };
+      const emailIssue = parsed.error.issues.find((i) => i.path[0] === "email");
+      if (emailIssue) {
+        return { error: null, success: false, fieldErrors: { email: emailIssue.message } };
+      }
+      return { error: parsed.error.issues[0]?.message ?? "Invalid input.", success: false };
     }
 
-    const { first_name, last_name, email } = parsed.data;
+    const { email } = parsed.data;
 
     const adminClient = createAdminClient();
 
@@ -396,7 +452,7 @@ export async function inviteSubRep(
         type: "invite",
         email,
         options: {
-          data: { first_name, last_name, invited_by: user.id },
+          data: { first_name: "Pending", last_name: "Setup", invited_by: user.id },
           redirectTo: `${appUrl}/set-password`,
         },
       });
@@ -414,11 +470,11 @@ export async function inviteSubRep(
     const userId = linkData.user.id;
     const actionLink = linkData.properties?.action_link ?? "";
 
-    // Create profile with sales_representative role
+    // Create profile with placeholder name — sub-rep provides real name during setup
     await adminClient.from("profiles").upsert({
       id: userId,
-      first_name,
-      last_name,
+      first_name: "Pending",
+      last_name: "Setup",
       email,
       role: "sales_representative",
     });
@@ -450,6 +506,7 @@ export async function inviteSubRep(
       facility_id: null,
       role_type: "sales_representative",
       expires_at: expiresAt,
+      invited_email: email,
       used_by: userId,
       used_at: new Date().toISOString(),
     });
@@ -482,7 +539,6 @@ p{margin:0 0 14px;font-size:14px;}
 <div class="header"><img src="${LOGO_URL}" alt="HB Medical" width="176" class="logo-img" /></div>
 <div class="content">
 <h1 class="h1">You're invited to HB Medical Portal</h1>
-<p>Hi ${first_name} ${last_name},</p>
 <p>You've been invited to join the <strong>HB Medical Portal</strong> as a <strong>Sales Representative</strong>. Click below to set your password and get started.</p>
 <div class="btn-row"><a href="${actionLink}" class="btn" target="_blank" rel="noopener noreferrer">Set Password &amp; Sign In</a></div>
 <p>This invitation expires in 7 days. If you did not expect this, you can safely ignore it.</p>
@@ -516,7 +572,7 @@ export async function getMySubReps(): Promise<ISubRep[]> {
     .from("rep_hierarchy")
     .select(`
       child:profiles!rep_hierarchy_child_rep_id_fkey(
-        id, first_name, last_name, email, status, created_at
+        id, first_name, last_name, email, status, has_completed_setup, created_at
       )
     `)
     .eq("parent_rep_id", user.id)
@@ -535,6 +591,7 @@ export async function getMySubReps(): Promise<ISubRep[]> {
       last_name: c.last_name,
       email: c.email,
       status: c.status,
+      has_completed_setup: c.has_completed_setup ?? false,
       created_at: c.created_at,
     };
   });
@@ -543,6 +600,11 @@ export async function getMySubReps(): Promise<ISubRep[]> {
 /* -------------------------------------------------------------------------- */
 /* generateClinicMemberInvite — clinical_provider invites clinical_staff     */
 /* -------------------------------------------------------------------------- */
+
+const clinicStaffInviteSchema = z.object({
+  email: z.string().email("Enter a valid email address.").min(1, "Email is required."),
+  expires_in_days: z.coerce.number().int().min(1).max(365).default(30),
+});
 
 export async function generateClinicMemberInvite(
   _prevState: IInviteTokenFormState | null,
@@ -557,6 +619,22 @@ export async function generateClinicMemberInvite(
       return { error: "Unauthorized.", success: false };
     }
 
+    const rawClinic = {
+      email: formData.get("email") as string,
+      expires_in_days: formData.get("expires_in_days") ?? "30",
+    };
+
+    const parsedClinic = clinicStaffInviteSchema.safeParse(rawClinic);
+    if (!parsedClinic.success) {
+      const emailIssue = parsedClinic.error.issues.find((i) => i.path[0] === "email");
+      if (emailIssue) {
+        return { error: null, success: false, fieldErrors: { email: emailIssue.message } };
+      }
+      return { error: parsedClinic.error.issues[0]?.message ?? "Invalid input.", success: false };
+    }
+
+    const { email, expires_in_days } = parsedClinic.data;
+
     // Clinical provider owns their clinic directly via facilities.user_id
     const { data: ownedFacility } = await supabase
       .from("facilities")
@@ -568,8 +646,43 @@ export async function generateClinicMemberInvite(
       return { error: "No clinic found. Complete your setup first.", success: false };
     }
 
-    const expiresIn = Number(formData.get("expires_in_days") ?? "30");
-    const expiresAt = new Date(Date.now() + expiresIn * 24 * 60 * 60 * 1000).toISOString();
+    const adminClient = createAdminClient();
+
+    // Edge case A: check if email already has an account
+    const { data: existingStaffProfile } = await adminClient
+      .from("profiles")
+      .select("id")
+      .eq("email", email)
+      .maybeSingle();
+    if (existingStaffProfile) {
+      return { error: "An account with this email already exists.", success: false };
+    }
+
+    // Edge case B: check for duplicate pending invite
+    const { data: pendingInvite } = await supabase
+      .from(INVITE_TOKENS_TABLE)
+      .select("id, expires_at")
+      .eq("invited_email", email)
+      .eq("role_type", "clinical_staff")
+      .is("used_at", null)
+      .gt("expires_at", new Date().toISOString())
+      .maybeSingle();
+
+    if (pendingInvite) {
+      return { error: "A pending invite already exists for this email.", success: false };
+    }
+
+    // Fetch inviter name for the email
+    const { data: providerProfile } = await supabase
+      .from("profiles")
+      .select("first_name, last_name")
+      .eq("id", user.id)
+      .single();
+    const inviterName = providerProfile
+      ? `${providerProfile.first_name} ${providerProfile.last_name}`
+      : "HB Medical";
+
+    const expiresAt = new Date(Date.now() + expires_in_days * 24 * 60 * 60 * 1000).toISOString();
 
     const { data: inserted, error } = await supabase
       .from(INVITE_TOKENS_TABLE)
@@ -578,8 +691,9 @@ export async function generateClinicMemberInvite(
         facility_id: ownedFacility.id,
         role_type: "clinical_staff",
         expires_at: expiresAt,
+        invited_email: email,
       })
-      .select("token")
+      .select("id, token")
       .single();
 
     if (error) {
@@ -587,8 +701,21 @@ export async function generateClinicMemberInvite(
       return { error: error.message ?? "Failed to generate invite.", success: false };
     }
 
+    const inviteUrl = `${getBaseUrl()}/invite/${inserted.token}`;
+    const { error: emailError } = await sendInviteEmail({
+      to: email,
+      inviteUrl,
+      roleType: "clinical_staff",
+      inviterName,
+    });
+
+    if (emailError) {
+      await supabase.from(INVITE_TOKENS_TABLE).delete().eq("id", inserted.id);
+      return { error: "Failed to send invite email. Please try again.", success: false };
+    }
+
     revalidatePath("/dashboard/onboarding");
-    return { error: null, success: true, token: inserted.token };
+    return { error: null, success: true, invitedEmail: email };
   } catch (err) {
     console.error("[generateClinicMemberInvite] Unexpected error:", err);
     return { error: "An unexpected error occurred.", success: false };
@@ -766,16 +893,86 @@ export async function resendSubRepInvite(
       return { error: genError?.message ?? "Failed to generate invite link.", success: false };
     }
 
+    const { data: inviterProfile } = await supabase
+      .from("profiles")
+      .select("first_name, last_name")
+      .eq("id", user.id)
+      .single();
+    const inviterName = inviterProfile
+      ? `${inviterProfile.first_name} ${inviterProfile.last_name}`
+      : "HB Medical";
+
     await sendInviteEmail({
       to: email,
-      firstName,
-      role: "sales_representative",
-      resetLink: linkData.properties.action_link,
+      inviteUrl: linkData.properties.action_link,
+      roleType: "sales_representative",
+      inviterName,
     });
 
     return { success: true, error: null };
   } catch (err) {
     console.error("[resendSubRepInvite] Unexpected error:", err);
     return { error: "An unexpected error occurred.", success: false };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* resendInviteEmail — resend the invite email for an existing unused token   */
+/* -------------------------------------------------------------------------- */
+
+export async function resendInviteEmail(
+  tokenId: string,
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const supabase = await createClient();
+    const user = await getCurrentUserOrThrow(supabase);
+
+    // Fetch the token — must belong to this user (or be visible to admin)
+    const { data: token } = await supabase
+      .from(INVITE_TOKENS_TABLE)
+      .select("*")
+      .eq("id", tokenId)
+      .eq("created_by", user.id)
+      .single();
+
+    if (!token) {
+      return { error: "Token not found.", success: false };
+    }
+    if (token.used_at) {
+      return { error: "This invite has already been used.", success: false };
+    }
+    if (!token.invited_email) {
+      return { error: "No email address on this invite.", success: false };
+    }
+    if (new Date(token.expires_at) < new Date()) {
+      return { error: "This invite has expired.", success: false };
+    }
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("first_name, last_name")
+      .eq("id", user.id)
+      .single();
+    const inviterName = profile
+      ? `${profile.first_name} ${profile.last_name}`
+      : "HB Medical";
+
+    const inviteUrl = `${getBaseUrl()}/invite/${token.token}`;
+
+    const { error: emailError } = await sendInviteEmail({
+      to: token.invited_email,
+      inviteUrl,
+      roleType: token.role_type,
+      inviterName,
+    });
+
+    if (emailError) {
+      return { error: "Failed to resend email.", success: false };
+    }
+
+    return { success: true, error: null };
+  } catch (err) {
+    console.error("[resendInviteEmail]", err);
+    return { error: "Failed to resend email.", success: false };
   }
 }

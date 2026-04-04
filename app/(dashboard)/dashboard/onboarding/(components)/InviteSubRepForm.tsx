@@ -26,34 +26,6 @@ export function InviteSubRepForm() {
 
   return (
     <form action={formAction} className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <Label htmlFor="subrep_first_name" className="text-xs">
-            First Name <span className="text-red-400">*</span>
-          </Label>
-          <Input
-            id="subrep_first_name"
-            name="first_name"
-            placeholder="John"
-            className="h-9 text-sm"
-            required
-          />
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="subrep_last_name" className="text-xs">
-            Last Name <span className="text-red-400">*</span>
-          </Label>
-          <Input
-            id="subrep_last_name"
-            name="last_name"
-            placeholder="Doe"
-            className="h-9 text-sm"
-            required
-          />
-        </div>
-      </div>
-
       <div className="space-y-1.5">
         <Label htmlFor="subrep_email" className="text-xs">
           Email <span className="text-red-400">*</span>
@@ -66,6 +38,9 @@ export function InviteSubRepForm() {
           className="h-9 text-sm"
           required
         />
+        {state?.fieldErrors?.email && (
+          <p className="text-xs text-red-500">{state.fieldErrors.email}</p>
+        )}
       </div>
 
       {state?.error && (

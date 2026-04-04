@@ -305,3 +305,40 @@ export async function inviteSignUp(
 
   redirect("/verify-email");
 }
+
+/* ── Signed URLs for provider contract PDFs ── */
+
+export async function getContractSignedUrls(): Promise<{
+  baaUrl: string | null;
+  productServicesUrl: string | null;
+  error: string | null;
+}> {
+  try {
+    const adminClient = createAdminClient();
+    const BUCKET = "hbmedical-bucket-private";
+    const EXPIRES_IN = 3600; // 1 hour
+
+    const [baaResult, psResult] = await Promise.all([
+      adminClient.storage
+        .from(BUCKET)
+        .createSignedUrl("provider-contracts/Business Associates Agreement.pdf", EXPIRES_IN),
+      adminClient.storage
+        .from(BUCKET)
+        .createSignedUrl("provider-contracts/Product and Services.pdf", EXPIRES_IN),
+    ]);
+
+    if (baaResult.error || psResult.error) {
+      console.error("[getContractSignedUrls]", baaResult.error, psResult.error);
+      return { baaUrl: null, productServicesUrl: null, error: "Failed to load contract documents." };
+    }
+
+    return {
+      baaUrl: baaResult.data.signedUrl,
+      productServicesUrl: psResult.data.signedUrl,
+      error: null,
+    };
+  } catch (err) {
+    console.error("[getContractSignedUrls] Unexpected:", err);
+    return { baaUrl: null, productServicesUrl: null, error: "Failed to load contract documents." };
+  }
+}

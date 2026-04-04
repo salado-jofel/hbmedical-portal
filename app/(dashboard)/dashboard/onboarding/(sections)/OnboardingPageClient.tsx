@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useActionState } from "react";
+import { useState, useActionState, useEffect } from "react";
 import {
-  Share2,
   Users,
   UserPlus,
   UserX,
@@ -11,6 +10,8 @@ import {
   Info,
   Mail,
   Trash2,
+  CheckCircle,
+  Send,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
@@ -28,6 +29,7 @@ import {
   deleteSubRep,
   resendSubRepInvite,
   deleteInviteToken,
+  resendInviteEmail,
 } from "../(services)/actions";
 import type { UserRole } from "@/utils/helpers/role";
 import type { RepWithFacility } from "../(services)/actions";
@@ -63,7 +65,6 @@ const STATUS_CONFIG: Record<
 
 interface OnboardingPageClientProps {
   role: UserRole | null;
-  baseUrl: string;
   hasCompletedSetup: boolean;
   isAdmin?: boolean;
   isSalesRep?: boolean;
@@ -74,7 +75,6 @@ interface OnboardingPageClientProps {
 
 export function OnboardingPageClient({
   role,
-  baseUrl,
   hasCompletedSetup,
   isAdmin = false,
   isSalesRep = false,
@@ -93,6 +93,18 @@ export function OnboardingPageClient({
       generateClinicMemberInvite,
       null,
     );
+
+  const [sentStaffEmail, setSentStaffEmail] = useState<string | null>(null);
+  const [resendingTokenId, setResendingTokenId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!clinicInviteState) return;
+    if (clinicInviteState.success && clinicInviteState.invitedEmail) {
+      setSentStaffEmail(clinicInviteState.invitedEmail);
+    } else if (clinicInviteState.error) {
+      toast.error(clinicInviteState.error);
+    }
+  }, [clinicInviteState]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [subReps, setSubReps] = useState<ISubRep[]>(initialSubReps);
   const [actionId, setActionId] = useState<string | null>(null);
@@ -193,19 +205,46 @@ export function OnboardingPageClient({
     }
   }
 
+  async function handleResendInviteToken(tokenId: string) {
+    setResendingTokenId(tokenId);
+    try {
+      const result = await resendInviteEmail(tokenId);
+      if (!result.success) {
+        toast.error(result.error ?? "Failed to resend invite.");
+        return;
+      }
+      toast.success("Invite email resent.");
+    } catch {
+      toast.error("Failed to resend invite.");
+    } finally {
+      setResendingTokenId(null);
+    }
+  }
+
   const subRepColumns: TableColumn<ISubRep>[] = [
     {
       key: "name",
       label: "Name",
-      render: (rep) => (
-        <div className="min-w-0">
-          <p
-            className={`text-sm font-medium truncate ${rep.status === "inactive" ? "text-[#94A3B8]" : "text-[#0F172A]"}`}
-          >
-            {rep.first_name} {rep.last_name}
-          </p>
-        </div>
-      ),
+      render: (rep) => {
+        const isPendingSetup = rep.first_name === "Pending" && rep.last_name === "Setup";
+        const displayName = isPendingSetup
+          ? rep.email ?? "Pending setup"
+          : `${rep.first_name} ${rep.last_name}`;
+        return (
+          <div className="min-w-0">
+            <p
+              className={`text-sm font-medium truncate ${rep.status === "inactive" ? "text-[#94A3B8]" : "text-[#0F172A]"}`}
+            >
+              {displayName}
+            </p>
+            {!rep.has_completed_setup && (
+              <span className="text-[10px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded">
+                Setup pending
+              </span>
+            )}
+          </div>
+        );
+      },
     },
     {
       key: "email",
@@ -410,7 +449,6 @@ export function OnboardingPageClient({
                 </div>
               ) : (
                 <InviteClinicForm
-                  baseUrl={baseUrl}
                   isAdmin={isAdmin}
                   repsWithFacilities={repsWithFacilities}
                 />
@@ -429,42 +467,57 @@ export function OnboardingPageClient({
               </h2>
             </div>
             <p className="text-sm text-[#64748B]">
-              Generate a one-time link to invite a Clinical Staff member to your
-              facility.
+              Send an invite email to a Clinical Staff member to join your facility.
             </p>
-            {clinicInviteState?.error && (
-              <p className="text-xs text-red-600">{clinicInviteState.error}</p>
-            )}
-            {clinicInviteState?.success && clinicInviteState.token ? (
-              <div
-                className="flex items-center gap-2 bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3"
-                suppressHydrationWarning
-              >
-                <Share2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <p className="text-xs text-emerald-700 font-medium break-all">
-                  {baseUrl}/invite/{clinicInviteState.token}
-                </p>
+            {sentStaffEmail ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 border border-green-100 text-green-700 text-sm">
+                  <CheckCircle className="w-4 h-4 shrink-0" />
+                  Invite sent to <span className="font-medium">{sentStaffEmail}</span>
+                </div>
+                <button
+                  onClick={() => setSentStaffEmail(null)}
+                  className="text-sm text-[#64748B] underline underline-offset-2 hover:text-[#0F172A] transition-colors"
+                >
+                  Send another invite
+                </button>
               </div>
             ) : (
-              <form action={clinicInviteAction}>
+              <form action={clinicInviteAction} className="space-y-4">
                 <input type="hidden" name="expires_in_days" value="30" />
+                <div className="space-y-1.5">
+                  <label htmlFor="staff_invite_email" className="text-xs font-medium text-[#0F172A]">
+                    Email <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    id="staff_invite_email"
+                    type="email"
+                    name="email"
+                    placeholder="staff@clinic.com"
+                    required
+                    className="w-full h-9 rounded-md border border-[#E2E8F0] bg-white px-3 text-sm text-[#0F172A] placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#15689E]/30 focus:border-[#15689E]"
+                  />
+                  {clinicInviteState?.fieldErrors?.email && (
+                    <p className="text-xs text-red-500">{clinicInviteState.fieldErrors.email}</p>
+                  )}
+                </div>
+                {clinicInviteState?.error && (
+                  <p className="text-xs text-red-500 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                    {clinicInviteState.error}
+                  </p>
+                )}
                 <Button
                   type="submit"
                   size="sm"
                   disabled={isClinicInvitePending}
-                  className="h-9 bg-[#15689E] hover:bg-[#125d8e] text-white rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors"
+                  className="h-9 bg-[#15689E] hover:bg-[#125d8e] text-white gap-1.5 rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors"
                 >
                   {isClinicInvitePending ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                      Generating...
-                    </>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   ) : (
-                    <>
-                      <Share2 className="w-4 h-4 mr-2" />
-                      Generate Invite Link
-                    </>
+                    <Send className="w-3.5 h-3.5" />
                   )}
+                  Send invite
                 </Button>
               </form>
             )}
@@ -626,12 +679,13 @@ export function OnboardingPageClient({
                   <InviteTokenCard
                     key={token.id}
                     token={token}
-                    baseUrl={baseUrl}
                     onDeleteClick={() => {
                       setDeleteTokenId(token.id);
                       setTokenConfirmOpen(true);
                     }}
                     isDeleting={isDeletingToken && deleteTokenId === token.id}
+                    onResendClick={() => handleResendInviteToken(token.id)}
+                    isResending={resendingTokenId === token.id}
                   />
                 ))}
               </div>
