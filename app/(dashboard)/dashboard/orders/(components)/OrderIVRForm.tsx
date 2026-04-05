@@ -1,17 +1,17 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, CheckCircle } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { getOrderIVR, upsertOrderIVR } from "../(services)/actions";
 import type { IOrderIVR } from "@/utils/interfaces/orders";
 import { cn } from "@/utils/utils";
+import toast from "react-hot-toast";
 
 interface OrderIVRFormProps {
   orderId: string;
   canEdit: boolean;
-  onSaveStatus?: (status: SaveStatus) => void;
 }
 
 type IVRFieldKey = keyof Omit<
@@ -19,57 +19,59 @@ type IVRFieldKey = keyof Omit<
   "id" | "orderId" | "aiExtracted" | "createdAt" | "updatedAt"
 >;
 
-type SaveStatus = "idle" | "saving" | "saved" | "error";
-
-export function OrderIVRForm({ orderId, canEdit, onSaveStatus }: OrderIVRFormProps) {
-  const [ivr, setIvr] = useState<Partial<IOrderIVR>>({});
+export function OrderIVRForm({ orderId, canEdit }: OrderIVRFormProps) {
   const [loading, setLoading] = useState(true);
-  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [savedData, setSavedData] = useState<Partial<IOrderIVR> | null>(null);
+  const [draftData, setDraftData] = useState<Partial<IOrderIVR> | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const isDirty = JSON.stringify(draftData) !== JSON.stringify(savedData);
 
   useEffect(() => {
     getOrderIVR(orderId).then((data) => {
-      if (data) setIvr(data);
+      const d = data ?? {};
+      setSavedData(d);
+      setDraftData(d);
       setLoading(false);
     });
   }, [orderId]);
 
-  const scheduleSave = useCallback(
-    (field: IVRFieldKey, value: unknown) => {
-      if (!canEdit) return;
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(async () => {
-        setSaveStatus("saving");
-        onSaveStatus?.("saving");
-        const result = await upsertOrderIVR(orderId, {
-          [field]: value,
-        } as Partial<IOrderIVR>);
-        if (result.success) {
-          setSaveStatus("saved");
-          onSaveStatus?.("saved");
-          setTimeout(() => setSaveStatus("idle"), 2000);
-        } else {
-          setSaveStatus("error");
-          onSaveStatus?.("idle");
-          setTimeout(() => setSaveStatus("idle"), 3000);
-        }
-      }, 800);
-    },
-    [orderId, canEdit]
-  );
-
   function handleChange(
     field: IVRFieldKey,
-    value: string | number | boolean | null
+    value: string | number | boolean | null,
   ) {
-    setIvr((prev) => ({ ...prev, [field]: value }));
-    scheduleSave(field, value);
+    setDraftData((prev) => ({ ...(prev ?? {}), [field]: value }));
   }
+
+  function handleDiscard() {
+    setDraftData(savedData);
+  }
+
+  async function handleSave() {
+    if (!draftData) return;
+    setIsSaving(true);
+    try {
+      const result = await upsertOrderIVR(
+        orderId,
+        draftData as Partial<IOrderIVR>,
+      );
+      if (result.success) {
+        setSavedData(draftData);
+        toast.success("IVR form saved successfully");
+      } else {
+        toast.error(result.error ?? "Failed to save");
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  /* ── Field helpers — all read from draftData ── */
 
   function textInput(field: IVRFieldKey, placeholder?: string) {
     return (
       <Input
-        value={(ivr[field] as string) ?? ""}
+        value={(draftData?.[field] as string) ?? ""}
         placeholder={placeholder}
         disabled={!canEdit}
         className="text-sm"
@@ -88,14 +90,11 @@ export function OrderIVRForm({ orderId, canEdit, onSaveStatus }: OrderIVRFormPro
         )}
         <Input
           type="number"
-          value={(ivr[field] as number) ?? ""}
+          value={(draftData?.[field] as number) ?? ""}
           disabled={!canEdit}
           className={cn("text-sm", prefix ? "pl-7" : "")}
           onChange={(e) =>
-            handleChange(
-              field,
-              e.target.value ? Number(e.target.value) : null
-            )
+            handleChange(field, e.target.value ? Number(e.target.value) : null)
           }
         />
       </div>
@@ -106,7 +105,7 @@ export function OrderIVRForm({ orderId, canEdit, onSaveStatus }: OrderIVRFormPro
     return (
       <Input
         type="date"
-        value={(ivr[field] as string) ?? ""}
+        value={(draftData?.[field] as string) ?? ""}
         disabled={!canEdit}
         className="text-sm"
         onChange={(e) => handleChange(field, e.target.value || null)}
@@ -115,7 +114,7 @@ export function OrderIVRForm({ orderId, canEdit, onSaveStatus }: OrderIVRFormPro
   }
 
   function yesNoRadio(field: IVRFieldKey) {
-    const val = ivr[field] as boolean | undefined;
+    const val = draftData?.[field] as boolean | undefined;
     return (
       <div className="flex gap-3">
         {([true, false] as const).map((v) => (
@@ -129,7 +128,7 @@ export function OrderIVRForm({ orderId, canEdit, onSaveStatus }: OrderIVRFormPro
               val === v
                 ? "border-[#15689E] bg-blue-50 text-[#15689E]"
                 : "border-slate-200 text-slate-500 hover:border-slate-300",
-              !canEdit && "opacity-60 cursor-not-allowed"
+              !canEdit && "opacity-60 cursor-not-allowed",
             )}
           >
             {v ? "Yes" : "No"}
@@ -141,11 +140,11 @@ export function OrderIVRForm({ orderId, canEdit, onSaveStatus }: OrderIVRFormPro
 
   function selectInput(
     field: IVRFieldKey,
-    options: { value: string; label: string }[]
+    options: { value: string; label: string }[],
   ) {
     return (
       <select
-        value={(ivr[field] as string) ?? ""}
+        value={(draftData?.[field] as string) ?? ""}
         disabled={!canEdit}
         className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#15689E]/20 focus:border-[#15689E] bg-white disabled:opacity-60"
         onChange={(e) => handleChange(field, e.target.value || null)}
@@ -160,158 +159,192 @@ export function OrderIVRForm({ orderId, canEdit, onSaveStatus }: OrderIVRFormPro
     );
   }
 
-  if (loading) {
-    return (
-      <div className="flex justify-center py-12">
-        <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-6 pb-4">
-      {/* Save status banner */}
-      {saveStatus !== "idle" && (
-        <div
-          className={cn(
-            "flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium",
-            saveStatus === "saving" && "bg-blue-50 text-blue-700",
-            saveStatus === "saved" && "bg-green-50 text-green-700",
-            saveStatus === "error" && "bg-red-50 text-red-700"
+    <div className="flex flex-col gap-5">
+      {/* ── Sticky toolbar ── */}
+      <div className="sticky top-0 z-10  bg-white border-b border-gray-300 py-3 flex items-center justify-between ">
+        <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">
+          IVR Form
+          {isDirty && !loading && (
+            <span className="ml-2 text-amber-500 normal-case font-normal tracking-normal">
+              • Unsaved changes
+            </span>
           )}
-        >
-          {saveStatus === "saving" && (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+        </h3>
+        {canEdit && (
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleDiscard}
+              disabled={!isDirty || isSaving || loading}
+              className={cn(
+                "px-4 py-1.5 text-sm font-medium rounded-lg",
+                "border border-gray-200 text-gray-500",
+                "hover:bg-gray-50 transition-colors",
+                "disabled:opacity-40 disabled:cursor-not-allowed",
+              )}
+            >
+              Discard changes
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={!isDirty || isSaving || loading}
+              className={cn(
+                "px-4 py-1.5 text-sm font-semibold rounded-lg",
+                "bg-[#15689E] text-white",
+                "hover:bg-[#15689E]/90 transition-colors",
+                "disabled:opacity-40 disabled:cursor-not-allowed",
+                "flex items-center gap-2",
+              )}
+            >
+              {isSaving && (
+                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              )}
+              {isSaving ? "Saving..." : "Save changes"}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* ── Form content ── */}
+      {loading ? (
+        <div className="flex justify-center py-12">
+          <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
+        </div>
+      ) : (
+        <div className="space-y-6 pb-4">
+          {!canEdit && (
+            <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+              You have read-only access to this IVR record.
+            </p>
           )}
-          {saveStatus === "saved" && <CheckCircle className="w-3.5 h-3.5" />}
-          {saveStatus === "saving" && "Saving..."}
-          {saveStatus === "saved" && "Change is saved"}
-          {saveStatus === "error" && "Failed to save — please try again"}
+
+          {/* Insurance Information */}
+          <FormSection title="Insurance Information">
+            <FieldRow label="Insurance Provider">
+              {textInput("insuranceProvider", "e.g. Blue Cross")}
+            </FieldRow>
+            <FieldRow label="Plan Name">{textInput("planName")}</FieldRow>
+            <FieldRow label="Plan Type">
+              {selectInput("planType", [
+                { value: "Medicare", label: "Medicare" },
+                { value: "Medicaid", label: "Medicaid" },
+                { value: "HMO", label: "HMO" },
+                { value: "PPO", label: "PPO" },
+                { value: "Other", label: "Other" },
+              ])}
+            </FieldRow>
+            <FieldRow label="Member ID">{textInput("memberId")}</FieldRow>
+            <FieldRow label="Group Number">{textInput("groupNumber")}</FieldRow>
+            <FieldRow label="Insurance Phone">
+              {textInput("insurancePhone", "1-800-...")}
+            </FieldRow>
+          </FormSection>
+
+          {/* Subscriber Details */}
+          <FormSection title="Subscriber Details">
+            <FieldRow label="Subscriber Name">
+              {textInput("subscriberName")}
+            </FieldRow>
+            <FieldRow label="Subscriber DOB">
+              {dateInput("subscriberDob")}
+            </FieldRow>
+            <FieldRow label="Relationship">
+              {selectInput("subscriberRelationship", [
+                { value: "Self", label: "Self" },
+                { value: "Spouse", label: "Spouse" },
+                { value: "Child", label: "Child" },
+                { value: "Other", label: "Other" },
+              ])}
+            </FieldRow>
+          </FormSection>
+
+          {/* Coverage Details */}
+          <FormSection title="Coverage Details">
+            <FieldRow label="Coverage Start">
+              {dateInput("coverageStartDate")}
+            </FieldRow>
+            <FieldRow label="Coverage End">
+              {dateInput("coverageEndDate")}
+            </FieldRow>
+            <FieldRow label="Deductible Amount">
+              {numberInput("deductibleAmount", "$")}
+            </FieldRow>
+            <FieldRow label="Deductible Met">
+              {numberInput("deductibleMet", "$")}
+            </FieldRow>
+            <FieldRow label="Out of Pocket Max">
+              {numberInput("outOfPocketMax", "$")}
+            </FieldRow>
+            <FieldRow label="Out of Pocket Met">
+              {numberInput("outOfPocketMet", "$")}
+            </FieldRow>
+            <FieldRow label="Copay Amount">
+              {numberInput("copayAmount", "$")}
+            </FieldRow>
+            <FieldRow label="Coinsurance">
+              {numberInput("coinsurancePercent", "%")}
+            </FieldRow>
+          </FormSection>
+
+          {/* DME / Wound Care Coverage */}
+          <FormSection title="DME / Wound Care Coverage">
+            <FieldRow label="DME Covered?">{yesNoRadio("dmeCovered")}</FieldRow>
+            <FieldRow label="Wound Care Covered?">
+              {yesNoRadio("woundCareCovered")}
+            </FieldRow>
+            <FieldRow label="Prior Auth Required?">
+              {yesNoRadio("priorAuthRequired")}
+            </FieldRow>
+            {draftData?.priorAuthRequired && (
+              <>
+                <FieldRow label="Prior Auth Number">
+                  {textInput("priorAuthNumber")}
+                </FieldRow>
+                <FieldRow label="Auth Start Date">
+                  {dateInput("priorAuthStartDate")}
+                </FieldRow>
+                <FieldRow label="Auth End Date">
+                  {dateInput("priorAuthEndDate")}
+                </FieldRow>
+                <FieldRow label="Units Authorized">
+                  {numberInput("unitsAuthorized")}
+                </FieldRow>
+              </>
+            )}
+          </FormSection>
+
+          {/* Verification Details */}
+          <FormSection title="Verification Details">
+            <FieldRow label="Verified By">
+              {textInput("verifiedBy", "Name of person who called")}
+            </FieldRow>
+            <FieldRow label="Verified Date">
+              {dateInput("verifiedDate")}
+            </FieldRow>
+            <FieldRow label="Reference Number">
+              {textInput("verificationReference", "Call reference #")}
+            </FieldRow>
+            <FieldRow label="Notes">
+              <Textarea
+                value={(draftData?.notes as string) ?? ""}
+                placeholder="Additional notes..."
+                disabled={!canEdit}
+                rows={3}
+                className="text-sm resize-none"
+                onChange={(e) => handleChange("notes", e.target.value || null)}
+              />
+            </FieldRow>
+          </FormSection>
         </div>
       )}
-
-      {!canEdit && (
-        <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-          You have read-only access to this IVR record.
-        </p>
-      )}
-
-      {/* Insurance Information */}
-      <FormSection title="Insurance Information">
-        <FieldRow label="Insurance Provider">
-          {textInput("insuranceProvider", "e.g. Blue Cross")}
-        </FieldRow>
-        <FieldRow label="Plan Name">{textInput("planName")}</FieldRow>
-        <FieldRow label="Plan Type">
-          {selectInput("planType", [
-            { value: "Medicare", label: "Medicare" },
-            { value: "Medicaid", label: "Medicaid" },
-            { value: "HMO", label: "HMO" },
-            { value: "PPO", label: "PPO" },
-            { value: "Other", label: "Other" },
-          ])}
-        </FieldRow>
-        <FieldRow label="Member ID">{textInput("memberId")}</FieldRow>
-        <FieldRow label="Group Number">{textInput("groupNumber")}</FieldRow>
-        <FieldRow label="Insurance Phone">
-          {textInput("insurancePhone", "1-800-...")}
-        </FieldRow>
-      </FormSection>
-
-      {/* Subscriber Details */}
-      <FormSection title="Subscriber Details">
-        <FieldRow label="Subscriber Name">
-          {textInput("subscriberName")}
-        </FieldRow>
-        <FieldRow label="Subscriber DOB">{dateInput("subscriberDob")}</FieldRow>
-        <FieldRow label="Relationship">
-          {selectInput("subscriberRelationship", [
-            { value: "Self", label: "Self" },
-            { value: "Spouse", label: "Spouse" },
-            { value: "Child", label: "Child" },
-            { value: "Other", label: "Other" },
-          ])}
-        </FieldRow>
-      </FormSection>
-
-      {/* Coverage Details */}
-      <FormSection title="Coverage Details">
-        <FieldRow label="Coverage Start">
-          {dateInput("coverageStartDate")}
-        </FieldRow>
-        <FieldRow label="Coverage End">{dateInput("coverageEndDate")}</FieldRow>
-        <FieldRow label="Deductible Amount">
-          {numberInput("deductibleAmount", "$")}
-        </FieldRow>
-        <FieldRow label="Deductible Met">
-          {numberInput("deductibleMet", "$")}
-        </FieldRow>
-        <FieldRow label="Out of Pocket Max">
-          {numberInput("outOfPocketMax", "$")}
-        </FieldRow>
-        <FieldRow label="Out of Pocket Met">
-          {numberInput("outOfPocketMet", "$")}
-        </FieldRow>
-        <FieldRow label="Copay Amount">
-          {numberInput("copayAmount", "$")}
-        </FieldRow>
-        <FieldRow label="Coinsurance">
-          {numberInput("coinsurancePercent", "%")}
-        </FieldRow>
-      </FormSection>
-
-      {/* DME / Wound Care Coverage */}
-      <FormSection title="DME / Wound Care Coverage">
-        <FieldRow label="DME Covered?">{yesNoRadio("dmeCovered")}</FieldRow>
-        <FieldRow label="Wound Care Covered?">
-          {yesNoRadio("woundCareCovered")}
-        </FieldRow>
-        <FieldRow label="Prior Auth Required?">
-          {yesNoRadio("priorAuthRequired")}
-        </FieldRow>
-        {ivr.priorAuthRequired && (
-          <>
-            <FieldRow label="Prior Auth Number">
-              {textInput("priorAuthNumber")}
-            </FieldRow>
-            <FieldRow label="Auth Start Date">
-              {dateInput("priorAuthStartDate")}
-            </FieldRow>
-            <FieldRow label="Auth End Date">
-              {dateInput("priorAuthEndDate")}
-            </FieldRow>
-            <FieldRow label="Units Authorized">
-              {numberInput("unitsAuthorized")}
-            </FieldRow>
-          </>
-        )}
-      </FormSection>
-
-      {/* Verification Details */}
-      <FormSection title="Verification Details">
-        <FieldRow label="Verified By">
-          {textInput("verifiedBy", "Name of person who called")}
-        </FieldRow>
-        <FieldRow label="Verified Date">{dateInput("verifiedDate")}</FieldRow>
-        <FieldRow label="Reference Number">
-          {textInput("verificationReference", "Call reference #")}
-        </FieldRow>
-        <FieldRow label="Notes">
-          <Textarea
-            value={(ivr.notes as string) ?? ""}
-            placeholder="Additional notes..."
-            disabled={!canEdit}
-            rows={3}
-            className="text-sm resize-none"
-            onChange={(e) => handleChange("notes", e.target.value || null)}
-          />
-        </FieldRow>
-      </FormSection>
     </div>
   );
 }
 
 /* ── Helpers ── */
+
 function FormSection({
   title,
   children,
