@@ -1,322 +1,445 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useState, useTransition } from "react";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import {
-  Plus,
-  Building2,
-  Package,
-  DollarSign,
-  Layers,
-  FileText,
-} from "lucide-react";
-import {
-  createOrder,
-  getUserFacility,
-  getActiveProducts,
-} from "../(services)/actions";
-import { useAppDispatch } from "@/store/hooks";
-import { addOrderToStore } from "../(redux)/orders-slice";
-import type { FacilityRecord, ProductRecord } from "@/utils/interfaces/orders";
-import SubmitButton from "@/app/(components)/SubmitButton";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Plus, Loader2, Upload, X, FileText } from "lucide-react";
+import { createOrder, uploadOrderDocument } from "../(services)/actions";
 import toast from "react-hot-toast";
+import { cn } from "@/utils/utils";
+import type { DocumentType } from "@/utils/interfaces/orders";
 
-export function CreateOrderModal() {
-  const dispatch = useAppDispatch();
+type DocFile = { file: File; type: string };
 
-  const [open, setOpen] = useState(false);
-  const [facility, setFacility] = useState<FacilityRecord | null>(null);
-  const [products, setProducts] = useState<ProductRecord[]>([]);
+const WOUND_TYPES = [
+  { value: "chronic" as const, label: "Chronic" },
+  { value: "post_surgical" as const, label: "Post-Surgical" },
+];
 
-  const [productId, setProductId] = useState("");
-  const [quantity, setQuantity] = useState(1);
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const ACCEPT = ".pdf,.jpg,.jpeg,.png,.heic,image/*";
 
-  const [isPending, setIsPending] = useState(false);
-  const [isLoadingData, setIsLoadingData] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+function formatSize(bytes: number): string {
+  return bytes < 1024 * 1024
+    ? `${(bytes / 1024).toFixed(0)} KB`
+    : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
-  useEffect(() => {
-    if (!open) {
-      setError(null);
-    }
-  }, [open]);
+interface UploadZoneProps {
+  label: string;
+  description: string;
+  docType: string;
+  required: boolean;
+  multiple?: boolean;
+  files: DocFile[];
+  onAdd: (files: File[], type: string) => void;
+  onRemove: (idx: number) => void;
+  error?: boolean;
+}
 
-  useEffect(() => {
-    if (!open) return;
+function UploadZone({
+  label,
+  description,
+  docType,
+  required,
+  multiple,
+  files,
+  onAdd,
+  onRemove,
+  error,
+}: UploadZoneProps) {
+  const typeFiles = files.filter((f) => f.type === docType);
 
-    async function fetchData() {
-      setIsLoadingData(true);
-      setError(null);
-
-      try {
-        const [fetchedFacility, fetchedProducts] = await Promise.all([
-          getUserFacility(),
-          getActiveProducts(),
-        ]);
-
-        setFacility(fetchedFacility);
-        setProducts(fetchedProducts);
-      } catch (err) {
-        console.error("[CreateOrderModal.fetchData]", err);
-        const message =
-          err instanceof Error ? err.message : "Failed to load order data.";
-        setError(message);
-        toast.error(message);
-      } finally {
-        setIsLoadingData(false);
+  // Map local index within this docType back to global index in `files`
+  function globalIdx(localIdx: number): number {
+    let count = 0;
+    for (let i = 0; i < files.length; i++) {
+      if (files[i].type === docType) {
+        if (count === localIdx) return i;
+        count++;
       }
     }
-
-    fetchData();
-  }, [open]);
-
-  const selectedProduct = useMemo(
-    () => products.find((p) => p.id === productId),
-    [products, productId],
-  );
-
-  const unitPrice = Number(selectedProduct?.unit_price ?? 0);
-  const totalAmount = unitPrice * quantity;
-
-  const isFormValid =
-    !!facility && !!selectedProduct && quantity >= 1 && !isLoadingData;
-
-  function resetForm() {
-    setProductId("");
-    setQuantity(1);
-    setError(null);
-  }
-
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-
-    if (!facility || !selectedProduct) return;
-
-    setIsPending(true);
-    setError(null);
-
-    const formData = new FormData();
-    formData.set("product_id", selectedProduct.id);
-    formData.set("quantity", String(quantity));
-
-    try {
-      const createdOrder = await createOrder(formData);
-      dispatch(addOrderToStore(createdOrder));
-
-      toast.success("Draft order created successfully.");
-      resetForm();
-      setOpen(false);
-    } catch (err) {
-      console.error("[CreateOrderModal.handleSubmit]", err);
-      const message =
-        err instanceof Error ? err.message : "Failed to create draft order.";
-      setError(message);
-      toast.error(message);
-    } finally {
-      setIsPending(false);
-    }
+    return -1;
   }
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(value) => {
-        if (!isPending) setOpen(value);
-      }}
-    >
-      <DialogTrigger asChild>
-        <SubmitButton
-          type="button"
-          variant="default"
-          size="default"
-          classname="bg-[#15689E] hover:bg-[#125d8e] text-white cursor-pointer w-full sm:w-auto rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
-          cta={
-            <>
-              <Plus className="w-4 h-4 mr-2" />
-              New Order
-            </>
-          }
-        />
-      </DialogTrigger>
+    <div className="flex-1 min-w-0">
+      <div className="flex items-center gap-1 mb-1.5">
+        <span className="text-xs font-semibold text-slate-700">{label}</span>
+        {required && <span className="text-red-500 text-xs">*</span>}
+      </div>
+      <p className="text-[11px] text-slate-400 mb-2">{description}</p>
 
-      <DialogContent className="w-[calc(100%-2rem)] sm:max-w-md sm:rounded-2xl border border-[#E2E8F0] shadow-[0_20px_60px_rgba(0,0,0,0.12)] max-h-[90dvh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-lg font-semibold text-[#0F172A]">
-            Create Draft Order
-          </DialogTitle>
-        </DialogHeader>
-
-        <form onSubmit={handleSubmit} className="space-y-4 pt-2">
-          <div className="space-y-1.5">
-            <label className="flex items-center gap-2 text-sm font-medium text-[#374151]">
-              <Building2 className="w-4 h-4 text-[#15689E]" />
-              Facility
-            </label>
-            <div className="flex items-center gap-2 w-full border border-[#E2E8F0] rounded-lg px-3 py-2 bg-[#F8FAFC] min-h-[42px]">
-              {isLoadingData ? (
-                <span className="text-sm text-[#94A3B8] animate-pulse">
-                  Loading facility...
-                </span>
-              ) : facility ? (
-                <div className="flex flex-col min-w-0">
-                  <span className="text-sm text-[#0F172A] font-medium truncate">
-                    {facility.name}
-                  </span>
-                  {[facility.contact, facility.phone].filter(Boolean).length >
-                    0 && (
-                    <span className="text-xs text-[#94A3B8] truncate">
-                      {[facility.contact, facility.phone]
-                        .filter(Boolean)
-                        .join(" • ")}
-                    </span>
-                  )}
-                </div>
-              ) : (
-                <span className="text-sm text-red-500">
-                  ⚠ No facility found — contact support
-                </span>
-              )}
+      {typeFiles.length === 0 ? (
+        <label
+          className={cn(
+            "flex flex-col items-center justify-center border-2 border-dashed rounded-xl px-3 py-4 cursor-pointer transition-all text-center",
+            error
+              ? "border-red-300 bg-red-50"
+              : "border-slate-200 bg-slate-50 hover:border-[#15689E]/50 hover:bg-blue-50/30"
+          )}
+        >
+          <Upload className="w-5 h-5 text-slate-300 mb-1.5" />
+          <span className="text-xs text-slate-500">
+            Drag & drop or{" "}
+            <span className="text-[#15689E] font-medium">browse</span>
+          </span>
+          <span className="text-[11px] text-slate-400 mt-1">
+            PDF, JPG, PNG, HEIC · max 10 MB
+          </span>
+          <input
+            type="file"
+            className="hidden"
+            accept={ACCEPT}
+            multiple={multiple}
+            onChange={(e) => {
+              const selected = Array.from(e.target.files ?? []);
+              const valid = selected.filter((f) => {
+                if (f.size > MAX_FILE_SIZE) {
+                  toast.error(`${f.name} exceeds 10 MB.`);
+                  return false;
+                }
+                return true;
+              });
+              if (valid.length) onAdd(valid, docType);
+              e.target.value = "";
+            }}
+          />
+        </label>
+      ) : (
+        <div className="space-y-1">
+          {typeFiles.map((df, localIdx) => (
+            <div
+              key={localIdx}
+              className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5"
+            >
+              <FileText className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              <span className="text-xs text-slate-700 flex-1 truncate">
+                {df.file.name}
+              </span>
+              <span className="text-[11px] text-slate-400 shrink-0">
+                {formatSize(df.file.size)}
+              </span>
+              <button
+                type="button"
+                onClick={() => onRemove(globalIdx(localIdx))}
+                className="text-slate-300 hover:text-red-400 transition-colors shrink-0"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
             </div>
+          ))}
+          <label className="flex items-center gap-1 text-[11px] text-[#15689E] hover:underline cursor-pointer mt-1">
+            <Plus className="w-3 h-3" />
+            Add more
+            <input
+              type="file"
+              className="hidden"
+              accept={ACCEPT}
+              multiple={multiple}
+              onChange={(e) => {
+                const selected = Array.from(e.target.files ?? []);
+                const valid = selected.filter((f) => {
+                  if (f.size > MAX_FILE_SIZE) {
+                    toast.error(`${f.name} exceeds 10 MB.`);
+                    return false;
+                  }
+                  return true;
+                });
+                if (valid.length) onAdd(valid, docType);
+                e.target.value = "";
+              }}
+            />
+          </label>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function CreateOrderModal() {
+  const [open, setOpen] = useState(false);
+  const [woundType, setWoundType] = useState<"chronic" | "post_surgical">(
+    "chronic"
+  );
+  const [dateOfService, setDateOfService] = useState(
+    new Date().toISOString().split("T")[0]
+  );
+  const [notes, setNotes] = useState("");
+  const [docs, setDocs] = useState<DocFile[]>([]);
+  const [uploadProgress, setUploadProgress] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+  const [submitted, setSubmitted] = useState(false);
+
+  function reset() {
+    setWoundType("chronic");
+    setDateOfService(new Date().toISOString().split("T")[0]);
+    setNotes("");
+    setDocs([]);
+    setUploadProgress(null);
+    setSubmitted(false);
+  }
+
+  function addDocs(files: File[], type: string) {
+    setDocs((prev) => [...prev, ...files.map((f) => ({ file: f, type }))]);
+  }
+
+  function removeDoc(idx: number) {
+    setDocs((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  const hasFacesheet = docs.some((d) => d.type === "facesheet");
+  const needsWoundPics = woundType === "chronic";
+  const hasWoundPics = docs.some((d) => d.type === "wound_pictures");
+
+  const canSubmit =
+    !!woundType && !!dateOfService && hasFacesheet && (!needsWoundPics || hasWoundPics);
+
+  function handleClose() {
+    if (!isPending) {
+      setOpen(false);
+      reset();
+    }
+  }
+
+  function handleSubmit() {
+    setSubmitted(true);
+    if (!canSubmit) return;
+
+    startTransition(async () => {
+      const result = await createOrder({
+        wound_type: woundType,
+        date_of_service: dateOfService,
+        notes: notes.trim() || null,
+      });
+
+      if (!result.success || !result.orderId) {
+        toast.error(result.error ?? "Failed to create order.");
+        return;
+      }
+
+      const orderId = result.orderId;
+
+      // Upload documents sequentially
+      for (let i = 0; i < docs.length; i++) {
+        const d = docs[i];
+        setUploadProgress(`Uploading ${i + 1}/${docs.length}: ${d.file.name}`);
+        const docFd = new FormData();
+        docFd.set("file", d.file);
+        const res = await uploadOrderDocument(
+          orderId,
+          d.type as DocumentType,
+          docFd
+        );
+        if (!res.success) {
+          toast.error(`Failed to upload ${d.file.name}: ${res.error}`);
+        }
+      }
+
+      setUploadProgress(null);
+      toast.success("Order created. Upload confirmed.");
+      setOpen(false);
+      reset();
+    });
+  }
+
+  const facesheetError = submitted && !hasFacesheet;
+  const woundPicsError = submitted && needsWoundPics && !hasWoundPics;
+
+  return (
+    <>
+      <Button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="bg-[#15689E] hover:bg-[#125d8e] text-white cursor-pointer rounded-lg shadow-sm"
+      >
+        <Plus className="w-4 h-4 mr-2" />
+        New Order
+      </Button>
+
+      <Dialog open={open} onOpenChange={handleClose}>
+        <DialogContent className="w-[calc(100%-2rem)] sm:max-w-lg max-h-[92dvh] overflow-y-auto rounded-2xl border-[#E2E8F0] shadow-2xl p-0">
+          {/* Header */}
+          <div className="sticky top-0 bg-white z-10 px-6 pt-5 pb-4 border-b border-[#E2E8F0]">
+            <DialogHeader>
+              <DialogTitle className="text-lg font-semibold text-[#0F172A]">
+                Create Order
+              </DialogTitle>
+            </DialogHeader>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="flex items-center gap-2 text-sm font-medium text-[#374151]">
-              <Package className="w-4 h-4 text-[#15689E]" />
-              Product
-            </label>
-            <select
-              value={productId}
-              onChange={(e) => {
-                setProductId(e.target.value);
-                setQuantity(1);
-              }}
-              required
-              disabled={isPending || isLoadingData || products.length === 0}
-              className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#15689E]/10 focus:border-[#15689E] bg-white disabled:opacity-50"
-            >
-              <option value="">
-                {isLoadingData
-                  ? "Loading products..."
-                  : products.length === 0
-                    ? "No products available"
-                    : "Select product"}
-              </option>
+          <div className="px-6 py-5 space-y-6">
+            {/* Section 1 — Clinical Info */}
+            <div className="space-y-4">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Clinical Info
+              </h3>
 
-              {products.map((product) => (
-                <option key={product.id} value={product.id}>
-                  {product.sku
-                    ? `${product.name} (${product.sku})`
-                    : product.name}
-                </option>
-              ))}
-            </select>
+              {/* Wound Type */}
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-slate-700">
+                  Wound Type <span className="text-red-500">*</span>
+                </label>
+                <div className="flex gap-3">
+                  {WOUND_TYPES.map((wt) => (
+                    <button
+                      key={wt.value}
+                      type="button"
+                      onClick={() => setWoundType(wt.value)}
+                      className={cn(
+                        "flex-1 py-2.5 px-3 rounded-xl border-2 text-sm font-medium transition-all",
+                        woundType === wt.value
+                          ? "border-[#15689E] bg-blue-50 text-[#15689E]"
+                          : "border-slate-200 text-slate-600 hover:border-slate-300"
+                      )}
+                    >
+                      {wt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-            {selectedProduct && (
-              <div className="text-xs text-[#64748B] px-1">
-                {[selectedProduct.category, selectedProduct.sku]
-                  .filter(Boolean)
-                  .join(" • ")}
+              {/* Date of Service */}
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-slate-700">
+                  Date of Service <span className="text-red-500">*</span>
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="date"
+                    value={dateOfService}
+                    max={new Date().toISOString().split("T")[0]}
+                    onChange={(e) => setDateOfService(e.target.value)}
+                    className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#15689E]/20 focus:border-[#15689E]"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="border-slate-200 text-slate-600 text-xs shrink-0"
+                    onClick={() =>
+                      setDateOfService(new Date().toISOString().split("T")[0])
+                    }
+                  >
+                    Today
+                  </Button>
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-slate-700">
+                  Notes (optional)
+                </label>
+                <Textarea
+                  placeholder="Clinical notes..."
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={2}
+                  className="resize-none text-sm"
+                />
+              </div>
+            </div>
+
+            {/* Section 2 — Documents */}
+            <div className="space-y-3">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Documents
+              </h3>
+
+              {/* Facesheet + Clinical Docs side by side */}
+              <div className="flex gap-3">
+                <UploadZone
+                  label="Patient Facesheet"
+                  description="Insurance & demographics"
+                  docType="facesheet"
+                  required
+                  files={docs}
+                  onAdd={addDocs}
+                  onRemove={removeDoc}
+                  error={facesheetError}
+                />
+                <UploadZone
+                  label="Clinical Documentation"
+                  description="Doctor's notes, records"
+                  docType="clinical_docs"
+                  required={false}
+                  multiple
+                  files={docs}
+                  onAdd={addDocs}
+                  onRemove={removeDoc}
+                />
+              </div>
+
+              {facesheetError && (
+                <p className="text-xs text-red-500">
+                  Patient facesheet is required.
+                </p>
+              )}
+
+              {/* Wound Pictures */}
+              <UploadZone
+                label="Wound Pictures"
+                description="Multiple images allowed"
+                docType="wound_pictures"
+                required={needsWoundPics}
+                multiple
+                files={docs}
+                onAdd={addDocs}
+                onRemove={removeDoc}
+                error={woundPicsError}
+              />
+              {woundPicsError && (
+                <p className="text-xs text-red-500">
+                  Wound pictures are required for chronic wounds.
+                </p>
+              )}
+            </div>
+
+            {/* Upload progress */}
+            {uploadProgress && (
+              <div className="flex items-center gap-2 text-sm text-slate-600 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
+                <Loader2 className="w-4 h-4 animate-spin text-blue-500 shrink-0" />
+                {uploadProgress}
               </div>
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className="flex items-center gap-2 text-sm font-medium text-[#374151]">
-                <Layers className="w-4 h-4 text-[#15689E]" />
-                Quantity
-              </label>
-              <Input
-                name="quantity"
-                type="number"
-                min="1"
-                step="1"
-                value={quantity}
-                onChange={(e) =>
-                  setQuantity(Math.max(1, parseInt(e.target.value, 10) || 1))
-                }
-                disabled={isPending || !selectedProduct}
-                required
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="flex items-center gap-2 text-sm font-medium text-[#374151]">
-                <DollarSign className="w-4 h-4 text-[#15689E]" />
-                Unit Price
-              </label>
-              <div className="flex items-center w-full border border-[#E2E8F0] rounded-lg px-3 py-2 bg-[#F8FAFC] min-h-[42px]">
-                <span className="text-sm text-[#64748B]">
-                  {selectedProduct ? `$${unitPrice.toFixed(2)}` : "—"}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="flex items-center gap-2 text-sm font-medium text-[#374151]">
-              <DollarSign className="w-4 h-4 text-[#15689E]" />
-              Estimated Total
-            </label>
-            <div className="flex items-center w-full border border-[#E2E8F0] rounded-lg px-3 py-2 bg-[#F8FAFC] min-h-[42px]">
-              <span
-                className={`text-sm font-semibold ${
-                  totalAmount > 0 ? "text-[#E8821A]" : "text-[#94A3B8]"
-                }`}
-              >
-                {totalAmount > 0 ? `$${totalAmount.toFixed(2)}` : "—"}
-              </span>
-
-              {selectedProduct && quantity > 1 && (
-                <span className="text-xs text-[#94A3B8] ml-2">
-                  ${unitPrice.toFixed(2)} × {quantity}
-                </span>
-              )}
-            </div>
-          </div>
-
-          {error && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-600">
-              {error}
-            </div>
-          )}
-
-          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
-            <SubmitButton
+          {/* Footer */}
+          <div className="sticky bottom-0 bg-white border-t border-[#E2E8F0] px-6 py-4 flex items-center justify-end gap-3">
+            <Button
               type="button"
               variant="outline"
-              size="default"
-              onClick={() => setOpen(false)}
+              className="border-[#E2E8F0]"
               disabled={isPending}
-              classname="border-[#E2E8F0] text-[#374151] hover:bg-[#F8FAFC] w-full sm:w-auto cursor-pointer"
-              cta={<span>Cancel</span>}
-            />
-
-            <SubmitButton
-              type="submit"
-              isPending={isPending}
-              disabled={!isFormValid || isPending}
-              cta={
+              onClick={handleClose}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={isPending}
+              onClick={handleSubmit}
+              className="bg-[#15689E] hover:bg-[#125d8e] text-white"
+            >
+              {isPending ? (
                 <>
-                  <Plus className="w-4 h-4 mr-1.5" />
-                  Save Draft
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  Creating...
                 </>
-              }
-              isPendingMesssage="Saving..."
-              variant="default"
-              size="default"
-              classname="bg-[#15689E] hover:bg-[#125d8e] text-white w-full sm:w-auto cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
-            />
+              ) : (
+                "Submit →"
+              )}
+            </Button>
           </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

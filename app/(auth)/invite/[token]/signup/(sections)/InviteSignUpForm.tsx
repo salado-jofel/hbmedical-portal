@@ -179,8 +179,8 @@ export default function InviteSignUpForm({
           setClientError("NPI must be exactly 10 digits.");
           return;
         }
-        if (!/^\d{4,6}$/.test(pin)) {
-          setClientError("PIN must be 4–6 digits.");
+        if (!/^\d{4}$/.test(pin)) {
+          setClientError("PIN must be exactly 4 digits.");
           return;
         }
         if (pin !== confirmPin) {
@@ -452,16 +452,16 @@ export default function InviteSignUpForm({
                         Digital signature PIN
                       </p>
                       <p className="text-xs text-[#94A3B8]">
-                        Your 4–6 digit PIN is your digital signature for signing orders.
+                        Your 4-digit PIN is your digital signature for signing orders.
                       </p>
                     </div>
                     <PasswordInput
                       id="pin_display"
                       label="Create your PIN"
-                      placeholder="4–6 digits"
+                      placeholder="4 digits"
                       value={pin}
                       onChange={(e) => {
-                        const v = e.target.value.replace(/\D/g, "").slice(0, 6);
+                        const v = e.target.value.replace(/\D/g, "").slice(0, 4);
                         setPin(v);
                         setClientError("");
                       }}
@@ -473,7 +473,7 @@ export default function InviteSignUpForm({
                         placeholder="Repeat PIN"
                         value={confirmPin}
                         onChange={(e) => {
-                          const v = e.target.value.replace(/\D/g, "").slice(0, 6);
+                          const v = e.target.value.replace(/\D/g, "").slice(0, 4);
                           setConfirmPin(v);
                           setClientError("");
                         }}

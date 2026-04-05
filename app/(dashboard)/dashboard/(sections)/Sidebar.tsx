@@ -21,6 +21,7 @@ import { useEffect, useState } from "react";
 import { useAppSelector, useAppDispatch } from "@/store/hooks";
 import { NavItem } from "@/app/(components)/NavItem";
 import { SidebarUserCard } from "@/app/(components)/SidebarUserCard";
+import { NotificationBell } from "@/app/(dashboard)/(components)/NotificationBell";
 import { HBLogo } from "@/app/(components)/HBLogo";
 import SubmitButton from "@/app/(components)/SubmitButton";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -263,6 +264,17 @@ export function Sidebar() {
 
         {/* ── Nav with categories ── */}
         <nav className="flex-1 overflow-y-auto overflow-x-hidden py-3">
+          {/* ── Notifications — always first ── */}
+          <div className={cn(
+            "mb-2 pb-2 border-b border-[#E8EFF5]",
+            collapsed ? "px-[10px]" : "px-2",
+          )}>
+            <NotificationBell
+              currentUserId={userData.userId ?? ""}
+              collapsed={collapsed}
+            />
+          </div>
+
           {visibleGroups.map((group, gi) => (
             <div key={group.label} className={cn(gi > 0 && "mt-4")}>
               {/* Category label — hidden when collapsed */}

@@ -85,7 +85,10 @@ export function MobileKanbanTabs({
           </div>
         ) : (
           grouped[activeTab].map((order) => (
-            <OrderCard key={order.id} order={order} canSign={canSign} />
+            <OrderCard
+              key={order.id}
+              order={order}
+            />
           ))
         )}
       </div>

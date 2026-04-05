@@ -2,11 +2,15 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
+import toast from "react-hot-toast";
 import { cn } from "@/utils/utils";
+import { useAppSelector } from "@/store/hooks";
 import type { IAccount } from "@/utils/interfaces/accounts";
 import type { IContact } from "@/utils/interfaces/contacts";
 import type { DashboardOrder } from "@/utils/interfaces/orders";
 import type { IRepProfile } from "@/utils/interfaces/accounts";
+import { getOrderById } from "@/app/(dashboard)/dashboard/orders/(services)/actions";
+import { OrderDetailModal } from "@/app/(dashboard)/dashboard/orders/(components)/OrderDetailModal";
 import { OverviewTab } from "../(components)/OverviewTab";
 import { ContactsTab } from "../(components)/ContactsTab";
 import { ActivitiesTab } from "../(components)/ActivitiesTab";
@@ -33,13 +37,38 @@ interface AccountDetailClientProps {
 export function AccountDetailClient({
   account,
   contacts,
-  orders,
+  orders: initialOrders,
   canEdit,
   salesReps,
   showActivities,
 }: AccountDetailClientProps) {
   const tabs = ALL_TABS.filter((t) => t.id !== "activities" || showActivities);
   const [activeTab, setActiveTab] = useState<TabId>("overview");
+
+  const currentUserId = useAppSelector((state) => state.dashboard.userId);
+
+  /* ── Order modal state ── */
+  const [selectedOrder, setSelectedOrder] = useState<DashboardOrder | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [loadingOrderId, setLoadingOrderId] = useState<string | null>(null);
+
+  async function handleOrderClick(orderId: string) {
+    setLoadingOrderId(orderId);
+    const order = await getOrderById(orderId);
+    setLoadingOrderId(null);
+
+    if (!order) {
+      toast.error("Could not load order.");
+      return;
+    }
+    setSelectedOrder(order);
+    setModalOpen(true);
+  }
+
+  function refreshOrders() {
+    // The modal refreshes its own data internally via getOrderById.
+    // A full list refresh would require a page reload; skip for now.
+  }
 
   return (
     <div className="space-y-4">
@@ -84,8 +113,32 @@ export function AccountDetailClient({
             canEdit={canEdit}
           />
         )}
-        {activeTab === "orders" && <OrdersTab orders={orders} />}
+        {activeTab === "orders" && (
+          <OrdersTab
+            orders={initialOrders}
+            onOrderClick={handleOrderClick}
+            loadingOrderId={loadingOrderId}
+          />
+        )}
       </motion.div>
+
+      {/* ── Order detail modal ── */}
+      {selectedOrder && (
+        <OrderDetailModal
+          open={modalOpen}
+          order={selectedOrder}
+          isAdmin={canEdit}
+          isClinical={false}
+          canEdit={false}
+          canSign={false}
+          currentUserId={currentUserId}
+          onClose={() => {
+            setModalOpen(false);
+            setSelectedOrder(null);
+            refreshOrders();
+          }}
+        />
+      )}
     </div>
   );
 }

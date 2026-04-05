@@ -121,12 +121,20 @@ function TaskCard({
   const isToggling = togglingId === task.id;
   const isDeleting = deletingId === task.id;
 
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const isOverdue =
+    !isDone &&
+    !!task.due_date &&
+    new Date(task.due_date + "T00:00:00") < today;
+
   return (
     <motion.div
       variants={fadeUp}
       className={cn(
         "bg-white border rounded-xl p-4 space-y-2 transition-opacity shadow-[0_1px_3px_rgba(0,0,0,0.04)]",
         isDone ? "border-[#E2E8F0] opacity-60" : "border-[#E2E8F0]",
+        isOverdue && "border-l-2 border-l-red-400 bg-red-50/20",
       )}
     >
       {/* Top row: checkbox + title + actions */}
@@ -187,6 +195,12 @@ function TaskCard({
         <span className={cn(priorityBadgeVariants({ priority: task.priority }))}>
           {PRIORITY_LABELS[task.priority]}
         </span>
+
+        {isOverdue && (
+          <span className="text-[10px] font-medium bg-red-50 text-red-600 border border-red-200 px-1.5 py-0.5 rounded">
+            Overdue
+          </span>
+        )}
 
         {task.due_date && (
           <span className="flex items-center gap-1 text-xs text-[#94A3B8]">
@@ -361,9 +375,19 @@ export function TasksPageClient({ accounts, salesReps, isAdmin }: TasksPageClien
                 <div className="flex items-center justify-between px-4 py-3 border-b border-[#E2E8F0]">
                   <div className="flex items-center gap-2">
                     <div className={cn("w-2 h-2 rounded-full", config.dotClass)} />
-                    <span className="text-sm font-semibold text-[#0F172A]">{config.label}</span>
+                    <span className={cn(
+                      "text-sm font-semibold",
+                      groupKey === "overdue" ? "text-red-600" : "text-[#0F172A]",
+                    )}>
+                      {config.label}
+                    </span>
                   </div>
-                  <span className="min-w-5 h-5 flex items-center justify-center rounded-full bg-[#15689E] text-white text-xs font-bold px-1.5">
+                  <span className={cn(
+                    "min-w-5 h-5 flex items-center justify-center rounded-full text-xs font-bold px-1.5",
+                    groupKey === "overdue"
+                      ? "bg-red-50 text-red-600 border border-red-200"
+                      : "bg-[#15689E] text-white",
+                  )}>
                     {groupTasks.length}
                   </span>
                 </div>
