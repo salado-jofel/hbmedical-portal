@@ -132,6 +132,7 @@ const ORDER_WITH_RELATIONS_SELECT = `
   ai_extracted, ai_extracted_at, order_form_locked,
   patients (id, facility_id, first_name, last_name, date_of_birth, patient_ref, notes, is_active, created_at, updated_at),
   order_items (id, order_id, product_id, product_name, product_sku, unit_price, quantity, shipping_amount, tax_amount, subtotal, total_amount, created_at, updated_at),
+  order_documents (id, document_type, file_name, file_path, mime_type, file_size, uploaded_by, created_at),
   facilities (id, name)
 `;
 
@@ -1220,6 +1221,10 @@ export async function upsertForm1500(
       return { success: false, error: "Failed to save form." };
     }
 
+    generateOrderPDFs(orderId, ["hcfa_1500"]).catch(
+      err => console.error("[HCFA PDF]", err),
+    );
+
     return { success: true };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
@@ -1475,6 +1480,11 @@ export async function upsertOrderIVR(
     }
 
     revalidatePath(ORDERS_PATH);
+
+    generateOrderPDFs(orderId, ["ivr"]).catch(
+      err => console.error("[IVR PDF]", err),
+    );
+
     return { success: true, error: null };
   } catch (err) {
     console.error("[upsertOrderIVR] unexpected:", err);
@@ -1772,4 +1782,37 @@ export async function getOrderAiStatus(
       lockedBy:              form.locked_by ?? null,
     },
   };
+}
+
+/* -------------------------------------------------------------------------- */
+/* generateOrderPDFs                                                           */
+/* -------------------------------------------------------------------------- */
+
+export async function generateOrderPDFs(
+  orderId: string,
+  formTypes: ("order_form" | "ivr" | "hcfa_1500")[],
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+
+    await Promise.allSettled(
+      formTypes.map(formType =>
+        fetch(`${baseUrl}/api/generate-pdf`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orderId, formType }),
+        })
+          .then(r => r.json())
+          .then(data => {
+            if (data.error) {
+              console.error(`[PDF] ${formType} failed:`, data.error);
+            }
+          }),
+      ),
+    );
+
+    return { success: true, error: null };
+  } catch (err) {
+    return { error: String(err), success: false };
+  }
 }

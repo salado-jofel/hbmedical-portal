@@ -1,14 +1,18 @@
-// ── ANTHROPIC CLAUDE (active) ─────────────────────────────────────────────
-import { createAnthropic } from "@ai-sdk/anthropic";
+// ── GOOGLE GEMINI (active for testing — free tier) ────────────────────────
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
+const aiModel = createGoogleGenerativeAI({
+  apiKey: process.env.GEMINI_API_KEY,
+});
+
+// ── ANTHROPIC CLAUDE (commented out — restore when ready) ─────────────────
+// import { createAnthropic } from "@ai-sdk/anthropic";
+// const aiModel = createAnthropic({
+//   apiKey: process.env.ANTHROPIC_API_KEY,
+// });
+
 import { generateText } from "ai";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
-
-const anthropic = createAnthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-// ── GOOGLE GEMINI (commented out — restore if needed) ─────────────────────
-// import { createGoogleGenerativeAI } from "@ai-sdk/google";
-// const google = createGoogleGenerativeAI({ apiKey: process.env.GEMINI_API_KEY });
 
 export const maxDuration = 60;
 
@@ -201,14 +205,24 @@ export async function POST(req: NextRequest) {
     const prompt =
       documentType === "facesheet" ? FACESHEET_PROMPT : CLINICAL_DOCS_PROMPT;
 
-    // ── CLAUDE (active) ───────────────────────────────────────────────────
     const { text } = await generateText({
-      model: anthropic("claude-sonnet-4-6"),
+      // ── Gemini (active) ──
+      model: aiModel("gemini-3.1-flash-lite-preview"),
+      // ── Claude (commented out — swap model string when switching) ──
+      // model: aiModel("claude-sonnet-4-6"),
       messages: [
         {
           role: "user",
           content: [
-            { type: "file", data: base64, mediaType: mimeType as "application/pdf" | "image/png" | "image/jpeg" | "image/heic" },
+            {
+              type: "file",
+              data: base64,
+              mediaType: mimeType as
+                | "application/pdf"
+                | "image/png"
+                | "image/jpeg"
+                | "image/heic",
+            },
             { type: "text", text: prompt },
           ],
         },
@@ -249,8 +263,8 @@ export async function POST(req: NextRequest) {
 
       /* -- Auto-create patient from extracted facesheet data -- */
       const firstName = safeFields.patient_first_name as string | undefined;
-      const lastName  = safeFields.patient_last_name  as string | undefined;
-      const dob       = safeFields.patient_dob        as string | undefined;
+      const lastName = safeFields.patient_last_name as string | undefined;
+      const dob = safeFields.patient_dob as string | undefined;
 
       if (firstName && lastName) {
         const { data: orderRow } = await adminClient
@@ -277,17 +291,20 @@ export async function POST(req: NextRequest) {
             const { data: newPatient, error: patientError } = await adminClient
               .from("patients")
               .insert({
-                facility_id:   orderRow.facility_id,
-                first_name:    firstName.trim(),
-                last_name:     lastName.trim(),
+                facility_id: orderRow.facility_id,
+                first_name: firstName.trim(),
+                last_name: lastName.trim(),
                 date_of_birth: dob ?? null,
-                is_active:     true,
+                is_active: true,
               })
               .select("id")
               .single();
 
             if (patientError || !newPatient) {
-              console.error("[extract-document] Failed to create patient:", patientError);
+              console.error(
+                "[extract-document] Failed to create patient:",
+                patientError,
+              );
               // Non-fatal — continue without patient link
             } else {
               patientId = newPatient.id;
@@ -328,6 +345,15 @@ export async function POST(req: NextRequest) {
       .from("orders")
       .update({ ai_extracted: true, ai_extracted_at: new Date().toISOString() })
       .eq("id", orderId);
+
+    /* -- Auto-generate PDF (non-blocking) -- */
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+    const pdfFormType = documentType === "facesheet" ? "hcfa_1500" : "order_form";
+    fetch(`${baseUrl}/api/generate-pdf`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId, formType: pdfFormType }),
+    }).catch(err => console.error("[PDF auto-gen]", err));
 
     return NextResponse.json({ success: true, documentType, extractedFields });
   } catch (err) {

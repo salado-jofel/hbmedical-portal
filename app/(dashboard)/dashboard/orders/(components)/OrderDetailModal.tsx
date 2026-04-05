@@ -138,6 +138,10 @@ export function OrderDetailModal({
 
   /* -- Documents (shared between Docs tab and right panel) -- */
   const [documents, setDocuments] = useState<IOrderDocument[]>([]);
+  const [localDocuments, setLocalDocuments] = useState<IOrderDocument[]>(
+    order.documents ?? [],
+  );
+  const [viewingDocId, setViewingDocId] = useState<string | null>(null);
   const [woundPhotoUrls, setWoundPhotoUrls] = useState<Record<string, string>>({});
   const [loadingDocs, setLoadingDocs] = useState(false);
 
@@ -198,11 +202,14 @@ export function OrderDetailModal({
           }
           setTab("order-form");
           toast.success("AI extraction complete — please review the data", { duration: 5000 });
-          // Refresh patient name — AI may have just linked a patient to this order
+          // Refresh patient name and documents — AI may have linked a patient and generated PDFs
           getOrderById(order.id).then((updated) => {
             if (updated?.patient_full_name) {
               setPatientName(updated.patient_full_name);
               dispatch(updateOrderInStore(updated));
+            }
+            if (updated?.documents) {
+              setLocalDocuments(updated.documents);
             }
           });
           return;
@@ -239,6 +246,11 @@ export function OrderDetailModal({
     if (order.patient_full_name) setPatientName(order.patient_full_name);
   }, [order.id, order.all_items, order.notes, order.patient_full_name]);
 
+  /* ── Sync localDocuments when order changes ── */
+  useEffect(() => {
+    setLocalDocuments(order.documents ?? []);
+  }, [order.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /* ── Load documents when modal opens ── */
   useEffect(() => {
     if (!open) return;
@@ -252,6 +264,7 @@ export function OrderDetailModal({
     setLoadingDocs(true);
     getOrderDocuments(order.id).then(async (docs) => {
       setDocuments(docs);
+      setLocalDocuments(docs);
       setLoadingDocs(false);
 
       const photos = docs.filter((d) => d.documentType === "wound_pictures");
@@ -366,6 +379,34 @@ export function OrderDetailModal({
     const doc = documents.find((d) => d.documentType === type);
     if (!doc) { toast("No document uploaded yet.", { icon: "ℹ️" }); return; }
     handleViewDoc(doc);
+  }
+
+  async function handleViewDocument(docType: string) {
+    const docs = localDocuments.filter((d: any) => d.documentType === docType);
+    if (docs.length === 0) {
+      toast.error("No document uploaded yet.");
+      return;
+    }
+    // Prefer generated PDF (has /generated/ in path) over manually uploaded
+    const doc = docs.find((d: any) => d.filePath?.includes("/generated/")) ?? docs[0];
+    if (!doc?.filePath) {
+      toast.error("Document path not found.");
+      return;
+    }
+    setViewingDocId(doc.id);
+    try {
+      const { url, error } = await getDocumentSignedUrl(doc.filePath);
+      if (!url) {
+        toast.error(error ?? "Could not generate download link.");
+        return;
+      }
+      window.open(url, "_blank");
+    } catch (err) {
+      console.error("[handleViewDocument]", err);
+      toast.error("Failed to open document.");
+    } finally {
+      setViewingDocId(null);
+    }
   }
 
   async function handleDeleteDoc(doc: IOrderDocument) {
@@ -848,7 +889,7 @@ export function OrderDetailModal({
                         )}
 
                         {/* SUCCESS: show extracted data */}
-                        {aiStatus === "complete" && orderForm && (
+                        {orderForm && (
                           <>
                             <div className="flex items-center gap-3 p-4 rounded-xl bg-green-50 border border-green-100">
                               <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0" />
@@ -897,7 +938,7 @@ export function OrderDetailModal({
                         )}
 
                         {/* PENDING: no docs uploaded yet */}
-                        {aiStatus === "idle" && (
+                        {!orderForm && aiStatus === "idle" && (
                           <div className="flex items-center gap-3 p-4 rounded-xl bg-amber-50 border border-amber-100">
                             <Clock className="w-4 h-4 text-amber-500 shrink-0" />
                             <div>
@@ -1216,23 +1257,32 @@ export function OrderDetailModal({
                       ) : (
                         <div className="grid grid-cols-2 gap-2">
                           {REQUIRED_DOC_TYPES.map((doc) => {
-                            const uploaded = documents.some((d) => d.documentType === doc.type);
+                            const typeDocs = localDocuments.filter((d) => d.documentType === doc.type);
+                            const uploaded = typeDocs.length > 0;
+                            const docRecord =
+                              typeDocs.find((d) => d.filePath?.includes("/generated/")) ?? typeDocs[0];
+                            const isLoading = viewingDocId === docRecord?.id;
                             return (
                               <button
                                 key={doc.type}
                                 type="button"
-                                onClick={() => handleViewDocByType(doc.type)}
+                                disabled={!uploaded || isLoading}
+                                onClick={() => uploaded && handleViewDocument(doc.type)}
                                 className={cn(
                                   "flex items-center gap-2 px-3 py-3 rounded-xl border text-xs font-bold text-left w-full transition-colors",
                                   uploaded
-                                    ? "bg-green-50 border-green-200 text-green-800 hover:bg-green-100"
-                                    : "bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100",
+                                    ? "bg-green-50 border-green-200 text-green-800 hover:bg-green-100 cursor-pointer"
+                                    : "bg-amber-50 border-amber-200 text-amber-800 cursor-default",
+                                  isLoading && "opacity-60",
                                 )}
                               >
-                                {uploaded
-                                  ? <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0" />
-                                  : <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                                }
+                                {isLoading ? (
+                                  <div className="w-3.5 h-3.5 border-2 border-green-500 border-t-transparent rounded-full animate-spin shrink-0" />
+                                ) : uploaded ? (
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0" />
+                                ) : (
+                                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                )}
                                 <span className="truncate">{doc.label}</span>
                               </button>
                             );

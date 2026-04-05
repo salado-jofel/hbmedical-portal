@@ -819,7 +819,16 @@ export function mapOrder(raw: RawOrderRecord): DashboardOrder {
       createdAt: i.created_at,
       updatedAt: i.updated_at,
     })),
-    documents: [],
+    documents: ((raw as any).order_documents as any[] | null)?.map((d) => ({
+      id:           d.id,
+      documentType: d.document_type,
+      fileName:     d.file_name,
+      filePath:     d.file_path,
+      mimeType:     d.mime_type,
+      fileSize:     d.file_size,
+      createdAt:    d.created_at,
+    })) ?? [],
+    documentCount: ((raw as any).order_documents as any[] | null)?.length ?? 0,
     // board_status for backwards compat
     board_status: raw.delivery_status === "delivered" ? "Delivered" : "New Orders",
     // legacy fields
