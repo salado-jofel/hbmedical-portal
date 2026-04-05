@@ -141,6 +141,21 @@ export interface IOrderMessage {
   createdAt:  string;
 }
 
+export interface INotification {
+  id:          string;
+  userId:      string;
+  orderId:     string;
+  type:        string;
+  title:       string;
+  body:        string;
+  orderNumber: string;
+  oldStatus:   string | null;
+  newStatus:   string | null;
+  isRead:      boolean;
+  readAt:      string | null;
+  createdAt:   string;
+}
+
 export interface IOrderHistory {
   id: string;
   orderId: string;

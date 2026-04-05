@@ -8,8 +8,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Loader2, AlertTriangle, PenLine } from "lucide-react";
+import { cn } from "@/utils/utils";
 import type { DashboardOrder } from "@/utils/interfaces/orders";
 import { signOrder } from "../(services)/actions";
 import toast from "react-hot-toast";
@@ -43,8 +43,8 @@ export function SignOrderModal({
   }
 
   function handleSubmit() {
-    if (!pin.trim()) {
-      setError("Please enter your PIN.");
+    if (!/^\d{4}$/.test(pin)) {
+      setError("PIN must be exactly 4 digits.");
       return;
     }
 
@@ -125,21 +125,36 @@ export function SignOrderModal({
               <label className="text-sm font-medium text-slate-700">
                 Enter your provider PIN
               </label>
-              <Input
+              <input
                 type="password"
-                placeholder="••••••"
+                inputMode="numeric"
+                placeholder="••••"
                 value={pin}
                 onChange={(e) => {
-                  setPin(e.target.value);
+                  setPin(e.target.value.replace(/\D/g, "").slice(0, 4));
                   setError(null);
                 }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") handleSubmit();
                 }}
                 disabled={isPending}
-                className="text-center tracking-widest text-lg"
-                maxLength={10}
+                maxLength={4}
+                className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-center tracking-[0.5em] text-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 disabled:opacity-50"
               />
+              {/* 4-dot indicator */}
+              <div className="flex gap-2 justify-center">
+                {[0, 1, 2, 3].map((i) => (
+                  <div
+                    key={i}
+                    className={cn(
+                      "w-3 h-3 rounded-full border-2 transition-all duration-150",
+                      pin.length > i
+                        ? "bg-blue-600 border-blue-600"
+                        : "border-slate-300",
+                    )}
+                  />
+                ))}
+              </div>
               {error && (
                 <p className="text-xs text-red-500">{error}</p>
               )}
@@ -160,7 +175,7 @@ export function SignOrderModal({
               <Button
                 type="button"
                 className="flex-1 rounded-xl bg-blue-600 hover:bg-blue-700 text-white"
-                disabled={isPending || !pin}
+                disabled={isPending || pin.length !== 4}
                 onClick={handleSubmit}
               >
                 {isPending ? (

@@ -9,6 +9,7 @@ import {
 } from "@/app/(dashboard)/dashboard/profile/(services)/actions";
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUserOrThrow, getUserRole } from "@/lib/supabase/auth";
 import { isSalesRep, isClinicalProvider } from "@/utils/helpers/role";
 import type { UserRole } from "@/utils/helpers/role";
@@ -113,6 +114,72 @@ export async function saveCredentials(
 
 export async function deleteCredentials(): Promise<void> {
   return _deleteCredentials();
+}
+
+export async function verifyAndChangePin(
+  currentPin: string,
+  newPin: string,
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const supabase = await createClient();
+    const user = await getCurrentUserOrThrow(supabase);
+    const adminClient = createAdminClient();
+
+    console.log("[changePin] user:", user.id);
+
+    const { data: creds } = await adminClient
+      .from("provider_credentials")
+      .select("pin_hash")
+      .eq("user_id", user.id)
+      .single();
+
+    console.log("[changePin] has pin_hash:", !!creds?.pin_hash);
+
+    // Verify current PIN only when one is already set and caller didn't skip
+    if (currentPin !== "SKIP_VERIFY" && creds?.pin_hash) {
+      console.log("[changePin] verifying current PIN...");
+      const { data: isValid } = await adminClient.rpc("verify_pin", {
+        input_pin:   currentPin,
+        stored_hash: creds.pin_hash,
+      });
+      console.log("[changePin] current PIN valid:", isValid);
+      if (!isValid) {
+        return { success: false, error: "Current PIN is incorrect." };
+      }
+    }
+
+    if (!/^\d{4}$/.test(newPin)) {
+      return { success: false, error: "PIN must be exactly 4 digits." };
+    }
+
+    console.log("[changePin] hashing new PIN...");
+    const { data: newHash, error: hashErr } = await adminClient.rpc("hash_pin", {
+      input_pin: newPin,
+    });
+
+    console.log("[changePin] hash result:", !!newHash, hashErr?.message ?? null);
+
+    if (!newHash || hashErr) {
+      return { success: false, error: "Failed to generate PIN hash." };
+    }
+
+    console.log("[changePin] updating DB...");
+    const { error: updateError } = await adminClient
+      .from("provider_credentials")
+      .update({ pin_hash: newHash, updated_at: new Date().toISOString() })
+      .eq("user_id", user.id);
+
+    console.log("[changePin] update error:", updateError?.message ?? null);
+
+    if (updateError) {
+      return { success: false, error: updateError.message };
+    }
+
+    return { success: true, error: null };
+  } catch (err) {
+    console.error("[changePin] threw:", err);
+    return { success: false, error: "An error occurred." };
+  }
 }
 
 /* -------------------------------------------------------------------------- */

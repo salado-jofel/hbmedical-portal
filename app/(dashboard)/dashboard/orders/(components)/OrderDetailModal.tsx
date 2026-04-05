@@ -285,6 +285,7 @@ interface OrderDetailModalProps {
   currentUserId?: string;
   unreadCount?: number;
   onClearUnread?: () => void;
+  initialTab?: string;
 }
 
 /* ── Component ── */
@@ -301,6 +302,7 @@ export function OrderDetailModal({
   currentUserId,
   unreadCount = 0,
   onClearUnread,
+  initialTab,
 }: OrderDetailModalProps) {
   const dispatch = useAppDispatch();
   const [, startTransition] = useTransition();
@@ -465,7 +467,7 @@ export function OrderDetailModal({
   useEffect(() => {
     if (!open) return;
     setModalReady(false);
-    setTab("overview");
+    setTab((initialTab as TabValue) ?? "overview");
     setMsgLoaded(false);
     setHistoryLoaded(false);
     setShowProductPicker(false);
@@ -647,6 +649,49 @@ export function OrderDetailModal({
 
     return () => { supabase.removeChannel(channel); };
   }, [open, order.id, tab, currentUserId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ── Realtime: live order status updates while modal is open ── */
+  useEffect(() => {
+    if (!open) return;
+
+    const supabase = createClient();
+    const channel = supabase
+      .channel(`order-status-${order.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event:  "UPDATE",
+          schema: "public",
+          table:  "orders",
+          filter: `id=eq.${order.id}`,
+        },
+        async (payload) => {
+          const updated = payload.new as Record<string, unknown>;
+          const old = payload.old as Record<string, unknown>;
+          if (updated.order_status === old.order_status) return;
+
+          const fullOrder = await getOrderById(order.id);
+          if (!fullOrder) return;
+          dispatch(updateOrderInStore(fullOrder));
+
+          const statusLabels: Record<string, string> = {
+            pending_signature:      "Pending Signature",
+            manufacturer_review:    "Manufacturer Review",
+            additional_info_needed: "Additional Info Needed",
+            approved:               "Approved",
+            shipped:                "Shipped",
+            canceled:               "Canceled",
+          };
+          toast.success(
+            `Order status updated to: ${statusLabels[updated.order_status as string] ?? updated.order_status}`,
+            { duration: 4000 },
+          );
+        },
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [open, order.id, dispatch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── Handlers ── */
 

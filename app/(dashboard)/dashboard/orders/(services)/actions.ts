@@ -15,6 +15,7 @@ import {
 } from "@/utils/helpers/role";
 import type {
   DashboardOrder,
+  INotification,
   IOrderDocument,
   IOrderHistory,
   IOrderIVR,
@@ -129,6 +130,97 @@ async function insertOrderHistory(
   });
   if (error) {
     console.error("[insertOrderHistory]", JSON.stringify(error));
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* createNotifications                                                        */
+/* -------------------------------------------------------------------------- */
+
+async function createNotifications(params: {
+  adminClient: ReturnType<typeof createAdminClient>;
+  orderId: string;
+  orderNumber: string;
+  facilityId: string;
+  type: string;
+  title: string;
+  body: string;
+  oldStatus: string | null;
+  newStatus: string | null;
+  notifyRoles: string[];
+  excludeUserId?: string;
+}): Promise<void> {
+  const { adminClient, orderId, orderNumber, facilityId, type, title, body, oldStatus, newStatus, notifyRoles, excludeUserId } = params;
+
+  console.log("[createNotifications] called", { type, orderId, orderNumber, facilityId, notifyRoles });
+
+  const clinicRoles = notifyRoles.filter((r) =>
+    ["clinical_staff", "clinical_provider"].includes(r),
+  );
+  const globalRoles = notifyRoles.filter((r) =>
+    ["admin", "support_staff"].includes(r),
+  );
+
+  const recipientIds: string[] = [];
+
+  // Step 1+2: clinic roles — get facility members, then filter by role
+  if (clinicRoles.length > 0) {
+    const { data: members } = await adminClient
+      .from("facility_members")
+      .select("user_id")
+      .eq("facility_id", facilityId);
+
+    const memberIds = (members ?? []).map((m) => m.user_id);
+    console.log("[createNotifications] facility members found:", memberIds.length);
+
+    if (memberIds.length > 0) {
+      const { data: clinicProfiles } = await adminClient
+        .from("profiles")
+        .select("id")
+        .in("id", memberIds)
+        .in("role", clinicRoles);
+
+      console.log("[createNotifications] clinic recipients:", (clinicProfiles ?? []).length);
+      recipientIds.push(...(clinicProfiles ?? []).map((p) => p.id));
+    }
+  }
+
+  // Global roles — admin, support_staff
+  if (globalRoles.length > 0) {
+    const { data: globalProfiles } = await adminClient
+      .from("profiles")
+      .select("id")
+      .in("role", globalRoles);
+
+    console.log("[createNotifications] global recipients:", (globalProfiles ?? []).length);
+    recipientIds.push(...(globalProfiles ?? []).map((p) => p.id));
+  }
+
+  const uniqueIds = [...new Set(recipientIds)].filter(
+    (id) => id !== excludeUserId,
+  );
+  console.log("[createNotifications] total unique recipients:", uniqueIds.length, excludeUserId ? `(excluded sender ${excludeUserId})` : "");
+
+  if (uniqueIds.length === 0) return;
+
+  const { error } = await adminClient.from("notifications").insert(
+    uniqueIds.map((userId) => ({
+      user_id:      userId,
+      order_id:     orderId,
+      order_number: orderNumber,
+      type,
+      title,
+      body,
+      old_status:   oldStatus ?? null,
+      new_status:   newStatus ?? null,
+      is_read:      false,
+    })),
+  );
+
+  if (error) {
+    console.error("[createNotifications] insert error:", JSON.stringify(error));
+  } else {
+    console.log(`[createNotifications] created ${uniqueIds.length} notifications type=${type} order=${orderNumber}`);
   }
 }
 
@@ -331,7 +423,7 @@ export async function submitForSignature(
 
     const { data: order } = await adminClient
       .from("orders")
-      .select("id, order_status")
+      .select("id, order_status, facility_id, order_number")
       .eq("id", orderId)
       .maybeSingle();
 
@@ -349,6 +441,18 @@ export async function submitForSignature(
     }
 
     await insertOrderHistory(adminClient, orderId, "Submitted for signature", "draft", "pending_signature", userId);
+    createNotifications({
+      adminClient,
+      orderId,
+      orderNumber: order.order_number,
+      facilityId:  order.facility_id,
+      type:        "order_submitted",
+      title:       "Order ready for signature",
+      body:        `Order ${order.order_number} has been submitted and requires your signature.`,
+      oldStatus:   "draft",
+      newStatus:   "pending_signature",
+      notifyRoles: ["clinical_provider"],
+    }).catch(() => {});
     revalidatePath(ORDERS_PATH);
     return { success: true };
   } catch (err) {
@@ -369,7 +473,7 @@ export async function recallOrder(
 
     const { data: order } = await adminClient
       .from("orders")
-      .select("id, order_status")
+      .select("id, order_status, facility_id, order_number")
       .eq("id", orderId)
       .maybeSingle();
 
@@ -389,6 +493,18 @@ export async function recallOrder(
     }
 
     await insertOrderHistory(adminClient, orderId, "Order recalled to draft", "pending_signature", "draft", userId);
+    createNotifications({
+      adminClient,
+      orderId,
+      orderNumber: order.order_number,
+      facilityId:  order.facility_id,
+      type:        "order_recalled",
+      title:       "Order recalled to draft",
+      body:        `Order ${order.order_number} has been recalled and returned to draft status.`,
+      oldStatus:   "pending_signature",
+      newStatus:   "draft",
+      notifyRoles: ["clinical_staff", "clinical_provider"],
+    }).catch(() => {});
     revalidatePath(ORDERS_PATH);
     return { success: true };
   } catch (err) {
@@ -415,25 +531,34 @@ export async function signOrder(
 
     // Get PIN hash
     const adminClient = createAdminClient();
-    const { data: creds } = await adminClient
+    const { data: creds, error: credError } = await adminClient
       .from("provider_credentials")
       .select("pin_hash")
       .eq("user_id", user.id)
       .maybeSingle();
 
+    console.log("[signOrder] verifying PIN for user:", user.id);
+    console.log("[signOrder] creds:", !!creds, credError?.message ?? null);
+    console.log("[signOrder] pin_hash found:", !!creds?.pin_hash);
+
     if (!creds?.pin_hash) {
       return { success: false, error: "No PIN set. Please set up your provider PIN.", noPinSet: true };
     }
 
-    const bcrypt = await import("bcryptjs");
-    const valid = await bcrypt.compare(pin, creds.pin_hash);
-    if (!valid) {
+    const { data: isValid, error: rpcError } = await adminClient.rpc("verify_pin", {
+      input_pin:   pin,
+      stored_hash: creds.pin_hash,
+    });
+
+    console.log("[signOrder] verify result:", isValid, rpcError?.message ?? null);
+
+    if (rpcError || !isValid) {
       return { success: false, error: "Incorrect PIN. Please try again." };
     }
 
     const { data: order } = await adminClient
       .from("orders")
-      .select("id, order_status, facility_id")
+      .select("id, order_status, facility_id, order_number")
       .eq("id", orderId)
       .maybeSingle();
 
@@ -477,6 +602,18 @@ export async function signOrder(
       "manufacturer_review",
       user.id,
     );
+    createNotifications({
+      adminClient,
+      orderId,
+      orderNumber: order.order_number,
+      facilityId:  order.facility_id,
+      type:        "order_signed",
+      title:       "Order signed and submitted",
+      body:        `Order ${order.order_number} has been signed and is ready for review.`,
+      oldStatus:   "pending_signature",
+      newStatus:   "manufacturer_review",
+      notifyRoles: ["admin", "support_staff"],
+    }).catch(() => {});
     revalidatePath(ORDERS_PATH);
     return { success: true };
   } catch (err) {
@@ -505,7 +642,7 @@ export async function approveOrder(
 
     const { data: order } = await adminClient
       .from("orders")
-      .select("id, order_status")
+      .select("id, order_status, facility_id, order_number")
       .eq("id", orderId)
       .maybeSingle();
 
@@ -536,6 +673,18 @@ export async function approveOrder(
       "approved",
       user.id,
     );
+    createNotifications({
+      adminClient,
+      orderId,
+      orderNumber: order.order_number,
+      facilityId:  order.facility_id,
+      type:        "order_approved",
+      title:       "Order approved! 🎉",
+      body:        `Order ${order.order_number} has been approved and is being prepared for shipment.`,
+      oldStatus:   "manufacturer_review",
+      newStatus:   "approved",
+      notifyRoles: ["clinical_staff", "clinical_provider"],
+    }).catch(() => {});
     revalidatePath(ORDERS_PATH);
     return { success: true };
   } catch (err) {
@@ -564,7 +713,7 @@ export async function requestAdditionalInfo(
 
     const { data: order } = await adminClient
       .from("orders")
-      .select("id, order_status")
+      .select("id, order_status, facility_id, order_number")
       .eq("id", orderId)
       .maybeSingle();
 
@@ -595,6 +744,18 @@ export async function requestAdditionalInfo(
       user.id,
       notes,
     );
+    createNotifications({
+      adminClient,
+      orderId,
+      orderNumber: order.order_number,
+      facilityId:  order.facility_id,
+      type:        "info_requested",
+      title:       "Additional information needed",
+      body:        `Order ${order.order_number} requires additional information before it can be approved.`,
+      oldStatus:   "manufacturer_review",
+      newStatus:   "additional_info_needed",
+      notifyRoles: ["clinical_staff", "clinical_provider"],
+    }).catch(() => {});
     revalidatePath(ORDERS_PATH);
     return { success: true };
   } catch (err) {
@@ -615,7 +776,7 @@ export async function resubmitForReview(
 
     const { data: order } = await adminClient
       .from("orders")
-      .select("id, order_status")
+      .select("id, order_status, facility_id, order_number")
       .eq("id", orderId)
       .maybeSingle();
 
@@ -642,6 +803,18 @@ export async function resubmitForReview(
       "manufacturer_review",
       userId,
     );
+    createNotifications({
+      adminClient,
+      orderId,
+      orderNumber: order.order_number,
+      facilityId:  order.facility_id,
+      type:        "order_resubmitted",
+      title:       "Order resubmitted for review",
+      body:        `Order ${order.order_number} has been resubmitted for manufacturer review.`,
+      oldStatus:   "additional_info_needed",
+      newStatus:   "manufacturer_review",
+      notifyRoles: ["admin", "support_staff"],
+    }).catch(() => {});
     revalidatePath(ORDERS_PATH);
     return { success: true };
   } catch (err) {
@@ -675,7 +848,7 @@ export async function addShippingInfo(
 
     const { data: order } = await adminClient
       .from("orders")
-      .select("id, order_status")
+      .select("id, order_status, facility_id, order_number")
       .eq("id", orderId)
       .maybeSingle();
 
@@ -723,6 +896,18 @@ export async function addShippingInfo(
       "shipped",
       user.id,
     );
+    createNotifications({
+      adminClient,
+      orderId,
+      orderNumber: order.order_number,
+      facilityId:  order.facility_id,
+      type:        "order_shipped",
+      title:       "Order shipped",
+      body:        `Order ${order.order_number} has shipped.${data.trackingNumber ? ` Tracking: ${data.carrier} #${data.trackingNumber}` : ""}`,
+      oldStatus:   "approved",
+      newStatus:   "shipped",
+      notifyRoles: ["clinical_staff", "clinical_provider"],
+    }).catch(() => {});
     revalidatePath(ORDERS_PATH);
     return { success: true };
   } catch (err) {
@@ -1120,6 +1305,45 @@ export async function sendOrderMessage(
     .from("message_reads")
     .insert({ message_id: newMsg.id, user_id: user.id });
 
+  // Notify other facility members + admins about the new message (non-blocking)
+  adminClient
+    .from("orders")
+    .select("facility_id, order_number, order_status")
+    .eq("id", orderId)
+    .single()
+    .then(async ({ data: orderData }) => {
+      if (!orderData) return;
+
+      const { data: senderProfile } = await adminClient
+        .from("profiles")
+        .select("first_name, last_name")
+        .eq("id", user.id)
+        .single();
+
+      const senderName = senderProfile
+        ? `${senderProfile.first_name ?? ""} ${senderProfile.last_name ?? ""}`.trim()
+        : "Someone";
+
+      const preview = message.trim().length > 60
+        ? message.trim().slice(0, 60) + "..."
+        : message.trim();
+
+      await createNotifications({
+        adminClient,
+        orderId,
+        orderNumber:   orderData.order_number,
+        facilityId:    orderData.facility_id,
+        type:          "message_received",
+        title:         `New message on ${orderData.order_number}`,
+        body:          `${senderName}: ${preview}`,
+        oldStatus:     null,
+        newStatus:     null,
+        notifyRoles:   ["clinical_staff", "clinical_provider", "admin"],
+        excludeUserId: user.id,
+      });
+    })
+    .catch(() => {});
+
   // Log history (non-blocking)
   adminClient.from("order_history").insert({
     order_id:     orderId,
@@ -1252,6 +1476,92 @@ export async function getUnreadMessageCounts(): Promise<Record<string, number>> 
     (data as { order_id: string; unread_count: number }[])
       .map((row) => [row.order_id, Number(row.unread_count)]),
   );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Notification actions                                                       */
+/* -------------------------------------------------------------------------- */
+
+export async function getNotifications(): Promise<INotification[]> {
+  const supabase = await createClient();
+  const user = await getCurrentUserOrThrow(supabase);
+
+  console.log("[getNotifications] user id:", user.id);
+
+  // Use adminClient with explicit user_id filter — auth.uid() is unreliable
+  // in server action context with publishable key (same issue as getOrderMessages)
+  const adminClient = createAdminClient();
+  const { data, error } = await adminClient
+    .from("notifications")
+    .select("*")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  console.log("[getNotifications] data:", data?.length, "error:", error?.message ?? null);
+
+  if (error) {
+    console.error("[getNotifications] error:", JSON.stringify(error));
+    return [];
+  }
+
+  return (data ?? []).map((n) => ({
+    id:          n.id,
+    userId:      n.user_id,
+    orderId:     n.order_id,
+    type:        n.type,
+    title:       n.title,
+    body:        n.body,
+    orderNumber: n.order_number,
+    oldStatus:   n.old_status,
+    newStatus:   n.new_status,
+    isRead:      n.is_read,
+    readAt:      n.read_at,
+    createdAt:   n.created_at,
+  }));
+}
+
+export async function markNotificationRead(
+  notificationId: string,
+): Promise<void> {
+  const supabase = await createClient();
+  const user = await getCurrentUserOrThrow(supabase);
+
+  const admin = createAdminClient();
+  await admin
+    .from("notifications")
+    .update({ is_read: true, read_at: new Date().toISOString() })
+    .eq("id", notificationId)
+    .eq("user_id", user.id);
+}
+
+export async function markAllNotificationsRead(): Promise<void> {
+  const supabase = await createClient();
+  const user = await getCurrentUserOrThrow(supabase);
+
+  const admin = createAdminClient();
+  await admin
+    .from("notifications")
+    .update({ is_read: true, read_at: new Date().toISOString() })
+    .eq("user_id", user.id)
+    .eq("is_read", false);
+}
+
+export async function getUnreadNotificationCount(): Promise<number> {
+  const supabase = await createClient();
+  const user = await getCurrentUserOrThrow(supabase);
+
+  console.log("[getUnreadCount] user:", user.id);
+
+  const admin = createAdminClient();
+  const { count } = await admin
+    .from("notifications")
+    .select("*", { count: "exact", head: true })
+    .eq("user_id", user.id)
+    .eq("is_read", false);
+
+  console.log("[getUnreadCount] count:", count);
+  return count ?? 0;
 }
 
 /* -------------------------------------------------------------------------- */

@@ -11,6 +11,7 @@ const dashboardSlice = createSlice({
       state.initials = action.payload.initials;
       state.role = action.payload.role;
       state.isSubRep = action.payload.isSubRep;
+      state.userId = action.payload.userId;
     },
     openSidebar(state) {
       state.isSidebarOpen = true;

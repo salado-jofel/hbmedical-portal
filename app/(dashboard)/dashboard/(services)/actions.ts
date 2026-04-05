@@ -13,6 +13,7 @@ export type UserData = {
   initials: string;
   role: UserRole;
   isSubRep: boolean;
+  userId: string;
 };
 
 export async function signOut() {
@@ -72,5 +73,6 @@ export async function getUserData(): Promise<UserData | null> {
     initials,
     role,
     isSubRep,
+    userId: user.id,
   };
 }

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef } from "react";
-import { useAppSelector } from "@/store/hooks";
+import { useAppSelector, useAppDispatch } from "@/store/hooks";
+import { updateOrderInStore } from "../(redux)/orders-slice";
 import type { DashboardOrder, OrderStatus } from "@/utils/interfaces/orders";
 import { CreateOrderModal } from "../(components)/CreateOrderModal";
 import { OrderCard } from "../(components)/OrderCard";
@@ -12,7 +13,7 @@ import {
   KANBAN_STATUS_CONFIG,
   groupOrdersByStatus,
 } from "../(components)/kanban-config";
-import { getUnreadMessageCounts } from "../(services)/actions";
+import { getUnreadMessageCounts, getOrderById } from "../(services)/actions";
 import { createClient } from "@/lib/supabase/client";
 import { EmptyState } from "@/app/(components)/EmptyState";
 import { Package, Search, ChevronDown } from "lucide-react";
@@ -48,9 +49,11 @@ export function OrdersPageClient({
   currentUserName,
 }: OrdersPageClientProps) {
   const orders = useAppSelector((state) => state.orders.items);
+  const dispatch = useAppDispatch();
 
   const [selectedOrder, setSelectedOrder] = useState<DashboardOrder | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [initialTab, setInitialTab] = useState("overview");
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const currentUserIdRef = useRef(currentUserId);
   useEffect(() => { currentUserIdRef.current = currentUserId; }, [currentUserId]);
@@ -61,6 +64,44 @@ export function OrdersPageClient({
     const latest = orders.find((o) => o.id === selectedOrder.id);
     if (latest && latest !== selectedOrder) setSelectedOrder(latest);
   }, [orders, modalOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Open modal from notification — CustomEvent (same page) or sessionStorage (navigated)
+  useEffect(() => {
+    function openModal(orderId: string, tab: string) {
+      const found = orders.find((o) => o.id === orderId);
+      if (found) {
+        setSelectedOrder(found);
+        setInitialTab(tab);
+        setModalOpen(true);
+      } else {
+        getOrderById(orderId).then((fetched) => {
+          if (!fetched) return;
+          setSelectedOrder(fetched);
+          setInitialTab(tab);
+          setModalOpen(true);
+        });
+      }
+    }
+
+    // CustomEvent: dispatched by NotificationBell when already on this page
+    function handleOpenOrderModal(e: Event) {
+      const { orderId, tab } = (e as CustomEvent<{ orderId: string; tab: string }>).detail;
+      openModal(orderId, tab ?? "overview");
+    }
+
+    // sessionStorage: set by NotificationBell when navigating from another page
+    const pending = sessionStorage.getItem("pending-order-open");
+    if (pending) {
+      try {
+        const { orderId, tab } = JSON.parse(pending) as { orderId: string; tab: string };
+        sessionStorage.removeItem("pending-order-open");
+        setTimeout(() => openModal(orderId, tab ?? "overview"), 600);
+      } catch { /* ignore malformed */ }
+    }
+
+    window.addEventListener("open-order-modal", handleOpenOrderModal);
+    return () => window.removeEventListener("open-order-modal", handleOpenOrderModal);
+  }, [orders]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load unread counts on mount (admin + clinical only)
   useEffect(() => {
@@ -92,6 +133,29 @@ export function OrdersPageClient({
     return () => { supabase.removeChannel(channel); };
   }, [currentUserId, canCreate, isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Realtime: re-fetch and update order card when status changes
+  useEffect(() => {
+    const supabase = createClient();
+    const channel = supabase
+      .channel("orders-status-changes")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "orders" },
+        async (payload) => {
+          const updated = payload.new as Record<string, unknown>;
+          const old = payload.old as Record<string, unknown>;
+          if (updated.order_status === old.order_status) return;
+
+          const fullOrder = await getOrderById(updated.id as string);
+          if (!fullOrder) return;
+          dispatch(updateOrderInStore(fullOrder));
+        },
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [dispatch]); // eslint-disable-line react-hooks/exhaustive-deps
+
   function handleClearUnread(orderId: string) {
     setUnreadCounts((prev) => {
       const next = { ...prev };
@@ -114,6 +178,7 @@ export function OrdersPageClient({
   function handleSummaryClose() {
     setModalOpen(false);
     setSelectedOrder(null);
+    setInitialTab("overview");
   }
 
   // Filter orders
@@ -150,6 +215,7 @@ export function OrdersPageClient({
       currentUserName={currentUserName}
       unreadCount={unreadCounts[selectedOrder.id] ?? 0}
       onClearUnread={() => handleClearUnread(selectedOrder.id)}
+      initialTab={initialTab}
     />
   );
 
