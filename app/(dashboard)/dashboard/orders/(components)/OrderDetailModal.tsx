@@ -36,6 +36,7 @@ import {
   Paperclip,
   Download,
   Clock,
+  MessageSquare,
 } from "lucide-react";
 import type {
   DashboardOrder,
@@ -100,6 +101,22 @@ const ALL_DOC_TYPES: Array<{ type: string; label: string }> = [
   { type: "wound_pictures", label: "Wound Pictures" },
   { type: "other", label: "Other" },
 ];
+
+const ROLE_COLOR: Record<string, string> = {
+  admin:                "bg-purple-100 text-purple-800",
+  clinical_provider:    "bg-blue-100 text-blue-800",
+  clinical_staff:       "bg-green-100 text-green-800",
+  support_staff:        "bg-orange-100 text-orange-800",
+  sales_representative: "bg-gray-100 text-gray-700",
+};
+
+const ROLE_BADGE: Record<string, string> = {
+  admin:                "Admin",
+  clinical_provider:    "Provider",
+  clinical_staff:       "Staff",
+  support_staff:        "Support",
+  sales_representative: "Rep",
+};
 
 const TABS = [
   { value: "overview", label: "Overview" },
@@ -263,6 +280,7 @@ interface OrderDetailModalProps {
   isClinical: boolean;
   canEdit: boolean;
   currentUserName?: string;
+  currentUserId?: string;
 }
 
 /* ── Component ── */
@@ -276,6 +294,7 @@ export function OrderDetailModal({
   isClinical,
   canEdit,
   currentUserName,
+  currentUserId,
 }: OrderDetailModalProps) {
   const dispatch = useAppDispatch();
   const [, startTransition] = useTransition();
@@ -311,6 +330,7 @@ export function OrderDetailModal({
   const [msgLoaded, setMsgLoaded] = useState(false);
   const [newMessage, setNewMessage] = useState("");
   const [sendingMsg, setSendingMsg] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   /* -- History (lazy-loaded) -- */
   const [history, setHistory] = useState<IOrderHistory[]>([]);
@@ -398,12 +418,21 @@ export function OrderDetailModal({
     }, 3000);
   }
 
+  /* -- Dirty tracking for child tabs -- */
+  const [isIvrDirty, setIsIvrDirty] = useState(false);
+  const [isHcfaDirty, setIsHcfaDirty] = useState(false);
+
+  /* -- Reset keys to remount child tabs on discard -- */
+  const [resetIvrKey, setResetIvrKey] = useState(0);
+  const [resetHcfaKey, setResetHcfaKey] = useState(0);
+
   /* -- Sub-modal flags -- */
   const [signOpen, setSignOpen] = useState(false);
   const [approveOpen, setApproveOpen] = useState(false);
   const [shipOpen, setShipOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [completionOpen, setCompletionOpen] = useState(false);
+  const [closeWarningOpen, setCloseWarningOpen] = useState(false);
 
   /* -- Loading flags -- */
   const [isActing, setIsActing] = useState(false);
@@ -546,6 +575,11 @@ export function OrderDetailModal({
     });
   }, [showProductPicker]);
 
+  /* ── Auto-scroll chat to latest message ── */
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
   /* ── Handlers ── */
 
   async function handleSendMessage() {
@@ -671,15 +705,24 @@ export function OrderDetailModal({
     setQuantities({});
   }
 
-  async function handleEditAndSubmit() {
+  async function handleSubmitOrder() {
+    if (draftItems.length === 0) {
+      toast.error("Please add at least one product before submitting.", { duration: 4000 });
+      setTab("overview");
+      return;
+    }
+    if (hasAnyUnsavedChanges) {
+      toast.error(
+        `You have unsaved changes in: ${dirtyTabs.join(", ")}. Please save or discard them before submitting.`,
+        { duration: 5000 },
+      );
+      if (isOverviewDirty) setTab("overview");
+      else if (isIvrDirty) setTab("ivr");
+      else if (isHcfaDirty) setTab("hcfa");
+      return;
+    }
     const hasFacesheet = documents.some((d) => d.documentType === "facesheet");
-    const hasProducts = draftItems.length > 0;
-    if (
-      !hasFacesheet ||
-      !hasProducts ||
-      !order.date_of_service ||
-      !order.wound_type
-    ) {
+    if (!hasFacesheet || !order.date_of_service || !order.wound_type) {
       setCompletionOpen(true);
       return;
     }
@@ -690,6 +733,14 @@ export function OrderDetailModal({
       onClose();
     } else toast.error(result.error ?? "Failed to submit.");
     setSubmitting(false);
+  }
+
+  function handleClose() {
+    if (hasAnyUnsavedChanges) {
+      setCloseWarningOpen(true);
+      return;
+    }
+    onClose();
   }
 
   async function handleDelete() {
@@ -862,6 +913,17 @@ export function OrderDetailModal({
     }) ||
     savedItems.some((s) => !draftItems.find((d) => d.id === s.id)) ||
     draftNotes !== savedNotes;
+  const hasAnyUnsavedChanges = isOverviewDirty || isIvrDirty || isHcfaDirty;
+  const dirtyTabs = [
+    ...(isOverviewDirty ? ["Overview"] : []),
+    ...(isIvrDirty ? ["IVR Form"] : []),
+    ...(isHcfaDirty ? ["HCFA/1500"] : []),
+  ];
+  const tabDirtyMap: Record<string, boolean> = {
+    overview: isOverviewDirty,
+    ivr: isIvrDirty,
+    hcfa: isHcfaDirty,
+  };
   const orderTotal = draftItems.reduce((sum, item) => {
     return sum + (item.subtotal ?? item.unitPrice * item.quantity);
   }, 0);
@@ -920,6 +982,23 @@ export function OrderDetailModal({
           setItemToDelete(null);
         }}
       />
+      <ConfirmModal
+        open={closeWarningOpen}
+        onOpenChange={setCloseWarningOpen}
+        title="Unsaved Changes"
+        description={`You have unsaved changes in: ${dirtyTabs.join(", ")}. Discard all changes and close?`}
+        confirmLabel="Discard & Close"
+        cancelLabel="Continue Editing"
+        onConfirm={() => {
+          handleDiscardOverview();
+          setIsIvrDirty(false);
+          setIsHcfaDirty(false);
+          setResetIvrKey((k) => k + 1);
+          setResetHcfaKey((k) => k + 1);
+          setCloseWarningOpen(false);
+          onClose();
+        }}
+      />
       <SignOrderModal
         open={signOpen}
         onOpenChange={setSignOpen}
@@ -944,7 +1023,7 @@ export function OrderDetailModal({
       <RadixDialog.Root
         open={open}
         onOpenChange={(v) => {
-          if (!v) onClose();
+          if (!v) handleClose();
         }}
       >
         <DialogPortal>
@@ -974,7 +1053,7 @@ export function OrderDetailModal({
                 <div className="flex items-center gap-3 shrink-0 ml-4">
                   <OrderStatusBadge status={order.order_status} />
                   <button
-                    onClick={onClose}
+                    onClick={handleClose}
                     className="w-9 h-9 rounded-full hover:bg-gray-100 transition-colors flex items-center justify-center"
                   >
                     <X className="w-4 h-4 text-gray-500" />
@@ -991,6 +1070,7 @@ export function OrderDetailModal({
                     <div className="flex overflow-x-auto">
                       {TABS.map((t) => {
                         const badge = t.value === "conversation" ? msgCount : 0;
+                        const isDirtyTab = tabDirtyMap[t.value] ?? false;
                         return (
                           <button
                             key={t.value}
@@ -1003,6 +1083,9 @@ export function OrderDetailModal({
                             )}
                           >
                             {t.label}
+                            {isDirtyTab && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />
+                            )}
                             {badge > 0 && (
                               <span className="text-[10px] bg-[#15689E] text-white px-1.5 py-0.5 rounded-full font-bold">
                                 {badge}
@@ -1017,8 +1100,7 @@ export function OrderDetailModal({
                   {/* Tab content — absolute-positioned so each tab fills space */}
                   <div className="flex-1 relative overflow-hidden">
                     {/* OVERVIEW */}
-                    {tab === "overview" && (
-                      <div className="absolute inset-0 overflow-y-auto px-6 space-y-5">
+                    <div className={cn("absolute inset-0 overflow-y-auto px-6 space-y-5", tab !== "overview" && "hidden")}>
                         {/* ── Unified Save/Discard toolbar ── */}
                         {canEdit && status === "draft" && (
                           <div className="sticky top-0 z-10 bg-white border-b border-gray-300 py-3 flex items-center justify-between">
@@ -1381,12 +1463,10 @@ export function OrderDetailModal({
                             className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm text-gray-700 border border-gray-100 focus:outline-none focus:ring-2 focus:ring-[#15689E]/20 resize-none disabled:opacity-60 disabled:cursor-default transition-shadow"
                           />
                         </div>
-                      </div>
-                    )}
+                    </div>
 
                     {/* ORDER FORM (AI-extracted, read-only) */}
-                    {tab === "order-form" && (
-                      <div className="absolute inset-0 overflow-y-auto px-6 py-6 space-y-4">
+                    <div className={cn("absolute inset-0 overflow-y-auto px-6 py-6 space-y-4", tab !== "order-form" && "hidden")}>
                         {/* SPINNER: AI processing */}
                         {aiStatus === "processing" && (
                           <div className="flex items-center gap-4 p-5 rounded-2xl bg-blue-50 border border-blue-100">
@@ -1545,19 +1625,20 @@ export function OrderDetailModal({
                             </div>
                           </div>
                         )}
-                      </div>
-                    )}
+                    </div>
 
                     {/* IVR FORM */}
-                    {tab === "ivr" && (
-                      <div className="absolute inset-0 overflow-y-auto px-6">
+                    <div className={cn("absolute inset-0 overflow-y-auto px-6", tab !== "ivr" && "hidden")}>
                         <OrderIVRForm
+                          key={resetIvrKey}
                           orderId={order.id}
                           canEdit={canEdit}
                           initialData={ivrData}
                           isReady={ivrLoaded}
+                          onDirtyChange={setIsIvrDirty}
                           onSave={async (saved) => {
                             setIvrData(saved);
+                            setIsIvrDirty(false);
                             setGeneratingPdfType("additional_ivr");
                             setTimeout(async () => {
                               await refreshDocuments();
@@ -1565,19 +1646,20 @@ export function OrderDetailModal({
                             }, 3000);
                           }}
                         />
-                      </div>
-                    )}
+                    </div>
 
                     {/* HCFA / CMS-1500 */}
-                    {tab === "hcfa" && (
-                      <div className="absolute inset-0 overflow-y-auto px-6">
+                    <div className={cn("absolute inset-0 overflow-y-auto px-6", tab !== "hcfa" && "hidden")}>
                         <Form1500Tab
+                          key={resetHcfaKey}
                           orderId={order.id}
                           canEdit={canEdit}
                           initialData={hcfaData}
                           isReady={hcfaLoaded}
+                          onDirtyChange={setIsHcfaDirty}
                           onSave={async (saved) => {
                             setHcfaData(saved);
+                            setIsHcfaDirty(false);
                             setGeneratingPdfType("form_1500");
                             setTimeout(async () => {
                               await refreshDocuments();
@@ -1585,45 +1667,72 @@ export function OrderDetailModal({
                             }, 3000);
                           }}
                         />
-                      </div>
-                    )}
+                    </div>
 
                     {/* CHAT */}
-                    {tab === "conversation" && (
-                      <div className="absolute inset-0 flex flex-col">
-                        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3 min-h-0">
+                    <div className={cn("absolute inset-0 flex flex-col", tab !== "conversation" && "hidden")}>
+                        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 min-h-0">
                           {loadingMessages ? (
                             <div className="flex justify-center py-8">
                               <Loader2 className="w-5 h-5 animate-spin text-gray-300" />
                             </div>
                           ) : messages.length === 0 ? (
-                            <p className="text-sm text-gray-400 text-center py-8">
-                              No messages yet. Start the conversation.
-                            </p>
-                          ) : (
-                            messages.map((m) => (
-                              <div key={m.id} className="space-y-1">
-                                <div className="flex items-center gap-1.5">
-                                  <User className="w-3.5 h-3.5 text-gray-400" />
-                                  <span className="text-xs font-semibold text-gray-700">
-                                    {m.senderName ?? "Unknown"}
-                                  </span>
-                                  <span className="text-xs text-gray-400">
-                                    {new Date(m.createdAt).toLocaleString()}
-                                  </span>
-                                </div>
-                                <div className="bg-gray-50 border border-gray-100 rounded-2xl px-3 py-2.5">
-                                  <p className="text-sm text-gray-700 whitespace-pre-wrap">
-                                    {m.message}
-                                  </p>
-                                </div>
+                            <div className="flex flex-col items-center justify-center h-full text-center py-12">
+                              <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-3">
+                                <MessageSquare className="w-6 h-6 text-gray-300" />
                               </div>
-                            ))
+                              <p className="text-sm font-medium text-gray-400">No messages yet</p>
+                              <p className="text-xs text-gray-300 mt-1">Start the conversation with your team</p>
+                            </div>
+                          ) : (
+                            messages.map((m) => {
+                              const isMine = m.senderId === currentUserId;
+                              const roleColor = ROLE_COLOR[m.senderRole] ?? "bg-gray-100 text-gray-700";
+                              const roleBadge = ROLE_BADGE[m.senderRole] ?? m.senderRole;
+                              const initials = m.senderName.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
+                              return (
+                                <div key={m.id} className={cn("flex gap-2 items-end", isMine ? "flex-row-reverse" : "flex-row")}>
+                                  {/* Avatar */}
+                                  <div className={cn("w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mb-0.5", roleColor)}>
+                                    {initials}
+                                  </div>
+                                  <div className={cn("max-w-[75%] space-y-1 flex flex-col", isMine ? "items-end" : "items-start")}>
+                                    {/* Name + badge + time */}
+                                    <div className={cn("flex items-center gap-1.5 text-[10px]", isMine ? "flex-row-reverse" : "flex-row")}>
+                                      <span className="font-semibold text-gray-700">
+                                        {isMine ? "You" : m.senderName}
+                                      </span>
+                                      <span className={cn("px-1.5 py-0.5 rounded text-[9px] font-bold", roleColor)}>
+                                        {roleBadge}
+                                      </span>
+                                      <span className="text-gray-400">
+                                        {new Date(m.createdAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                                      </span>
+                                    </div>
+                                    {/* Bubble */}
+                                    <div className={cn(
+                                      "px-3 py-2 rounded-2xl text-sm leading-relaxed break-words",
+                                      isMine
+                                        ? "bg-[#15689E] text-white rounded-br-sm"
+                                        : "bg-gray-100 text-gray-800 rounded-bl-sm",
+                                    )}>
+                                      {m.message}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })
                           )}
+                          <div ref={messagesEndRef} />
                         </div>
                         <div className="shrink-0 px-6 py-3 border-t border-gray-100 flex gap-2">
                           <Input
-                            placeholder="Type a message..."
+                            placeholder={
+                              isAdmin    ? "Reply as Admin..."    :
+                              canSign    ? "Reply as Provider..." :
+                              isClinical ? "Message your team..."  :
+                                           "Send a message..."
+                            }
                             value={newMessage}
                             onChange={(e) => setNewMessage(e.target.value)}
                             onKeyDown={(e) => {
@@ -1648,12 +1757,10 @@ export function OrderDetailModal({
                             )}
                           </Button>
                         </div>
-                      </div>
-                    )}
+                    </div>
 
                     {/* HISTORY */}
-                    {tab === "history" && (
-                      <div className="absolute inset-0 overflow-y-auto px-6 py-6">
+                    <div className={cn("absolute inset-0 overflow-y-auto px-6 py-6", tab !== "history" && "hidden")}>
                         {loadingHistory ? (
                           <div className="flex justify-center py-8">
                             <Loader2 className="w-5 h-5 animate-spin text-gray-300" />
@@ -1713,8 +1820,7 @@ export function OrderDetailModal({
                             ))}
                           </div>
                         )}
-                      </div>
-                    )}
+                    </div>
                   </div>
                   {/* end tab content */}
 
@@ -1732,17 +1838,29 @@ export function OrderDetailModal({
                         </button>
                       )}
 
-                      {/* Edit and Submit Order — draft, clinic only */}
+                      {/* Submit Order — draft, clinic only */}
                       {isClinical && status === "draft" && (
                         <button
-                          onClick={handleEditAndSubmit}
-                          disabled={submitting}
-                          className="px-8 py-2.5 bg-[#15689E] text-white font-bold rounded-xl shadow-lg shadow-[#15689E]/20 hover:bg-[#15689E]/90 active:scale-[0.98] transition-all text-sm disabled:opacity-60 flex items-center gap-2"
+                          onClick={handleSubmitOrder}
+                          disabled={submitting || draftItems.length === 0 || hasAnyUnsavedChanges}
+                          title={
+                            draftItems.length === 0
+                              ? "Add at least one product before submitting"
+                              : hasAnyUnsavedChanges
+                                ? `Save changes in: ${dirtyTabs.join(", ")}`
+                                : undefined
+                          }
+                          className={cn(
+                            "px-8 py-2.5 font-bold rounded-xl text-sm flex items-center gap-2 transition-all",
+                            submitting || draftItems.length === 0 || hasAnyUnsavedChanges
+                              ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                              : "bg-[#15689E] text-white shadow-lg shadow-[#15689E]/20 hover:bg-[#15689E]/90 active:scale-[0.98]",
+                          )}
                         >
                           {submitting && (
                             <Loader2 className="w-4 h-4 animate-spin" />
                           )}
-                          Edit and Submit Order
+                          Submit Order
                         </button>
                       )}
 
@@ -1852,7 +1970,7 @@ export function OrderDetailModal({
                           <Building2 className="w-3 h-3" /> Clinic
                         </p>
                         <p className="text-xs font-semibold text-gray-700 truncate max-w-[140px]">
-                          {order.facility_name ?? "—"}
+                          {order.facility_name || "—"}
                         </p>
                       </div>
                     </div>

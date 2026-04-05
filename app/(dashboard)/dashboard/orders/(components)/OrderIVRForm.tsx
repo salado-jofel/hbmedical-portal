@@ -15,6 +15,7 @@ interface OrderIVRFormProps {
   initialData: Partial<IOrderIVR> | null;
   isReady: boolean;
   onSave?: (data: Partial<IOrderIVR>) => void;
+  onDirtyChange?: (isDirty: boolean) => void;
 }
 
 type IVRFieldKey = keyof Omit<
@@ -28,6 +29,7 @@ export function OrderIVRForm({
   initialData,
   isReady,
   onSave,
+  onDirtyChange,
 }: OrderIVRFormProps) {
   const [savedData, setSavedData] = useState<Partial<IOrderIVR> | null>(
     initialData ?? null,
@@ -44,6 +46,10 @@ export function OrderIVRForm({
   }, [initialData]);
 
   const isDirty = JSON.stringify(draftData) !== JSON.stringify(savedData);
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty]);
 
   function handleChange(
     field: IVRFieldKey,

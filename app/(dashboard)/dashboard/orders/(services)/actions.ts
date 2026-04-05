@@ -146,7 +146,7 @@ const ORDER_WITH_RELATIONS_SELECT = `
   patients (id, facility_id, first_name, last_name, date_of_birth, patient_ref, notes, is_active, created_at, updated_at),
   order_items (id, order_id, product_id, product_name, product_sku, unit_price, quantity, shipping_amount, tax_amount, subtotal, total_amount, created_at, updated_at),
   order_documents (id, document_type, file_name, file_path, mime_type, file_size, uploaded_by, created_at),
-  facilities (id, name)
+  facilities!orders_facility_id_fkey (id, name)
 `;
 
 /* -------------------------------------------------------------------------- */
@@ -1086,30 +1086,39 @@ export async function deleteOrderDocument(
 export async function sendOrderMessage(
   orderId: string,
   message: string,
-): Promise<{ success: boolean; error?: string }> {
-  try {
-    const supabase = await createClient();
-    const user = await getCurrentUserOrThrow(supabase);
-    const adminClient = createAdminClient();
+): Promise<{ success: boolean; error: string | null }> {
+  const supabase = await createClient();
+  const user = await getCurrentUserOrThrow(supabase);
 
-    if (!message.trim()) return { success: false, error: "Message cannot be empty." };
-
-    const { error } = await adminClient.from("order_messages").insert({
-      order_id: orderId,
-      sender_id: user.id,
-      message: message.trim(),
-    });
-
-    if (error) {
-      console.error("[sendOrderMessage]", JSON.stringify(error));
-      return { success: false, error: "Failed to send message." };
-    }
-
-    revalidatePath(ORDERS_PATH);
-    return { success: true };
-  } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  if (!message.trim()) {
+    return { success: false, error: "Message cannot be empty." };
   }
+
+  const adminClient = createAdminClient();
+  const { error } = await adminClient.from("order_messages").insert({
+    order_id:  orderId,
+    sender_id: user.id,
+    message:   message.trim(),
+  });
+
+  if (error) {
+    console.error("[sendOrderMessage]", JSON.stringify(error));
+    return { success: false, error: error.message ?? "Failed to send message." };
+  }
+
+  adminClient.from("order_history").insert({
+    order_id:     orderId,
+    performed_by: user.id,
+    action:       "Message sent",
+    old_status:   null,
+    new_status:   null,
+    notes:        null,
+  }).then(({ error: hErr }) => {
+    if (hErr) console.error("[sendOrderMessage history]", hErr.message);
+  });
+
+  revalidatePath(ORDERS_PATH);
+  return { success: true, error: null };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1120,10 +1129,12 @@ export async function getOrderMessages(
   orderId: string,
 ): Promise<IOrderMessage[]> {
   const supabase = await createClient();
+  await getCurrentUserOrThrow(supabase);
 
+  // Step 1 — fetch messages without join (sender_id → auth.users, not profiles)
   const { data, error } = await supabase
     .from("order_messages")
-    .select("*, profiles:sender_id (full_name, role)")
+    .select("id, order_id, sender_id, message, created_at")
     .eq("order_id", orderId)
     .order("created_at", { ascending: true });
 
@@ -1131,20 +1142,46 @@ export async function getOrderMessages(
     console.error("[getOrderMessages]", JSON.stringify(error));
     return [];
   }
+  if (!data || data.length === 0) return [];
 
-  return (data ?? []).map((m) => {
-    const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
-    return {
-      id: m.id,
-      orderId: m.order_id,
-      senderId: m.sender_id,
-      message: m.message,
-      createdAt: m.created_at,
-      updatedAt: m.updated_at,
-      senderName: (profile as { full_name?: string } | null)?.full_name ?? null,
-      senderRole: (profile as { role?: string } | null)?.role ?? null,
-    };
-  });
+  // Step 2 — collect unique sender IDs
+  const senderIds = [
+    ...new Set(
+      data.map((m) => m.sender_id).filter((id): id is string => !!id),
+    ),
+  ];
+
+  // Step 3 — resolve names + roles from profiles
+  let nameMap: Record<string, { name: string; role: string }> = {};
+  if (senderIds.length > 0) {
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, first_name, last_name, role")
+      .in("id", senderIds);
+
+    if (profiles) {
+      nameMap = Object.fromEntries(
+        profiles.map((p) => [
+          p.id,
+          {
+            name: `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim() || "Unknown",
+            role: p.role ?? "unknown",
+          },
+        ]),
+      );
+    }
+  }
+
+  // Step 4 — map with resolved names
+  return data.map((m) => ({
+    id:         m.id,
+    orderId:    m.order_id,
+    senderId:   m.sender_id,
+    senderName: nameMap[m.sender_id]?.name ?? "Unknown",
+    senderRole: nameMap[m.sender_id]?.role ?? "unknown",
+    message:    m.message,
+    createdAt:  m.created_at,
+  }));
 }
 
 /* -------------------------------------------------------------------------- */

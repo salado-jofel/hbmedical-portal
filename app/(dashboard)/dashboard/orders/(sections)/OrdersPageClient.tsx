@@ -42,6 +42,7 @@ export function OrdersPageClient({
   isAdmin,
   isRep,
   isSupport,
+  currentUserId,
   currentUserName,
 }: OrdersPageClientProps) {
   const orders = useAppSelector((state) => state.orders.items);
@@ -101,6 +102,7 @@ export function OrdersPageClient({
       isAdmin={isAdmin}
       isClinical={canCreate}
       canEdit={canCreate}
+      currentUserId={currentUserId}
       currentUserName={currentUserName}
     />
   );

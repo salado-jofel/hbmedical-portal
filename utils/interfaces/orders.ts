@@ -132,15 +132,13 @@ export interface IOrderDocument {
 }
 
 export interface IOrderMessage {
-  id: string;
-  orderId: string;
-  senderId: string;
-  message: string;
-  createdAt: string;
-  updatedAt: string;
-  // joined
-  senderName: string | null;
-  senderRole: string | null;
+  id:         string;
+  orderId:    string;
+  senderId:   string;
+  senderName: string;
+  senderRole: string;
+  message:    string;
+  createdAt:  string;
 }
 
 export interface IOrderHistory {

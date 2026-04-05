@@ -21,6 +21,7 @@ interface Form1500TabProps {
   initialData: Record<string, unknown> | null;
   isReady: boolean;
   onSave?: (data: Record<string, unknown>) => void;
+  onDirtyChange?: (isDirty: boolean) => void;
 }
 
 function FormField({
@@ -87,6 +88,7 @@ export function Form1500Tab({
   initialData,
   isReady,
   onSave,
+  onDirtyChange,
 }: Form1500TabProps) {
   const [savedData, setSavedData] = useState<Form1500Data>(
     (initialData as Form1500Data) ?? {},
@@ -97,6 +99,10 @@ export function Form1500Tab({
   const [isSaving, setIsSaving] = useState(false);
 
   const isDirty = JSON.stringify(draftData) !== JSON.stringify(savedData);
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty]);
 
   // Sync when initialData changes (modal reopened for different order)
   useEffect(() => {
