@@ -52,6 +52,7 @@ import {
   getOrderHistory,
   getOrderDocuments,
   sendOrderMessage,
+  markMessagesAsRead,
   uploadOrderDocument,
   deleteOrderDocument,
   getDocumentSignedUrl,
@@ -70,6 +71,7 @@ import {
   getOrderIVR,
   getForm1500,
 } from "../(services)/actions";
+import { createClient } from "@/lib/supabase/client";
 import type { IOrderIVR } from "@/utils/interfaces/orders";
 import { OrderStatusBadge } from "./OrderStatusBadge";
 import { OrderIVRForm } from "./OrderIVRForm";
@@ -281,6 +283,8 @@ interface OrderDetailModalProps {
   canEdit: boolean;
   currentUserName?: string;
   currentUserId?: string;
+  unreadCount?: number;
+  onClearUnread?: () => void;
 }
 
 /* ── Component ── */
@@ -295,6 +299,8 @@ export function OrderDetailModal({
   canEdit,
   currentUserName,
   currentUserId,
+  unreadCount = 0,
+  onClearUnread,
 }: OrderDetailModalProps) {
   const dispatch = useAppDispatch();
   const [, startTransition] = useTransition();
@@ -331,6 +337,8 @@ export function OrderDetailModal({
   const [newMessage, setNewMessage] = useState("");
   const [sendingMsg, setSendingMsg] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const currentUserIdRef = useRef(currentUserId);
+  useEffect(() => { currentUserIdRef.current = currentUserId; }, [currentUserId]);
 
   /* -- History (lazy-loaded) -- */
   const [history, setHistory] = useState<IOrderHistory[]>([]);
@@ -580,7 +588,76 @@ export function OrderDetailModal({
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  /* ── Realtime: append new messages while modal is open ── */
+  useEffect(() => {
+    if (!open) return;
+
+    const supabase = createClient();
+    const channel = supabase
+      .channel(`chat-${order.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event:  "INSERT",
+          schema: "public",
+          table:  "order_messages",
+          filter: `order_id=eq.${order.id}`,
+        },
+        async (payload) => {
+          const newMsg = payload.new as {
+            id: string;
+            order_id: string;
+            sender_id: string;
+            message: string;
+            created_at: string;
+          };
+
+          // Own messages are added optimistically — skip to avoid duplicate
+          if (newMsg.sender_id === currentUserIdRef.current) return;
+
+          // Resolve sender profile
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("first_name, last_name, role")
+            .eq("id", newMsg.sender_id)
+            .single();
+
+          const resolvedMsg: IOrderMessage = {
+            id:         newMsg.id,
+            orderId:    newMsg.order_id,
+            senderId:   newMsg.sender_id,
+            senderName: profile
+              ? `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() || "Unknown"
+              : "Unknown",
+            senderRole: profile?.role ?? "unknown",
+            message:    newMsg.message,
+            createdAt:  newMsg.created_at,
+          };
+
+          setMessages((prev) => [...prev, resolvedMsg]);
+
+          // If chat is already open — mark as read immediately
+          if (tab === "conversation") {
+            markMessagesAsRead(order.id);
+          }
+          // Otherwise the badge in OrdersPageClient's Realtime will show it
+        },
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [open, order.id, tab, currentUserId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /* ── Handlers ── */
+
+  function handleTabClick(value: TabValue) {
+    setTab(value);
+    if (value === "conversation") {
+      markMessagesAsRead(order.id).then(() => {
+        onClearUnread?.();
+      });
+    }
+  }
 
   async function handleSendMessage() {
     if (!newMessage.trim()) return;
@@ -1069,12 +1146,13 @@ export function OrderDetailModal({
                   <div className="flex-shrink-0 border-b border-gray-100 px-6">
                     <div className="flex overflow-x-auto">
                       {TABS.map((t) => {
-                        const badge = t.value === "conversation" ? msgCount : 0;
+                        const isChat = t.value === "conversation";
+                        const badge = isChat && unreadCount > 0 ? unreadCount : 0;
                         const isDirtyTab = tabDirtyMap[t.value] ?? false;
                         return (
                           <button
                             key={t.value}
-                            onClick={() => setTab(t.value)}
+                            onClick={() => handleTabClick(t.value)}
                             className={cn(
                               "px-5 py-3.5 text-sm font-semibold border-b-2 whitespace-nowrap transition-colors shrink-0 flex items-center gap-1.5",
                               tab === t.value
@@ -1087,7 +1165,12 @@ export function OrderDetailModal({
                               <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />
                             )}
                             {badge > 0 && (
-                              <span className="text-[10px] bg-[#15689E] text-white px-1.5 py-0.5 rounded-full font-bold">
+                              <span className={cn(
+                                "text-[10px] px-1.5 py-0.5 rounded-full font-bold",
+                                isChat && unreadCount > 0
+                                  ? "bg-red-500 text-white"
+                                  : "bg-[#15689E] text-white",
+                              )}>
                                 {badge}
                               </span>
                             )}

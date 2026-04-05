@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useAppSelector } from "@/store/hooks";
 import type { DashboardOrder, OrderStatus } from "@/utils/interfaces/orders";
 import { CreateOrderModal } from "../(components)/CreateOrderModal";
@@ -12,6 +12,8 @@ import {
   KANBAN_STATUS_CONFIG,
   groupOrdersByStatus,
 } from "../(components)/kanban-config";
+import { getUnreadMessageCounts } from "../(services)/actions";
+import { createClient } from "@/lib/supabase/client";
 import { EmptyState } from "@/app/(components)/EmptyState";
 import { Package, Search, ChevronDown } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -49,6 +51,9 @@ export function OrdersPageClient({
 
   const [selectedOrder, setSelectedOrder] = useState<DashboardOrder | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+  const currentUserIdRef = useRef(currentUserId);
+  useEffect(() => { currentUserIdRef.current = currentUserId; }, [currentUserId]);
 
   // Keep the open modal's order in sync with Redux store (so updateOrderInStore refreshes it)
   useEffect(() => {
@@ -56,6 +61,45 @@ export function OrdersPageClient({
     const latest = orders.find((o) => o.id === selectedOrder.id);
     if (latest && latest !== selectedOrder) setSelectedOrder(latest);
   }, [orders, modalOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load unread counts on mount (admin + clinical only)
+  useEffect(() => {
+    if (!canCreate && !isAdmin) return;
+    getUnreadMessageCounts().then((counts) => setUnreadCounts(counts));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Realtime: increment unread when a new message arrives for any order
+  useEffect(() => {
+    if (!canCreate && !isAdmin) return;
+
+    const supabase = createClient();
+    const channel = supabase
+      .channel("global-order-messages")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "order_messages" },
+        (payload) => {
+          const msg = payload.new as { order_id: string; sender_id: string };
+          if (msg.sender_id === currentUserIdRef.current) return;
+          setUnreadCounts((prev) => ({
+            ...prev,
+            [msg.order_id]: (prev[msg.order_id] ?? 0) + 1,
+          }));
+        },
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [currentUserId, canCreate, isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function handleClearUnread(orderId: string) {
+    setUnreadCounts((prev) => {
+      const next = { ...prev };
+      delete next[orderId];
+      return next;
+    });
+  }
+
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<OrderStatus | "all">("all");
   const [mobileTab, setMobileTab] = useState<OrderStatus>("draft");
@@ -104,6 +148,8 @@ export function OrdersPageClient({
       canEdit={canCreate}
       currentUserId={currentUserId}
       currentUserName={currentUserName}
+      unreadCount={unreadCounts[selectedOrder.id] ?? 0}
+      onClearUnread={() => handleClearUnread(selectedOrder.id)}
     />
   );
 
@@ -292,6 +338,7 @@ export function OrdersPageClient({
                     key={order.id}
                     order={order}
                     onClick={() => handleOrderClick(order)}
+                    unreadCount={unreadCounts[order.id] ?? 0}
                   />
                 ))
               )}
@@ -332,6 +379,7 @@ export function OrdersPageClient({
                           key={order.id}
                           order={order}
                           onClick={() => handleOrderClick(order)}
+                          unreadCount={unreadCounts[order.id] ?? 0}
                         />
                       ))
                     )}

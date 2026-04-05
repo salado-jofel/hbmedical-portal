@@ -1091,21 +1091,36 @@ export async function sendOrderMessage(
   const user = await getCurrentUserOrThrow(supabase);
 
   if (!message.trim()) {
-    return { success: false, error: "Message cannot be empty." };
+    return { error: "Message cannot be empty.", success: false };
   }
 
   const adminClient = createAdminClient();
-  const { error } = await adminClient.from("order_messages").insert({
-    order_id:  orderId,
-    sender_id: user.id,
-    message:   message.trim(),
-  });
 
-  if (error) {
-    console.error("[sendOrderMessage]", JSON.stringify(error));
-    return { success: false, error: error.message ?? "Failed to send message." };
+  // INSERT and get the ID back in one query
+  const { data: newMsg, error: insertError } = await adminClient
+    .from("order_messages")
+    .insert({
+      order_id:  orderId,
+      sender_id: user.id,
+      message:   message.trim(),
+    })
+    .select("id")
+    .single();
+
+  if (insertError || !newMsg) {
+    console.error("[sendOrderMessage]", JSON.stringify(insertError));
+    return {
+      error:   insertError?.message ?? "Failed to send message.",
+      success: false,
+    };
   }
 
+  // Mark sender's own message as read immediately — awaited so it always completes
+  await adminClient
+    .from("message_reads")
+    .insert({ message_id: newMsg.id, user_id: user.id });
+
+  // Log history (non-blocking)
   adminClient.from("order_history").insert({
     order_id:     orderId,
     performed_by: user.id,
@@ -1113,9 +1128,7 @@ export async function sendOrderMessage(
     old_status:   null,
     new_status:   null,
     notes:        null,
-  }).then(({ error: hErr }) => {
-    if (hErr) console.error("[sendOrderMessage history]", hErr.message);
-  });
+  }).then(() => {}).catch(() => {});
 
   revalidatePath(ORDERS_PATH);
   return { success: true, error: null };
@@ -1182,6 +1195,63 @@ export async function getOrderMessages(
     message:    m.message,
     createdAt:  m.created_at,
   }));
+}
+
+/* -------------------------------------------------------------------------- */
+/* markMessagesAsRead                                                         */
+/* -------------------------------------------------------------------------- */
+
+export async function markMessagesAsRead(orderId: string): Promise<void> {
+  const supabase = await createClient();
+  const user = await getCurrentUserOrThrow(supabase);
+
+  // All messages in this order not sent by current user
+  const { data: allMessages } = await supabase
+    .from("order_messages")
+    .select("id")
+    .eq("order_id", orderId)
+    .neq("sender_id", user.id);
+
+  if (!allMessages || allMessages.length === 0) return;
+
+  // Which ones already have a read record?
+  const { data: alreadyRead } = await supabase
+    .from("message_reads")
+    .select("message_id")
+    .eq("user_id", user.id)
+    .in("message_id", allMessages.map((m) => m.id));
+
+  const alreadyReadIds = new Set((alreadyRead ?? []).map((r) => r.message_id));
+
+  const toMark = allMessages
+    .filter((m) => !alreadyReadIds.has(m.id))
+    .map((m) => ({ message_id: m.id, user_id: user.id }));
+
+  if (toMark.length === 0) return;
+
+  const adminClient = createAdminClient();
+  await adminClient
+    .from("message_reads")
+    .upsert(toMark, { onConflict: "message_id,user_id" });
+}
+
+/* -------------------------------------------------------------------------- */
+/* getUnreadMessageCounts                                                      */
+/* -------------------------------------------------------------------------- */
+
+export async function getUnreadMessageCounts(): Promise<Record<string, number>> {
+  const supabase = await createClient();
+  const user = await getCurrentUserOrThrow(supabase);
+
+  const { data, error } = await supabase
+    .rpc("get_unread_message_counts", { p_user_id: user.id });
+
+  if (error || !data) return {};
+
+  return Object.fromEntries(
+    (data as { order_id: string; unread_count: number }[])
+      .map((row) => [row.order_id, Number(row.unread_count)]),
+  );
 }
 
 /* -------------------------------------------------------------------------- */

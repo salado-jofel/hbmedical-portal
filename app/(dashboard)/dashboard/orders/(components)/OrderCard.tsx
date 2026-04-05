@@ -1,15 +1,16 @@
 "use client";
 
 import type { DashboardOrder } from "@/utils/interfaces/orders";
-import { User, Package, CalendarDays, FileText } from "lucide-react";
+import { User, Package, CalendarDays, FileText, MessageSquare } from "lucide-react";
 import { OrderStatusBadge } from "./OrderStatusBadge";
 
 interface OrderCardProps {
   order: DashboardOrder;
   onClick?: () => void;
+  unreadCount?: number;
 }
 
-export function OrderCard({ order, onClick }: OrderCardProps) {
+export function OrderCard({ order, onClick, unreadCount }: OrderCardProps) {
   return (
     <div
       className="rounded-2xl border border-[#E2E8F0] bg-white p-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)] transition-all hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] cursor-pointer"
@@ -55,6 +56,13 @@ export function OrderCard({ order, onClick }: OrderCardProps) {
           </div>
         )}
       </div>
+
+      {(unreadCount ?? 0) > 0 && (
+        <div className="mt-2.5 pt-2.5 border-t border-[#E2E8F0] flex items-center gap-1 text-xs text-[#15689E] font-semibold">
+          <MessageSquare className="w-3 h-3" />
+          <span>{unreadCount} unread</span>
+        </div>
+      )}
     </div>
   );
 }
