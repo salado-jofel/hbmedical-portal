@@ -469,6 +469,7 @@ export type RawOrderRecord = {
   delivery_status: string;
   tracking_number: string | null;
   notes: string | null;
+  admin_notes: string | null;
   placed_at: string;
   paid_at: string | null;
   delivered_at: string | null;
@@ -675,6 +676,7 @@ export type DashboardOrder = {
   delivery_status: OrderDeliveryStatus;
   tracking_number: string | null;
   notes: string | null;
+  admin_notes: string | null;
   placed_at: string;
   paid_at: string | null;
   delivered_at: string | null;
@@ -723,6 +725,7 @@ export type DashboardOrder = {
   // full relations for detail view
   all_items: IOrderItem[];
   documents: IOrderDocument[];
+  documentCount: number;
   // board status (backwards compat with old kanban)
   board_status: "New Orders" | "Delivered";
   // legacy stripe fields (may be null)
@@ -771,6 +774,7 @@ export function mapOrder(raw: RawOrderRecord): DashboardOrder {
     delivery_status: raw.delivery_status as OrderDeliveryStatus,
     tracking_number: raw.tracking_number,
     notes: raw.notes,
+    admin_notes: raw.admin_notes ?? null,
     placed_at: raw.placed_at,
     paid_at: raw.paid_at,
     delivered_at: raw.delivered_at,
@@ -834,11 +838,14 @@ export function mapOrder(raw: RawOrderRecord): DashboardOrder {
     })),
     documents: ((raw as any).order_documents as any[] | null)?.map((d) => ({
       id:           d.id,
+      orderId:      d.order_id ?? raw.id,
       documentType: d.document_type,
+      bucket:       d.bucket ?? "order-documents",
       fileName:     d.file_name,
       filePath:     d.file_path,
-      mimeType:     d.mime_type,
-      fileSize:     d.file_size,
+      mimeType:     d.mime_type ?? null,
+      fileSize:     d.file_size ?? null,
+      uploadedBy:   d.uploaded_by ?? null,
       createdAt:    d.created_at,
     })) ?? [],
     documentCount: ((raw as any).order_documents as any[] | null)?.length ?? 0,

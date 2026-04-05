@@ -69,6 +69,7 @@ export const ORDER_BASE_SELECT = `
   delivery_status,
   tracking_number,
   notes,
+  admin_notes,
   placed_at,
   paid_at,
   delivered_at,

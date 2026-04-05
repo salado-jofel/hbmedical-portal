@@ -1,5 +1,6 @@
-import Link from "next/link";
-import { ShoppingCart, ExternalLink } from "lucide-react";
+"use client";
+
+import { ShoppingCart, Loader2 } from "lucide-react";
 import { EmptyState } from "@/app/(components)/EmptyState";
 import type { DashboardOrder } from "@/utils/interfaces/orders";
 
@@ -18,9 +19,11 @@ const STATUS_STYLES: Record<string, string> = {
 
 interface OrdersTabProps {
   orders: DashboardOrder[];
+  onOrderClick: (orderId: string) => void;
+  loadingOrderId: string | null;
 }
 
-export function OrdersTab({ orders }: OrdersTabProps) {
+export function OrdersTab({ orders, onOrderClick, loadingOrderId }: OrdersTabProps) {
   if (orders.length === 0) {
     return (
       <EmptyState
@@ -38,10 +41,12 @@ export function OrdersTab({ orders }: OrdersTabProps) {
 
       <div className="rounded-xl border border-[#E2E8F0] overflow-hidden divide-y divide-[#F1F5F9] shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
         {orders.map((order) => (
-          <Link
+          <button
             key={order.id}
-            href={`/dashboard/orders/${order.id}`}
-            className="flex items-center justify-between px-5 py-3.5 hover:bg-[#FAFBFC] transition-colors group"
+            type="button"
+            onClick={() => onOrderClick(order.id)}
+            disabled={loadingOrderId === order.id}
+            className="w-full text-left flex items-center justify-between px-5 py-3.5 hover:bg-[#FAFBFC] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
             <div className="flex items-center gap-3 min-w-0">
               <div className="w-8 h-8 rounded-lg bg-[#15689E]/8 flex items-center justify-center shrink-0">
@@ -68,9 +73,13 @@ export function OrdersTab({ orders }: OrdersTabProps) {
               >
                 {order.order_status}
               </span>
-              <ExternalLink className="w-3.5 h-3.5 text-[#94A3B8] group-hover:text-[#15689E] transition-colors" />
+              {loadingOrderId === order.id ? (
+                <Loader2 className="w-3.5 h-3.5 text-[#15689E] animate-spin" />
+              ) : (
+                <div className="w-3.5 h-3.5" />
+              )}
             </div>
-          </Link>
+          </button>
         ))}
       </div>
     </div>

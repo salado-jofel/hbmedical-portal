@@ -252,7 +252,7 @@ export function NotificationBell({
                       ? "conversation"
                       : "overview";
                     const isOnOrdersPage =
-                      window.location.pathname.includes("/dashboard/orders");
+                      window.location.pathname === "/dashboard/orders";
                     if (isOnOrdersPage) {
                       window.dispatchEvent(
                         new CustomEvent("open-order-modal", {

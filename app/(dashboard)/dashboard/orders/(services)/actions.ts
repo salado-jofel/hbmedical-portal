@@ -228,7 +228,7 @@ const ORDER_WITH_RELATIONS_SELECT = `
   id, order_number, facility_id, order_status,
   payment_method, payment_status, invoice_status,
   fulfillment_status, delivery_status, tracking_number,
-  notes, placed_at, paid_at, delivered_at, created_at, updated_at,
+  notes, admin_notes, placed_at, paid_at, delivered_at, created_at, updated_at,
   created_by, signed_by, signed_at, wound_type, date_of_service,
   patient_id, assigned_provider_id,
   wound_visit_number, chief_complaint,
@@ -451,7 +451,8 @@ export async function submitForSignature(
       body:        `Order ${order.order_number} has been submitted and requires your signature.`,
       oldStatus:   "draft",
       newStatus:   "pending_signature",
-      notifyRoles: ["clinical_provider"],
+      notifyRoles:    ["clinical_provider"],
+      excludeUserId:  userId,
     }).catch(() => {});
     revalidatePath(ORDERS_PATH);
     return { success: true };
@@ -503,7 +504,8 @@ export async function recallOrder(
       body:        `Order ${order.order_number} has been recalled and returned to draft status.`,
       oldStatus:   "pending_signature",
       newStatus:   "draft",
-      notifyRoles: ["clinical_staff", "clinical_provider"],
+      notifyRoles:    ["clinical_staff", "clinical_provider"],
+      excludeUserId:  userId,
     }).catch(() => {});
     revalidatePath(ORDERS_PATH);
     return { success: true };
@@ -612,7 +614,8 @@ export async function signOrder(
       body:        `Order ${order.order_number} has been signed and is ready for review.`,
       oldStatus:   "pending_signature",
       newStatus:   "manufacturer_review",
-      notifyRoles: ["admin", "support_staff"],
+      notifyRoles:    ["admin", "support_staff"],
+      excludeUserId:  user.id,
     }).catch(() => {});
     revalidatePath(ORDERS_PATH);
     return { success: true };
@@ -683,7 +686,8 @@ export async function approveOrder(
       body:        `Order ${order.order_number} has been approved and is being prepared for shipment.`,
       oldStatus:   "manufacturer_review",
       newStatus:   "approved",
-      notifyRoles: ["clinical_staff", "clinical_provider"],
+      notifyRoles:    ["clinical_staff", "clinical_provider"],
+      excludeUserId:  user.id,
     }).catch(() => {});
     revalidatePath(ORDERS_PATH);
     return { success: true };
@@ -726,7 +730,7 @@ export async function requestAdditionalInfo(
       .from("orders")
       .update({
         order_status: "additional_info_needed",
-        notes: notes ?? null,
+        admin_notes:  notes ?? null,
       })
       .eq("id", orderId);
 
@@ -751,10 +755,13 @@ export async function requestAdditionalInfo(
       facilityId:  order.facility_id,
       type:        "info_requested",
       title:       "Additional information needed",
-      body:        `Order ${order.order_number} requires additional information before it can be approved.`,
+      body:        notes
+        ? `Order ${order.order_number} requires additional information: "${notes}"`
+        : `Order ${order.order_number} requires additional information before it can be approved.`,
       oldStatus:   "manufacturer_review",
       newStatus:   "additional_info_needed",
-      notifyRoles: ["clinical_staff", "clinical_provider"],
+      notifyRoles:    ["clinical_staff", "clinical_provider"],
+      excludeUserId:  user.id,
     }).catch(() => {});
     revalidatePath(ORDERS_PATH);
     return { success: true };
@@ -787,7 +794,7 @@ export async function resubmitForReview(
 
     const { error } = await adminClient
       .from("orders")
-      .update({ order_status: "manufacturer_review" })
+      .update({ order_status: "manufacturer_review", admin_notes: null })
       .eq("id", orderId);
 
     if (error) {
@@ -813,7 +820,8 @@ export async function resubmitForReview(
       body:        `Order ${order.order_number} has been resubmitted for manufacturer review.`,
       oldStatus:   "additional_info_needed",
       newStatus:   "manufacturer_review",
-      notifyRoles: ["admin", "support_staff"],
+      notifyRoles:    ["admin", "support_staff"],
+      excludeUserId:  userId,
     }).catch(() => {});
     revalidatePath(ORDERS_PATH);
     return { success: true };
@@ -906,7 +914,8 @@ export async function addShippingInfo(
       body:        `Order ${order.order_number} has shipped.${data.trackingNumber ? ` Tracking: ${data.carrier} #${data.trackingNumber}` : ""}`,
       oldStatus:   "approved",
       newStatus:   "shipped",
-      notifyRoles: ["clinical_staff", "clinical_provider"],
+      notifyRoles:    ["clinical_staff", "clinical_provider"],
+      excludeUserId:  user.id,
     }).catch(() => {});
     revalidatePath(ORDERS_PATH);
     return { success: true };
@@ -1306,12 +1315,13 @@ export async function sendOrderMessage(
     .insert({ message_id: newMsg.id, user_id: user.id });
 
   // Notify other facility members + admins about the new message (non-blocking)
-  adminClient
-    .from("orders")
-    .select("facility_id, order_number, order_status")
-    .eq("id", orderId)
-    .single()
-    .then(async ({ data: orderData }) => {
+  void Promise.resolve(
+    adminClient
+      .from("orders")
+      .select("facility_id, order_number, order_status")
+      .eq("id", orderId)
+      .single(),
+  ).then(async ({ data: orderData }) => {
       if (!orderData) return;
 
       const { data: senderProfile } = await adminClient
@@ -1328,6 +1338,12 @@ export async function sendOrderMessage(
         ? message.trim().slice(0, 60) + "..."
         : message.trim();
 
+      // Only include admin in message notifications for orders they need to act on
+      const adminStatuses = ["manufacturer_review", "additional_info_needed"];
+      const notifyRoles = adminStatuses.includes(orderData.order_status)
+        ? ["clinical_staff", "clinical_provider", "admin"]
+        : ["clinical_staff", "clinical_provider"];
+
       await createNotifications({
         adminClient,
         orderId,
@@ -1338,21 +1354,22 @@ export async function sendOrderMessage(
         body:          `${senderName}: ${preview}`,
         oldStatus:     null,
         newStatus:     null,
-        notifyRoles:   ["clinical_staff", "clinical_provider", "admin"],
+        notifyRoles,
         excludeUserId: user.id,
       });
-    })
-    .catch(() => {});
+    }).catch(() => {});
 
   // Log history (non-blocking)
-  adminClient.from("order_history").insert({
-    order_id:     orderId,
-    performed_by: user.id,
-    action:       "Message sent",
-    old_status:   null,
-    new_status:   null,
-    notes:        null,
-  }).then(() => {}).catch(() => {});
+  void Promise.resolve(
+    adminClient.from("order_history").insert({
+      order_id:     orderId,
+      performed_by: user.id,
+      action:       "Message sent",
+      old_status:   null,
+      new_status:   null,
+      notes:        null,
+    }),
+  ).catch(() => {});
 
   revalidatePath(ORDERS_PATH);
   return { success: true, error: null };

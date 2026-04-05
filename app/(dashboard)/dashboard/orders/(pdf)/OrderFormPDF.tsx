@@ -252,7 +252,7 @@ export function OrderFormPDF({
         </View>
 
         {/* Subjective Symptoms */}
-        {form?.subjective_symptoms?.length > 0 && (
+        {form != null && (form.subjective_symptoms as string[])?.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionHeader}>SUBJECTIVE SYMPTOMS</Text>
             <View style={styles.symptomsRow}>
