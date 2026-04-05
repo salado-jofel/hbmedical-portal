@@ -1,0 +1,118 @@
+/** @jsxImportSource react */
+import { NextRequest, NextResponse } from "next/server";
+import { renderToBuffer } from "@react-pdf/renderer";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { OrderFormPDF } from "@/app/(dashboard)/dashboard/orders/(pdf)/OrderFormPDF";
+import { IVRFormPDF } from "@/app/(dashboard)/dashboard/orders/(pdf)/IVRFormPDF";
+import { HCFA1500PDF } from "@/app/(dashboard)/dashboard/orders/(pdf)/HCFA1500PDF";
+
+export const maxDuration = 30;
+
+export async function POST(req: NextRequest) {
+  try {
+    const { orderId, formType } = await req.json();
+
+    const adminClient = createAdminClient();
+
+    const [orderRes, formRes, ivrRes, hcfaRes] = await Promise.all([
+      adminClient
+        .from("orders")
+        .select(`
+          id, order_number, wound_type, date_of_service,
+          facility:facilities!orders_facility_id_fkey(name),
+          patient:patients!orders_patient_id_fkey(
+            first_name, last_name, date_of_birth
+          )
+        `)
+        .eq("id", orderId)
+        .single(),
+      adminClient.from("order_form").select("*").eq("order_id", orderId).maybeSingle(),
+      adminClient.from("order_ivr").select("*").eq("order_id", orderId).maybeSingle(),
+      adminClient.from("order_form_1500").select("*").eq("order_id", orderId).maybeSingle(),
+    ]);
+
+    const order = orderRes.data;
+    const form  = formRes.data;
+    const ivr   = ivrRes.data;
+    const hcfa  = hcfaRes.data;
+
+    if (!order) {
+      return NextResponse.json({ error: "Order not found" }, { status: 404 });
+    }
+
+    let pdfBuffer: Buffer;
+    let fileName: string;
+    let documentType: string;
+
+    if (formType === "order_form") {
+      pdfBuffer = await renderToBuffer(
+        <OrderFormPDF order={order} form={form} />
+      );
+      fileName     = `order-form-${order.order_number}.pdf`;
+      documentType = "order_form";
+
+    } else if (formType === "ivr") {
+      pdfBuffer = await renderToBuffer(
+        <IVRFormPDF order={order} ivr={ivr} hcfa={hcfa} />
+      );
+      fileName     = `ivr-form-${order.order_number}.pdf`;
+      documentType = "additional_ivr";
+
+    } else if (formType === "hcfa_1500") {
+      pdfBuffer = await renderToBuffer(
+        <HCFA1500PDF order={order} hcfa={hcfa} />
+      );
+      fileName     = `hcfa-1500-${order.order_number}.pdf`;
+      documentType = "form_1500";
+
+    } else {
+      return NextResponse.json({ error: "Invalid formType" }, { status: 400 });
+    }
+
+    const filePath = `order-documents/${orderId}/generated/${fileName}`;
+
+    const { error: uploadError } = await adminClient.storage
+      .from("hbmedical-bucket-private")
+      .upload(filePath, pdfBuffer, {
+        contentType: "application/pdf",
+        upsert: true,
+      });
+
+    if (uploadError) {
+      return NextResponse.json(
+        { error: `Upload failed: ${uploadError.message}` },
+        { status: 500 },
+      );
+    }
+
+    const { data: existing } = await adminClient
+      .from("order_documents")
+      .select("id")
+      .eq("order_id", orderId)
+      .eq("file_path", filePath)
+      .maybeSingle();
+
+    if (existing) {
+      await adminClient
+        .from("order_documents")
+        .update({ file_size: pdfBuffer.length })
+        .eq("id", existing.id);
+    } else {
+      await adminClient.from("order_documents").insert({
+        order_id:      orderId,
+        document_type: documentType,
+        bucket:        "hbmedical-bucket-private",
+        file_path:     filePath,
+        file_name:     fileName,
+        mime_type:     "application/pdf",
+        file_size:     pdfBuffer.length,
+      });
+    }
+
+    return NextResponse.json({ success: true, formType, filePath, fileName });
+
+  } catch (err) {
+    console.error("[generate-pdf]", err);
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
+}

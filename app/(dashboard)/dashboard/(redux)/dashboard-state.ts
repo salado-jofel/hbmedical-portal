@@ -8,6 +8,7 @@ export interface UserState {
   role: UserRole;
   isSubRep: boolean;
   isSidebarOpen: boolean;
+  userId: string;
 }
 
 export const initialState: UserState = {
@@ -17,4 +18,5 @@ export const initialState: UserState = {
   role: null,
   isSubRep: false,
   isSidebarOpen: false,
+  userId: "",
 };

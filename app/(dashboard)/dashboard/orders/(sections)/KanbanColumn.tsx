@@ -37,7 +37,12 @@ export function KanbanColumn({
             message="No orders"
           />
         ) : (
-          orders.map((order) => <OrderCard key={order.id} order={order} canSign={canSign} />)
+          orders.map((order) => (
+            <OrderCard
+              key={order.id}
+              order={order}
+            />
+          ))
         )}
       </div>
     </div>
