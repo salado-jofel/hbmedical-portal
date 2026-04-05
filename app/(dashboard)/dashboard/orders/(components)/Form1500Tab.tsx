@@ -9,7 +9,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Loader2 } from "lucide-react";
-import { getForm1500, upsertForm1500 } from "../(services)/actions";
+import { upsertForm1500 } from "../(services)/actions";
 import toast from "react-hot-toast";
 import { cn } from "@/utils/utils";
 
@@ -18,6 +18,9 @@ type Form1500Data = Record<string, string | boolean | number | null>;
 interface Form1500TabProps {
   orderId: string;
   canEdit: boolean;
+  initialData: Record<string, unknown> | null;
+  isReady: boolean;
+  onSave?: (data: Record<string, unknown>) => void;
 }
 
 function FormField({
@@ -78,22 +81,28 @@ function CheckField({
   );
 }
 
-export function Form1500Tab({ orderId, canEdit }: Form1500TabProps) {
-  const [loading, setLoading] = useState(true);
-  const [savedData, setSavedData] = useState<Form1500Data>({});
-  const [draftData, setDraftData] = useState<Form1500Data>({});
+export function Form1500Tab({
+  orderId,
+  canEdit,
+  initialData,
+  isReady,
+  onSave,
+}: Form1500TabProps) {
+  const [savedData, setSavedData] = useState<Form1500Data>(
+    (initialData as Form1500Data) ?? {},
+  );
+  const [draftData, setDraftData] = useState<Form1500Data>(
+    (initialData as Form1500Data) ?? {},
+  );
   const [isSaving, setIsSaving] = useState(false);
 
   const isDirty = JSON.stringify(draftData) !== JSON.stringify(savedData);
 
+  // Sync when initialData changes (modal reopened for different order)
   useEffect(() => {
-    getForm1500(orderId).then((data) => {
-      const d = (data as Form1500Data) ?? {};
-      setSavedData(d);
-      setDraftData(d);
-      setLoading(false);
-    });
-  }, [orderId]);
+    setSavedData((initialData as Form1500Data) ?? {});
+    setDraftData((initialData as Form1500Data) ?? {});
+  }, [initialData]);
 
   function handleChange(name: string, value: string | boolean) {
     setDraftData((prev) => ({ ...prev, [name]: value }));
@@ -109,6 +118,7 @@ export function Form1500Tab({ orderId, canEdit }: Form1500TabProps) {
       const result = await upsertForm1500(orderId, draftData);
       if (result.success) {
         setSavedData(draftData);
+        onSave?.(draftData as Record<string, unknown>);
         toast.success("1500 form saved successfully");
       } else {
         toast.error(result.error ?? "Failed to save");
@@ -125,13 +135,21 @@ export function Form1500Tab({ orderId, canEdit }: Form1500TabProps) {
     return !!(draftData[key] as boolean);
   }
 
+  if (!isReady) {
+    return (
+      <div className="flex justify-center py-12">
+        <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-5">
       {/* ── Sticky toolbar ── */}
       <div className="sticky top-0 z-10  bg-white border-b border-gray-300 py-3 flex items-center justify-between ">
         <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">
           HCFA / 1500 Form
-          {isDirty && !loading && (
+          {isDirty && (
             <span className="ml-2 text-amber-500 normal-case font-normal tracking-normal">
               • Unsaved changes
             </span>
@@ -142,7 +160,7 @@ export function Form1500Tab({ orderId, canEdit }: Form1500TabProps) {
             <button
               type="button"
               onClick={handleDiscard}
-              disabled={!isDirty || isSaving || loading}
+              disabled={!isDirty || isSaving}
               className={cn(
                 "px-4 py-1.5 text-sm font-medium rounded-lg",
                 "border border-gray-200 text-gray-500",
@@ -155,7 +173,7 @@ export function Form1500Tab({ orderId, canEdit }: Form1500TabProps) {
             <button
               type="button"
               onClick={handleSave}
-              disabled={!isDirty || isSaving || loading}
+              disabled={!isDirty || isSaving}
               className={cn(
                 "px-4 py-1.5 text-sm font-semibold rounded-lg",
                 "bg-[#15689E] text-white",
@@ -174,12 +192,7 @@ export function Form1500Tab({ orderId, canEdit }: Form1500TabProps) {
       </div>
 
       {/* ── Form content ── */}
-      {loading ? (
-        <div className="flex justify-center py-12">
-          <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
-        </div>
-      ) : (
-        <div className="space-y-4 pb-4">
+      <div className="space-y-4 pb-4">
           {!canEdit && (
             <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
               You have read-only access to this form.
@@ -922,7 +935,6 @@ export function Form1500Tab({ orderId, canEdit }: Form1500TabProps) {
             </AccordionItem>
           </Accordion>
         </div>
-      )}
     </div>
   );
 }

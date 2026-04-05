@@ -346,6 +346,21 @@ export async function POST(req: NextRequest) {
       .update({ ai_extracted: true, ai_extracted_at: new Date().toISOString() })
       .eq("id", orderId);
 
+    /* -- Log AI extraction to history -- */
+    adminClient.from("order_history").insert({
+      order_id: orderId,
+      performed_by: null,
+      action:
+        documentType === "facesheet"
+          ? "AI extracted patient data from facesheet"
+          : "AI extracted clinical data from doctor's notes",
+      old_status: null,
+      new_status: null,
+      notes: null,
+    }).then(({ error }) => {
+      if (error) console.error("[AI history]", error.message);
+    });
+
     /* -- Auto-generate PDF (non-blocking) -- */
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
     const pdfFormType = documentType === "facesheet" ? "hcfa_1500" : "order_form";

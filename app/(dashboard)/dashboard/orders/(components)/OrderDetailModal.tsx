@@ -66,7 +66,10 @@ import {
   deleteOrderItem,
   updateOrderClinicalFields,
   getOrderAiStatus,
+  getOrderIVR,
+  getForm1500,
 } from "../(services)/actions";
+import type { IOrderIVR } from "@/utils/interfaces/orders";
 import { OrderStatusBadge } from "./OrderStatusBadge";
 import { OrderIVRForm } from "./OrderIVRForm";
 import { Form1500Tab } from "./Form1500Tab";
@@ -103,13 +106,151 @@ const TABS = [
   { value: "order-form", label: "Order Form" },
   { value: "ivr", label: "IVR Form" },
   { value: "hcfa", label: "HCFA/1500" },
-  { value: "documents", label: "Documents" },
   { value: "conversation", label: "Chat" },
   { value: "history", label: "History" },
 ] as const;
 
 type TabValue = (typeof TABS)[number]["value"];
 type AiStatus = "idle" | "processing" | "complete" | "error";
+
+type DraftOrderItem = {
+  id: string;
+  productId: string;
+  productName: string;
+  productSku: string;
+  unitPrice: number;
+  quantity: number;
+  subtotal: number;
+  totalAmount: number;
+  isNew?: boolean;
+};
+
+/* ── Skeleton ── */
+
+function OrderDetailSkeleton() {
+  return (
+    <div className="bg-white w-[95vw] max-w-[1200px] h-[90vh] rounded-3xl shadow-2xl border border-gray-100 overflow-hidden flex flex-col">
+      {/* Header */}
+      <div className="flex-shrink-0 px-8 py-5 border-b border-gray-100 flex items-center justify-between animate-pulse">
+        <div className="space-y-2">
+          <div className="h-7 w-48 bg-gray-200 rounded-lg" />
+          <div className="h-4 w-32 bg-gray-100 rounded-md" />
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="h-6 w-16 bg-gray-200 rounded-full" />
+          <div className="w-9 h-9 rounded-full bg-gray-100" />
+        </div>
+      </div>
+
+      {/* Two-column body */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left column */}
+        <div className="flex-1 flex flex-col border-r border-gray-100 overflow-hidden">
+          {/* Tab bar */}
+          <div className="flex-shrink-0 border-b border-gray-100 px-6">
+            <div className="flex gap-1 py-1 animate-pulse">
+              {[80, 100, 80, 90, 60, 70].map((w, i) => (
+                <div
+                  key={i}
+                  className="h-11 rounded-md bg-gray-100"
+                  style={{ width: w }}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Content */}
+          <div className="flex-1 px-6 py-6 space-y-4 animate-pulse">
+            <div className="h-3 w-24 bg-gray-200 rounded" />
+            <div className="rounded-xl border border-gray-100 overflow-hidden">
+              <div className="bg-gray-50 px-4 py-3 flex gap-4">
+                <div className="h-3 flex-1 bg-gray-200 rounded" />
+                <div className="h-3 w-16 bg-gray-200 rounded" />
+                <div className="h-3 w-16 bg-gray-200 rounded" />
+                <div className="h-3 w-16 bg-gray-200 rounded" />
+              </div>
+              {[1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  className="px-4 py-3 flex items-center gap-4 border-t border-gray-50"
+                >
+                  <div className="flex-1 space-y-1.5">
+                    <div className="h-3.5 w-40 bg-gray-200 rounded" />
+                    <div className="h-2.5 w-20 bg-gray-100 rounded" />
+                  </div>
+                  <div className="h-3 w-12 bg-gray-200 rounded" />
+                  <div className="h-3 w-12 bg-gray-200 rounded" />
+                  <div className="h-3 w-12 bg-gray-200 rounded" />
+                </div>
+              ))}
+              <div className="px-4 py-3 bg-gray-50 flex justify-end gap-4">
+                <div className="h-3 w-20 bg-gray-200 rounded" />
+                <div className="h-4 w-16 bg-gray-300 rounded" />
+              </div>
+            </div>
+            <div className="space-y-2 mt-4">
+              <div className="h-3 w-12 bg-gray-200 rounded" />
+              <div className="h-24 w-full bg-gray-100 rounded-xl" />
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="flex-shrink-0 px-6 py-4 border-t border-gray-100 flex items-center justify-end gap-3 animate-pulse">
+            <div className="h-9 w-28 bg-gray-200 rounded-xl" />
+            <div className="h-9 w-44 bg-gray-200 rounded-xl" />
+          </div>
+        </div>
+
+        {/* Right column */}
+        <div className="w-[380px] flex-shrink-0 flex flex-col bg-gray-50/50 overflow-hidden">
+          {/* Right header */}
+          <div className="flex-shrink-0 p-6 border-b border-gray-100 space-y-3 animate-pulse">
+            <div className="h-3 w-36 bg-gray-200 rounded" />
+            <div className="h-6 w-16 bg-gray-200 rounded-full" />
+            <div className="flex gap-5">
+              <div className="space-y-1.5">
+                <div className="h-2.5 w-20 bg-gray-100 rounded" />
+                <div className="h-3.5 w-24 bg-gray-200 rounded" />
+              </div>
+              <div className="space-y-1.5">
+                <div className="h-2.5 w-12 bg-gray-100 rounded" />
+                <div className="h-3.5 w-20 bg-gray-200 rounded" />
+              </div>
+            </div>
+          </div>
+
+          {/* Right body */}
+          <div className="flex-1 p-6 space-y-6 animate-pulse">
+            <div>
+              <div className="h-3 w-20 bg-gray-200 rounded mb-3" />
+              <div className="grid grid-cols-2 gap-2">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <div key={i} className="h-11 rounded-xl bg-gray-100" />
+                ))}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <div className="h-3 w-36 bg-gray-200 rounded" />
+              <div className="h-10 w-full bg-gray-100 rounded-xl" />
+            </div>
+            <div className="space-y-2">
+              <div className="h-3 w-24 bg-gray-200 rounded" />
+              <div className="grid grid-cols-3 gap-1.5">
+                <div className="aspect-square rounded-xl bg-gray-200" />
+                <div className="aspect-square rounded-xl bg-gray-100" />
+              </div>
+            </div>
+          </div>
+
+          {/* Right footer */}
+          <div className="flex-shrink-0 px-6 py-4 border-t border-gray-100 animate-pulse">
+            <div className="h-4 w-28 bg-gray-200 rounded" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /* ── Props ── */
 
@@ -147,10 +288,22 @@ export function OrderDetailModal({
     order.documents ?? [],
   );
   const [viewingDocId, setViewingDocId] = useState<string | null>(null);
+  const [generatingPdfType, setGeneratingPdfType] = useState<string | null>(null);
   const [woundPhotoUrls, setWoundPhotoUrls] = useState<Record<string, string>>(
     {},
   );
   const [loadingDocs, setLoadingDocs] = useState(false);
+
+  /* -- Modal ready (all initial data loaded) -- */
+  const [modalReady, setModalReady] = useState(false);
+
+  /* -- IVR + HCFA (pre-fetched on modal open) -- */
+  const [ivrData, setIvrData] = useState<Partial<IOrderIVR> | null>(null);
+  const [hcfaData, setHcfaData] = useState<Record<string, unknown> | null>(
+    null,
+  );
+  const [ivrLoaded, setIvrLoaded] = useState(false);
+  const [hcfaLoaded, setHcfaLoaded] = useState(false);
 
   /* -- Messages (lazy-loaded on first chat visit) -- */
   const [messages, setMessages] = useState<IOrderMessage[]>([]);
@@ -169,13 +322,17 @@ export function OrderDetailModal({
   const [products, setProducts] = useState<ProductRecord[]>([]);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [loadingProducts, setLoadingProducts] = useState(false);
-  const [addingProducts, setAddingProducts] = useState(false);
 
-  /* -- Local order items (optimistic) + notes -- */
-  const [localItems, setLocalItems] = useState(order.all_items ?? []);
-  const [notes, setNotes] = useState(order.notes ?? "");
-  const [updatingItemId, setUpdatingItemId] = useState<string | null>(null);
-  const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
+  /* -- Order items + notes (draft/saved) -- */
+  const [savedItems, setSavedItems] = useState<DraftOrderItem[]>(
+    (order.all_items ?? []) as DraftOrderItem[],
+  );
+  const [draftItems, setDraftItems] = useState<DraftOrderItem[]>(
+    (order.all_items ?? []) as DraftOrderItem[],
+  );
+  const [savedNotes, setSavedNotes] = useState(order.notes ?? "");
+  const [draftNotes, setDraftNotes] = useState(order.notes ?? "");
+  const [isSavingOverview, setIsSavingOverview] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{
     id: string;
     name: string;
@@ -253,10 +410,12 @@ export function OrderDetailModal({
   const [isDeleting, setIsDeleting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  /* ── Sync local items, notes, and patient name when order prop updates ── */
+  /* ── Sync items, notes, and patient name when order prop updates ── */
   useEffect(() => {
-    setLocalItems(order.all_items ?? []);
-    setNotes(order.notes ?? "");
+    setSavedItems((order.all_items ?? []) as DraftOrderItem[]);
+    setDraftItems((order.all_items ?? []) as DraftOrderItem[]);
+    setSavedNotes(order.notes ?? "");
+    setDraftNotes(order.notes ?? "");
     if (order.patient_full_name) setPatientName(order.patient_full_name);
   }, [order.id, order.all_items, order.notes, order.patient_full_name]);
 
@@ -265,21 +424,30 @@ export function OrderDetailModal({
     setLocalDocuments(order.documents ?? []);
   }, [order.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* ── Load documents when modal opens ── */
+  /* ── Load documents + IVR + HCFA when modal opens ── */
   useEffect(() => {
     if (!open) return;
+    setModalReady(false);
     setTab("overview");
     setMsgLoaded(false);
     setHistoryLoaded(false);
     setShowProductPicker(false);
     setQuantities({});
+    setIvrLoaded(false);
+    setHcfaLoaded(false);
 
     setLoadingDocs(true);
-    getOrderDocuments(order.id).then(async (docs) => {
+    Promise.all([
+      getOrderDocuments(order.id),
+      getOrderIVR(order.id),
+      getForm1500(order.id),
+    ]).then(async ([docs, ivr, hcfa]) => {
+      // Documents
       setDocuments(docs);
       setLocalDocuments(docs);
       setLoadingDocs(false);
 
+      // Wound photos
       const photos = docs.filter((d) => d.documentType === "wound_pictures");
       const urlMap: Record<string, string> = {};
       await Promise.all(
@@ -290,7 +458,13 @@ export function OrderDetailModal({
       );
       setWoundPhotoUrls(urlMap);
 
-      // If AI not done yet but trigger docs exist — start polling
+      // IVR + HCFA
+      setIvrData(ivr ?? {});
+      setIvrLoaded(true);
+      setHcfaData((hcfa as Record<string, unknown>) ?? {});
+      setHcfaLoaded(true);
+
+      // AI polling check
       if (!order.ai_extracted) {
         const hasTriggerDoc = docs.some((d) =>
           ["facesheet", "clinical_docs"].includes(d.documentType),
@@ -300,6 +474,9 @@ export function OrderDetailModal({
           beginPolling();
         }
       }
+
+      // All data ready — skeleton fades out
+      setModalReady(true);
     });
   }, [open, order.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -470,36 +647,33 @@ export function OrderDetailModal({
     }
   }
 
-  async function handleAddProducts() {
-    const items = Object.entries(quantities)
-      .filter(([, q]) => q > 0)
+  function handleAddProductsToDraft() {
+    const newItems: DraftOrderItem[] = Object.entries(quantities)
+      .filter(([, qty]) => qty > 0)
       .map(([productId, quantity]) => {
         const prod = products.find((p) => p.id === productId)!;
+        const unitPrice = Number(prod.unit_price);
         return {
-          product_id: prod.id,
-          product_name: prod.name,
-          product_sku: prod.sku,
-          unit_price: Number(prod.unit_price),
+          id: `draft-${productId}-${Date.now()}`,
+          productId: prod.id,
+          productName: prod.name,
+          productSku: prod.sku,
+          unitPrice,
           quantity,
+          subtotal: unitPrice * quantity,
+          totalAmount: unitPrice * quantity,
+          isNew: true,
         };
       });
-    if (!items.length) return;
-    setAddingProducts(true);
-    const result = await addOrderItems(order.id, items);
-    if (result.success) {
-      toast.success("Products added.");
-      setShowProductPicker(false);
-      setQuantities({});
-      await refreshOrder();
-    } else {
-      toast.error(result.error ?? "Failed to add products.");
-    }
-    setAddingProducts(false);
+    if (newItems.length === 0) return;
+    setDraftItems((prev) => [...prev, ...newItems]);
+    setShowProductPicker(false);
+    setQuantities({});
   }
 
   async function handleEditAndSubmit() {
     const hasFacesheet = documents.some((d) => d.documentType === "facesheet");
-    const hasProducts = localItems.length > 0;
+    const hasProducts = draftItems.length > 0;
     if (
       !hasFacesheet ||
       !hasProducts ||
@@ -533,52 +707,126 @@ export function OrderDetailModal({
     }
   }
 
-  async function handleQtyChange(itemId: string, newQty: number) {
+  function draftQtyChange(itemId: string, newQty: number) {
     if (newQty < 1) return;
-    setUpdatingItemId(itemId);
-    const result = await updateOrderItemQuantity(itemId, newQty);
-    if (result.success) {
-      setLocalItems((prev) =>
-        prev.map((i) =>
-          i.id === itemId
-            ? {
-                ...i,
-                quantity: newQty,
-                subtotal: newQty * i.unitPrice,
-                totalAmount: newQty * i.unitPrice,
-              }
-            : i,
-        ),
-      );
-    } else {
-      toast.error(result.error ?? "Failed to update quantity.");
-    }
-    setUpdatingItemId(null);
+    setDraftItems((prev) =>
+      prev.map((i) =>
+        i.id === itemId
+          ? {
+              ...i,
+              quantity: newQty,
+              subtotal: newQty * i.unitPrice,
+              totalAmount: newQty * i.unitPrice,
+            }
+          : i,
+      ),
+    );
   }
 
-  async function handleDeleteItem(itemId: string) {
-    setDeletingItemId(itemId);
-    const result = await deleteOrderItem(itemId);
-    if (result.success) {
-      setLocalItems((prev) => prev.filter((i) => i.id !== itemId));
-    } else {
-      toast.error(result.error ?? "Failed to remove item.");
-    }
-    setDeletingItemId(null);
+  function draftDeleteItem(itemId: string) {
+    setDraftItems((prev) => prev.filter((i) => i.id !== itemId));
   }
 
-  async function handleNotesSave() {
-    if (notes === (order.notes ?? "")) return;
-    const result = await updateOrderClinicalFields(order.id, {
-      notes: notes || null,
-    });
-    if (!result.success) toast.error(result.error ?? "Failed to save notes.");
-    else await refreshOrder();
+  function handleDiscardOverview() {
+    setDraftItems(savedItems);
+    setDraftNotes(savedNotes);
+    setShowProductPicker(false);
+    setQuantities({});
+  }
+
+  async function handleSaveOverview() {
+    setIsSavingOverview(true);
+    try {
+      const errors: string[] = [];
+
+      // 1. Add NEW items (isNew = true)
+      const newItems = draftItems.filter((i) => i.isNew);
+      if (newItems.length > 0) {
+        const result = await addOrderItems(
+          order.id,
+          newItems.map((item) => ({
+            product_id: item.productId,
+            product_name: item.productName,
+            product_sku: item.productSku,
+            unit_price: item.unitPrice,
+            quantity: item.quantity,
+          })),
+        );
+        if (!result.success) {
+          errors.push(result.error ?? "Failed to add products");
+        }
+      }
+
+      // 2. Update CHANGED quantities (existing items)
+      const qtyChanges = draftItems.filter((draft) => {
+        if (draft.isNew) return false;
+        const saved = savedItems.find((s) => s.id === draft.id);
+        return saved && saved.quantity !== draft.quantity;
+      });
+      for (const item of qtyChanges) {
+        const result = await updateOrderItemQuantity(item.id, item.quantity);
+        if (!result.success) {
+          errors.push(`Failed to update qty: ${item.productName}`);
+        }
+      }
+
+      // 3. Delete REMOVED items (in savedItems but not draftItems)
+      const deletedIds = savedItems
+        .filter((s) => !draftItems.find((d) => d.id === s.id))
+        .map((s) => s.id);
+      for (const id of deletedIds) {
+        const result = await deleteOrderItem(id);
+        if (!result.success) {
+          errors.push("Failed to remove item");
+        }
+      }
+
+      // 4. Save NOTES if changed
+      if (draftNotes !== savedNotes) {
+        const result = await updateOrderClinicalFields(order.id, {
+          notes: draftNotes || null,
+        });
+        if (!result.success) {
+          errors.push(result.error ?? "Failed to save notes");
+        }
+      }
+
+      if (errors.length > 0) {
+        toast.error(errors[0]);
+      } else {
+        toast.success("Changes saved");
+        setSavedNotes(draftNotes);
+        await refreshOrder();
+        // refreshOrder → updateOrderInStore → useEffect → setSavedItems + setDraftItems
+        // (temp draft IDs replaced by real IDs from DB)
+      }
+    } finally {
+      setIsSavingOverview(false);
+    }
   }
 
   async function refreshOrder() {
     const updated = await getOrderById(order.id);
     if (updated) dispatch(updateOrderInStore(updated));
+  }
+
+  async function refreshDocuments() {
+    const docs = await getOrderDocuments(order.id);
+    setDocuments(docs);
+    setLocalDocuments(docs);
+    const photos = docs.filter((d) => d.documentType === "wound_pictures");
+    const urlMap: Record<string, string> = {};
+    await Promise.all(
+      photos.map(async (p) => {
+        if (!woundPhotoUrls[p.id]) {
+          const { url } = await getDocumentSignedUrl(p.filePath);
+          if (url) urlMap[p.id] = url;
+        } else {
+          urlMap[p.id] = woundPhotoUrls[p.id];
+        }
+      }),
+    );
+    setWoundPhotoUrls(urlMap);
   }
 
   function handleAction(
@@ -605,7 +853,16 @@ export function OrderDetailModal({
 
   /* ── Derived ── */
   const status = order.order_status;
-  const orderTotal = localItems.reduce((sum, item) => {
+  const isOverviewDirty =
+    draftItems.some((i) => i.isNew) ||
+    draftItems.some((draft) => {
+      if (draft.isNew) return false;
+      const saved = savedItems.find((s) => s.id === draft.id);
+      return saved && saved.quantity !== draft.quantity;
+    }) ||
+    savedItems.some((s) => !draftItems.find((d) => d.id === s.id)) ||
+    draftNotes !== savedNotes;
+  const orderTotal = draftItems.reduce((sum, item) => {
     return sum + (item.subtotal ?? item.unitPrice * item.quantity);
   }, 0);
   const docCount = documents.length;
@@ -655,12 +912,11 @@ export function OrderDetailModal({
           if (!v) setItemToDelete(null);
         }}
         title="Remove Product"
-        description={`Remove "${itemToDelete?.name}" from this order? This cannot be undone.`}
+        description={`Remove "${itemToDelete?.name}" from this order?`}
         confirmLabel="Remove"
-        isLoading={!!deletingItemId}
-        onConfirm={async () => {
+        onConfirm={() => {
           if (!itemToDelete) return;
-          await handleDeleteItem(itemToDelete.id);
+          draftDeleteItem(itemToDelete.id);
           setItemToDelete(null);
         }}
       />
@@ -701,7 +957,9 @@ export function OrderDetailModal({
               Order {order.order_number}
             </DialogTitle>
 
-            {/* ── Modal card ── */}
+            {!modalReady ? (
+              <OrderDetailSkeleton />
+            ) : (
             <div className="bg-white w-[95vw] max-w-[1200px] h-[90vh] rounded-3xl shadow-2xl border border-gray-100 overflow-hidden flex flex-col">
               {/* ════════ FULL-WIDTH HEADER ════════ */}
               <div className="flex-shrink-0 px-8 py-5 border-b border-gray-100 flex items-center justify-between bg-white">
@@ -732,12 +990,7 @@ export function OrderDetailModal({
                   <div className="flex-shrink-0 border-b border-gray-100 px-6">
                     <div className="flex overflow-x-auto">
                       {TABS.map((t) => {
-                        const badge =
-                          t.value === "documents"
-                            ? docCount
-                            : t.value === "conversation"
-                              ? msgCount
-                              : 0;
+                        const badge = t.value === "conversation" ? msgCount : 0;
                         return (
                           <button
                             key={t.value}
@@ -765,22 +1018,68 @@ export function OrderDetailModal({
                   <div className="flex-1 relative overflow-hidden">
                     {/* OVERVIEW */}
                     {tab === "overview" && (
-                      <div className="absolute inset-0 overflow-y-auto px-6 py-6 space-y-5">
+                      <div className="absolute inset-0 overflow-y-auto px-6 space-y-5">
+                        {/* ── Unified Save/Discard toolbar ── */}
+                        {canEdit && status === "draft" && (
+                          <div className="sticky top-0 z-10 bg-white border-b border-gray-300 py-3 flex items-center justify-between">
+                            <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">
+                              Overview
+                              {isOverviewDirty && !isSavingOverview && (
+                                <span className="ml-2 text-amber-500 normal-case font-normal tracking-normal">
+                                  • Unsaved changes
+                                </span>
+                              )}
+                            </h3>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={handleDiscardOverview}
+                                disabled={!isOverviewDirty || isSavingOverview}
+                                className={cn(
+                                  "px-4 py-1.5 text-sm font-medium rounded-lg",
+                                  "border border-gray-200 text-gray-500",
+                                  "hover:bg-gray-50 transition-colors",
+                                  "disabled:opacity-40 disabled:cursor-not-allowed",
+                                )}
+                              >
+                                Discard changes
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleSaveOverview}
+                                disabled={!isOverviewDirty || isSavingOverview}
+                                className={cn(
+                                  "px-4 py-1.5 text-sm font-semibold rounded-lg",
+                                  "bg-[#15689E] text-white",
+                                  "hover:bg-[#15689E]/90 transition-colors",
+                                  "disabled:opacity-40 disabled:cursor-not-allowed",
+                                  "flex items-center gap-2",
+                                )}
+                              >
+                                {isSavingOverview && (
+                                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                )}
+                                {isSavingOverview ? "Saving..." : "Save changes"}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
                         {/* ── Order Items ── */}
                         <div className="space-y-3">
                           <div className="flex items-center justify-between">
                             <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">
                               Order Items
-                              {localItems.length > 0 && (
+                              {draftItems.length > 0 && (
                                 <span className="ml-2 text-gray-300 normal-case font-normal">
-                                  ({localItems.length} item
-                                  {localItems.length !== 1 ? "s" : ""})
+                                  ({draftItems.length} item
+                                  {draftItems.length !== 1 ? "s" : ""})
                                 </span>
                               )}
                             </h3>
                           </div>
 
-                          {localItems.length === 0 ? (
+                          {draftItems.length === 0 ? (
                             <div className="py-8 text-center rounded-xl border-2 border-dashed border-gray-200">
                               <p className="text-sm text-gray-400">
                                 No products added yet.
@@ -815,10 +1114,23 @@ export function OrderDetailModal({
                                     </tr>
                                   </thead>
                                   <tbody className="divide-y divide-gray-50">
-                                    {localItems.map((item) => (
+                                    {draftItems.map((item) => {
+                                      const qtyChanged =
+                                        !item.isNew &&
+                                        savedItems.find(
+                                          (s) => s.id === item.id,
+                                        )?.quantity !== item.quantity;
+                                      return (
                                       <tr
                                         key={item.id}
-                                        className="hover:bg-gray-50/50 transition-colors"
+                                        className={cn(
+                                          "transition-colors",
+                                          item.isNew
+                                            ? "bg-blue-50/40 hover:bg-blue-50/60"
+                                            : qtyChanged
+                                              ? "bg-amber-50/30 hover:bg-amber-50/50"
+                                              : "hover:bg-gray-50/50",
+                                        )}
                                       >
                                         <td className="px-4 py-3">
                                           <p
@@ -827,21 +1139,25 @@ export function OrderDetailModal({
                                           >
                                             {item.productName}
                                           </p>
-                                          <p className="text-xs text-gray-400 mt-0.5">
-                                            {item.productSku}
-                                          </p>
+                                          <div className="flex items-center gap-2 mt-0.5">
+                                            <p className="text-xs text-gray-400">
+                                              {item.productSku}
+                                            </p>
+                                            {item.isNew && (
+                                              <span className="text-[10px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full font-semibold">
+                                                New
+                                              </span>
+                                            )}
+                                          </div>
                                         </td>
                                         <td className="px-4 py-3">
                                           {canEdit && status === "draft" ? (
                                             <div className="flex items-center justify-end gap-1.5">
                                               <button
                                                 type="button"
-                                                disabled={
-                                                  item.quantity <= 1 ||
-                                                  updatingItemId === item.id
-                                                }
+                                                disabled={item.quantity <= 1}
                                                 onClick={() =>
-                                                  handleQtyChange(
+                                                  draftQtyChange(
                                                     item.id,
                                                     item.quantity - 1,
                                                   )
@@ -851,19 +1167,12 @@ export function OrderDetailModal({
                                                 <Minus className="w-2.5 h-2.5" />
                                               </button>
                                               <span className="w-8 text-center text-sm font-medium tabular-nums">
-                                                {updatingItemId === item.id ? (
-                                                  <Loader2 className="w-3 h-3 animate-spin mx-auto" />
-                                                ) : (
-                                                  item.quantity
-                                                )}
+                                                {item.quantity}
                                               </span>
                                               <button
                                                 type="button"
-                                                disabled={
-                                                  updatingItemId === item.id
-                                                }
                                                 onClick={() =>
-                                                  handleQtyChange(
+                                                  draftQtyChange(
                                                     item.id,
                                                     item.quantity + 1,
                                                   )
@@ -907,7 +1216,8 @@ export function OrderDetailModal({
                                           </td>
                                         )}
                                       </tr>
-                                    ))}
+                                      );
+                                    })}
                                   </tbody>
                                 </table>
                               </div>
@@ -944,7 +1254,7 @@ export function OrderDetailModal({
                             showProductPicker &&
                             (() => {
                               const addedProductIds = new Set(
-                                localItems
+                                draftItems
                                   .map((i) => i.productId)
                                   .filter(Boolean),
                               );
@@ -1042,14 +1352,10 @@ export function OrderDetailModal({
                                     <Button
                                       size="sm"
                                       className="flex-1 text-xs bg-[#15689E] text-white"
-                                      disabled={!hasCartItems || addingProducts}
-                                      onClick={handleAddProducts}
+                                      disabled={!hasCartItems}
+                                      onClick={handleAddProductsToDraft}
                                     >
-                                      {addingProducts ? (
-                                        <Loader2 className="w-3 h-3 animate-spin" />
-                                      ) : (
-                                        "Add to Order"
-                                      )}
+                                      Add to Order
                                     </Button>
                                   </div>
                                 </div>
@@ -1058,21 +1364,20 @@ export function OrderDetailModal({
                         </div>
 
                         {/* ── Notes ── */}
-                        <div className="space-y-2">
+                        <div className="space-y-2 pb-4">
                           <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">
                             Notes
                           </h3>
                           <textarea
-                            value={notes}
-                            onChange={(e) => setNotes(e.target.value)}
-                            onBlur={handleNotesSave}
+                            value={draftNotes}
+                            onChange={(e) => setDraftNotes(e.target.value)}
                             disabled={!canEdit || status !== "draft"}
                             placeholder={
                               canEdit && status === "draft"
                                 ? "Add clinical notes..."
                                 : ""
                             }
-                            rows={3}
+                            rows={4}
                             className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm text-gray-700 border border-gray-100 focus:outline-none focus:ring-2 focus:ring-[#15689E]/20 resize-none disabled:opacity-60 disabled:cursor-default transition-shadow"
                           />
                         </div>
@@ -1245,92 +1550,41 @@ export function OrderDetailModal({
 
                     {/* IVR FORM */}
                     {tab === "ivr" && (
-                      <div className="absolute inset-0 overflow-y-auto px-6 ">
-                        <OrderIVRForm orderId={order.id} canEdit={canEdit} />
+                      <div className="absolute inset-0 overflow-y-auto px-6">
+                        <OrderIVRForm
+                          orderId={order.id}
+                          canEdit={canEdit}
+                          initialData={ivrData}
+                          isReady={ivrLoaded}
+                          onSave={async (saved) => {
+                            setIvrData(saved);
+                            setGeneratingPdfType("additional_ivr");
+                            setTimeout(async () => {
+                              await refreshDocuments();
+                              setGeneratingPdfType(null);
+                            }, 3000);
+                          }}
+                        />
                       </div>
                     )}
 
                     {/* HCFA / CMS-1500 */}
                     {tab === "hcfa" && (
                       <div className="absolute inset-0 overflow-y-auto px-6">
-                        <Form1500Tab orderId={order.id} canEdit={canEdit} />
-                      </div>
-                    )}
-
-                    {/* DOCUMENTS */}
-                    {tab === "documents" && (
-                      <div className="absolute inset-0 overflow-y-auto px-6 py-6 space-y-5">
-                        {loadingDocs ? (
-                          <div className="flex justify-center py-8">
-                            <Loader2 className="w-5 h-5 animate-spin text-gray-300" />
-                          </div>
-                        ) : (
-                          ALL_DOC_TYPES.map(({ type, label }) => {
-                            const typeDocs = groupedDocs[type] ?? [];
-                            return (
-                              <div key={type} className="space-y-2">
-                                <div className="flex items-center justify-between">
-                                  <p className="text-xs font-bold uppercase tracking-widest text-gray-400">
-                                    {label}
-                                  </p>
-                                  {(canEdit || isAdmin) && (
-                                    <label className="cursor-pointer text-xs text-[#15689E] hover:underline flex items-center gap-1 font-semibold">
-                                      <Upload className="w-3 h-3" />
-                                      Upload
-                                      <input
-                                        type="file"
-                                        className="hidden"
-                                        accept="image/*,.pdf,.doc,.docx"
-                                        onChange={(e) => {
-                                          const f = e.target.files?.[0];
-                                          if (f) handleUploadDoc(f, type);
-                                          e.target.value = "";
-                                        }}
-                                      />
-                                    </label>
-                                  )}
-                                </div>
-                                {typeDocs.length === 0 ? (
-                                  <p className="text-xs text-gray-300 italic">
-                                    None uploaded
-                                  </p>
-                                ) : (
-                                  typeDocs.map((doc) => (
-                                    <div
-                                      key={doc.id}
-                                      className="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5"
-                                    >
-                                      <span className="text-sm text-gray-700 flex-1 truncate">
-                                        {doc.fileName}
-                                      </span>
-                                      <span className="text-xs text-gray-400">
-                                        {new Date(
-                                          doc.createdAt,
-                                        ).toLocaleDateString()}
-                                      </span>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleViewDoc(doc)}
-                                        className="text-[#15689E] hover:text-[#125d8e] transition-colors"
-                                      >
-                                        <ExternalLink className="w-4 h-4" />
-                                      </button>
-                                      {(canEdit || isAdmin) && (
-                                        <button
-                                          type="button"
-                                          onClick={() => handleDeleteDoc(doc)}
-                                          className="text-gray-300 hover:text-red-500 transition-colors"
-                                        >
-                                          <Trash2 className="w-4 h-4" />
-                                        </button>
-                                      )}
-                                    </div>
-                                  ))
-                                )}
-                              </div>
-                            );
-                          })
-                        )}
+                        <Form1500Tab
+                          orderId={order.id}
+                          canEdit={canEdit}
+                          initialData={hcfaData}
+                          isReady={hcfaLoaded}
+                          onSave={async (saved) => {
+                            setHcfaData(saved);
+                            setGeneratingPdfType("form_1500");
+                            setTimeout(async () => {
+                              await refreshDocuments();
+                              setGeneratingPdfType(null);
+                            }, 3000);
+                          }}
+                        />
                       </div>
                     )}
 
@@ -1405,40 +1659,53 @@ export function OrderDetailModal({
                             <Loader2 className="w-5 h-5 animate-spin text-gray-300" />
                           </div>
                         ) : history.length === 0 ? (
-                          <p className="text-sm text-gray-400 text-center py-8">
-                            No history yet.
-                          </p>
+                          <div className="flex flex-col items-center py-12 text-center">
+                            <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mb-3">
+                              <Clock className="w-5 h-5 text-gray-300" />
+                            </div>
+                            <p className="text-sm text-gray-400 font-medium">No history yet</p>
+                            <p className="text-xs text-gray-300 mt-1">Actions on this order will appear here</p>
+                          </div>
                         ) : (
                           <div className="relative pl-5">
                             <div className="absolute left-2 top-0 bottom-0 w-0.5 bg-gray-100" />
                             {history.map((h) => (
-                              <div key={h.id} className="relative mb-5">
-                                <div className="absolute -left-[17px] w-3 h-3 rounded-full bg-[#15689E] border-2 border-white top-1" />
-                                <p className="text-sm font-semibold text-gray-800">
-                                  {h.action}
-                                </p>
+                              <div key={h.id} className="relative mb-5 last:mb-0">
+                                <div className={cn(
+                                  "absolute -left-[17px] w-3 h-3 rounded-full border-2 border-white top-1",
+                                  h.action.includes("signed")    ? "bg-green-500" :
+                                  h.action.includes("approved")  ? "bg-green-600" :
+                                  h.action.includes("shipped")   ? "bg-blue-500"  :
+                                  h.action.includes("canceled")  ? "bg-red-400"   :
+                                  h.action.includes("AI")        ? "bg-purple-500":
+                                  h.action.includes("recalled")  ? "bg-amber-500" :
+                                  "bg-[#15689E]",
+                                )} />
+                                <p className="text-sm font-semibold text-gray-800">{h.action}</p>
                                 {h.oldStatus && h.newStatus && (
                                   <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1">
-                                    <span className="capitalize">
+                                    <span className="capitalize px-1.5 py-0.5 bg-gray-100 rounded text-[10px]">
                                       {h.oldStatus.replace(/_/g, " ")}
                                     </span>
                                     <span>→</span>
-                                    <span className="capitalize">
+                                    <span className="capitalize px-1.5 py-0.5 bg-gray-100 rounded text-[10px]">
                                       {h.newStatus.replace(/_/g, " ")}
                                     </span>
                                   </p>
                                 )}
-                                {h.performedByName && (
-                                  <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
-                                    <User className="w-3 h-3" />
-                                    {h.performedByName}
-                                  </p>
-                                )}
-                                <p className="text-xs text-gray-400 mt-0.5">
-                                  {new Date(h.createdAt).toLocaleString()}
+                                <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1">
+                                  <User className="w-3 h-3" />
+                                  {h.performedByName ?? "System"}
+                                  <span className="text-gray-300">·</span>
+                                  {new Date(h.createdAt).toLocaleString("en-US", {
+                                    month: "short",
+                                    day: "numeric",
+                                    hour: "numeric",
+                                    minute: "2-digit",
+                                  })}
                                 </p>
                                 {h.notes && (
-                                  <p className="text-xs text-gray-500 mt-1 bg-gray-50 rounded-lg px-2 py-1">
+                                  <p className="text-xs text-gray-500 mt-1 bg-gray-50 rounded-lg px-2 py-1 border border-gray-100">
                                     {h.notes}
                                   </p>
                                 )}
@@ -1618,31 +1885,38 @@ export function OrderDetailModal({
                               typeDocs.find((d) =>
                                 d.filePath?.includes("/generated/"),
                               ) ?? typeDocs[0];
-                            const isLoading = viewingDocId === docRecord?.id;
+                            const isViewLoading = viewingDocId === docRecord?.id;
+                            const isPdfGenerating = generatingPdfType === doc.type;
                             return (
                               <button
                                 key={doc.type}
                                 type="button"
-                                disabled={!uploaded || isLoading}
+                                disabled={(!uploaded && !isPdfGenerating) || isViewLoading || isPdfGenerating}
                                 onClick={() =>
-                                  uploaded && handleViewDocument(doc.type)
+                                  uploaded && !isPdfGenerating && handleViewDocument(doc.type)
                                 }
                                 className={cn(
                                   "flex items-center gap-2 px-3 py-3 rounded-xl border text-xs font-bold text-left w-full transition-colors",
-                                  uploaded
+                                  isPdfGenerating
+                                    ? "bg-blue-50 border-blue-200 text-blue-700 cursor-wait"
+                                    : uploaded
                                     ? "bg-green-50 border-green-200 text-green-800 hover:bg-green-100 cursor-pointer"
                                     : "bg-amber-50 border-amber-200 text-amber-800 cursor-default",
-                                  isLoading && "opacity-60",
+                                  isViewLoading && "opacity-60",
                                 )}
                               >
-                                {isLoading ? (
+                                {isPdfGenerating ? (
+                                  <div className="w-3.5 h-3.5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin shrink-0" />
+                                ) : isViewLoading ? (
                                   <div className="w-3.5 h-3.5 border-2 border-green-500 border-t-transparent rounded-full animate-spin shrink-0" />
                                 ) : uploaded ? (
                                   <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0" />
                                 ) : (
                                   <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                                 )}
-                                <span className="truncate">{doc.label}</span>
+                                <span className="truncate">
+                                  {isPdfGenerating ? "Generating..." : doc.label}
+                                </span>
                               </button>
                             );
                           })}
@@ -1750,7 +2024,7 @@ export function OrderDetailModal({
               </div>
               {/* end two-column body */}
             </div>
-            {/* end modal card */}
+            )}
           </RadixDialog.Content>
         </DialogPortal>
       </RadixDialog.Root>

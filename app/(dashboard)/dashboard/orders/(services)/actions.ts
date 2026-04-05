@@ -97,6 +97,19 @@ async function requireIVREditRole(): Promise<{
   return { userId: user.id, role: role! };
 }
 
+function getDocumentLabel(type: string): string {
+  const labels: Record<string, string> = {
+    facesheet: "Facesheet",
+    clinical_docs: "Clinical Documentation",
+    order_form: "Order Form",
+    additional_ivr: "Additional IVR Info",
+    form_1500: "CMS-1500 Form",
+    wound_pictures: "Wound Photos",
+    other: "Additional Documentation",
+  };
+  return labels[type] ?? type;
+}
+
 async function insertOrderHistory(
   adminClient: ReturnType<typeof createAdminClient>,
   orderId: string,
@@ -975,6 +988,15 @@ export async function uploadOrderDocument(
       );
     }
 
+    await insertOrderHistory(
+      adminClient,
+      orderId,
+      `Document uploaded: ${getDocumentLabel(documentType)}`,
+      null,
+      null,
+      user.id,
+      fileEntry.name,
+    );
     revalidatePath(ORDERS_PATH);
     return {
       success: true,
@@ -1133,32 +1155,54 @@ export async function getOrderHistory(
   orderId: string,
 ): Promise<IOrderHistory[]> {
   const supabase = await createClient();
+  await getCurrentUserOrThrow(supabase);
 
+  // Step 1 — fetch history rows (no join)
   const { data, error } = await supabase
     .from("order_history")
-    .select("*, profiles:performed_by (full_name)")
+    .select("id, order_id, performed_by, action, old_status, new_status, notes, created_at")
     .eq("order_id", orderId)
     .order("created_at", { ascending: false });
 
-  if (error) {
-    console.error("[getOrderHistory]", JSON.stringify(error));
-    return [];
+  if (error || !data || data.length === 0) return [];
+
+  // Step 2 — collect unique non-null user IDs
+  const userIds = [
+    ...new Set(data.map((h) => h.performed_by).filter((id): id is string => !!id)),
+  ];
+
+  // Step 3 — fetch profiles for those IDs
+  let nameMap: Record<string, string> = {};
+  if (userIds.length > 0) {
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, first_name, last_name")
+      .in("id", userIds);
+
+    if (profiles) {
+      nameMap = Object.fromEntries(
+        profiles.map((p) => [
+          p.id,
+          `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim(),
+        ]),
+      );
+    }
   }
 
-  return (data ?? []).map((h) => {
-    const profile = Array.isArray(h.profiles) ? h.profiles[0] : h.profiles;
-    return {
-      id: h.id,
-      orderId: h.order_id,
-      performedBy: h.performed_by,
-      action: h.action,
-      oldStatus: h.old_status,
-      newStatus: h.new_status,
-      notes: h.notes,
-      createdAt: h.created_at,
-      performedByName: (profile as { full_name?: string } | null)?.full_name ?? null,
-    };
-  });
+  // Step 4 — map with resolved names
+  return data.map((h) => ({
+    id: h.id,
+    orderId: h.order_id,
+    action: h.action,
+    oldStatus: h.old_status ?? null,
+    newStatus: h.new_status ?? null,
+    notes: h.notes ?? null,
+    createdAt: h.created_at,
+    performedBy: h.performed_by ?? null,
+    performedByName: h.performed_by
+      ? (nameMap[h.performed_by] ?? "Unknown")
+      : "System",
+  }));
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1539,7 +1583,15 @@ export async function addOrderItems(
       return { success: false, error: "Failed to add products." };
     }
 
-    await insertOrderHistory(adminClient, orderId, "Products added to order", null, null, userId);
+    await insertOrderHistory(
+      adminClient,
+      orderId,
+      `${items.length} product${items.length !== 1 ? "s" : ""} added to order`,
+      null,
+      null,
+      userId,
+      items.map((i) => `${i.product_name} ×${i.quantity}`).join(", "),
+    );
     revalidatePath(ORDERS_PATH);
     return { success: true, error: null };
   } catch (err) {
