@@ -17,6 +17,7 @@ export const orderStatusSchema = z.enum([
   "additional_info_needed",
   "approved",
   "shipped",
+  "delivered",
   "canceled",
 ]);
 
@@ -167,6 +168,37 @@ export interface IOrderHistory {
   createdAt: string;
   // joined
   performedByName: string | null;
+}
+
+export interface IPayment {
+  id:                      string;
+  orderId:                 string;
+  provider:                string;
+  paymentType:             "checkout" | "invoice" | "manual";
+  status:                  "pending" | "paid" | "failed" | "refunded" | "partially_refunded" | "canceled";
+  amount:                  number;
+  currency:                string;
+  stripeCheckoutSessionId?: string | null;
+  stripePaymentIntentId?:   string | null;
+  receiptUrl?:              string | null;
+  paidAt?:                  string | null;
+  createdAt:               string;
+}
+
+export interface IInvoice {
+  id:              string;
+  orderId:         string;
+  invoiceNumber:   string;
+  provider:        string;
+  status:          "draft" | "issued" | "sent" | "partially_paid" | "paid" | "overdue" | "void";
+  amountDue:       number;
+  amountPaid:      number;
+  currency:        string;
+  dueAt?:          string | null;
+  issuedAt?:       string | null;
+  paidAt?:         string | null;
+  hostedInvoiceUrl?: string | null;
+  createdAt:       string;
 }
 
 export interface IOrderIVR {
@@ -739,6 +771,7 @@ export type DashboardOrder = {
   invoice_number?: string | null;
   invoice_due_at?: string | null;
   invoice_paid_at?: string | null;
+  invoice_amount_due?: number | null;
   product_category?: string | null;
 };
 
@@ -761,6 +794,7 @@ export function mapOrder(raw: RawOrderRecord): DashboardOrder {
   const patient = getSingle(raw.patients);
   const items = getArray(raw.order_items);
   const firstItem = items[0];
+  const invoice = getSingle(raw.invoices);
 
   return {
     id: raw.id,
@@ -860,8 +894,9 @@ export function mapOrder(raw: RawOrderRecord): DashboardOrder {
     hosted_invoice_url: null,
     provider_invoice_id: null,
     invoice_number: null,
-    invoice_due_at: null,
+    invoice_due_at: invoice?.due_at ?? null,
     invoice_paid_at: null,
+    invoice_amount_due: invoice?.amount_due != null ? Number(invoice.amount_due) : null,
     product_category: null,
   };
 }

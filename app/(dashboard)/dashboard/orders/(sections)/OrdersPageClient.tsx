@@ -17,8 +17,8 @@ import { getUnreadMessageCounts, getOrderById } from "../(services)/actions";
 import { createClient } from "@/lib/supabase/client";
 import { EmptyState } from "@/app/(components)/EmptyState";
 import { Package, Search, ChevronDown } from "lucide-react";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/utils/utils";
+import { Input } from "@/components/ui/input";
 
 interface OrdersPageClientProps {
   canCreate: boolean;
@@ -211,6 +211,8 @@ export function OrdersPageClient({
       isAdmin={isAdmin}
       isClinical={canCreate}
       canEdit={canCreate}
+      isRep={isRep}
+      isSupport={isSupport}
       currentUserId={currentUserId}
       currentUserName={currentUserName}
       unreadCount={unreadCounts[selectedOrder.id] ?? 0}
@@ -293,6 +295,9 @@ export function OrdersPageClient({
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">
                     Status
                   </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide hidden xl:table-cell">
+                    Payment
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -319,6 +324,37 @@ export function OrdersPageClient({
                     </td>
                     <td className="px-4 py-3">
                       <OrderStatusBadge status={order.order_status} />
+                    </td>
+                    <td className="px-4 py-3 hidden xl:table-cell">
+                      {order.payment_method ? (
+                        <div className="flex flex-col gap-1">
+                          <span className={cn(
+                            "text-[10px] font-bold px-2 py-0.5 rounded-full w-fit",
+                            order.payment_status === "paid"
+                              ? "bg-green-100 text-green-700"
+                              : order.payment_method === "pay_now"
+                              ? "bg-blue-100 text-blue-700"
+                              : "bg-purple-100 text-purple-700",
+                          )}>
+                            {order.payment_status === "paid"
+                              ? "✓ Paid"
+                              : order.payment_method === "pay_now"
+                              ? "💳 Pay Now"
+                              : "📄 Net-30"}
+                          </span>
+                          {order.payment_method === "net_30" &&
+                            order.payment_status !== "paid" &&
+                            order.invoice_due_at && (
+                              <span className="text-[10px] text-red-500 font-medium">
+                                Due {new Date(order.invoice_due_at).toLocaleDateString("en-US", {
+                                  month: "short", day: "numeric",
+                                })}
+                              </span>
+                            )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
+                      )}
                     </td>
                   </tr>
                 ))}

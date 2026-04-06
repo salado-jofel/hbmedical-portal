@@ -31,6 +31,10 @@ const STATUS_CONFIG: Record<
     label: "Shipped",
     className: "bg-teal-50 text-teal-700 border-teal-200",
   },
+  delivered: {
+    label: "Delivered",
+    className: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  },
   canceled: {
     label: "Canceled",
     className: "bg-slate-100 text-slate-500 border-slate-200",

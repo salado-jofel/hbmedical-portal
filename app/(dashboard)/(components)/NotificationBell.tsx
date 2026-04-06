@@ -20,9 +20,11 @@ const STATUS_COLORS: Record<string, string> = {
   order_resubmitted: "bg-blue-100 text-blue-700",
   order_approved:    "bg-green-100 text-green-700",
   order_shipped:     "bg-green-100 text-green-700",
+  order_delivered:   "bg-emerald-100 text-emerald-700",
   order_canceled:    "bg-red-100 text-red-700",
   order_recalled:    "bg-amber-100 text-amber-700",
   message_received:  "bg-gray-100 text-gray-700",
+  payment_initiated: "bg-green-100 text-green-700",
 };
 
 const TYPE_ICONS: Record<string, string> = {
@@ -32,9 +34,11 @@ const TYPE_ICONS: Record<string, string> = {
   order_resubmitted: "🔄",
   order_approved:    "✅",
   order_shipped:     "📦",
+  order_delivered:   "🏠",
   order_canceled:    "❌",
   order_recalled:    "↩️",
   message_received:  "💬",
+  payment_initiated: "💳",
 };
 
 export function NotificationBell({

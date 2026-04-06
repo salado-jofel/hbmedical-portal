@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { stripe, getAppUrl, toStripeAmount } from "@/lib/stripe/stripe";
 import {
   getCurrentUserOrThrow,
   getUserRole,
@@ -12,6 +13,8 @@ import {
   isClinicalProvider,
   isClinicalStaff,
   isClinicSide,
+  isSupport,
+  isSalesRep,
 } from "@/utils/helpers/role";
 import type {
   DashboardOrder,
@@ -29,6 +32,8 @@ import type {
   WoundType,
   OrderStatus,
   IOrderForm,
+  IPayment,
+  IInvoice,
 } from "@/utils/interfaces/orders";
 import { mapOrder, mapOrders } from "@/utils/interfaces/orders";
 
@@ -238,7 +243,8 @@ const ORDER_WITH_RELATIONS_SELECT = `
   patients (id, facility_id, first_name, last_name, date_of_birth, patient_ref, notes, is_active, created_at, updated_at),
   order_items (id, order_id, product_id, product_name, product_sku, unit_price, quantity, shipping_amount, tax_amount, subtotal, total_amount, created_at, updated_at),
   order_documents (id, document_type, file_name, file_path, mime_type, file_size, uploaded_by, created_at),
-  facilities!orders_facility_id_fkey (id, name)
+  facilities!orders_facility_id_fkey (id, name),
+  invoices (due_at, status, amount_due)
 `;
 
 /* -------------------------------------------------------------------------- */
@@ -630,15 +636,14 @@ export async function signOrder(
 
 export async function approveOrder(
   orderId: string,
-  paymentMethod: "pay_now" | "net_30",
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const supabase = await createClient();
     const user = await getCurrentUserOrThrow(supabase);
     const role = await getUserRole(supabase);
 
-    if (!isAdmin(role)) {
-      return { success: false, error: "Only admins can approve orders." };
+    if (!isAdmin(role) && !isSupport(role)) {
+      return { success: false, error: "Only admins and support staff can approve orders." };
     }
 
     const adminClient = createAdminClient();
@@ -656,11 +661,7 @@ export async function approveOrder(
 
     const { error } = await adminClient
       .from("orders")
-      .update({
-        order_status: "approved",
-        payment_method: paymentMethod,
-        invoice_status: paymentMethod === "net_30" ? "draft" : "not_applicable",
-      })
+      .update({ order_status: "approved" })
       .eq("id", orderId);
 
     if (error) {
@@ -671,7 +672,7 @@ export async function approveOrder(
     await insertOrderHistory(
       adminClient,
       orderId,
-      `Order approved — payment: ${paymentMethod}`,
+      "Order approved",
       "manufacturer_review",
       "approved",
       user.id,
@@ -697,6 +698,67 @@ export async function approveOrder(
 }
 
 /* -------------------------------------------------------------------------- */
+/* setOrderPaymentMethod                                                      */
+/* -------------------------------------------------------------------------- */
+
+export async function setOrderPaymentMethod(
+  orderId: string,
+  paymentMethod: "pay_now" | "net_30",
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const supabase = await createClient();
+    const user = await getCurrentUserOrThrow(supabase);
+    const adminClient = createAdminClient();
+
+    const { data: profile } = await adminClient
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+
+    if (!["admin", "support_staff"].includes(profile?.role ?? "")) {
+      return { success: false, error: "Unauthorized." };
+    }
+
+    const { data: order } = await adminClient
+      .from("orders")
+      .select("order_status, order_number, facility_id")
+      .eq("id", orderId)
+      .single();
+
+    if (order?.order_status !== "approved") {
+      return { success: false, error: "Payment method can only be set on approved orders." };
+    }
+
+    const { error } = await adminClient
+      .from("orders")
+      .update({
+        payment_method: paymentMethod,
+        invoice_status: paymentMethod === "net_30" ? "draft" : "not_applicable",
+      })
+      .eq("id", orderId);
+
+    if (error) {
+      console.error("[setOrderPaymentMethod]", JSON.stringify(error));
+      return { success: false, error: error.message };
+    }
+
+    await insertOrderHistory(
+      adminClient,
+      orderId,
+      `Payment method set: ${paymentMethod === "pay_now" ? "Pay Now" : "Net-30"}`,
+      null,
+      null,
+      user.id,
+    );
+    revalidatePath(ORDERS_PATH);
+    return { success: true, error: null };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
 /* requestAdditionalInfo                                                      */
 /* -------------------------------------------------------------------------- */
 
@@ -709,8 +771,8 @@ export async function requestAdditionalInfo(
     const user = await getCurrentUserOrThrow(supabase);
     const role = await getUserRole(supabase);
 
-    if (!isAdmin(role)) {
-      return { success: false, error: "Only admins can request additional info." };
+    if (!isAdmin(role) && !isSupport(role)) {
+      return { success: false, error: "Only admins and support staff can request additional info." };
     }
 
     const adminClient = createAdminClient();
@@ -848,8 +910,8 @@ export async function addShippingInfo(
     const user = await getCurrentUserOrThrow(supabase);
     const role = await getUserRole(supabase);
 
-    if (!isAdmin(role)) {
-      return { success: false, error: "Only admins can add shipping info." };
+    if (!isAdmin(role) && !isSupport(role)) {
+      return { success: false, error: "Only admins and support staff can add shipping info." };
     }
 
     const adminClient = createAdminClient();
@@ -949,8 +1011,13 @@ export async function cancelOrder(
     if (order.order_status === "canceled") return { success: false, error: "Order is already canceled." };
     if (order.order_status === "shipped") return { success: false, error: "Shipped orders cannot be canceled." };
 
+    // Only clinic, admin, and support staff can cancel orders
+    if (!isClinicSide(role) && !isAdmin(role) && !isSupport(role)) {
+      return { success: false, error: "Unauthorized." };
+    }
+
     // Clinic side can only cancel their own facility's orders in draft/pending/additional_info
-    if (!isAdmin(role)) {
+    if (!isAdmin(role) && !isSupport(role)) {
       const allowedStatuses: OrderStatus[] = ["draft", "pending_signature", "additional_info_needed"];
       if (!allowedStatuses.includes(order.order_status as OrderStatus)) {
         return { success: false, error: "You cannot cancel an order at this stage." };
@@ -2301,4 +2368,452 @@ export async function generateOrderPDFs(
   } catch (err) {
     return { error: String(err), success: false };
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/* markOrderDelivered                                                          */
+/* -------------------------------------------------------------------------- */
+
+export async function markOrderDelivered(
+  orderId: string,
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const supabase = await createClient();
+    const user = await getCurrentUserOrThrow(supabase);
+    const role = await getUserRole(supabase);
+
+    if (!isAdmin(role) && !isSupport(role)) {
+      return { success: false, error: "Only admins and support staff can mark orders as delivered." };
+    }
+
+    const adminClient = createAdminClient();
+
+    const { data: order } = await adminClient
+      .from("orders")
+      .select("id, order_status, facility_id, order_number")
+      .eq("id", orderId)
+      .maybeSingle();
+
+    if (!order) return { success: false, error: "Order not found." };
+    if (order.order_status !== "shipped") {
+      return { success: false, error: "Only shipped orders can be marked as delivered." };
+    }
+
+    const { error } = await adminClient
+      .from("orders")
+      .update({
+        order_status: "delivered",
+        delivery_status: "delivered",
+        delivered_at: new Date().toISOString(),
+      })
+      .eq("id", orderId);
+
+    if (error) {
+      console.error("[markOrderDelivered]", JSON.stringify(error));
+      return { success: false, error: "Failed to mark order as delivered." };
+    }
+
+    await insertOrderHistory(adminClient, orderId, "Order marked as delivered", "shipped", "delivered", user.id);
+    createNotifications({
+      adminClient,
+      orderId,
+      orderNumber: order.order_number,
+      facilityId:  order.facility_id,
+      type:        "order_delivered",
+      title:       "Order delivered",
+      body:        `Order ${order.order_number} has been delivered.`,
+      oldStatus:   "shipped",
+      newStatus:   "delivered",
+      notifyRoles:    ["clinical_staff", "clinical_provider"],
+      excludeUserId:  user.id,
+    }).catch(() => {});
+    revalidatePath(ORDERS_PATH);
+    return { success: true, error: null };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* initiatePayment (all roles)                                                 */
+/* -------------------------------------------------------------------------- */
+
+export async function initiatePayment(
+  orderId: string,
+): Promise<{
+  success: boolean;
+  error: string | null;
+  checkoutUrl?: string;
+  paymentType?: "pay_now" | "net_30";
+}> {
+  try {
+    const supabase = await createClient();
+    const user = await getCurrentUserOrThrow(supabase);
+    const adminClient = createAdminClient();
+
+    const { data: profile } = await adminClient
+      .from("profiles")
+      .select("role, first_name, last_name")
+      .eq("id", user.id)
+      .single();
+
+    const role = profile?.role ?? null;
+    if (!isAdmin(role) && !isSupport(role) && !isSalesRep(role) && !isClinicSide(role)) {
+      return { success: false, error: "You are not authorized to initiate payments." };
+    }
+
+    // Fetch order with items
+    const { data: order } = await adminClient
+      .from("orders")
+      .select(`
+        id, order_number, order_status, payment_method,
+        payment_status, facility_id,
+        order_items (product_name, product_sku, unit_price, quantity, total_amount)
+      `)
+      .eq("id", orderId)
+      .single();
+
+    if (!order) {
+      return { success: false, error: "Order not found." };
+    }
+
+    if (order.order_status !== "approved") {
+      return { success: false, error: "Payment can only be initiated for approved orders." };
+    }
+
+    if (!order.payment_method) {
+      return { success: false, error: "No payment method set. Admin must set a payment method first." };
+    }
+
+    if (order.payment_status === "paid") {
+      return { success: false, error: "This order has already been paid." };
+    }
+
+    // Sales rep: verify facility is in their territory
+    if (isSalesRep(role)) {
+      const { data: facilityCheck } = await adminClient.rpc("is_rep_facility", {
+        p_rep_id:      user.id,
+        p_facility_id: order.facility_id,
+      });
+      if (!facilityCheck) {
+        return { success: false, error: "This order is not in your territory." };
+      }
+    }
+
+    // Fetch facility for Stripe customer
+    const { data: facility } = await adminClient
+      .from("facilities")
+      .select(`
+        id, name, contact, phone,
+        address_line_1, address_line_2,
+        city, state, postal_code, country,
+        stripe_customer_id
+      `)
+      .eq("id", order.facility_id)
+      .single();
+
+    if (!facility) {
+      return { success: false, error: "Facility not found." };
+    }
+
+    const items = (order.order_items ?? []) as Array<{
+      product_name: string; product_sku: string;
+      unit_price: number; quantity: number; total_amount: number | null;
+    }>;
+    const firstItem = items[0];
+    if (!firstItem) {
+      return { success: false, error: "Order has no items." };
+    }
+    const amount = items.reduce(
+      (sum, item) => sum + (item.total_amount ?? item.unit_price * item.quantity),
+      0,
+    );
+
+    const initiatorName = `${profile!.first_name} ${profile!.last_name}`;
+
+    // Get or create Stripe customer
+    let stripeCustomerId: string;
+    if (facility.stripe_customer_id) {
+      stripeCustomerId = facility.stripe_customer_id;
+    } else {
+      const customer = await stripe.customers.create({
+        name:  facility.name,
+        email: user.email ?? undefined,
+        phone: facility.phone || undefined,
+        metadata: { facility_id: facility.id, facility_contact: facility.contact },
+        address: {
+          line1:       facility.address_line_1,
+          line2:       facility.address_line_2 ?? undefined,
+          city:        facility.city,
+          state:       facility.state,
+          postal_code: facility.postal_code,
+          country:     facility.country,
+        },
+      });
+      await adminClient
+        .from("facilities")
+        .update({ stripe_customer_id: customer.id })
+        .eq("id", facility.id);
+      stripeCustomerId = customer.id;
+    }
+
+    const appUrl = getAppUrl();
+
+    // ── pay_now ────────────────────────────────────────────────────────────────
+    if (order.payment_method === "pay_now") {
+      const session = await stripe.checkout.sessions.create({
+        mode:                       "payment",
+        customer:                   stripeCustomerId,
+        client_reference_id:        order.id,
+        success_url:                `${appUrl}/dashboard/orders/success?session_id={CHECKOUT_SESSION_ID}&order_id=${orderId}`,
+        cancel_url:                 `${appUrl}/dashboard/orders/success?cancelled=true&order_id=${orderId}`,
+        payment_method_types:       ["card"],
+        billing_address_collection: "auto",
+        metadata: {
+          order_id:     order.id,
+          order_number: order.order_number,
+          facility_id:  order.facility_id,
+          user_id:      user.id,
+        },
+        payment_intent_data: {
+          description: `Payment for Order ${order.order_number}`,
+          metadata: { order_id: order.id, order_number: order.order_number },
+        },
+        line_items: [
+          {
+            quantity: 1,
+            price_data: {
+              currency: "usd",
+              product_data: {
+                name:        `${firstItem.product_name} x ${firstItem.quantity}`,
+                description: `Order ${order.order_number} • SKU: ${firstItem.product_sku}`,
+              },
+              unit_amount: toStripeAmount(amount),
+            },
+          },
+        ],
+      });
+
+      if (!session.url) {
+        return { success: false, error: "Stripe Checkout URL was not returned." };
+      }
+
+      await adminClient.from("payments").insert({
+        order_id:                   order.id,
+        provider:                   "stripe",
+        payment_type:               "checkout",
+        status:                     "pending",
+        amount,
+        currency:                   "USD",
+        stripe_checkout_session_id: session.id,
+      });
+
+      await adminClient
+        .from("orders")
+        .update({ payment_status: "pending" })
+        .eq("id", orderId);
+
+      await insertOrderHistory(
+        adminClient, orderId,
+        "Payment initiated (Pay Now)",
+        null, null, user.id,
+        `Initiated by: ${initiatorName}`,
+      );
+      createNotifications({
+        adminClient,
+        orderId,
+        orderNumber:   order.order_number,
+        facilityId:    order.facility_id,
+        type:          "payment_initiated",
+        title:         "Payment initiated",
+        body:          `${initiatorName} initiated a Pay Now payment for order ${order.order_number}.`,
+        oldStatus:     null,
+        newStatus:     null,
+        notifyRoles:   ["admin", "support_staff"],
+        excludeUserId: user.id,
+      }).catch(() => {});
+
+      revalidatePath(ORDERS_PATH);
+      return { success: true, error: null, paymentType: "pay_now", checkoutUrl: session.url };
+    }
+
+    // ── net_30 ─────────────────────────────────────────────────────────────────
+    if (order.payment_method === "net_30") {
+      const draftInvoice = await stripe.invoices.create({
+        customer:          stripeCustomerId,
+        collection_method: "send_invoice",
+        days_until_due:    30,
+        auto_advance:      false,
+        metadata: {
+          order_id:     order.id,
+          order_number: order.order_number,
+          facility_id:  order.facility_id,
+          user_id:      user.id,
+        },
+        description: `Net 30 invoice for order ${order.order_number}`,
+      });
+
+      await stripe.invoiceItems.create({
+        customer:    stripeCustomerId,
+        invoice:     draftInvoice.id,
+        amount:      toStripeAmount(amount),
+        currency:    "usd",
+        description: `${firstItem.product_name} x ${firstItem.quantity} • Order ${order.order_number} • SKU: ${firstItem.product_sku}`,
+        metadata: {
+          order_id:     order.id,
+          order_number: order.order_number,
+          facility_id:  order.facility_id,
+          user_id:      user.id,
+        },
+      });
+
+      const finalizedInvoice = await stripe.invoices.finalizeInvoice(draftInvoice.id);
+
+      const dueAt = finalizedInvoice.due_date
+        ? new Date(finalizedInvoice.due_date * 1000).toISOString()
+        : null;
+      const issuedAt = finalizedInvoice.status_transitions?.finalized_at
+        ? new Date(finalizedInvoice.status_transitions.finalized_at * 1000).toISOString()
+        : new Date().toISOString();
+      const paidAt = finalizedInvoice.status_transitions?.paid_at
+        ? new Date(finalizedInvoice.status_transitions.paid_at * 1000).toISOString()
+        : null;
+      const invoiceNumber = finalizedInvoice.number ?? `INV-${order.order_number}`;
+      const amountDue  = (finalizedInvoice.amount_due  ?? 0) / 100;
+      const amountPaid = (finalizedInvoice.amount_paid ?? 0) / 100;
+
+      await adminClient.from("invoices").upsert(
+        {
+          order_id:            order.id,
+          invoice_number:      invoiceNumber,
+          provider:            "stripe",
+          provider_invoice_id: finalizedInvoice.id,
+          status:              "issued",
+          amount_due:          amountDue,
+          amount_paid:         amountPaid,
+          currency:            (finalizedInvoice.currency ?? "usd").toUpperCase(),
+          due_at:              dueAt,
+          issued_at:           issuedAt,
+          paid_at:             paidAt,
+          hosted_invoice_url:  finalizedInvoice.hosted_invoice_url,
+        },
+        { onConflict: "order_id" },
+      );
+
+      await adminClient
+        .from("orders")
+        .update({ invoice_status: "issued", payment_status: "pending" })
+        .eq("id", orderId);
+
+      await adminClient.from("payments").insert({
+        order_id:     orderId,
+        provider:     "stripe",
+        payment_type: "invoice",
+        status:       "pending",
+        amount,
+        currency:     "USD",
+      });
+
+      await insertOrderHistory(
+        adminClient, orderId,
+        `Invoice created — Net 30 (due ${dueAt ? new Date(dueAt).toLocaleDateString() : "30 days"})`,
+        null, null, user.id,
+        `Invoice: ${invoiceNumber} | Initiated by: ${initiatorName}`,
+      );
+      createNotifications({
+        adminClient,
+        orderId,
+        orderNumber:   order.order_number,
+        facilityId:    order.facility_id,
+        type:          "payment_initiated",
+        title:         "Net-30 Invoice created",
+        body:          `Invoice ${invoiceNumber} created by ${initiatorName} for order ${order.order_number}${dueAt ? `. Due: ${new Date(dueAt).toLocaleDateString()}` : ""}.`,
+        oldStatus:     null,
+        newStatus:     null,
+        notifyRoles:   ["admin", "support_staff"],
+        excludeUserId: user.id,
+      }).catch(() => {});
+
+      revalidatePath(ORDERS_PATH);
+      return { success: true, error: null, paymentType: "net_30" };
+    }
+
+    return { success: false, error: "Unknown payment method." };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  }
+}
+
+// Backwards-compatible alias
+export const initiateRepPayment = initiatePayment;
+
+/* -------------------------------------------------------------------------- */
+/* getOrderPayment                                                             */
+/* -------------------------------------------------------------------------- */
+
+export async function getOrderPayment(orderId: string): Promise<IPayment | null> {
+  const supabase = await createClient();
+  await getCurrentUserOrThrow(supabase);
+  const adminClient = createAdminClient();
+
+  const { data } = await adminClient
+    .from("payments")
+    .select("*")
+    .eq("order_id", orderId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!data) return null;
+
+  return {
+    id:                      data.id,
+    orderId:                 data.order_id,
+    provider:                data.provider,
+    paymentType:             data.payment_type,
+    status:                  data.status,
+    amount:                  Number(data.amount),
+    currency:                data.currency,
+    stripeCheckoutSessionId: data.stripe_checkout_session_id,
+    stripePaymentIntentId:   data.stripe_payment_intent_id,
+    receiptUrl:              data.receipt_url,
+    paidAt:                  data.paid_at,
+    createdAt:               data.created_at,
+  };
+}
+
+/* -------------------------------------------------------------------------- */
+/* getOrderInvoice                                                             */
+/* -------------------------------------------------------------------------- */
+
+export async function getOrderInvoice(orderId: string): Promise<IInvoice | null> {
+  const supabase = await createClient();
+  await getCurrentUserOrThrow(supabase);
+  const adminClient = createAdminClient();
+
+  const { data } = await adminClient
+    .from("invoices")
+    .select("*")
+    .eq("order_id", orderId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!data) return null;
+
+  return {
+    id:              data.id,
+    orderId:         data.order_id,
+    invoiceNumber:   data.invoice_number,
+    provider:        data.provider,
+    status:          data.status,
+    amountDue:       Number(data.amount_due),
+    amountPaid:      Number(data.amount_paid),
+    currency:        data.currency,
+    dueAt:           data.due_at,
+    issuedAt:        data.issued_at,
+    paidAt:          data.paid_at,
+    hostedInvoiceUrl: data.hosted_invoice_url,
+    createdAt:       data.created_at,
+  };
 }

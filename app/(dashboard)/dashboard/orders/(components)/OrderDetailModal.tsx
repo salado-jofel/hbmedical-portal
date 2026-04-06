@@ -38,6 +38,8 @@ import {
   Download,
   Clock,
   MessageSquare,
+  CreditCard,
+  FileText,
 } from "lucide-react";
 import type {
   DashboardOrder,
@@ -47,6 +49,8 @@ import type {
   IOrderForm,
   DocumentType,
   ProductRecord,
+  IPayment,
+  IInvoice,
 } from "@/utils/interfaces/orders";
 import {
   getOrderMessages,
@@ -71,6 +75,11 @@ import {
   getOrderAiStatus,
   getOrderIVR,
   getForm1500,
+  getOrderPayment,
+  getOrderInvoice,
+  initiatePayment,
+  setOrderPaymentMethod,
+  markOrderDelivered,
 } from "../(services)/actions";
 import { createClient } from "@/lib/supabase/client";
 import type { IOrderIVR } from "@/utils/interfaces/orders";
@@ -282,6 +291,8 @@ interface OrderDetailModalProps {
   isAdmin: boolean;
   isClinical: boolean;
   canEdit: boolean;
+  isRep?: boolean;
+  isSupport?: boolean;
   currentUserName?: string;
   currentUserId?: string;
   unreadCount?: number;
@@ -299,6 +310,8 @@ export function OrderDetailModal({
   isAdmin,
   isClinical,
   canEdit,
+  isRep = false,
+  isSupport = false,
   currentUserName,
   currentUserId,
   unreadCount = 0,
@@ -327,6 +340,12 @@ export function OrderDetailModal({
 
   /* -- Modal ready (all initial data loaded) -- */
   const [modalReady, setModalReady] = useState(false);
+
+  /* -- Payment + invoice data -- */
+  const [paymentData, setPaymentData] = useState<IPayment | null>(null);
+  const [invoiceData, setInvoiceData] = useState<IInvoice | null>(null);
+  const [initiatingPayment, setInitiatingPayment] = useState<false | "pay_now" | "net_30">(false);
+  const [markingDelivered, setMarkingDelivered] = useState(false);
 
   /* -- IVR + HCFA (pre-fetched on modal open) -- */
   const [ivrData, setIvrData] = useState<Partial<IOrderIVR> | null>(null);
@@ -487,11 +506,17 @@ export function OrderDetailModal({
       getOrderDocuments(order.id),
       getOrderIVR(order.id),
       getForm1500(order.id),
-    ]).then(async ([docs, ivr, hcfa]) => {
+      getOrderPayment(order.id),
+      getOrderInvoice(order.id),
+    ]).then(async ([docs, ivr, hcfa, payment, invoice]) => {
       // Documents
       setDocuments(docs);
       setLocalDocuments(docs);
       setLoadingDocs(false);
+
+      // Payment + invoice
+      setPaymentData(payment);
+      setInvoiceData(invoice);
 
       // Wound photos
       const photos = docs.filter((d) => d.documentType === "wound_pictures");
@@ -988,6 +1013,55 @@ export function OrderDetailModal({
   async function refreshOrder() {
     const updated = await getOrderById(order.id);
     if (updated) dispatch(updateOrderInStore(updated));
+  }
+
+  async function handleInitiatePayment(method: "pay_now" | "net_30") {
+    setInitiatingPayment(method);
+
+    try {
+      const methodResult = await setOrderPaymentMethod(order.id, method);
+      if (!methodResult.success) {
+        toast.error(methodResult.error ?? "Failed to set payment method.");
+        return;
+      }
+
+      const result = await initiatePayment(order.id);
+
+      if (!result.success) {
+        toast.error(result.error ?? "Failed to initiate payment.");
+        return;
+      }
+
+      if (method === "pay_now" && result.checkoutUrl) {
+        window.location.href = result.checkoutUrl;
+        return;
+      }
+
+      if (method === "net_30") {
+        toast.success("Invoice created. Payment due in 30 days.");
+        const [newPayment, newInvoice] = await Promise.all([
+          getOrderPayment(order.id),
+          getOrderInvoice(order.id),
+        ]);
+        setPaymentData(newPayment);
+        setInvoiceData(newInvoice);
+        await refreshOrder();
+      }
+    } finally {
+      setInitiatingPayment(false);
+    }
+  }
+
+  async function handleMarkDelivered() {
+    setMarkingDelivered(true);
+    const result = await markOrderDelivered(liveOrder.id);
+    setMarkingDelivered(false);
+    if (result.success) {
+      toast.success("Order marked as delivered.");
+      await refreshOrder();
+    } else {
+      toast.error(result.error ?? "Failed to mark order as delivered.");
+    }
   }
 
   async function refreshDocuments() {
@@ -2083,13 +2157,27 @@ export function OrderDetailModal({
                         </>
                       )}
 
-                      {/* Admin: add shipping */}
-                      {isAdmin && status === "approved" && (
+                      {/* Admin/support: add shipping */}
+                      {(isAdmin || isSupport) && status === "approved" && (
                         <button
                           onClick={() => setShipOpen(true)}
                           className="px-8 py-2.5 bg-[#15689E] text-white font-bold rounded-xl hover:bg-[#15689E]/90 active:scale-[0.98] transition-all text-sm"
                         >
                           Add Shipping Info
+                        </button>
+                      )}
+
+                      {/* Admin/support: mark delivered */}
+                      {(isAdmin || isSupport) && status === "shipped" && (
+                        <button
+                          onClick={handleMarkDelivered}
+                          disabled={markingDelivered}
+                          className="px-8 py-2.5 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 active:scale-[0.98] transition-all text-sm disabled:opacity-60 flex items-center gap-2"
+                        >
+                          {markingDelivered ? (
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          ) : null}
+                          {markingDelivered ? "Marking..." : "Mark as Delivered"}
                         </button>
                       )}
                     </div>
@@ -2235,6 +2323,150 @@ export function OrderDetailModal({
                         </label>
                       )}
                     </div>
+
+                    {/* ── Payment Section ── */}
+                    {status === "approved" && (
+                      <div className="border-t border-gray-100 pt-4 space-y-3">
+                        <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">
+                          Payment
+                        </h3>
+
+                        {/* TWO BUTTONS — show when no payment yet */}
+                        {!paymentData && liveOrder.payment_status !== "paid" && (
+                          <div className="grid grid-cols-2 gap-2">
+
+                            {/* Pay Now */}
+                            <button
+                              type="button"
+                              disabled={initiatingPayment !== false}
+                              onClick={() => handleInitiatePayment("pay_now")}
+                              className="flex flex-col items-center gap-1.5 px-3 py-3 rounded-xl border-2 border-blue-200 bg-blue-50 hover:bg-blue-100 hover:border-blue-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {initiatingPayment === "pay_now" ? (
+                                <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                <CreditCard className="w-5 h-5 text-blue-600" />
+                              )}
+                              <span className="text-xs font-bold text-blue-700 text-center leading-tight">
+                                {initiatingPayment === "pay_now" ? "Processing..." : "Pay Now"}
+                              </span>
+                            </button>
+
+                            {/* Pay Later / Net-30 */}
+                            <button
+                              type="button"
+                              disabled={initiatingPayment !== false}
+                              onClick={() => handleInitiatePayment("net_30")}
+                              className="flex flex-col items-center gap-1.5 px-3 py-3 rounded-xl border-2 border-purple-200 bg-purple-50 hover:bg-purple-100 hover:border-purple-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {initiatingPayment === "net_30" ? (
+                                <div className="w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                <FileText className="w-5 h-5 text-purple-600" />
+                              )}
+                              <span className="text-xs font-bold text-purple-700 text-center leading-tight whitespace-pre-line">
+                                {initiatingPayment === "net_30" ? "Processing..." : "Pay Later\nNet-30"}
+                              </span>
+                            </button>
+
+                          </div>
+                        )}
+
+                        {/* Payment info — show after payment initiated or paid */}
+                        {(paymentData || liveOrder.payment_status === "paid") && (
+                          <div className="bg-gray-50 rounded-xl px-3 py-3 space-y-2">
+
+                            {/* Method */}
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs text-gray-500">Method</span>
+                              <span className={cn(
+                                "text-[10px] font-bold px-2 py-0.5 rounded-full",
+                                liveOrder.payment_method === "pay_now"
+                                  ? "bg-blue-100 text-blue-700"
+                                  : "bg-purple-100 text-purple-700",
+                              )}>
+                                {liveOrder.payment_method === "pay_now" ? "💳 Pay Now" : "📄 Net-30"}
+                              </span>
+                            </div>
+
+                            {/* Status */}
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs text-gray-500">Status</span>
+                              <span className={cn(
+                                "text-[10px] font-bold px-2 py-0.5 rounded-full",
+                                liveOrder.payment_status === "paid"
+                                  ? "bg-green-100 text-green-700"
+                                  : "bg-amber-100 text-amber-700",
+                              )}>
+                                {liveOrder.payment_status === "paid" ? "✓ Paid" : "Pending"}
+                              </span>
+                            </div>
+
+                            {/* Amount */}
+                            {paymentData && (
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs text-gray-500">Amount</span>
+                                <span className="text-xs font-bold text-gray-800">
+                                  ${paymentData.amount.toFixed(2)}
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Net-30: Due Date */}
+                            {liveOrder.payment_method === "net_30" && invoiceData?.dueAt && (
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs text-gray-500">Due Date</span>
+                                <span className={cn(
+                                  "text-xs font-semibold",
+                                  liveOrder.payment_status !== "paid"
+                                    ? "text-red-600"
+                                    : "text-gray-500 line-through",
+                                )}>
+                                  {new Date(invoiceData.dueAt).toLocaleDateString("en-US", {
+                                    month: "short", day: "numeric", year: "numeric",
+                                  })}
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Invoice number */}
+                            {invoiceData?.invoiceNumber && (
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs text-gray-500">Invoice</span>
+                                <span className="text-xs font-medium text-gray-700">
+                                  {invoiceData.invoiceNumber}
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Paid At */}
+                            {liveOrder.paid_at && (
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs text-gray-500">Paid On</span>
+                                <span className="text-xs font-medium text-gray-700">
+                                  {new Date(liveOrder.paid_at).toLocaleDateString("en-US", {
+                                    month: "short", day: "numeric", year: "numeric",
+                                  })}
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Receipt */}
+                            {paymentData?.receiptUrl && (
+                              <a
+                                href={paymentData.receiptUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-1 text-xs text-[#15689E] hover:underline pt-1"
+                              >
+                                <ExternalLink className="w-3 h-3" />
+                                View Receipt
+                              </a>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {/* Wound photos */}
                     <div>
