@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useTransition } from "react";
 import {
   Dialog,
   DialogContent,
@@ -8,10 +8,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Loader2, CheckCircle, CreditCard, Clock } from "lucide-react";
+import { Loader2, CheckCircle } from "lucide-react";
 import type { DashboardOrder } from "@/utils/interfaces/orders";
 import { approveOrder } from "../(services)/actions";
-import { cn } from "@/utils/utils";
 import toast from "react-hot-toast";
 
 interface ApproveOrderModalProps {
@@ -27,7 +26,6 @@ export function ApproveOrderModal({
   order,
   onSuccess,
 }: ApproveOrderModalProps) {
-  const [paymentMethod, setPaymentMethod] = useState<"pay_now" | "net_30">("pay_now");
   const [isPending, startTransition] = useTransition();
 
   function handleClose() {
@@ -37,7 +35,7 @@ export function ApproveOrderModal({
 
   function handleApprove() {
     startTransition(async () => {
-      const result = await approveOrder(order.id, paymentMethod);
+      const result = await approveOrder(order.id);
       if (result.success) {
         toast.success("Order approved.");
         handleClose();
@@ -61,6 +59,11 @@ export function ApproveOrderModal({
             </DialogTitle>
           </DialogHeader>
 
+          <p className="text-sm text-slate-600">
+            Approve this order? The clinic will be notified and you can set the
+            payment method after approval.
+          </p>
+
           {/* Order summary */}
           <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 space-y-2 text-sm">
             <div className="flex justify-between">
@@ -77,89 +80,6 @@ export function ApproveOrderModal({
               <span className="text-slate-500">Facility</span>
               <span className="font-semibold text-slate-800">{order.facility_name}</span>
             </div>
-          </div>
-
-          {/* Payment method selection */}
-          <div className="space-y-3">
-            <p className="text-sm font-medium text-slate-700">Select Payment Method</p>
-
-            <button
-              type="button"
-              onClick={() => setPaymentMethod("pay_now")}
-              className={cn(
-                "w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all text-left",
-                paymentMethod === "pay_now"
-                  ? "border-green-500 bg-green-50"
-                  : "border-slate-200 hover:border-slate-300 bg-white",
-              )}
-            >
-              <div
-                className={cn(
-                  "w-8 h-8 rounded-full flex items-center justify-center shrink-0",
-                  paymentMethod === "pay_now" ? "bg-green-100" : "bg-slate-100",
-                )}
-              >
-                <CreditCard
-                  className={cn(
-                    "w-4 h-4",
-                    paymentMethod === "pay_now" ? "text-green-600" : "text-slate-400",
-                  )}
-                />
-              </div>
-              <div>
-                <p
-                  className={cn(
-                    "text-sm font-semibold",
-                    paymentMethod === "pay_now" ? "text-green-700" : "text-slate-700",
-                  )}
-                >
-                  Pay Now
-                </p>
-                <p className="text-xs text-slate-500">Immediate payment required</p>
-              </div>
-              {paymentMethod === "pay_now" && (
-                <CheckCircle className="w-4 h-4 text-green-500 ml-auto shrink-0" />
-              )}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setPaymentMethod("net_30")}
-              className={cn(
-                "w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all text-left",
-                paymentMethod === "net_30"
-                  ? "border-blue-500 bg-blue-50"
-                  : "border-slate-200 hover:border-slate-300 bg-white",
-              )}
-            >
-              <div
-                className={cn(
-                  "w-8 h-8 rounded-full flex items-center justify-center shrink-0",
-                  paymentMethod === "net_30" ? "bg-blue-100" : "bg-slate-100",
-                )}
-              >
-                <Clock
-                  className={cn(
-                    "w-4 h-4",
-                    paymentMethod === "net_30" ? "text-blue-600" : "text-slate-400",
-                  )}
-                />
-              </div>
-              <div>
-                <p
-                  className={cn(
-                    "text-sm font-semibold",
-                    paymentMethod === "net_30" ? "text-blue-700" : "text-slate-700",
-                  )}
-                >
-                  Net 30
-                </p>
-                <p className="text-xs text-slate-500">Invoice issued, payment due in 30 days</p>
-              </div>
-              {paymentMethod === "net_30" && (
-                <CheckCircle className="w-4 h-4 text-blue-500 ml-auto shrink-0" />
-              )}
-            </button>
           </div>
 
           <div className="flex gap-3">

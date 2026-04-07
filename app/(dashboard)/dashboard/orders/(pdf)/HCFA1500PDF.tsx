@@ -1,3 +1,4 @@
+import React from "react";
 import {
   Document,
   Page,
@@ -5,6 +6,7 @@ import {
   View,
   StyleSheet,
 } from "@react-pdf/renderer";
+import type { IServiceLine } from "@/utils/interfaces/orders";
 
 /* ── Constants ── */
 const BLACK  = "#000000";
@@ -364,9 +366,14 @@ export function HCFA1500PDF({
           <View style={[s.cell, { flex: 3 }]}>
             <BoxLabel num="10" label="Is Patient's Condition Related To:" />
             <View style={{ flexDirection: "row", gap: 8, marginTop: 2 }}>
-              <Text style={{ fontSize: 7 }}>{check(false)} Employment</Text>
-              <Text style={{ fontSize: 7 }}>{check(false)} Auto Accident</Text>
-              <Text style={{ fontSize: 7 }}>{check(false)} Other Accident</Text>
+              <Text style={{ fontSize: 7 }}>{check(h.condition_employment === true)} Employment</Text>
+              <Text style={{ fontSize: 7 }}>
+                {check(h.condition_auto_accident === true)} Auto Accident
+                {h.condition_auto_accident === true && h.condition_auto_state
+                  ? ` (${String(h.condition_auto_state)})`
+                  : ""}
+              </Text>
+              <Text style={{ fontSize: 7 }}>{check(h.condition_other_accident === true)} Other Accident</Text>
             </View>
           </View>
           <View style={[s.cellLast, { flex: 5 }]}>
@@ -436,22 +443,32 @@ export function HCFA1500PDF({
         <View style={[s.band, { borderLeft: `0.75px solid ${BLACK}`, borderRight: `0.75px solid ${BLACK}` }]}>
           <View style={[s.cell, { flex: 2 }]}>
             <BoxLabel num="14" label="Date of Current Illness / Injury / Pregnancy" />
-            <Text style={s.val}>{fmtDate(dos)}</Text>
+            <View style={{ flexDirection: "row", gap: 4 }}>
+              {h.illness_qualifier ? (
+                <Text style={[s.val, { fontSize: 6, color: GRAY }]}>{f(h.illness_qualifier)}</Text>
+              ) : null}
+              <Text style={s.val}>{fmtDate(h.illness_date || dos)}</Text>
+            </View>
           </View>
           <View style={[s.cell, { flex: 2 }]}>
             <BoxLabel num="15" label="Other Date" />
-            <Text style={s.val}> </Text>
+            <View style={{ flexDirection: "row", gap: 4 }}>
+              {h.other_date_qualifier ? (
+                <Text style={[s.val, { fontSize: 6, color: GRAY }]}>{f(h.other_date_qualifier)}</Text>
+              ) : null}
+              <Text style={s.val}>{h.other_date ? fmtDate(h.other_date) : " "}</Text>
+            </View>
           </View>
           <View style={[s.cellLast, { flex: 4 }]}>
             <BoxLabel num="16" label="Dates Patient Unable to Work in Current Occupation" />
             <View style={{ flexDirection: "row", gap: 8 }}>
               <View>
                 <Text style={s.boxLabel}>From</Text>
-                <Text style={s.val}> </Text>
+                <Text style={s.val}>{h.unable_work_from ? fmtDate(h.unable_work_from) : " "}</Text>
               </View>
               <View>
                 <Text style={s.boxLabel}>To</Text>
-                <Text style={s.val}> </Text>
+                <Text style={s.val}>{h.unable_work_to ? fmtDate(h.unable_work_to) : " "}</Text>
               </View>
             </View>
           </View>
@@ -461,15 +478,15 @@ export function HCFA1500PDF({
         <View style={[s.band, { borderLeft: `0.75px solid ${BLACK}`, borderRight: `0.75px solid ${BLACK}` }]}>
           <View style={[s.cell, { flex: 3 }]}>
             <BoxLabel num="17" label="Name of Referring Provider or Other Source" />
-            <Text style={s.val}> </Text>
+            <Text style={s.val}>{f(h.referring_provider_name)}</Text>
             <View style={{ flexDirection: "row", gap: 6, marginTop: 2 }}>
               <View style={{ flex: 1 }}>
                 <Text style={s.boxLabel}>17a. Other ID</Text>
-                <Text style={s.val}> </Text>
+                <Text style={s.val}>{f(h.referring_provider_qual)}</Text>
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={s.boxLabel}>17b. NPI</Text>
-                <Text style={s.val}> </Text>
+                <Text style={s.val}>{f(h.referring_provider_npi)}</Text>
               </View>
             </View>
           </View>
@@ -478,17 +495,17 @@ export function HCFA1500PDF({
             <View style={{ flexDirection: "row", gap: 8 }}>
               <View>
                 <Text style={s.boxLabel}>From</Text>
-                <Text style={s.val}> </Text>
+                <Text style={s.val}>{h.hospitalization_from ? fmtDate(h.hospitalization_from) : " "}</Text>
               </View>
               <View>
                 <Text style={s.boxLabel}>To</Text>
-                <Text style={s.val}> </Text>
+                <Text style={s.val}>{h.hospitalization_to ? fmtDate(h.hospitalization_to) : " "}</Text>
               </View>
             </View>
           </View>
           <View style={[s.cellLast, { flex: 3 }]}>
             <BoxLabel num="19" label="Additional Claim Information" />
-            <Text style={s.val}> </Text>
+            <Text style={s.val}>{f(h.additional_claim_info)}</Text>
           </View>
         </View>
 
@@ -496,28 +513,35 @@ export function HCFA1500PDF({
         <View style={[s.band, { borderLeft: `0.75px solid ${BLACK}`, borderRight: `0.75px solid ${BLACK}` }]}>
           <View style={[s.cell, { flex: 1.5 }]}>
             <BoxLabel num="20" label="Outside Lab?" />
-            <Text style={{ fontSize: 7 }}>{check(false)} Yes  {check(true)} No</Text>
+            <Text style={{ fontSize: 7 }}>
+              {check(h.outside_lab === true)} Yes{"  "}
+              {check(h.outside_lab !== true)} No
+            </Text>
+            {h.outside_lab === true && h.outside_lab_charges != null ? (
+              <Text style={[s.val, { marginTop: 1 }]}>${String(h.outside_lab_charges)}</Text>
+            ) : null}
           </View>
           <View style={[s.cell, { flex: 4 }]}>
             <BoxLabel num="21" label="Diagnosis or Nature of Illness or Injury (ICD-10)" />
             <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
-              {(["A","B","C","D","E","F","G","H","I","J","K","L"] as const).map((ltr, idx) => (
+              {(["a","b","c","d","e","f","g","h","i","j","k","l"] as const).map((ltr) => (
                 <View key={ltr} style={{ flexDirection: "row", gap: 2, marginBottom: 2 }}>
-                  <Text style={{ fontSize: 6, color: GRAY }}>{ltr}.</Text>
-                  <Text style={s.val}>
-                    {idx === 0 ? f(order.icd10_code ?? "") : ""}
-                  </Text>
+                  <Text style={{ fontSize: 6, color: GRAY }}>{ltr.toUpperCase()}.</Text>
+                  <Text style={s.val}>{f(h[`diagnosis_${ltr}`] ?? "")}</Text>
                 </View>
               ))}
             </View>
           </View>
           <View style={[s.cell, { flex: 1.5 }]}>
             <BoxLabel num="22" label="Resubmission Code" />
-            <Text style={s.val}> </Text>
+            <Text style={s.val}>{f(h.resubmission_code)}</Text>
+            {h.original_ref_number ? (
+              <Text style={[s.val, { marginTop: 1 }]}>{f(h.original_ref_number)}</Text>
+            ) : null}
           </View>
           <View style={[s.cellLast, { flex: 2 }]}>
             <BoxLabel num="23" label="Prior Authorization Number" />
-            <Text style={s.val}> </Text>
+            <Text style={s.val}>{f(h.prior_auth_number)}</Text>
           </View>
         </View>
 
@@ -540,21 +564,37 @@ export function HCFA1500PDF({
             <Text style={[s.thCell, { flex: 1 }]}>I. ID Qual</Text>
             <Text style={[s.thCell, { flex: 2, borderRight: "none" }]}>J. Rendering{"\n"}Provider NPI</Text>
           </View>
-          {/* 6 blank service lines */}
-          {[1,2,3,4,5,6].map(n => (
-            <View key={n} style={s.tableRow}>
-              <Text style={[s.tdCell, { flex: 2 }]}> </Text>
-              <Text style={[s.tdCell, { flex: 0.8 }]}> </Text>
-              <Text style={[s.tdCell, { flex: 0.8 }]}> </Text>
-              <Text style={[s.tdCell, { flex: 2 }]}> </Text>
-              <Text style={[s.tdCell, { flex: 1.5 }]}> </Text>
-              <Text style={[s.tdCell, { flex: 1.5 }]}> </Text>
-              <Text style={[s.tdCell, { flex: 1 }]}> </Text>
-              <Text style={[s.tdCell, { flex: 1 }]}> </Text>
-              <Text style={[s.tdCell, { flex: 1 }]}> </Text>
-              <Text style={[s.tdCell, { flex: 2, borderRight: "none" }]}> </Text>
-            </View>
-          ))}
+          {/* Service lines — up to 6, padded with blanks */}
+          {((): React.ReactElement[] => {
+            const rawLines = (h.service_lines as IServiceLine[] | null) ?? [];
+            const padded: (Partial<IServiceLine> | null)[] = [
+              ...rawLines,
+              ...Array(Math.max(0, 6 - rawLines.length)).fill(null),
+            ].slice(0, 6);
+            return padded.map((line, n) => (
+              <View key={n} style={s.tableRow}>
+                <Text style={[s.tdCell, { flex: 2 }]}>
+                  {line?.dos_from ? fmtDate(line.dos_from) : " "}
+                  {line?.dos_to ? ` – ${fmtDate(line.dos_to)}` : ""}
+                </Text>
+                <Text style={[s.tdCell, { flex: 0.8 }]}>{f(line?.place_of_service)}</Text>
+                <Text style={[s.tdCell, { flex: 0.8 }]}>{line?.emg ? "Y" : " "}</Text>
+                <Text style={[s.tdCell, { flex: 2 }]}>
+                  {f(line?.cpt_code)}
+                  {line?.modifier_1 ? ` ${line.modifier_1}` : ""}
+                  {line?.modifier_2 ? ` ${line.modifier_2}` : ""}
+                  {line?.modifier_3 ? ` ${line.modifier_3}` : ""}
+                  {line?.modifier_4 ? ` ${line.modifier_4}` : ""}
+                </Text>
+                <Text style={[s.tdCell, { flex: 1.5 }]}>{f(line?.diagnosis_pointer)}</Text>
+                <Text style={[s.tdCell, { flex: 1.5 }]}>{f(line?.charges)}</Text>
+                <Text style={[s.tdCell, { flex: 1 }]}>{f(line?.days_units)}</Text>
+                <Text style={[s.tdCell, { flex: 1 }]}>{f(line?.epsdt)}</Text>
+                <Text style={[s.tdCell, { flex: 1 }]}>{f(line?.id_qualifier)}</Text>
+                <Text style={[s.tdCell, { flex: 2, borderRight: "none" }]}>{f(line?.rendering_npi)}</Text>
+              </View>
+            ));
+          })()}
         </View>
 
         {/* ── ROW 10: Box 25 + Box 26 + Box 27 + Box 28 + Box 29 + Box 30 ── */}
@@ -570,17 +610,17 @@ export function HCFA1500PDF({
           <View style={[s.cell, { flex: 1.5 }]}>
             <BoxLabel num="27" label="Accept Assignment?" />
             <Text style={{ fontSize: 7 }}>
-              {check(f(h.accept_assignment) === "yes")} Yes{" "}
-              {check(f(h.accept_assignment) === "no")} No
+              {check(h.accept_assignment === true)} Yes{" "}
+              {check(h.accept_assignment !== true)} No
             </Text>
           </View>
           <View style={[s.cell, { flex: 1.5 }]}>
             <BoxLabel num="28" label="Total Charge" />
-            <Text style={s.val}> </Text>
+            <Text style={s.val}>{h.total_charge != null ? `$${String(h.total_charge)}` : " "}</Text>
           </View>
           <View style={[s.cell, { flex: 1.5 }]}>
             <BoxLabel num="29" label="Amount Paid" />
-            <Text style={s.val}> </Text>
+            <Text style={s.val}>{h.amount_paid != null ? `$${String(h.amount_paid)}` : " "}</Text>
           </View>
           <View style={[s.cellLast, { flex: 1.5 }]}>
             <BoxLabel num="30" label="Reserved for NUCC Use" />
@@ -603,17 +643,23 @@ export function HCFA1500PDF({
             <Text style={{ fontSize: 6, color: GRAY, marginTop: 1 }}>
               I certify that the statements on the reverse apply to this bill and are made a part hereof.
             </Text>
-            <Text style={{ fontSize: 7, marginTop: 8 }}>
-              Signed _______________________  Date ____________
+            <Text style={{ fontSize: 7, marginTop: 4 }}>
+              Signed {h.physician_signature ? f(h.physician_signature) : "Signature on File"}
+            </Text>
+            <Text style={{ fontSize: 7, marginTop: 2 }}>
+              Date {h.physician_signature_date
+                ? fmtDate(h.physician_signature_date)
+                : fmtDate(new Date().toISOString())}
             </Text>
           </View>
           <View style={[s.cell, { flex: 3 }]}>
             <BoxLabel num="32" label="Service Facility Location Information" />
-            <Text style={s.val}> </Text>
+            <Text style={s.val}>{f(h.service_facility_name)}</Text>
+            <Text style={s.val}>{f(h.service_facility_address)}</Text>
             <View style={{ flexDirection: "row", marginTop: 2, gap: 6 }}>
               <View style={{ flex: 1 }}>
                 <Text style={s.boxLabel}>32a. NPI</Text>
-                <Text style={s.val}> </Text>
+                <Text style={s.val}>{f(h.service_facility_npi)}</Text>
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={s.boxLabel}>32b. Other ID</Text>
@@ -633,7 +679,7 @@ export function HCFA1500PDF({
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={s.boxLabel}>33b. Other ID</Text>
-                <Text style={s.val}> </Text>
+                <Text style={s.val}>{f(h.billing_provider_tax_id)}</Text>
               </View>
             </View>
           </View>

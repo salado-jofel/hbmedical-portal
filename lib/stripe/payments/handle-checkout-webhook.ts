@@ -392,11 +392,12 @@ async function getChargeDetailsFromSession(session: Stripe.Checkout.Session) {
 async function markOrderPaid(orderId: string, paidAt: string) {
   const admin = await createAdminClient();
 
+  console.info("[payments.markOrderPaid] Updating orderId:", orderId, "paidAt:", paidAt);
+
   const { data, error } = await admin
     .from("orders")
     .update({
       payment_status: "paid",
-      order_status: "submitted",
       fulfillment_status: "processing",
       paid_at: paidAt,
     })
@@ -406,7 +407,7 @@ async function markOrderPaid(orderId: string, paidAt: string) {
     .maybeSingle();
 
   if (error) {
-    console.error("[payments.markOrderPaid] Error:", error);
+    console.error("[payments.markOrderPaid] DB error:", JSON.stringify(error), "orderId:", orderId);
     throw new Error(error.message || "Failed to mark order as paid.");
   }
 

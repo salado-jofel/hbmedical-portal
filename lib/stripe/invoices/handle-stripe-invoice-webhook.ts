@@ -181,7 +181,6 @@ function buildOrderUpdatePayload(
   invoice: Stripe.Invoice,
 ) {
   const payload: Record<string, string | null> = {
-    order_status: "submitted",
     payment_method: "net_30",
     invoice_status: localStatus,
   };
