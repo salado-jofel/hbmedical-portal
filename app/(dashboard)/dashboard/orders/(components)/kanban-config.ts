@@ -7,6 +7,7 @@ export const CLINICAL_STATUSES: OrderStatus[] = [
   "additional_info_needed",
   "approved",
   "shipped",
+  "delivered",
   "canceled",
 ];
 
@@ -46,6 +47,11 @@ export const KANBAN_STATUS_CONFIG: Record<
     badge: "bg-teal-50 text-teal-700",
     dot: "bg-teal-500",
   },
+  delivered: {
+    label: "Delivered",
+    badge: "bg-emerald-50 text-emerald-700",
+    dot: "bg-emerald-500",
+  },
   canceled: {
     label: "Canceled",
     badge: "bg-slate-100 text-slate-500",
@@ -63,6 +69,7 @@ export function groupOrdersByStatus(
     additional_info_needed: [],
     approved: [],
     shipped: [],
+    delivered: [],
     canceled: [],
   };
 
@@ -75,6 +82,14 @@ export function groupOrdersByStatus(
 
   return grouped;
 }
+
+/* ── Virtual "Processed" column (approved + payment_method IS NOT NULL) ── */
+export const PAID_COLUMN_CONFIG = {
+  label:      "Processed",
+  dot:        "bg-green-500",
+  badge:      "bg-green-100 text-green-700 border-green-200",
+  badgeSolid: "bg-green-500 text-white",
+} as const;
 
 /* ── Keep legacy types/exports for backwards compat ── */
 export const BOARD_STATUSES = ["New Orders", "Delivered"] as const;

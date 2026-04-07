@@ -15,30 +15,9 @@ import { getActivitiesByFacility } from "@/app/(dashboard)/dashboard/(services)/
 import Providers from "./(sections)/Providers";
 import { AccountHeader } from "./(sections)/AccountHeader";
 import { AccountDetailClient } from "./(sections)/AccountDetailClient";
-import { mapDashboardOrders } from "@/utils/helpers/orders";
-import type { RawOrderRecord } from "@/utils/interfaces/orders";
-import {
-  ORDER_TABLE,
-  ORDER_WITH_RELATIONS_SELECT,
-} from "@/utils/constants/orders";
+import { getOrdersByFacility } from "@/app/(dashboard)/dashboard/orders/(services)/actions";
 
 export const dynamic = "force-dynamic";
-
-async function getFacilityOrders(facilityId: string) {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from(ORDER_TABLE)
-    .select(ORDER_WITH_RELATIONS_SELECT)
-    .eq("facility_id", facilityId)
-    .order("placed_at", { ascending: false });
-
-  if (error) {
-    console.error("[getFacilityOrders] Error:", error);
-    return [];
-  }
-
-  return mapDashboardOrders((data ?? []) as unknown as RawOrderRecord[]);
-}
 
 interface AccountDetailPageProps {
   params: Promise<{ id: string }>;
@@ -69,7 +48,7 @@ export default async function AccountDetailPage({
 
   const [contacts, orders, activities] = await Promise.all([
     getContactsByFacility(account.id),
-    getFacilityOrders(account.id),
+    getOrdersByFacility(account.id),
     // Admin and reps may read activities; support staff cannot
     showActivities ? getActivitiesByFacility(account.id) : Promise.resolve([]),
   ]);

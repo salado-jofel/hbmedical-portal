@@ -219,6 +219,10 @@ export function IVRFormPDF({
               </View>
             </View>
           </View>
+          <View style={styles.fieldRow}>
+            <Text style={styles.fieldLabel}>Plan Name:</Text>
+            <Text style={styles.fieldValue}>{f(i.plan_name)}</Text>
+          </View>
           <View style={styles.twoCol}>
             <View style={styles.fieldBlock}>
               <View style={styles.fieldRow}>
@@ -283,10 +287,8 @@ export function IVRFormPDF({
             </View>
             <View style={styles.fieldBlock}>
               <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>Has Deductible Been Met?</Text>
-                <Text style={styles.fieldValue}>
-                  {i.deductible_met == null ? " " : i.deductible_met > 0 ? "Yes" : "No"}
-                </Text>
+                <Text style={styles.fieldLabel}>Deductible Amount Met:</Text>
+                <Text style={styles.fieldValue}>{money(i.deductible_met)}</Text>
               </View>
             </View>
           </View>
@@ -309,6 +311,14 @@ export function IVRFormPDF({
               <View style={styles.fieldRow}>
                 <Text style={styles.fieldLabel}>Out-of-Pocket Limit:</Text>
                 <Text style={styles.fieldValue}>{money(i.out_of_pocket_max)}</Text>
+              </View>
+            </View>
+          </View>
+          <View style={styles.twoCol}>
+            <View style={styles.fieldBlock}>
+              <View style={styles.fieldRow}>
+                <Text style={styles.fieldLabel}>Out-of-Pocket Met:</Text>
+                <Text style={styles.fieldValue}>{money(i.out_of_pocket_met)}</Text>
               </View>
             </View>
           </View>

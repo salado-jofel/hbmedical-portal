@@ -3,9 +3,9 @@
 import { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2 } from "lucide-react";
+import { Info, Loader2 } from "lucide-react";
 import { upsertOrderIVR } from "../(services)/actions";
-import type { IOrderIVR } from "@/utils/interfaces/orders";
+import type { DashboardOrder, IOrderIVR } from "@/utils/interfaces/orders";
 import { cn } from "@/utils/utils";
 import toast from "react-hot-toast";
 
@@ -16,6 +16,8 @@ interface OrderIVRFormProps {
   isReady: boolean;
   onSave?: (data: Partial<IOrderIVR>) => void;
   onDirtyChange?: (isDirty: boolean) => void;
+  order: DashboardOrder;
+  hcfaData?: Record<string, unknown> | null;
 }
 
 type IVRFieldKey = keyof Omit<
@@ -30,6 +32,8 @@ export function OrderIVRForm({
   isReady,
   onSave,
   onDirtyChange,
+  order,
+  hcfaData,
 }: OrderIVRFormProps) {
   const [savedData, setSavedData] = useState<Partial<IOrderIVR> | null>(
     initialData ?? null,
@@ -44,6 +48,39 @@ export function OrderIVRForm({
     setSavedData(initialData ?? {});
     setDraftData(initialData ?? {});
   }, [initialData]);
+
+  // Pre-populate insurance fields from HCFA data on first load
+  // (only when no existing IVR insurance data and HCFA has been filled)
+  useEffect(() => {
+    if (!isReady) return;
+    if (initialData?.insuranceProvider) return; // existing IVR data — leave as-is
+    if (!hcfaData) return;
+
+    const h = hcfaData;
+    if (!h.insured_id_number && !h.insured_plan_name) return;
+
+    const lastName  = (h.insured_last_name  as string) || "";
+    const firstName = (h.insured_first_name as string) || "";
+    const subscriberName = lastName && firstName
+      ? `${lastName}, ${firstName}`
+      : lastName || firstName || null;
+
+    setDraftData((prev) => ({
+      ...(prev ?? {}),
+      insuranceProvider:       (h.insured_plan_name     as string) || prev?.insuranceProvider     || null,
+      memberId:                (h.insured_id_number     as string) || prev?.memberId               || null,
+      groupNumber:             (h.insured_policy_group  as string) || prev?.groupNumber            || null,
+      subscriberName:          subscriberName                      ?? prev?.subscriberName         ?? null,
+      subscriberDob:           (h.insured_dob           as string) || prev?.subscriberDob          || null,
+      subscriberRelationship:  (h.patient_relationship  as string) || prev?.subscriberRelationship || null,
+    }));
+  }, [isReady]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // True when HCFA has data to pre-fill but no IVR insurance record exists yet
+  const isPrepopulated =
+    !initialData?.insuranceProvider &&
+    !!hcfaData &&
+    (!!(hcfaData.insured_id_number) || !!(hcfaData.insured_plan_name));
 
   const isDirty = JSON.stringify(draftData) !== JSON.stringify(savedData);
 
@@ -237,6 +274,29 @@ export function OrderIVRForm({
           <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
             You have read-only access to this IVR record.
           </p>
+        )}
+
+        {/* ── Patient Info (read-only, from order data) ── */}
+        <div className="p-3 rounded-xl bg-blue-50 border border-blue-100">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-blue-500 mb-2">
+            Patient Information
+          </p>
+          <div>
+            <p className="text-[10px] text-gray-500">Patient Name</p>
+            <p className="text-sm font-semibold text-gray-800">
+              {order.patient_full_name ?? "—"}
+            </p>
+          </div>
+        </div>
+
+        {/* ── Pre-populated banner ── */}
+        {isPrepopulated && (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200">
+            <Info className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+            <p className="text-xs text-amber-700">
+              Insurance fields pre-filled from the 1500 form. Please verify and update as needed.
+            </p>
+          </div>
         )}
 
         {/* Insurance Information */}
