@@ -23,13 +23,14 @@ type KanbanCol =
   | { type: "status"; status: OrderStatus }
   | { type: "processed" };
 
-const COLUMNS: KanbanCol[] = ADMIN_VISIBLE_STATUSES.flatMap((status) =>
-  status === "approved"
-    ? [
-        { type: "status" as const, status },
-        { type: "processed" as const },
-      ]
-    : [{ type: "status" as const, status }],
+const COLUMNS: KanbanCol[] = ADMIN_VISIBLE_STATUSES.flatMap(
+  (status): KanbanCol[] =>
+    status === "approved"
+      ? [
+          { type: "status" as const, status },
+          { type: "processed" as const },
+        ]
+      : [{ type: "status" as const, status }],
 );
 
 interface OrdersTabProps {
