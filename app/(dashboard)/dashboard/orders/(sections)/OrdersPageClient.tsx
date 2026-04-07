@@ -32,16 +32,6 @@ interface OrdersPageClientProps {
   currentUserName?: string;
 }
 
-const VISIBLE_STATUSES: OrderStatus[] = [
-  "draft",
-  "pending_signature",
-  "manufacturer_review",
-  "additional_info_needed",
-  "approved",
-  "shipped",
-  "delivered",
-];
-
 export function OrdersPageClient({
   canCreate,
   canSign,
@@ -224,9 +214,33 @@ export function OrdersPageClient({
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<OrderStatus | "all">("all");
-  const [mobileTab, setMobileTab] = useState<OrderStatus | "paid">("draft");
+  const [mobileTab, setMobileTab] = useState<OrderStatus | "paid">(
+    (isAdmin || isSupport) ? "manufacturer_review" : "draft",
+  );
+  const [tableMode, setTableMode] = useState(false);
 
-  const showTableView = isAdmin || isRep || isSupport;
+  // Reps get table-only; admin/support default to kanban with toggle
+  const shouldShowTable = isRep || tableMode;
+
+  const CLINIC_VISIBLE_STATUSES: OrderStatus[] = [
+    "draft",
+    "pending_signature",
+    "manufacturer_review",
+    "additional_info_needed",
+    "approved",
+    "shipped",
+    "delivered",
+  ];
+  const ADMIN_VISIBLE_STATUSES: OrderStatus[] = [
+    "manufacturer_review",
+    "additional_info_needed",
+    "approved",
+    "shipped",
+    "delivered",
+  ];
+  const VISIBLE_STATUSES = (isAdmin || isSupport)
+    ? ADMIN_VISIBLE_STATUSES
+    : CLINIC_VISIBLE_STATUSES;
 
   function handleOrderClick(order: DashboardOrder) {
     setSelectedOrder(order);
@@ -306,8 +320,8 @@ export function OrdersPageClient({
     />
   );
 
-  /* ── TABLE VIEW (admin / rep / support) ── */
-  if (showTableView) {
+  /* ── TABLE VIEW (rep always; admin/support when tableMode=true) ── */
+  if (shouldShowTable) {
     return (
       <div className="space-y-5">
         {/* Header */}
@@ -318,6 +332,32 @@ export function OrdersPageClient({
               All orders across facilities
             </p>
           </div>
+          {(isAdmin || isSupport) && (
+            <div className="flex items-center gap-1 border border-gray-200 rounded-lg p-0.5 shrink-0">
+              <button
+                onClick={() => setTableMode(false)}
+                className={cn(
+                  "px-3 py-1.5 rounded-md text-xs font-semibold transition-colors",
+                  !tableMode
+                    ? "bg-[#15689E] text-white"
+                    : "text-gray-500 hover:text-gray-700",
+                )}
+              >
+                Kanban
+              </button>
+              <button
+                onClick={() => setTableMode(true)}
+                className={cn(
+                  "px-3 py-1.5 rounded-md text-xs font-semibold transition-colors",
+                  tableMode
+                    ? "bg-[#15689E] text-white"
+                    : "text-gray-500 hover:text-gray-700",
+                )}
+              >
+                Table
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Filters */}
@@ -459,7 +499,7 @@ export function OrdersPageClient({
     );
   }
 
-  /* ── KANBAN VIEW (clinic) ── */
+  /* ── KANBAN VIEW (clinic + admin/support) ── */
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -467,11 +507,39 @@ export function OrdersPageClient({
         <div>
           <h1 className="text-xl font-semibold text-[#0F172A]">Orders</h1>
           <p className="text-sm text-[#64748B] mt-1">
-            Track and manage your orders
+            {(isAdmin || isSupport)
+              ? "All orders across facilities"
+              : "Track and manage your orders"}
           </p>
         </div>
-        <div className="shrink-0">
-          <CreateOrderModal />
+        <div className="shrink-0 flex items-center gap-2">
+          {(isAdmin || isSupport) && (
+            <div className="flex items-center gap-1 border border-gray-200 rounded-lg p-0.5">
+              <button
+                onClick={() => setTableMode(false)}
+                className={cn(
+                  "px-3 py-1.5 rounded-md text-xs font-semibold transition-colors",
+                  !tableMode
+                    ? "bg-[#15689E] text-white"
+                    : "text-gray-500 hover:text-gray-700",
+                )}
+              >
+                Kanban
+              </button>
+              <button
+                onClick={() => setTableMode(true)}
+                className={cn(
+                  "px-3 py-1.5 rounded-md text-xs font-semibold transition-colors",
+                  tableMode
+                    ? "bg-[#15689E] text-white"
+                    : "text-gray-500 hover:text-gray-700",
+                )}
+              >
+                Table
+              </button>
+            </div>
+          )}
+          {canCreate && <CreateOrderModal />}
         </div>
       </div>
 

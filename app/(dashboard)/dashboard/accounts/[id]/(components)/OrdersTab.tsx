@@ -1,29 +1,43 @@
 "use client";
 
-import { ShoppingCart, Loader2 } from "lucide-react";
 import { EmptyState } from "@/app/(components)/EmptyState";
-import type { DashboardOrder } from "@/utils/interfaces/orders";
+import { OrderCard } from "@/app/(dashboard)/dashboard/orders/(components)/OrderCard";
+import {
+  groupOrdersByStatus,
+  KANBAN_STATUS_CONFIG,
+  PAID_COLUMN_CONFIG,
+} from "@/app/(dashboard)/dashboard/orders/(components)/kanban-config";
+import type { DashboardOrder, OrderStatus } from "@/utils/interfaces/orders";
+import { ShoppingCart } from "lucide-react";
+import { cn } from "@/utils/utils";
 
-function formatCurrency(amount: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(amount);
-}
+const ADMIN_VISIBLE_STATUSES: OrderStatus[] = [
+  "manufacturer_review",
+  "additional_info_needed",
+  "approved",
+  "shipped",
+  "delivered",
+];
 
-const STATUS_STYLES: Record<string, string> = {
-  draft: "bg-[#F1F5F9] text-[#64748B]",
-  submitted: "bg-[#EFF6FF] text-[#15689E]",
-  canceled: "bg-red-50 text-red-600",
-};
+type KanbanCol =
+  | { type: "status"; status: OrderStatus }
+  | { type: "processed" };
+
+const COLUMNS: KanbanCol[] = ADMIN_VISIBLE_STATUSES.flatMap((status) =>
+  status === "approved"
+    ? [
+        { type: "status" as const, status },
+        { type: "processed" as const },
+      ]
+    : [{ type: "status" as const, status }],
+);
 
 interface OrdersTabProps {
   orders: DashboardOrder[];
   onOrderClick: (orderId: string) => void;
-  loadingOrderId: string | null;
 }
 
-export function OrdersTab({ orders, onOrderClick, loadingOrderId }: OrdersTabProps) {
+export function OrdersTab({ orders, onOrderClick }: OrdersTabProps) {
   if (orders.length === 0) {
     return (
       <EmptyState
@@ -33,54 +47,72 @@ export function OrdersTab({ orders, onOrderClick, loadingOrderId }: OrdersTabPro
     );
   }
 
+  const grouped = groupOrdersByStatus(orders);
+  const approvedPending = (grouped["approved"] ?? []).filter(
+    (o) => !o.payment_method,
+  );
+  const approvedProcessed = (grouped["approved"] ?? []).filter(
+    (o) => !!o.payment_method,
+  );
+
   return (
-    <div className="space-y-3">
-      <p className="text-sm text-[#64748B]">
+    <div>
+      <p className="text-sm text-[#64748B] mb-4">
         {orders.length} order{orders.length !== 1 ? "s" : ""}
       </p>
 
-      <div className="rounded-xl border border-[#E2E8F0] overflow-hidden divide-y divide-[#F1F5F9] shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-        {orders.map((order) => (
-          <button
-            key={order.id}
-            type="button"
-            onClick={() => onOrderClick(order.id)}
-            disabled={loadingOrderId === order.id}
-            className="w-full text-left flex items-center justify-between px-5 py-3.5 hover:bg-[#FAFBFC] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-8 h-8 rounded-lg bg-[#15689E]/8 flex items-center justify-center shrink-0">
-                <ShoppingCart className="w-4 h-4 text-[#15689E]" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-[#0F172A] truncate">
-                  {order.order_number}
-                </p>
-                <p className="text-xs text-[#94A3B8] mt-0.5 truncate">
-                  {order.product_name} &times; {order.quantity}
-                </p>
-              </div>
-            </div>
+      <div className="flex gap-4 overflow-x-auto pb-4">
+        {COLUMNS.map((col) => {
+          const isProcessed = col.type === "processed";
+          const key = isProcessed ? "processed" : col.status;
+          const config = isProcessed
+            ? PAID_COLUMN_CONFIG
+            : KANBAN_STATUS_CONFIG[col.status];
+          const colOrders = isProcessed
+            ? approvedProcessed
+            : col.status === "approved"
+              ? approvedPending
+              : (grouped[col.status] ?? []);
 
-            <div className="flex items-center gap-3 shrink-0">
-              <span className="text-sm font-semibold text-[#0F172A]">
-                {formatCurrency(order.total_amount)}
-              </span>
-              <span
-                className={`text-xs px-2 py-0.5 rounded-full font-medium sentence-case ${
-                  STATUS_STYLES[order.order_status] ?? "bg-[#F1F5F9] text-[#64748B]"
-                }`}
-              >
-                {order.order_status}
-              </span>
-              {loadingOrderId === order.id ? (
-                <Loader2 className="w-3.5 h-3.5 text-[#15689E] animate-spin" />
-              ) : (
-                <div className="w-3.5 h-3.5" />
-              )}
+          return (
+            <div key={key} className="flex-shrink-0 w-72 flex flex-col">
+              {/* Column header */}
+              <div className="flex items-center gap-2 mb-3 px-1">
+                <span className={cn("w-2 h-2 rounded-full shrink-0", config.dot)} />
+                <span className="text-xs font-semibold text-[#0F172A]">
+                  {config.label}
+                </span>
+                <span
+                  className={cn(
+                    "ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full border",
+                    config.badge,
+                  )}
+                >
+                  {colOrders.length}
+                </span>
+              </div>
+
+              {/* Cards */}
+              <div className="flex flex-col gap-2 min-h-[120px] bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-2">
+                {colOrders.length === 0 ? (
+                  <div className="flex items-center justify-center py-8">
+                    <p className="text-xs text-gray-400">No orders</p>
+                  </div>
+                ) : (
+                  colOrders.map((order) => (
+                    <OrderCard
+                      key={order.id}
+                      order={order}
+                      statusOverride={isProcessed ? "processed" : undefined}
+                      onClick={() => onOrderClick(order.id)}
+                      unreadCount={0}
+                    />
+                  ))
+                )}
+              </div>
             </div>
-          </button>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

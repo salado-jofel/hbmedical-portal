@@ -283,6 +283,29 @@ export async function getOrders(): Promise<DashboardOrder[]> {
 export const getAllOrders = getOrders;
 
 /* -------------------------------------------------------------------------- */
+/* getOrdersByFacility                                                        */
+/* -------------------------------------------------------------------------- */
+
+export async function getOrdersByFacility(
+  facilityId: string,
+): Promise<DashboardOrder[]> {
+  const adminClient = createAdminClient();
+
+  const { data, error } = await adminClient
+    .from("orders")
+    .select(ORDER_WITH_RELATIONS_SELECT)
+    .eq("facility_id", facilityId)
+    .order("placed_at", { ascending: false });
+
+  if (error) {
+    console.error("[getOrdersByFacility]", JSON.stringify(error));
+    return [];
+  }
+
+  return mapOrders((data ?? []) as unknown as RawOrderRecord[]);
+}
+
+/* -------------------------------------------------------------------------- */
 /* getOrderById                                                               */
 /* -------------------------------------------------------------------------- */
 

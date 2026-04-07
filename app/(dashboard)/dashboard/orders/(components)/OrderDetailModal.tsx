@@ -298,6 +298,7 @@ interface OrderDetailModalProps {
   unreadCount?: number;
   onClearUnread?: () => void;
   initialTab?: string;
+  onOrderUpdated?: (order: DashboardOrder) => void;
 }
 
 /* ── Component ── */
@@ -317,6 +318,7 @@ export function OrderDetailModal({
   unreadCount = 0,
   onClearUnread,
   initialTab,
+  onOrderUpdated,
 }: OrderDetailModalProps) {
   const dispatch = useAppDispatch();
   const liveOrder =
@@ -714,6 +716,7 @@ export function OrderDetailModal({
           const fullOrder = await getOrderById(order.id);
           if (!fullOrder) return;
           dispatch(updateOrderInStore(fullOrder));
+          onOrderUpdated?.(fullOrder);
 
           // Refresh payment + invoice data whenever the order row changes
           const [newPayment, newInvoice] = await Promise.all([
