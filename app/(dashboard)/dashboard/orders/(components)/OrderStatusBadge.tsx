@@ -59,7 +59,7 @@ export function OrderStatusBadge({ status, className }: OrderStatusBadgeProps) {
   return (
     <span
       className={cn(
-        "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border",
+        "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border whitespace-nowrap text-center",
         config.className,
         className,
       )}

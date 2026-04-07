@@ -237,6 +237,25 @@ export interface IOrderIVR {
   updatedAt: string;
 }
 
+export interface IServiceLine {
+  id:                string;  // uuid for React key
+  dos_from:          string;  // 24A date from MM/DD/YY
+  dos_to:            string;  // 24A date to MM/DD/YY
+  place_of_service:  string;  // 24B e.g. "11"
+  emg:               boolean; // 24C emergency
+  cpt_code:          string;  // 24D procedure code
+  modifier_1:        string;  // 24D modifier 1
+  modifier_2:        string;  // 24D modifier 2
+  modifier_3:        string;  // 24D modifier 3
+  modifier_4:        string;  // 24D modifier 4
+  diagnosis_pointer: string;  // 24E e.g. "A" or "A,B"
+  charges:           string;  // 24F dollar amount
+  days_units:        string;  // 24G
+  epsdt:             string;  // 24H
+  id_qualifier:      string;  // 24I
+  rendering_npi:     string;  // 24J
+}
+
 export interface IOrderForm1500 {
   id: string;
   orderId: string;
@@ -309,7 +328,7 @@ export interface IOrderForm1500 {
   resubmissionCode: string | null;
   originalRefNumber: string | null;
   priorAuthNumber: string | null;
-  serviceLines: unknown;
+  serviceLines?: IServiceLine[] | null;
   federalTaxId: string | null;
   taxIdSsn: boolean | null;
   patientAccountNumber: string | null;

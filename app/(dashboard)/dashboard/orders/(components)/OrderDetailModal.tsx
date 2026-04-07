@@ -1964,6 +1964,8 @@ export function OrderDetailModal({
                           canEdit={canEdit}
                           initialData={ivrData}
                           isReady={ivrLoaded}
+                          order={order}
+                          hcfaData={hcfaData}
                           onDirtyChange={setIsIvrDirty}
                           onSave={async (saved) => {
                             setIvrData(saved);
@@ -2600,8 +2602,8 @@ export function OrderDetailModal({
                                   )}
                                 >
                                   {liveOrder.payment_method === "pay_now"
-                                    ? "💳 Pay Now"
-                                    : "📄 Net-30"}
+                                    ? "Pay Now"
+                                    : " Net-30"}
                                 </span>
                               </div>
 
@@ -2619,7 +2621,7 @@ export function OrderDetailModal({
                                   )}
                                 >
                                   {liveOrder.payment_status === "paid"
-                                    ? "✓ Paid"
+                                    ? "Paid"
                                     : "Pending"}
                                 </span>
                               </div>
