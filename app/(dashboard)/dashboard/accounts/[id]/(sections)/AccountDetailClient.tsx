@@ -105,6 +105,8 @@ export function AccountDetailClient({
     if (paymentSuccess === "true") {
       toast.success("Payment completed successfully!");
       if (returnOrderId) {
+        // Switch to orders tab immediately so the kanban is visible
+        setActiveTab("orders");
         setTimeout(() => {
           const found = orders.find((o) => o.id === returnOrderId);
           if (found) {
