@@ -1025,7 +1025,8 @@ export function OrderDetailModal({
         return;
       }
 
-      const result = await initiatePayment(order.id);
+      const returnUrl = window.location.pathname + window.location.search;
+      const result = await initiatePayment(order.id, returnUrl);
 
       if (!result.success) {
         toast.error(result.error ?? "Failed to initiate payment.");

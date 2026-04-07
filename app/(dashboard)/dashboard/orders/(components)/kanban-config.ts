@@ -83,6 +83,14 @@ export function groupOrdersByStatus(
   return grouped;
 }
 
+/* ── Virtual "Paid" column (approved + payment_status="paid") ── */
+export const PAID_COLUMN_CONFIG = {
+  label:      "Paid",
+  dot:        "bg-green-600",
+  badge:      "bg-green-100 text-green-700",
+  badgeSolid: "bg-green-600 text-white",
+} as const;
+
 /* ── Keep legacy types/exports for backwards compat ── */
 export const BOARD_STATUSES = ["New Orders", "Delivered"] as const;
 export type BoardStatus = (typeof BOARD_STATUSES)[number];

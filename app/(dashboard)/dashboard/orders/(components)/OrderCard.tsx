@@ -9,9 +9,10 @@ interface OrderCardProps {
   order: DashboardOrder;
   onClick?: () => void;
   unreadCount?: number;
+  statusOverride?: string;
 }
 
-export function OrderCard({ order, onClick, unreadCount }: OrderCardProps) {
+export function OrderCard({ order, onClick, unreadCount, statusOverride }: OrderCardProps) {
   return (
     <div
       className="rounded-2xl border border-[#E2E8F0] bg-white p-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)] transition-all hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] cursor-pointer"
@@ -25,7 +26,13 @@ export function OrderCard({ order, onClick, unreadCount }: OrderCardProps) {
           </p>
           <h3 className="text-sm font-bold text-[#0F172A]">{order.order_number}</h3>
         </div>
-        <OrderStatusBadge status={order.order_status} />
+        {statusOverride === "paid" ? (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border bg-green-100 text-green-700 border-green-200">
+            ✓ Paid
+          </span>
+        ) : (
+          <OrderStatusBadge status={order.order_status} />
+        )}
       </div>
 
       {/* Info rows */}
@@ -58,45 +65,60 @@ export function OrderCard({ order, onClick, unreadCount }: OrderCardProps) {
         )}
       </div>
 
-      {/* Payment badge — approved / shipped / delivered orders */}
-      {(order.order_status === "approved" ||
-        order.order_status === "shipped" ||
-        order.order_status === "delivered") &&
-        order.payment_method && (
-          <div className="flex items-center gap-1.5 mt-1">
-            <span className={cn(
-              "text-[9px] font-bold px-1.5 py-0.5 rounded-full",
-              order.payment_status === "paid"
-                ? "bg-green-100 text-green-700"
-                : order.payment_method === "pay_now"
-                ? "bg-blue-100 text-blue-700"
-                : "bg-purple-100 text-purple-700",
-            )}>
-              {order.payment_status === "paid"
-                ? "✓ Paid"
-                : order.payment_method === "pay_now"
-                ? "💳 Pay Now"
-                : "📄 Net-30"}
+      {statusOverride === "paid" ? (
+        /* Paid column — show paid date only */
+        order.paid_at && (
+          <div className="mt-1">
+            <span className="text-[9px] text-gray-400">
+              Paid {new Date(order.paid_at).toLocaleDateString("en-US", {
+                month: "short", day: "numeric",
+              })}
             </span>
-            {order.payment_method === "net_30" &&
-              order.payment_status !== "paid" &&
-              order.invoice_due_at && (
-                <span className="text-[9px] text-red-500 font-semibold">
-                  Due {new Date(order.invoice_due_at).toLocaleDateString("en-US", {
-                    month: "short", day: "numeric",
-                  })}
-                </span>
-              )}
           </div>
-        )}
+        )
+      ) : (
+        <>
+          {/* Payment badge — approved / shipped / delivered orders */}
+          {(order.order_status === "approved" ||
+            order.order_status === "shipped" ||
+            order.order_status === "delivered") &&
+            order.payment_method && (
+              <div className="flex items-center gap-1.5 mt-1">
+                <span className={cn(
+                  "text-[9px] font-bold px-1.5 py-0.5 rounded-full",
+                  order.payment_status === "paid"
+                    ? "bg-green-100 text-green-700"
+                    : order.payment_method === "pay_now"
+                    ? "bg-blue-100 text-blue-700"
+                    : "bg-purple-100 text-purple-700",
+                )}>
+                  {order.payment_status === "paid"
+                    ? "✓ Paid"
+                    : order.payment_method === "pay_now"
+                    ? "💳 Pay Now"
+                    : "📄 Net-30"}
+                </span>
+                {order.payment_method === "net_30" &&
+                  order.payment_status !== "paid" &&
+                  order.invoice_due_at && (
+                    <span className="text-[9px] text-red-500 font-semibold">
+                      Due {new Date(order.invoice_due_at).toLocaleDateString("en-US", {
+                        month: "short", day: "numeric",
+                      })}
+                    </span>
+                  )}
+              </div>
+            )}
 
-      {/* No payment yet badge for approved orders */}
-      {order.order_status === "approved" && !order.payment_method && (
-        <div className="mt-1">
-          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
-            💳 Payment Pending
-          </span>
-        </div>
+          {/* No payment yet badge for approved orders */}
+          {order.order_status === "approved" && !order.payment_method && (
+            <div className="mt-1">
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                💳 Payment Pending
+              </span>
+            </div>
+          )}
+        </>
       )}
 
       {(unreadCount ?? 0) > 0 && (

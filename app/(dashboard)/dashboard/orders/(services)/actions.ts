@@ -716,7 +716,17 @@ export async function setOrderPaymentMethod(
       .eq("id", user.id)
       .single();
 
-    if (!["admin", "support_staff"].includes(profile?.role ?? "")) {
+    console.log("[setOrderPaymentMethod] role:", profile?.role, "method:", paymentMethod, "orderId:", orderId);
+
+    const allowedRoles = [
+      "admin",
+      "support_staff",
+      "clinical_provider",
+      "clinical_staff",
+      "sales_representative",
+    ];
+
+    if (!allowedRoles.includes(profile?.role ?? "")) {
       return { success: false, error: "Unauthorized." };
     }
 
@@ -2440,6 +2450,7 @@ export async function markOrderDelivered(
 
 export async function initiatePayment(
   orderId: string,
+  returnUrl?: string,
 ): Promise<{
   success: boolean;
   error: string | null;
@@ -2457,8 +2468,16 @@ export async function initiatePayment(
       .eq("id", user.id)
       .single();
 
-    const role = profile?.role ?? null;
-    if (!isAdmin(role) && !isSupport(role) && !isSalesRep(role) && !isClinicSide(role)) {
+    console.log("[initiatePayment] role:", profile?.role, "orderId:", orderId);
+
+    const allowedRoles = [
+      "admin",
+      "support_staff",
+      "clinical_provider",
+      "clinical_staff",
+      "sales_representative",
+    ];
+    if (!profile?.role || !allowedRoles.includes(profile.role)) {
       return { success: false, error: "You are not authorized to initiate payments." };
     }
 
@@ -2482,15 +2501,15 @@ export async function initiatePayment(
     }
 
     if (!order.payment_method) {
-      return { success: false, error: "No payment method set. Admin must set a payment method first." };
+      return { success: false, error: "No payment method set." };
     }
 
     if (order.payment_status === "paid") {
       return { success: false, error: "This order has already been paid." };
     }
 
-    // Sales rep: verify facility is in their territory
-    if (isSalesRep(role)) {
+    // Only validate rep hierarchy for sales reps
+    if (profile.role === "sales_representative") {
       const { data: facilityCheck } = await adminClient.rpc("is_rep_facility", {
         p_rep_id:      user.id,
         p_facility_id: order.facility_id,
@@ -2499,6 +2518,8 @@ export async function initiatePayment(
         return { success: false, error: "This order is not in your territory." };
       }
     }
+    // For all other roles — no facility hierarchy check needed
+    // DB RLS already handles access control
 
     // Fetch facility for Stripe customer
     const { data: facility } = await adminClient
@@ -2558,6 +2579,7 @@ export async function initiatePayment(
     }
 
     const appUrl = getAppUrl();
+    const safeReturnPath = returnUrl ?? "/dashboard/orders";
 
     // ── pay_now ────────────────────────────────────────────────────────────────
     if (order.payment_method === "pay_now") {
@@ -2565,8 +2587,8 @@ export async function initiatePayment(
         mode:                       "payment",
         customer:                   stripeCustomerId,
         client_reference_id:        order.id,
-        success_url:                `${appUrl}/dashboard/orders/success?session_id={CHECKOUT_SESSION_ID}&order_id=${orderId}`,
-        cancel_url:                 `${appUrl}/dashboard/orders/success?cancelled=true&order_id=${orderId}`,
+        success_url:                `${appUrl}${safeReturnPath}?payment_success=true&order_id=${orderId}`,
+        cancel_url:                 `${appUrl}${safeReturnPath}?payment_cancelled=true&order_id=${orderId}`,
         payment_method_types:       ["card"],
         billing_address_collection: "auto",
         metadata: {

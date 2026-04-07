@@ -11,6 +11,7 @@ import { OrderStatusBadge } from "../(components)/OrderStatusBadge";
 import {
   CLINICAL_STATUSES,
   KANBAN_STATUS_CONFIG,
+  PAID_COLUMN_CONFIG,
   groupOrdersByStatus,
 } from "../(components)/kanban-config";
 import { getUnreadMessageCounts, getOrderById } from "../(services)/actions";
@@ -19,6 +20,7 @@ import { EmptyState } from "@/app/(components)/EmptyState";
 import { Package, Search, ChevronDown } from "lucide-react";
 import { cn } from "@/utils/utils";
 import { Input } from "@/components/ui/input";
+import toast from "react-hot-toast";
 
 interface OrdersPageClientProps {
   canCreate: boolean;
@@ -37,6 +39,7 @@ const VISIBLE_STATUSES: OrderStatus[] = [
   "additional_info_needed",
   "approved",
   "shipped",
+  "delivered",
 ];
 
 export function OrdersPageClient({
@@ -103,6 +106,45 @@ export function OrdersPageClient({
     return () => window.removeEventListener("open-order-modal", handleOpenOrderModal);
   }, [orders]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Handle Stripe return — payment_success / payment_cancelled query params
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const paymentSuccess   = params.get("payment_success");
+    const paymentCancelled = params.get("payment_cancelled");
+    const returnOrderId    = params.get("order_id");
+
+    if (!paymentSuccess && !paymentCancelled) return;
+
+    // Strip payment params from URL without re-rendering
+    const cleanUrl = window.location.pathname;
+    window.history.replaceState({}, "", cleanUrl);
+
+    if (paymentSuccess === "true") {
+      toast.success("Payment completed successfully!");
+      if (returnOrderId) {
+        setTimeout(() => {
+          const found = orders.find((o) => o.id === returnOrderId);
+          if (found) {
+            setSelectedOrder(found);
+            setInitialTab("overview");
+            setModalOpen(true);
+          } else {
+            getOrderById(returnOrderId).then((fetched) => {
+              if (!fetched) return;
+              setSelectedOrder(fetched);
+              setInitialTab("overview");
+              setModalOpen(true);
+            });
+          }
+        }, 400);
+      }
+    }
+
+    if (paymentCancelled === "true") {
+      toast.error("Payment was cancelled. No charge was made.");
+    }
+  }, [orders]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Load unread counts on mount (admin + clinical only)
   useEffect(() => {
     if (!canCreate && !isAdmin) return;
@@ -166,7 +208,7 @@ export function OrdersPageClient({
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<OrderStatus | "all">("all");
-  const [mobileTab, setMobileTab] = useState<OrderStatus>("draft");
+  const [mobileTab, setMobileTab] = useState<OrderStatus | "paid">("draft");
 
   const showTableView = isAdmin || isRep || isSupport;
 
@@ -200,6 +242,28 @@ export function OrdersPageClient({
   }, [orders, search, statusFilter]);
 
   const grouped = useMemo(() => groupOrdersByStatus(filtered), [filtered]);
+
+  const approvedUnpaid = useMemo(
+    () => (grouped["approved"] ?? []).filter((o) => o.payment_status !== "paid"),
+    [grouped],
+  );
+  const approvedPaid = useMemo(
+    () => (grouped["approved"] ?? []).filter((o) => o.payment_status === "paid"),
+    [grouped],
+  );
+
+  type KanbanColumn =
+    | { type: "status"; status: OrderStatus }
+    | { type: "paid" };
+
+  const kanbanColumns: KanbanColumn[] = VISIBLE_STATUSES.flatMap((status) =>
+    status === "approved"
+      ? [
+          { type: "status" as const, status: "approved" as OrderStatus },
+          { type: "paid" as const },
+        ]
+      : [{ type: "status" as const, status }],
+  );
 
   /* ── Order detail modal ── */
   const sheetPortal = selectedOrder && (
@@ -395,26 +459,38 @@ export function OrdersPageClient({
           {/* Mobile: tabbed */}
           <div className="md:hidden">
             <div className="flex overflow-x-auto gap-1 pb-2 mb-4">
-              {VISIBLE_STATUSES.map((status) => {
-                const cfg = KANBAN_STATUS_CONFIG[status];
-                const count = grouped[status].length;
+              {kanbanColumns.map((col) => {
+                const isPaid = col.type === "paid";
+                const key = isPaid ? "paid" : col.status;
+                const label = isPaid
+                  ? PAID_COLUMN_CONFIG.label
+                  : KANBAN_STATUS_CONFIG[col.status].label;
+                const dot = isPaid
+                  ? PAID_COLUMN_CONFIG.dot
+                  : KANBAN_STATUS_CONFIG[col.status].dot;
+                const count = isPaid
+                  ? approvedPaid.length
+                  : col.status === "approved"
+                  ? approvedUnpaid.length
+                  : grouped[col.status].length;
+                const isActive = mobileTab === key;
                 return (
                   <button
-                    key={status}
-                    onClick={() => setMobileTab(status)}
+                    key={key}
+                    onClick={() => setMobileTab(key as OrderStatus | "paid")}
                     className={cn(
                       "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0 transition-all",
-                      mobileTab === status
+                      isActive
                         ? "bg-[#15689E] text-white"
                         : "bg-slate-100 text-slate-600 hover:bg-slate-200",
                     )}
                   >
-                    <div className={cn("w-1.5 h-1.5 rounded-full", cfg.dot)} />
-                    {cfg.label}
+                    <div className={cn("w-1.5 h-1.5 rounded-full", dot)} />
+                    {label}
                     <span
                       className={cn(
                         "ml-0.5 rounded-full text-[10px] px-1.5 py-0.5 font-bold",
-                        mobileTab === status
+                        isActive
                           ? "bg-white/20 text-white"
                           : "bg-slate-200 text-slate-600",
                       )}
@@ -427,41 +503,65 @@ export function OrdersPageClient({
             </div>
 
             <div className="flex flex-col gap-3">
-              {grouped[mobileTab].length === 0 ? (
-                <div className="bg-[#F8FAFC] rounded-xl border border-[#E2E8F0] py-14">
-                  <EmptyState
-                    icon={<Package className="w-8 h-8 text-[#E2E8F0]" />}
-                    message={`No ${KANBAN_STATUS_CONFIG[mobileTab].label} orders`}
-                  />
-                </div>
-              ) : (
-                grouped[mobileTab].map((order) => (
-                  <OrderCard
-                    key={order.id}
-                    order={order}
-                    onClick={() => handleOrderClick(order)}
-                    unreadCount={unreadCounts[order.id] ?? 0}
-                  />
-                ))
-              )}
+              {(() => {
+                const colOrders =
+                  mobileTab === "paid"
+                    ? approvedPaid
+                    : mobileTab === "approved"
+                    ? approvedUnpaid
+                    : grouped[mobileTab as OrderStatus] ?? [];
+                const label =
+                  mobileTab === "paid"
+                    ? PAID_COLUMN_CONFIG.label
+                    : KANBAN_STATUS_CONFIG[mobileTab as OrderStatus]?.label ?? mobileTab;
+                return colOrders.length === 0 ? (
+                  <div className="bg-[#F8FAFC] rounded-xl border border-[#E2E8F0] py-14">
+                    <EmptyState
+                      icon={<Package className="w-8 h-8 text-[#E2E8F0]" />}
+                      message={`No ${label} orders`}
+                    />
+                  </div>
+                ) : (
+                  colOrders.map((order) => (
+                    <OrderCard
+                      key={order.id}
+                      order={order}
+                      onClick={() => handleOrderClick(order)}
+                      unreadCount={unreadCounts[order.id] ?? 0}
+                      statusOverride={mobileTab === "paid" ? "paid" : undefined}
+                    />
+                  ))
+                );
+              })()}
             </div>
           </div>
 
           {/* Desktop: kanban columns */}
           <div className="hidden md:flex gap-4 overflow-x-auto pb-4">
-            {VISIBLE_STATUSES.map((status) => {
-              const cfg = KANBAN_STATUS_CONFIG[status];
-              const columnOrders = grouped[status];
+            {kanbanColumns.map((col) => {
+              const isPaid = col.type === "paid";
+              const key = isPaid ? "paid" : col.status;
+              const label = isPaid
+                ? PAID_COLUMN_CONFIG.label
+                : KANBAN_STATUS_CONFIG[col.status].label;
+              const dot = isPaid
+                ? PAID_COLUMN_CONFIG.dot
+                : KANBAN_STATUS_CONFIG[col.status].dot;
+              const columnOrders = isPaid
+                ? approvedPaid
+                : col.status === "approved"
+                ? approvedUnpaid
+                : grouped[col.status];
               return (
                 <div
-                  key={status}
+                  key={key}
                   className="flex flex-col bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl min-w-[220px] flex-1"
                 >
                   <div className="flex items-center justify-between px-4 py-3 border-b border-[#E2E8F0]">
                     <div className="flex items-center gap-2">
-                      <div className={cn("w-2 h-2 rounded-full", cfg.dot)} />
+                      <div className={cn("w-2 h-2 rounded-full", dot)} />
                       <span className="text-xs font-semibold text-[#0F172A]">
-                        {cfg.label}
+                        {label}
                       </span>
                     </div>
                     <span className="min-w-5.5 h-5.5 flex items-center justify-center rounded-full bg-[#15689E] text-white text-xs font-bold px-1.5">
@@ -482,6 +582,7 @@ export function OrdersPageClient({
                           order={order}
                           onClick={() => handleOrderClick(order)}
                           unreadCount={unreadCounts[order.id] ?? 0}
+                          statusOverride={isPaid ? "paid" : undefined}
                         />
                       ))
                     )}
