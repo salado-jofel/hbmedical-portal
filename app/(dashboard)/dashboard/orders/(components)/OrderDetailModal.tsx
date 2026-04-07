@@ -82,7 +82,7 @@ import {
   markOrderDelivered,
 } from "../(services)/actions";
 import { createClient } from "@/lib/supabase/client";
-import type { IOrderIVR } from "@/utils/interfaces/orders";
+import type { IOrderIVR, OrderStatus } from "@/utils/interfaces/orders";
 import { OrderStatusBadge } from "./OrderStatusBadge";
 import { OrderIVRForm } from "./OrderIVRForm";
 import { Form1500Tab } from "./Form1500Tab";
@@ -115,18 +115,18 @@ const ALL_DOC_TYPES: Array<{ type: string; label: string }> = [
 ];
 
 const ROLE_COLOR: Record<string, string> = {
-  admin:                "bg-purple-100 text-purple-800",
-  clinical_provider:    "bg-blue-100 text-blue-800",
-  clinical_staff:       "bg-green-100 text-green-800",
-  support_staff:        "bg-orange-100 text-orange-800",
+  admin: "bg-purple-100 text-purple-800",
+  clinical_provider: "bg-blue-100 text-blue-800",
+  clinical_staff: "bg-green-100 text-green-800",
+  support_staff: "bg-orange-100 text-orange-800",
   sales_representative: "bg-gray-100 text-gray-700",
 };
 
 const ROLE_BADGE: Record<string, string> = {
-  admin:                "Admin",
-  clinical_provider:    "Provider",
-  clinical_staff:       "Staff",
-  support_staff:        "Support",
+  admin: "Admin",
+  clinical_provider: "Provider",
+  clinical_staff: "Staff",
+  support_staff: "Support",
   sales_representative: "Rep",
 };
 
@@ -319,9 +319,10 @@ export function OrderDetailModal({
   initialTab,
 }: OrderDetailModalProps) {
   const dispatch = useAppDispatch();
-  const liveOrder = useAppSelector(
-    (state) => state.orders.items.find((o) => o.id === order.id),
-  ) ?? order;
+  const liveOrder =
+    useAppSelector((state) =>
+      state.orders.items.find((o) => o.id === order.id),
+    ) ?? order;
   const [, startTransition] = useTransition();
 
   const [tab, setTab] = useState<TabValue>("overview");
@@ -332,7 +333,9 @@ export function OrderDetailModal({
     order.documents ?? [],
   );
   const [viewingDocId, setViewingDocId] = useState<string | null>(null);
-  const [generatingPdfType, setGeneratingPdfType] = useState<string | null>(null);
+  const [generatingPdfType, setGeneratingPdfType] = useState<string | null>(
+    null,
+  );
   const [woundPhotoUrls, setWoundPhotoUrls] = useState<Record<string, string>>(
     {},
   );
@@ -344,7 +347,9 @@ export function OrderDetailModal({
   /* -- Payment + invoice data -- */
   const [paymentData, setPaymentData] = useState<IPayment | null>(null);
   const [invoiceData, setInvoiceData] = useState<IInvoice | null>(null);
-  const [initiatingPayment, setInitiatingPayment] = useState<false | "pay_now" | "net_30">(false);
+  const [initiatingPayment, setInitiatingPayment] = useState<
+    false | "pay_now" | "net_30"
+  >(false);
   const [markingDelivered, setMarkingDelivered] = useState(false);
 
   /* -- IVR + HCFA (pre-fetched on modal open) -- */
@@ -363,7 +368,9 @@ export function OrderDetailModal({
   const [sendingMsg, setSendingMsg] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const currentUserIdRef = useRef(currentUserId);
-  useEffect(() => { currentUserIdRef.current = currentUserId; }, [currentUserId]);
+  useEffect(() => {
+    currentUserIdRef.current = currentUserId;
+  }, [currentUserId]);
 
   /* -- History (lazy-loaded) -- */
   const [history, setHistory] = useState<IOrderHistory[]>([]);
@@ -632,9 +639,9 @@ export function OrderDetailModal({
       .on(
         "postgres_changes",
         {
-          event:  "INSERT",
+          event: "INSERT",
           schema: "public",
-          table:  "order_messages",
+          table: "order_messages",
           filter: `order_id=eq.${order.id}`,
         },
         async (payload) => {
@@ -657,15 +664,16 @@ export function OrderDetailModal({
             .single();
 
           const resolvedMsg: IOrderMessage = {
-            id:         newMsg.id,
-            orderId:    newMsg.order_id,
-            senderId:   newMsg.sender_id,
+            id: newMsg.id,
+            orderId: newMsg.order_id,
+            senderId: newMsg.sender_id,
             senderName: profile
-              ? `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() || "Unknown"
+              ? `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() ||
+                "Unknown"
               : "Unknown",
             senderRole: profile?.role ?? "unknown",
-            message:    newMsg.message,
-            createdAt:  newMsg.created_at,
+            message: newMsg.message,
+            createdAt: newMsg.created_at,
           };
 
           setMessages((prev) => [...prev, resolvedMsg]);
@@ -679,7 +687,9 @@ export function OrderDetailModal({
       )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [open, order.id, tab, currentUserId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── Realtime: live order status updates while modal is open ── */
@@ -692,37 +702,97 @@ export function OrderDetailModal({
       .on(
         "postgres_changes",
         {
-          event:  "UPDATE",
+          event: "UPDATE",
           schema: "public",
-          table:  "orders",
+          table: "orders",
           filter: `id=eq.${order.id}`,
         },
         async (payload) => {
           const updated = payload.new as Record<string, unknown>;
           const old = payload.old as Record<string, unknown>;
-          if (updated.order_status === old.order_status) return;
 
           const fullOrder = await getOrderById(order.id);
           if (!fullOrder) return;
           dispatch(updateOrderInStore(fullOrder));
 
-          const statusLabels: Record<string, string> = {
-            pending_signature:      "Pending Signature",
-            manufacturer_review:    "Manufacturer Review",
-            additional_info_needed: "Additional Info Needed",
-            approved:               "Approved",
-            shipped:                "Shipped",
-            canceled:               "Canceled",
-          };
-          toast.success(
-            `Order status updated to: ${statusLabels[updated.order_status as string] ?? updated.order_status}`,
-            { duration: 4000 },
-          );
+          // Refresh payment + invoice data whenever the order row changes
+          const [newPayment, newInvoice] = await Promise.all([
+            getOrderPayment(order.id),
+            getOrderInvoice(order.id),
+          ]);
+          setPaymentData(newPayment);
+          setInvoiceData(newInvoice);
+
+          // Toast: payment became paid
+          if (
+            updated.payment_status === "paid" &&
+            old.payment_status !== "paid"
+          ) {
+            toast.success("Payment received! Order is now paid.", {
+              duration: 4000,
+            });
+            return;
+          }
+
+          // Toast: order_status changed
+          if (updated.order_status !== old.order_status) {
+            const statusLabels: Record<string, string> = {
+              pending_signature: "Pending Signature",
+              manufacturer_review: "Manufacturer Review",
+              additional_info_needed: "Additional Info Needed",
+              approved: "Approved",
+              shipped: "Shipped",
+              canceled: "Canceled",
+            };
+            toast.success(
+              `Order status updated to: ${statusLabels[updated.order_status as string] ?? updated.order_status}`,
+              { duration: 4000 },
+            );
+          }
         },
       )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [open, order.id, dispatch]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ── Realtime: invoice updates while modal is open ── */
+  useEffect(() => {
+    if (!open) return;
+
+    const supabase = createClient();
+    const channel = supabase
+      .channel(`invoice-${order.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "invoices",
+          filter: `order_id=eq.${order.id}`,
+        },
+        async (payload) => {
+          const newInvoice = await getOrderInvoice(order.id);
+          setInvoiceData(newInvoice);
+
+          const fullOrder = await getOrderById(order.id);
+          if (fullOrder) dispatch(updateOrderInStore(fullOrder));
+
+          const newStatus = (payload.new as { status?: string }).status;
+          if (newStatus === "paid") {
+            toast.success("Invoice paid! Order payment complete.", {
+              duration: 4000,
+            });
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [open, order.id, dispatch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── Handlers ── */
@@ -861,7 +931,9 @@ export function OrderDetailModal({
 
   async function handleSubmitOrder() {
     if (draftItems.length === 0) {
-      toast.error("Please add at least one product before submitting.", { duration: 4000 });
+      toast.error("Please add at least one product before submitting.", {
+        duration: 4000,
+      });
       setTab("overview");
       return;
     }
@@ -1108,6 +1180,8 @@ export function OrderDetailModal({
 
   /* ── Derived ── */
   const status = liveOrder.order_status;
+  const displayStatus: OrderStatus | "processed" =
+    status === "approved" && liveOrder.payment_method ? "processed" : status;
   const isOverviewDirty =
     draftItems.some((i) => i.isNew) ||
     draftItems.some((draft) => {
@@ -1243,74 +1317,82 @@ export function OrderDetailModal({
             {!modalReady ? (
               <OrderDetailSkeleton />
             ) : (
-            <div className="bg-white w-[95vw] max-w-[1200px] h-[90vh] rounded-3xl shadow-2xl border border-gray-100 overflow-hidden flex flex-col">
-              {/* ════════ FULL-WIDTH HEADER ════════ */}
-              <div className="flex-shrink-0 px-8 py-5 border-b border-gray-100 flex items-center justify-between bg-white">
-                <div className="min-w-0">
-                  <h2 className="text-2xl font-extrabold tracking-tight text-gray-900 truncate">
-                    {patientName ?? "No Patient"}
-                  </h2>
-                  <p className="text-gray-400 text-sm mt-0.5">
-                    Order #{order.order_number}
-                  </p>
-                </div>
-                <div className="flex items-center gap-3 shrink-0 ml-4">
-                  <OrderStatusBadge status={order.order_status} />
-                  <button
-                    onClick={handleClose}
-                    className="w-9 h-9 rounded-full hover:bg-gray-100 transition-colors flex items-center justify-center"
-                  >
-                    <X className="w-4 h-4 text-gray-500" />
-                  </button>
-                </div>
-              </div>
-
-              {/* ════════ TWO-COLUMN BODY ════════ */}
-              <div className="flex flex-1 overflow-hidden">
-                {/* ──── LEFT COLUMN: Tabs ──── */}
-                <div className="flex-1 flex flex-col border-r border-gray-100 overflow-hidden min-w-0">
-                  {/* Tab bar */}
-                  <div className="flex-shrink-0 border-b border-gray-100 px-6">
-                    <div className="flex overflow-x-auto">
-                      {TABS.map((t) => {
-                        const isChat = t.value === "conversation";
-                        const badge = isChat && unreadCount > 0 ? unreadCount : 0;
-                        const isDirtyTab = tabDirtyMap[t.value] ?? false;
-                        return (
-                          <button
-                            key={t.value}
-                            onClick={() => handleTabClick(t.value)}
-                            className={cn(
-                              "px-5 py-3.5 text-sm font-semibold border-b-2 whitespace-nowrap transition-colors shrink-0 flex items-center gap-1.5",
-                              tab === t.value
-                                ? "border-[#15689E] text-[#15689E]"
-                                : "border-transparent text-gray-500 hover:text-gray-800",
-                            )}
-                          >
-                            {t.label}
-                            {isDirtyTab && (
-                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />
-                            )}
-                            {badge > 0 && (
-                              <span className={cn(
-                                "text-[10px] px-1.5 py-0.5 rounded-full font-bold",
-                                isChat && unreadCount > 0
-                                  ? "bg-red-500 text-white"
-                                  : "bg-[#15689E] text-white",
-                              )}>
-                                {badge}
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
+              <div className="bg-white w-[95vw] max-w-[1200px] h-[90vh] rounded-3xl shadow-2xl border border-gray-100 overflow-hidden flex flex-col">
+                {/* ════════ FULL-WIDTH HEADER ════════ */}
+                <div className="flex-shrink-0 px-8 py-5 border-b border-gray-100 flex items-center justify-between bg-white">
+                  <div className="min-w-0">
+                    <h2 className="text-2xl font-extrabold tracking-tight text-gray-900 truncate">
+                      {patientName ?? "No Patient"}
+                    </h2>
+                    <p className="text-gray-400 text-sm mt-0.5">
+                      Order #{order.order_number}
+                    </p>
                   </div>
+                  <div className="flex items-center gap-3 shrink-0 ml-4">
+                    <OrderStatusBadge status={displayStatus} />
+                    <button
+                      onClick={handleClose}
+                      className="w-9 h-9 rounded-full hover:bg-gray-100 transition-colors flex items-center justify-center"
+                    >
+                      <X className="w-4 h-4 text-gray-500" />
+                    </button>
+                  </div>
+                </div>
 
-                  {/* Tab content — absolute-positioned so each tab fills space */}
-                  <div className="flex-1 relative overflow-hidden">
-                    {/* OVERVIEW */}
-                    <div className={cn("absolute inset-0 overflow-y-auto px-6 space-y-5", tab !== "overview" && "hidden")}>
+                {/* ════════ TWO-COLUMN BODY ════════ */}
+                <div className="flex flex-1 overflow-hidden">
+                  {/* ──── LEFT COLUMN: Tabs ──── */}
+                  <div className="flex-1 flex flex-col border-r border-gray-100 overflow-hidden min-w-0">
+                    {/* Tab bar */}
+                    <div className="flex-shrink-0 border-b border-gray-100 px-6">
+                      <div className="flex overflow-x-auto">
+                        {TABS.map((t) => {
+                          const isChat = t.value === "conversation";
+                          const badge =
+                            isChat && unreadCount > 0 ? unreadCount : 0;
+                          const isDirtyTab = tabDirtyMap[t.value] ?? false;
+                          return (
+                            <button
+                              key={t.value}
+                              onClick={() => handleTabClick(t.value)}
+                              className={cn(
+                                "px-5 py-3.5 text-sm font-semibold border-b-2 whitespace-nowrap transition-colors shrink-0 flex items-center gap-1.5",
+                                tab === t.value
+                                  ? "border-[#15689E] text-[#15689E]"
+                                  : "border-transparent text-gray-500 hover:text-gray-800",
+                              )}
+                            >
+                              {t.label}
+                              {isDirtyTab && (
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />
+                              )}
+                              {badge > 0 && (
+                                <span
+                                  className={cn(
+                                    "text-[10px] px-1.5 py-0.5 rounded-full font-bold",
+                                    isChat && unreadCount > 0
+                                      ? "bg-red-500 text-white"
+                                      : "bg-[#15689E] text-white",
+                                  )}
+                                >
+                                  {badge}
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Tab content — absolute-positioned so each tab fills space */}
+                    <div className="flex-1 relative overflow-hidden">
+                      {/* OVERVIEW */}
+                      <div
+                        className={cn(
+                          "absolute inset-0 overflow-y-auto px-6 space-y-5",
+                          tab !== "overview" && "hidden",
+                        )}
+                      >
                         {/* ── Unified Save/Discard toolbar ── */}
                         {canEdit && status === "draft" && (
                           <div className="sticky top-0 z-10 bg-white border-b border-gray-300 py-3 flex items-center justify-between">
@@ -1351,7 +1433,9 @@ export function OrderDetailModal({
                                 {isSavingOverview && (
                                   <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                                 )}
-                                {isSavingOverview ? "Saving..." : "Save changes"}
+                                {isSavingOverview
+                                  ? "Saving..."
+                                  : "Save changes"}
                               </button>
                             </div>
                           </div>
@@ -1409,105 +1493,104 @@ export function OrderDetailModal({
                                     {draftItems.map((item) => {
                                       const qtyChanged =
                                         !item.isNew &&
-                                        savedItems.find(
-                                          (s) => s.id === item.id,
-                                        )?.quantity !== item.quantity;
+                                        savedItems.find((s) => s.id === item.id)
+                                          ?.quantity !== item.quantity;
                                       return (
-                                      <tr
-                                        key={item.id}
-                                        className={cn(
-                                          "transition-colors",
-                                          item.isNew
-                                            ? "bg-blue-50/40 hover:bg-blue-50/60"
-                                            : qtyChanged
-                                              ? "bg-amber-50/30 hover:bg-amber-50/50"
-                                              : "hover:bg-gray-50/50",
-                                        )}
-                                      >
-                                        <td className="px-4 py-3">
-                                          <p
-                                            className="font-medium text-gray-900 text-sm max-w-[180px] truncate"
-                                            title={item.productName}
-                                          >
-                                            {item.productName}
-                                          </p>
-                                          <div className="flex items-center gap-2 mt-0.5">
-                                            <p className="text-xs text-gray-400">
-                                              {item.productSku}
-                                            </p>
-                                            {item.isNew && (
-                                              <span className="text-[10px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full font-semibold">
-                                                New
-                                              </span>
-                                            )}
-                                          </div>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                          {canEdit && status === "draft" ? (
-                                            <div className="flex items-center justify-end gap-1.5">
-                                              <button
-                                                type="button"
-                                                disabled={item.quantity <= 1}
-                                                onClick={() =>
-                                                  draftQtyChange(
-                                                    item.id,
-                                                    item.quantity - 1,
-                                                  )
-                                                }
-                                                className="w-6 h-6 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:border-gray-300 hover:bg-gray-50 disabled:opacity-30 transition-colors text-xs"
-                                              >
-                                                <Minus className="w-2.5 h-2.5" />
-                                              </button>
-                                              <span className="w-8 text-center text-sm font-medium tabular-nums">
-                                                {item.quantity}
-                                              </span>
-                                              <button
-                                                type="button"
-                                                onClick={() =>
-                                                  draftQtyChange(
-                                                    item.id,
-                                                    item.quantity + 1,
-                                                  )
-                                                }
-                                                className="w-6 h-6 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:border-gray-300 hover:bg-gray-50 disabled:opacity-30 transition-colors text-xs"
-                                              >
-                                                <Plus className="w-2.5 h-2.5" />
-                                              </button>
-                                            </div>
-                                          ) : (
-                                            <p className="text-right text-sm tabular-nums text-gray-700">
-                                              ×{item.quantity}
-                                            </p>
+                                        <tr
+                                          key={item.id}
+                                          className={cn(
+                                            "transition-colors",
+                                            item.isNew
+                                              ? "bg-blue-50/40 hover:bg-blue-50/60"
+                                              : qtyChanged
+                                                ? "bg-amber-50/30 hover:bg-amber-50/50"
+                                                : "hover:bg-gray-50/50",
                                           )}
-                                        </td>
-                                        <td className="px-4 py-3 text-right text-sm tabular-nums text-gray-600">
-                                          ${item.unitPrice.toFixed(2)}
-                                        </td>
-                                        <td className="px-4 py-3 text-right text-sm font-medium tabular-nums text-gray-900">
-                                          $
-                                          {(
-                                            item.subtotal ??
-                                            item.unitPrice * item.quantity
-                                          ).toFixed(2)}
-                                        </td>
-                                        {canEdit && status === "draft" && (
-                                          <td className="px-2 py-3">
-                                            <button
-                                              type="button"
-                                              onClick={() =>
-                                                setItemToDelete({
-                                                  id: item.id,
-                                                  name: item.productName,
-                                                })
-                                              }
-                                              className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors"
-                                              title="Remove item"
+                                        >
+                                          <td className="px-4 py-3">
+                                            <p
+                                              className="font-medium text-gray-900 text-sm max-w-[180px] truncate"
+                                              title={item.productName}
                                             >
-                                              <X className="w-3.5 h-3.5" />
-                                            </button>
+                                              {item.productName}
+                                            </p>
+                                            <div className="flex items-center gap-2 mt-0.5">
+                                              <p className="text-xs text-gray-400">
+                                                {item.productSku}
+                                              </p>
+                                              {item.isNew && (
+                                                <span className="text-[10px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full font-semibold">
+                                                  New
+                                                </span>
+                                              )}
+                                            </div>
                                           </td>
-                                        )}
-                                      </tr>
+                                          <td className="px-4 py-3">
+                                            {canEdit && status === "draft" ? (
+                                              <div className="flex items-center justify-end gap-1.5">
+                                                <button
+                                                  type="button"
+                                                  disabled={item.quantity <= 1}
+                                                  onClick={() =>
+                                                    draftQtyChange(
+                                                      item.id,
+                                                      item.quantity - 1,
+                                                    )
+                                                  }
+                                                  className="w-6 h-6 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:border-gray-300 hover:bg-gray-50 disabled:opacity-30 transition-colors text-xs"
+                                                >
+                                                  <Minus className="w-2.5 h-2.5" />
+                                                </button>
+                                                <span className="w-8 text-center text-sm font-medium tabular-nums">
+                                                  {item.quantity}
+                                                </span>
+                                                <button
+                                                  type="button"
+                                                  onClick={() =>
+                                                    draftQtyChange(
+                                                      item.id,
+                                                      item.quantity + 1,
+                                                    )
+                                                  }
+                                                  className="w-6 h-6 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:border-gray-300 hover:bg-gray-50 disabled:opacity-30 transition-colors text-xs"
+                                                >
+                                                  <Plus className="w-2.5 h-2.5" />
+                                                </button>
+                                              </div>
+                                            ) : (
+                                              <p className="text-right text-sm tabular-nums text-gray-700">
+                                                ×{item.quantity}
+                                              </p>
+                                            )}
+                                          </td>
+                                          <td className="px-4 py-3 text-right text-sm tabular-nums text-gray-600">
+                                            ${item.unitPrice.toFixed(2)}
+                                          </td>
+                                          <td className="px-4 py-3 text-right text-sm font-medium tabular-nums text-gray-900">
+                                            $
+                                            {(
+                                              item.subtotal ??
+                                              item.unitPrice * item.quantity
+                                            ).toFixed(2)}
+                                          </td>
+                                          {canEdit && status === "draft" && (
+                                            <td className="px-2 py-3">
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  setItemToDelete({
+                                                    id: item.id,
+                                                    name: item.productName,
+                                                  })
+                                                }
+                                                className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors"
+                                                title="Remove item"
+                                              >
+                                                <X className="w-3.5 h-3.5" />
+                                              </button>
+                                            </td>
+                                          )}
+                                        </tr>
                                       );
                                     })}
                                   </tbody>
@@ -1696,10 +1779,15 @@ export function OrderDetailModal({
                             className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm text-gray-700 border border-gray-100 focus:outline-none focus:ring-2 focus:ring-[#15689E]/20 resize-none disabled:opacity-60 disabled:cursor-default transition-shadow"
                           />
                         </div>
-                    </div>
+                      </div>
 
-                    {/* ORDER FORM (AI-extracted, read-only) */}
-                    <div className={cn("absolute inset-0 overflow-y-auto px-6 py-6 space-y-4", tab !== "order-form" && "hidden")}>
+                      {/* ORDER FORM (AI-extracted, read-only) */}
+                      <div
+                        className={cn(
+                          "absolute inset-0 overflow-y-auto px-6 py-6 space-y-4",
+                          tab !== "order-form" && "hidden",
+                        )}
+                      >
                         {/* SPINNER: AI processing */}
                         {aiStatus === "processing" && (
                           <div className="flex items-center gap-4 p-5 rounded-2xl bg-blue-50 border border-blue-100">
@@ -1858,10 +1946,15 @@ export function OrderDetailModal({
                             </div>
                           </div>
                         )}
-                    </div>
+                      </div>
 
-                    {/* IVR FORM */}
-                    <div className={cn("absolute inset-0 overflow-y-auto px-6", tab !== "ivr" && "hidden")}>
+                      {/* IVR FORM */}
+                      <div
+                        className={cn(
+                          "absolute inset-0 overflow-y-auto px-6",
+                          tab !== "ivr" && "hidden",
+                        )}
+                      >
                         <OrderIVRForm
                           key={resetIvrKey}
                           orderId={order.id}
@@ -1879,10 +1972,15 @@ export function OrderDetailModal({
                             }, 3000);
                           }}
                         />
-                    </div>
+                      </div>
 
-                    {/* HCFA / CMS-1500 */}
-                    <div className={cn("absolute inset-0 overflow-y-auto px-6", tab !== "hcfa" && "hidden")}>
+                      {/* HCFA / CMS-1500 */}
+                      <div
+                        className={cn(
+                          "absolute inset-0 overflow-y-auto px-6",
+                          tab !== "hcfa" && "hidden",
+                        )}
+                      >
                         <Form1500Tab
                           key={resetHcfaKey}
                           orderId={order.id}
@@ -1900,10 +1998,15 @@ export function OrderDetailModal({
                             }, 3000);
                           }}
                         />
-                    </div>
+                      </div>
 
-                    {/* CHAT */}
-                    <div className={cn("absolute inset-0 flex flex-col", tab !== "conversation" && "hidden")}>
+                      {/* CHAT */}
+                      <div
+                        className={cn(
+                          "absolute inset-0 flex flex-col",
+                          tab !== "conversation" && "hidden",
+                        )}
+                      >
                         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 min-h-0">
                           {loadingMessages ? (
                             <div className="flex justify-center py-8">
@@ -1914,41 +2017,88 @@ export function OrderDetailModal({
                               <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-3">
                                 <MessageSquare className="w-6 h-6 text-gray-300" />
                               </div>
-                              <p className="text-sm font-medium text-gray-400">No messages yet</p>
-                              <p className="text-xs text-gray-300 mt-1">Start the conversation with your team</p>
+                              <p className="text-sm font-medium text-gray-400">
+                                No messages yet
+                              </p>
+                              <p className="text-xs text-gray-300 mt-1">
+                                Start the conversation with your team
+                              </p>
                             </div>
                           ) : (
                             messages.map((m) => {
                               const isMine = m.senderId === currentUserId;
-                              const roleColor = ROLE_COLOR[m.senderRole] ?? "bg-gray-100 text-gray-700";
-                              const roleBadge = ROLE_BADGE[m.senderRole] ?? m.senderRole;
-                              const initials = m.senderName.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
+                              const roleColor =
+                                ROLE_COLOR[m.senderRole] ??
+                                "bg-gray-100 text-gray-700";
+                              const roleBadge =
+                                ROLE_BADGE[m.senderRole] ?? m.senderRole;
+                              const initials = m.senderName
+                                .split(" ")
+                                .map((n) => n[0])
+                                .join("")
+                                .slice(0, 2)
+                                .toUpperCase();
                               return (
-                                <div key={m.id} className={cn("flex gap-2 items-end", isMine ? "flex-row-reverse" : "flex-row")}>
+                                <div
+                                  key={m.id}
+                                  className={cn(
+                                    "flex gap-2 items-end",
+                                    isMine ? "flex-row-reverse" : "flex-row",
+                                  )}
+                                >
                                   {/* Avatar */}
-                                  <div className={cn("w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mb-0.5", roleColor)}>
+                                  <div
+                                    className={cn(
+                                      "w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mb-0.5",
+                                      roleColor,
+                                    )}
+                                  >
                                     {initials}
                                   </div>
-                                  <div className={cn("max-w-[75%] space-y-1 flex flex-col", isMine ? "items-end" : "items-start")}>
+                                  <div
+                                    className={cn(
+                                      "max-w-[75%] space-y-1 flex flex-col",
+                                      isMine ? "items-end" : "items-start",
+                                    )}
+                                  >
                                     {/* Name + badge + time */}
-                                    <div className={cn("flex items-center gap-1.5 text-[10px]", isMine ? "flex-row-reverse" : "flex-row")}>
+                                    <div
+                                      className={cn(
+                                        "flex items-center gap-1.5 text-[10px]",
+                                        isMine
+                                          ? "flex-row-reverse"
+                                          : "flex-row",
+                                      )}
+                                    >
                                       <span className="font-semibold text-gray-700">
                                         {isMine ? "You" : m.senderName}
                                       </span>
-                                      <span className={cn("px-1.5 py-0.5 rounded text-[9px] font-bold", roleColor)}>
+                                      <span
+                                        className={cn(
+                                          "px-1.5 py-0.5 rounded text-[9px] font-bold",
+                                          roleColor,
+                                        )}
+                                      >
                                         {roleBadge}
                                       </span>
                                       <span className="text-gray-400">
-                                        {new Date(m.createdAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                                        {new Date(
+                                          m.createdAt,
+                                        ).toLocaleTimeString("en-US", {
+                                          hour: "numeric",
+                                          minute: "2-digit",
+                                        })}
                                       </span>
                                     </div>
                                     {/* Bubble */}
-                                    <div className={cn(
-                                      "px-3 py-2 rounded-2xl text-sm leading-relaxed break-words",
-                                      isMine
-                                        ? "bg-[#15689E] text-white rounded-br-sm"
-                                        : "bg-gray-100 text-gray-800 rounded-bl-sm",
-                                    )}>
+                                    <div
+                                      className={cn(
+                                        "px-3 py-2 rounded-2xl text-sm leading-relaxed break-words",
+                                        isMine
+                                          ? "bg-[#15689E] text-white rounded-br-sm"
+                                          : "bg-gray-100 text-gray-800 rounded-bl-sm",
+                                      )}
+                                    >
                                       {m.message}
                                     </div>
                                   </div>
@@ -1961,10 +2111,13 @@ export function OrderDetailModal({
                         <div className="shrink-0 px-6 py-3 border-t border-gray-100 flex gap-2">
                           <Input
                             placeholder={
-                              isAdmin    ? "Reply as Admin..."    :
-                              canSign    ? "Reply as Provider..." :
-                              isClinical ? "Message your team..."  :
-                                           "Send a message..."
+                              isAdmin
+                                ? "Reply as Admin..."
+                                : canSign
+                                  ? "Reply as Provider..."
+                                  : isClinical
+                                    ? "Message your team..."
+                                    : "Send a message..."
                             }
                             value={newMessage}
                             onChange={(e) => setNewMessage(e.target.value)}
@@ -1990,10 +2143,15 @@ export function OrderDetailModal({
                             )}
                           </Button>
                         </div>
-                    </div>
+                      </div>
 
-                    {/* HISTORY */}
-                    <div className={cn("absolute inset-0 overflow-y-auto px-6 py-6", tab !== "history" && "hidden")}>
+                      {/* HISTORY */}
+                      <div
+                        className={cn(
+                          "absolute inset-0 overflow-y-auto px-6 py-6",
+                          tab !== "history" && "hidden",
+                        )}
+                      >
                         {loadingHistory ? (
                           <div className="flex justify-center py-8">
                             <Loader2 className="w-5 h-5 animate-spin text-gray-300" />
@@ -2003,25 +2161,42 @@ export function OrderDetailModal({
                             <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mb-3">
                               <Clock className="w-5 h-5 text-gray-300" />
                             </div>
-                            <p className="text-sm text-gray-400 font-medium">No history yet</p>
-                            <p className="text-xs text-gray-300 mt-1">Actions on this order will appear here</p>
+                            <p className="text-sm text-gray-400 font-medium">
+                              No history yet
+                            </p>
+                            <p className="text-xs text-gray-300 mt-1">
+                              Actions on this order will appear here
+                            </p>
                           </div>
                         ) : (
                           <div className="relative pl-5">
                             <div className="absolute left-2 top-0 bottom-0 w-0.5 bg-gray-100" />
                             {history.map((h) => (
-                              <div key={h.id} className="relative mb-5 last:mb-0">
-                                <div className={cn(
-                                  "absolute -left-[17px] w-3 h-3 rounded-full border-2 border-white top-1",
-                                  h.action.includes("signed")    ? "bg-green-500" :
-                                  h.action.includes("approved")  ? "bg-green-600" :
-                                  h.action.includes("shipped")   ? "bg-blue-500"  :
-                                  h.action.includes("canceled")  ? "bg-red-400"   :
-                                  h.action.includes("AI")        ? "bg-purple-500":
-                                  h.action.includes("recalled")  ? "bg-amber-500" :
-                                  "bg-[#15689E]",
-                                )} />
-                                <p className="text-sm font-semibold text-gray-800">{h.action}</p>
+                              <div
+                                key={h.id}
+                                className="relative mb-5 last:mb-0"
+                              >
+                                <div
+                                  className={cn(
+                                    "absolute -left-[17px] w-3 h-3 rounded-full border-2 border-white top-1",
+                                    h.action.includes("signed")
+                                      ? "bg-green-500"
+                                      : h.action.includes("approved")
+                                        ? "bg-green-600"
+                                        : h.action.includes("shipped")
+                                          ? "bg-blue-500"
+                                          : h.action.includes("canceled")
+                                            ? "bg-red-400"
+                                            : h.action.includes("AI")
+                                              ? "bg-purple-500"
+                                              : h.action.includes("recalled")
+                                                ? "bg-amber-500"
+                                                : "bg-[#15689E]",
+                                  )}
+                                />
+                                <p className="text-sm font-semibold text-gray-800">
+                                  {h.action}
+                                </p>
                                 {h.oldStatus && h.newStatus && (
                                   <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1">
                                     <span className="capitalize px-1.5 py-0.5 bg-gray-100 rounded text-[10px]">
@@ -2037,12 +2212,15 @@ export function OrderDetailModal({
                                   <User className="w-3 h-3" />
                                   {h.performedByName ?? "System"}
                                   <span className="text-gray-300">·</span>
-                                  {new Date(h.createdAt).toLocaleString("en-US", {
-                                    month: "short",
-                                    day: "numeric",
-                                    hour: "numeric",
-                                    minute: "2-digit",
-                                  })}
+                                  {new Date(h.createdAt).toLocaleString(
+                                    "en-US",
+                                    {
+                                      month: "short",
+                                      day: "numeric",
+                                      hour: "numeric",
+                                      minute: "2-digit",
+                                    },
+                                  )}
                                 </p>
                                 {h.notes && (
                                   <p className="text-xs text-gray-500 mt-1 bg-gray-50 rounded-lg px-2 py-1 border border-gray-100">
@@ -2053,488 +2231,565 @@ export function OrderDetailModal({
                             ))}
                           </div>
                         )}
+                      </div>
                     </div>
-                  </div>
-                  {/* end tab content */}
+                    {/* end tab content */}
 
-                  {/* ── Footer: action buttons ── */}
-                  <div className="flex-shrink-0 px-6 py-4 border-t border-gray-100 flex items-center justify-end bg-white">
-                    {/* Action buttons */}
-                    <div className="flex items-center gap-3">
-                      {/* Delete Order — draft, clinic only */}
-                      {isClinical && status === "draft" && (
-                        <button
-                          onClick={() => setDeleteOpen(true)}
-                          className="px-5 py-2.5 text-red-500 font-semibold text-sm hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors"
-                        >
-                          Delete Order
-                        </button>
-                      )}
-
-                      {/* Submit Order — draft, clinic only */}
-                      {isClinical && status === "draft" && (
-                        <button
-                          onClick={handleSubmitOrder}
-                          disabled={submitting || draftItems.length === 0 || hasAnyUnsavedChanges}
-                          title={
-                            draftItems.length === 0
-                              ? "Add at least one product before submitting"
-                              : hasAnyUnsavedChanges
-                                ? `Save changes in: ${dirtyTabs.join(", ")}`
-                                : undefined
-                          }
-                          className={cn(
-                            "px-8 py-2.5 font-bold rounded-xl text-sm flex items-center gap-2 transition-all",
-                            submitting || draftItems.length === 0 || hasAnyUnsavedChanges
-                              ? "bg-gray-200 text-gray-400 cursor-not-allowed"
-                              : "bg-[#15689E] text-white shadow-lg shadow-[#15689E]/20 hover:bg-[#15689E]/90 active:scale-[0.98]",
-                          )}
-                        >
-                          {submitting && (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          )}
-                          Submit Order
-                        </button>
-                      )}
-
-                      {/* Recall to Draft — pending_signature, clinic only */}
-                      {isClinical && status === "pending_signature" && (
-                        <button
-                          onClick={() =>
-                            handleAction(
-                              () => recallOrder(order.id),
-                              "Order recalled to draft.",
-                            )
-                          }
-                          disabled={isActing}
-                          className="px-5 py-2.5 text-gray-500 font-semibold text-sm hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors disabled:opacity-60"
-                        >
-                          Recall to Draft
-                        </button>
-                      )}
-
-                      {/* Sign Order — pending_signature, provider only */}
-                      {canSign && status === "pending_signature" && (
-                        <button
-                          onClick={() => setSignOpen(true)}
-                          className="px-8 py-2.5 bg-[#15689E] text-white font-bold rounded-xl shadow-lg shadow-[#15689E]/20 hover:bg-[#15689E]/90 active:scale-[0.98] transition-all text-sm"
-                        >
-                          Sign Order
-                        </button>
-                      )}
-
-                      {/* Resubmit for Review — additional_info_needed, clinic only */}
-                      {isClinical && status === "additional_info_needed" && (
-                        <button
-                          onClick={() =>
-                            handleAction(
-                              () => resubmitForReview(order.id),
-                              "Resubmitted for review.",
-                            )
-                          }
-                          disabled={isActing}
-                          className="px-8 py-2.5 bg-purple-600 text-white font-bold rounded-xl shadow-lg shadow-purple-600/20 hover:bg-purple-700 active:scale-[0.98] transition-all text-sm disabled:opacity-60"
-                        >
-                          Resubmit for Review
-                        </button>
-                      )}
-
-                      {/* Admin: manufacturer_review actions */}
-                      {isAdmin && status === "manufacturer_review" && (
-                        <>
+                    {/* ── Footer: action buttons ── */}
+                    <div className="flex-shrink-0 px-6 py-4 border-t border-gray-100 flex items-center justify-end bg-white">
+                      {/* Action buttons */}
+                      <div className="flex items-center gap-3">
+                        {/* Delete Order — draft, clinic only */}
+                        {isClinical && status === "draft" && (
                           <button
-                            onClick={() => { setRequestInfoReason(""); setRequestInfoOpen(true); }}
+                            onClick={() => setDeleteOpen(true)}
+                            className="px-5 py-2.5 text-red-500 font-semibold text-sm hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors"
+                          >
+                            Delete Order
+                          </button>
+                        )}
+
+                        {/* Submit Order — draft, clinic only */}
+                        {isClinical && status === "draft" && (
+                          <button
+                            onClick={handleSubmitOrder}
+                            disabled={
+                              submitting ||
+                              draftItems.length === 0 ||
+                              hasAnyUnsavedChanges
+                            }
+                            title={
+                              draftItems.length === 0
+                                ? "Add at least one product before submitting"
+                                : hasAnyUnsavedChanges
+                                  ? `Save changes in: ${dirtyTabs.join(", ")}`
+                                  : undefined
+                            }
+                            className={cn(
+                              "px-8 py-2.5 font-bold rounded-xl text-sm flex items-center gap-2 transition-all",
+                              submitting ||
+                                draftItems.length === 0 ||
+                                hasAnyUnsavedChanges
+                                ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                                : "bg-[#15689E] text-white shadow-lg shadow-[#15689E]/20 hover:bg-[#15689E]/90 active:scale-[0.98]",
+                            )}
+                          >
+                            {submitting && (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            )}
+                            Submit Order
+                          </button>
+                        )}
+
+                        {/* Recall to Draft — pending_signature, clinic only */}
+                        {isClinical && status === "pending_signature" && (
+                          <button
+                            onClick={() =>
+                              handleAction(
+                                () => recallOrder(order.id),
+                                "Order recalled to draft.",
+                              )
+                            }
                             disabled={isActing}
                             className="px-5 py-2.5 text-gray-500 font-semibold text-sm hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors disabled:opacity-60"
                           >
-                            Request Info
+                            Recall to Draft
                           </button>
+                        )}
+
+                        {/* Sign Order — pending_signature, provider only */}
+                        {canSign && status === "pending_signature" && (
                           <button
-                            onClick={() => setApproveOpen(true)}
-                            className="px-8 py-2.5 bg-green-600 text-white font-bold rounded-xl shadow-lg shadow-green-600/20 hover:bg-green-700 active:scale-[0.98] transition-all text-sm"
+                            onClick={() => setSignOpen(true)}
+                            className="px-8 py-2.5 bg-[#15689E] text-white font-bold rounded-xl shadow-lg shadow-[#15689E]/20 hover:bg-[#15689E]/90 active:scale-[0.98] transition-all text-sm"
                           >
-                            Approve Order
+                            Sign Order
                           </button>
-                        </>
-                      )}
+                        )}
 
-                      {/* Admin/support: add shipping */}
-                      {(isAdmin || isSupport) && status === "approved" && (
-                        <button
-                          onClick={() => setShipOpen(true)}
-                          className="px-8 py-2.5 bg-[#15689E] text-white font-bold rounded-xl hover:bg-[#15689E]/90 active:scale-[0.98] transition-all text-sm"
-                        >
-                          Add Shipping Info
-                        </button>
-                      )}
+                        {/* Resubmit for Review — additional_info_needed, clinic only */}
+                        {isClinical && status === "additional_info_needed" && (
+                          <button
+                            onClick={() =>
+                              handleAction(
+                                () => resubmitForReview(order.id),
+                                "Resubmitted for review.",
+                              )
+                            }
+                            disabled={isActing}
+                            className="px-8 py-2.5 bg-purple-600 text-white font-bold rounded-xl shadow-lg shadow-purple-600/20 hover:bg-purple-700 active:scale-[0.98] transition-all text-sm disabled:opacity-60"
+                          >
+                            Resubmit for Review
+                          </button>
+                        )}
 
-                      {/* Admin/support: mark delivered */}
-                      {(isAdmin || isSupport) && status === "shipped" && (
-                        <button
-                          onClick={handleMarkDelivered}
-                          disabled={markingDelivered}
-                          className="px-8 py-2.5 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 active:scale-[0.98] transition-all text-sm disabled:opacity-60 flex items-center gap-2"
-                        >
-                          {markingDelivered ? (
-                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          ) : null}
-                          {markingDelivered ? "Marking..." : "Mark as Delivered"}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                {/* end left column */}
-
-                {/* ──── RIGHT COLUMN: Summary panel ──── */}
-                <div className="w-[380px] flex-shrink-0 flex flex-col bg-gray-50/50 overflow-hidden">
-                  {/* Right header */}
-                  <div className="flex-shrink-0 p-6 border-b border-gray-100">
-                    <p className="text-xs text-gray-400 font-mono mb-1">
-                      {order.order_number}
-                    </p>
-                    <div className="flex items-center gap-2 mb-3 flex-wrap">
-                      <span className="text-sm text-gray-500 border border-gray-200 rounded-full px-3 py-0.5 text-xs font-medium capitalize">
-                        {status.replace(/_/g, " ")}
-                      </span>
-                    </div>
-                    <div className="flex gap-5">
-                      <div>
-                        <p className="text-[10px] text-gray-400 mb-0.5 flex items-center gap-1">
-                          <Calendar className="w-3 h-3" /> Date of Service
-                        </p>
-                        <p className="text-xs font-semibold text-gray-700">
-                          {order.date_of_service ?? "—"}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] text-gray-400 mb-0.5 flex items-center gap-1">
-                          <Building2 className="w-3 h-3" /> Clinic
-                        </p>
-                        <p className="text-xs font-semibold text-gray-700 truncate max-w-[140px]">
-                          {order.facility_name || "—"}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Right scrollable body */}
-                  <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                    {/* Document status buttons */}
-                    <div>
-                      <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">
-                        Documents
-                      </h3>
-                      {loadingDocs ? (
-                        <div className="grid grid-cols-2 gap-2">
-                          {REQUIRED_DOC_TYPES.map((d) => (
-                            <div
-                              key={d.type}
-                              className="h-11 rounded-xl bg-gray-100 animate-pulse"
-                            />
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-2 gap-2">
-                          {REQUIRED_DOC_TYPES.map((doc) => {
-                            const typeDocs = localDocuments.filter(
-                              (d) => d.documentType === doc.type,
-                            );
-                            const uploaded = typeDocs.length > 0;
-                            const docRecord =
-                              typeDocs.find((d) =>
-                                d.filePath?.includes("/generated/"),
-                              ) ?? typeDocs[0];
-                            const isViewLoading = viewingDocId === docRecord?.id;
-                            const isPdfGenerating = generatingPdfType === doc.type;
-                            return (
-                              <button
-                                key={doc.type}
-                                type="button"
-                                disabled={(!uploaded && !isPdfGenerating) || isViewLoading || isPdfGenerating}
-                                onClick={() =>
-                                  uploaded && !isPdfGenerating && handleViewDocument(doc.type)
-                                }
-                                className={cn(
-                                  "flex items-center gap-2 px-3 py-3 rounded-xl border text-xs font-bold text-left w-full transition-colors",
-                                  isPdfGenerating
-                                    ? "bg-blue-50 border-blue-200 text-blue-700 cursor-wait"
-                                    : uploaded
-                                    ? "bg-green-50 border-green-200 text-green-800 hover:bg-green-100 cursor-pointer"
-                                    : "bg-amber-50 border-amber-200 text-amber-800 cursor-default",
-                                  isViewLoading && "opacity-60",
-                                )}
-                              >
-                                {isPdfGenerating ? (
-                                  <div className="w-3.5 h-3.5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin shrink-0" />
-                                ) : isViewLoading ? (
-                                  <div className="w-3.5 h-3.5 border-2 border-green-500 border-t-transparent rounded-full animate-spin shrink-0" />
-                                ) : uploaded ? (
-                                  <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0" />
-                                ) : (
-                                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                                )}
-                                <span className="truncate">
-                                  {isPdfGenerating ? "Generating..." : doc.label}
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Additional documentation */}
-                    <div>
-                      <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">
-                        Additional Documentation
-                      </h3>
-                      {additionalDocs.length === 0 ? (
-                        <p className="text-xs text-gray-400">
-                          No additional documentation uploaded
-                        </p>
-                      ) : (
-                        <div className="space-y-1.5 mb-3">
-                          {additionalDocs.map((doc) => (
+                        {/* Admin: manufacturer_review actions */}
+                        {isAdmin && status === "manufacturer_review" && (
+                          <>
                             <button
-                              key={doc.id}
-                              type="button"
-                              onClick={() => handleViewDoc(doc)}
-                              className="text-xs text-[#15689E] hover:underline block truncate max-w-full text-left font-medium"
+                              onClick={() => {
+                                setRequestInfoReason("");
+                                setRequestInfoOpen(true);
+                              }}
+                              disabled={isActing}
+                              className="px-5 py-2.5 text-gray-500 font-semibold text-sm hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors disabled:opacity-60"
                             >
-                              {doc.fileName}
+                              Request Info
                             </button>
-                          ))}
+                            <button
+                              onClick={() => setApproveOpen(true)}
+                              className="px-8 py-2.5 bg-green-600 text-white font-bold rounded-xl shadow-lg shadow-green-600/20 hover:bg-green-700 active:scale-[0.98] transition-all text-sm"
+                            >
+                              Approve Order
+                            </button>
+                          </>
+                        )}
+
+                        {/* Admin/support: add shipping */}
+                        {(isAdmin || isSupport) && status === "approved" && (
+                          <button
+                            onClick={() => setShipOpen(true)}
+                            className="px-8 py-2.5 bg-[#15689E] text-white font-bold rounded-xl hover:bg-[#15689E]/90 active:scale-[0.98] transition-all text-sm"
+                          >
+                            Add Shipping Info
+                          </button>
+                        )}
+
+                        {/* Admin/support: mark delivered */}
+                        {(isAdmin || isSupport) && status === "shipped" && (
+                          <button
+                            onClick={handleMarkDelivered}
+                            disabled={markingDelivered}
+                            className="px-8 py-2.5 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 active:scale-[0.98] transition-all text-sm disabled:opacity-60 flex items-center gap-2"
+                          >
+                            {markingDelivered ? (
+                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            ) : null}
+                            {markingDelivered
+                              ? "Marking..."
+                              : "Mark as Delivered"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  {/* end left column */}
+
+                  {/* ──── RIGHT COLUMN: Summary panel ──── */}
+                  <div className="w-[380px] flex-shrink-0 flex flex-col bg-gray-50/50 overflow-hidden">
+                    {/* Right header */}
+                    <div className="flex-shrink-0 p-6 border-b border-gray-100">
+                      <p className="text-xs text-gray-400 font-mono mb-1">
+                        {order.order_number}
+                      </p>
+                      <div className="flex items-center gap-2 mb-3 flex-wrap">
+                        <span className="text-sm text-gray-500 border border-gray-200 rounded-full px-3 py-0.5 text-xs font-medium capitalize">
+                          {displayStatus.replace(/_/g, " ")}
+                        </span>
+                      </div>
+                      <div className="flex gap-5">
+                        <div>
+                          <p className="text-[10px] text-gray-400 mb-0.5 flex items-center gap-1">
+                            <Calendar className="w-3 h-3" /> Date of Service
+                          </p>
+                          <p className="text-xs font-semibold text-gray-700">
+                            {order.date_of_service ?? "—"}
+                          </p>
                         </div>
-                      )}
-                      {(canEdit || isAdmin) && (
-                        <label className="mt-2 flex items-center gap-2 w-full px-4 py-2.5 rounded-xl bg-[#15689E] text-white text-xs font-bold hover:bg-[#15689E]/90 transition-colors cursor-pointer">
-                          <Paperclip className="w-3.5 h-3.5" />
-                          Attach Additional Documentation
-                          <input
-                            type="file"
-                            className="hidden"
-                            accept="image/*,.pdf,.doc,.docx"
-                            onChange={(e) => {
-                              const f = e.target.files?.[0];
-                              if (f) handleUploadDoc(f, "other");
-                              e.target.value = "";
-                            }}
-                          />
-                        </label>
-                      )}
+                        <div>
+                          <p className="text-[10px] text-gray-400 mb-0.5 flex items-center gap-1">
+                            <Building2 className="w-3 h-3" /> Clinic
+                          </p>
+                          <p className="text-xs font-semibold text-gray-700 truncate max-w-[140px]">
+                            {order.facility_name || "—"}
+                          </p>
+                        </div>
+                      </div>
                     </div>
 
-                    {/* ── Payment Section ── */}
-                    {status === "approved" && (
-                      <div className="border-t border-gray-100 pt-4 space-y-3">
-                        <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">
-                          Payment
+                    {/* Right scrollable body */}
+                    <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                      {/* Document status buttons */}
+                      <div>
+                        <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">
+                          Documents
                         </h3>
-
-                        {/* TWO BUTTONS — show when no payment yet */}
-                        {!paymentData && liveOrder.payment_status !== "paid" && (
+                        {loadingDocs ? (
                           <div className="grid grid-cols-2 gap-2">
-
-                            {/* Pay Now */}
-                            <button
-                              type="button"
-                              disabled={initiatingPayment !== false}
-                              onClick={() => handleInitiatePayment("pay_now")}
-                              className="flex flex-col items-center gap-1.5 px-3 py-3 rounded-xl border-2 border-blue-200 bg-blue-50 hover:bg-blue-100 hover:border-blue-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              {initiatingPayment === "pay_now" ? (
-                                <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                              ) : (
-                                <CreditCard className="w-5 h-5 text-blue-600" />
-                              )}
-                              <span className="text-xs font-bold text-blue-700 text-center leading-tight">
-                                {initiatingPayment === "pay_now" ? "Processing..." : "Pay Now"}
-                              </span>
-                            </button>
-
-                            {/* Pay Later / Net-30 */}
-                            <button
-                              type="button"
-                              disabled={initiatingPayment !== false}
-                              onClick={() => handleInitiatePayment("net_30")}
-                              className="flex flex-col items-center gap-1.5 px-3 py-3 rounded-xl border-2 border-purple-200 bg-purple-50 hover:bg-purple-100 hover:border-purple-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              {initiatingPayment === "net_30" ? (
-                                <div className="w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
-                              ) : (
-                                <FileText className="w-5 h-5 text-purple-600" />
-                              )}
-                              <span className="text-xs font-bold text-purple-700 text-center leading-tight whitespace-pre-line">
-                                {initiatingPayment === "net_30" ? "Processing..." : "Pay Later\nNet-30"}
-                              </span>
-                            </button>
-
+                            {REQUIRED_DOC_TYPES.map((d) => (
+                              <div
+                                key={d.type}
+                                className="h-11 rounded-xl bg-gray-100 animate-pulse"
+                              />
+                            ))}
                           </div>
-                        )}
-
-                        {/* Payment info — show after payment initiated or paid */}
-                        {(paymentData || liveOrder.payment_status === "paid") && (
-                          <div className="bg-gray-50 rounded-xl px-3 py-3 space-y-2">
-
-                            {/* Method */}
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs text-gray-500">Method</span>
-                              <span className={cn(
-                                "text-[10px] font-bold px-2 py-0.5 rounded-full",
-                                liveOrder.payment_method === "pay_now"
-                                  ? "bg-blue-100 text-blue-700"
-                                  : "bg-purple-100 text-purple-700",
-                              )}>
-                                {liveOrder.payment_method === "pay_now" ? "💳 Pay Now" : "📄 Net-30"}
-                              </span>
-                            </div>
-
-                            {/* Status */}
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs text-gray-500">Status</span>
-                              <span className={cn(
-                                "text-[10px] font-bold px-2 py-0.5 rounded-full",
-                                liveOrder.payment_status === "paid"
-                                  ? "bg-green-100 text-green-700"
-                                  : "bg-amber-100 text-amber-700",
-                              )}>
-                                {liveOrder.payment_status === "paid" ? "✓ Paid" : "Pending"}
-                              </span>
-                            </div>
-
-                            {/* Amount */}
-                            {paymentData && (
-                              <div className="flex items-center justify-between">
-                                <span className="text-xs text-gray-500">Amount</span>
-                                <span className="text-xs font-bold text-gray-800">
-                                  ${paymentData.amount.toFixed(2)}
-                                </span>
-                              </div>
-                            )}
-
-                            {/* Net-30: Due Date */}
-                            {liveOrder.payment_method === "net_30" && invoiceData?.dueAt && (
-                              <div className="flex items-center justify-between">
-                                <span className="text-xs text-gray-500">Due Date</span>
-                                <span className={cn(
-                                  "text-xs font-semibold",
-                                  liveOrder.payment_status !== "paid"
-                                    ? "text-red-600"
-                                    : "text-gray-500 line-through",
-                                )}>
-                                  {new Date(invoiceData.dueAt).toLocaleDateString("en-US", {
-                                    month: "short", day: "numeric", year: "numeric",
-                                  })}
-                                </span>
-                              </div>
-                            )}
-
-                            {/* Invoice number */}
-                            {invoiceData?.invoiceNumber && (
-                              <div className="flex items-center justify-between">
-                                <span className="text-xs text-gray-500">Invoice</span>
-                                <span className="text-xs font-medium text-gray-700">
-                                  {invoiceData.invoiceNumber}
-                                </span>
-                              </div>
-                            )}
-
-                            {/* Paid At */}
-                            {liveOrder.paid_at && (
-                              <div className="flex items-center justify-between">
-                                <span className="text-xs text-gray-500">Paid On</span>
-                                <span className="text-xs font-medium text-gray-700">
-                                  {new Date(liveOrder.paid_at).toLocaleDateString("en-US", {
-                                    month: "short", day: "numeric", year: "numeric",
-                                  })}
-                                </span>
-                              </div>
-                            )}
-
-                            {/* Receipt */}
-                            {paymentData?.receiptUrl && (
-                              <a
-                                href={paymentData.receiptUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex items-center gap-1 text-xs text-[#15689E] hover:underline pt-1"
-                              >
-                                <ExternalLink className="w-3 h-3" />
-                                View Receipt
-                              </a>
-                            )}
+                        ) : (
+                          <div className="grid grid-cols-2 gap-2">
+                            {REQUIRED_DOC_TYPES.map((doc) => {
+                              const typeDocs = localDocuments.filter(
+                                (d) => d.documentType === doc.type,
+                              );
+                              const uploaded = typeDocs.length > 0;
+                              const docRecord =
+                                typeDocs.find((d) =>
+                                  d.filePath?.includes("/generated/"),
+                                ) ?? typeDocs[0];
+                              const isViewLoading =
+                                viewingDocId === docRecord?.id;
+                              const isPdfGenerating =
+                                generatingPdfType === doc.type;
+                              return (
+                                <button
+                                  key={doc.type}
+                                  type="button"
+                                  disabled={
+                                    (!uploaded && !isPdfGenerating) ||
+                                    isViewLoading ||
+                                    isPdfGenerating
+                                  }
+                                  onClick={() =>
+                                    uploaded &&
+                                    !isPdfGenerating &&
+                                    handleViewDocument(doc.type)
+                                  }
+                                  className={cn(
+                                    "flex items-center gap-2 px-3 py-3 rounded-xl border text-xs font-bold text-left w-full transition-colors",
+                                    isPdfGenerating
+                                      ? "bg-blue-50 border-blue-200 text-blue-700 cursor-wait"
+                                      : uploaded
+                                        ? "bg-green-50 border-green-200 text-green-800 hover:bg-green-100 cursor-pointer"
+                                        : "bg-amber-50 border-amber-200 text-amber-800 cursor-default",
+                                    isViewLoading && "opacity-60",
+                                  )}
+                                >
+                                  {isPdfGenerating ? (
+                                    <div className="w-3.5 h-3.5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin shrink-0" />
+                                  ) : isViewLoading ? (
+                                    <div className="w-3.5 h-3.5 border-2 border-green-500 border-t-transparent rounded-full animate-spin shrink-0" />
+                                  ) : uploaded ? (
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0" />
+                                  ) : (
+                                    <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                  )}
+                                  <span className="truncate">
+                                    {isPdfGenerating
+                                      ? "Generating..."
+                                      : doc.label}
+                                  </span>
+                                </button>
+                              );
+                            })}
                           </div>
                         )}
                       </div>
-                    )}
 
-                    {/* Wound photos */}
-                    <div>
-                      <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">
-                        Wound Photos
-                      </h3>
-                      {woundPhotos.length === 0 ? (
-                        <p className="text-xs text-gray-400">
-                          No wound photos uploaded
-                        </p>
-                      ) : (
-                        <div className="grid grid-cols-3 gap-1.5">
-                          {woundPhotos.map((photo) =>
-                            woundPhotoUrls[photo.id] ? (
+                      {/* Additional documentation */}
+                      <div>
+                        <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">
+                          Additional Documentation
+                        </h3>
+                        {additionalDocs.length === 0 ? (
+                          <p className="text-xs text-gray-400">
+                            No additional documentation uploaded
+                          </p>
+                        ) : (
+                          <div className="space-y-1.5 mb-3">
+                            {additionalDocs.map((doc) => (
                               <button
-                                key={photo.id}
+                                key={doc.id}
                                 type="button"
-                                onClick={() =>
-                                  window.open(
-                                    woundPhotoUrls[photo.id],
-                                    "_blank",
-                                    "noopener,noreferrer",
-                                  )
-                                }
+                                onClick={() => handleViewDoc(doc)}
+                                className="text-xs text-[#15689E] hover:underline block truncate max-w-full text-left font-medium"
                               >
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img
-                                  src={woundPhotoUrls[photo.id]}
-                                  alt={photo.fileName}
-                                  className="w-full aspect-square object-cover rounded-xl border border-gray-100"
-                                />
+                                {doc.fileName}
                               </button>
-                            ) : (
-                              <div
-                                key={photo.id}
-                                className="w-full aspect-square rounded-xl border border-gray-100 bg-gray-100 animate-pulse"
-                              />
-                            ),
+                            ))}
+                          </div>
+                        )}
+                        {(canEdit || isAdmin) && (
+                          <label className="mt-2 flex items-center gap-2 w-full px-4 py-2.5 rounded-xl bg-[#15689E] text-white text-xs font-bold hover:bg-[#15689E]/90 transition-colors cursor-pointer">
+                            <Paperclip className="w-3.5 h-3.5" />
+                            Attach Additional Documentation
+                            <input
+                              type="file"
+                              className="hidden"
+                              accept="image/*,.pdf,.doc,.docx"
+                              onChange={(e) => {
+                                const f = e.target.files?.[0];
+                                if (f) handleUploadDoc(f, "other");
+                                e.target.value = "";
+                              }}
+                            />
+                          </label>
+                        )}
+                      </div>
+
+                      {/* ── Payment Section ── */}
+                      {status === "approved" && (
+                        <div className="border-t border-gray-100 pt-4 space-y-3">
+                          <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">
+                            Payment
+                          </h3>
+
+                          {/* TWO BUTTONS — show when no payment yet */}
+                          {!paymentData &&
+                            liveOrder.payment_status !== "paid" && (
+                              <div className="grid grid-cols-2 gap-2">
+                                {/* Pay Now */}
+                                <button
+                                  type="button"
+                                  disabled={initiatingPayment !== false}
+                                  onClick={() =>
+                                    handleInitiatePayment("pay_now")
+                                  }
+                                  className="flex flex-col items-center gap-1.5 px-3 py-3 rounded-xl border-2 border-blue-200 bg-blue-50 hover:bg-blue-100 hover:border-blue-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  {initiatingPayment === "pay_now" ? (
+                                    <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                                  ) : (
+                                    <CreditCard className="w-5 h-5 text-blue-600" />
+                                  )}
+                                  <span className="text-xs font-bold text-blue-700 text-center leading-tight">
+                                    {initiatingPayment === "pay_now"
+                                      ? "Processing..."
+                                      : "Pay Now"}
+                                  </span>
+                                </button>
+
+                                {/* Pay Later / Net-30 */}
+                                <button
+                                  type="button"
+                                  disabled={initiatingPayment !== false}
+                                  onClick={() =>
+                                    handleInitiatePayment("net_30")
+                                  }
+                                  className="flex flex-col items-center gap-1.5 px-3 py-3 rounded-xl border-2 border-purple-200 bg-purple-50 hover:bg-purple-100 hover:border-purple-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  {initiatingPayment === "net_30" ? (
+                                    <div className="w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                                  ) : (
+                                    <FileText className="w-5 h-5 text-purple-600" />
+                                  )}
+                                  <span className="text-xs font-bold text-purple-700 text-center leading-tight whitespace-pre-line">
+                                    {initiatingPayment === "net_30"
+                                      ? "Processing..."
+                                      : "Pay Later\nNet-30"}
+                                  </span>
+                                </button>
+                              </div>
+                            )}
+
+                          {/* Payment info — show after payment initiated or paid */}
+                          {(paymentData ||
+                            liveOrder.payment_status === "paid") && (
+                            <div className="bg-gray-50 rounded-xl px-3 py-3 space-y-2">
+                              {/* Method */}
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs text-gray-500">
+                                  Method
+                                </span>
+                                <span
+                                  className={cn(
+                                    "text-[10px] font-bold px-2 py-0.5 rounded-full",
+                                    liveOrder.payment_method === "pay_now"
+                                      ? "bg-blue-100 text-blue-700"
+                                      : "bg-purple-100 text-purple-700",
+                                  )}
+                                >
+                                  {liveOrder.payment_method === "pay_now"
+                                    ? "💳 Pay Now"
+                                    : "📄 Net-30"}
+                                </span>
+                              </div>
+
+                              {/* Status */}
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs text-gray-500">
+                                  Status
+                                </span>
+                                <span
+                                  className={cn(
+                                    "text-[10px] font-bold px-2 py-0.5 rounded-full",
+                                    liveOrder.payment_status === "paid"
+                                      ? "bg-green-100 text-green-700"
+                                      : "bg-amber-100 text-amber-700",
+                                  )}
+                                >
+                                  {liveOrder.payment_status === "paid"
+                                    ? "✓ Paid"
+                                    : "Pending"}
+                                </span>
+                              </div>
+
+                              {/* Amount */}
+                              {paymentData && (
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs text-gray-500">
+                                    Amount
+                                  </span>
+                                  <span className="text-xs font-bold text-gray-800">
+                                    ${paymentData.amount.toFixed(2)}
+                                  </span>
+                                </div>
+                              )}
+
+                              {/* Net-30: Due Date */}
+                              {liveOrder.payment_method === "net_30" &&
+                                invoiceData?.dueAt && (
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs text-gray-500">
+                                      Due Date
+                                    </span>
+                                    <span
+                                      className={cn(
+                                        "text-xs font-semibold",
+                                        liveOrder.payment_status !== "paid"
+                                          ? "text-red-600"
+                                          : "text-gray-500 line-through",
+                                      )}
+                                    >
+                                      {new Date(
+                                        invoiceData.dueAt,
+                                      ).toLocaleDateString("en-US", {
+                                        month: "short",
+                                        day: "numeric",
+                                        year: "numeric",
+                                      })}
+                                    </span>
+                                  </div>
+                                )}
+
+                              {/* Invoice number */}
+                              {invoiceData?.invoiceNumber && (
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs text-gray-500">
+                                    Invoice
+                                  </span>
+                                  <span className="text-xs font-medium text-gray-700">
+                                    {invoiceData.invoiceNumber}
+                                  </span>
+                                </div>
+                              )}
+                              {/* Paid At */}
+                              {liveOrder.paid_at && (
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs text-gray-500">
+                                    Paid On
+                                  </span>
+                                  <span className="text-xs font-medium text-gray-700">
+                                    {new Date(
+                                      liveOrder.paid_at,
+                                    ).toLocaleDateString("en-US", {
+                                      month: "short",
+                                      day: "numeric",
+                                      year: "numeric",
+                                    })}
+                                  </span>
+                                </div>
+                              )}
+                              {/* View Invoice button — Net-30 only */}
+                              {liveOrder.payment_method === "net_30" &&
+                                invoiceData?.hostedInvoiceUrl && (
+                                  <a
+                                    href={invoiceData.hostedInvoiceUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center justify-center gap-2 w-full mt-2 px-4 py-2 rounded-xl border border-purple-200 bg-purple-50 text-purple-700 text-xs font-semibold hover:bg-purple-100 transition-colors"
+                                  >
+                                    <ExternalLink className="w-3.5 h-3.5" />
+                                    View Invoice
+                                  </a>
+                                )}
+
+                              {/* View Receipt button — Pay Now only */}
+                              {liveOrder.payment_method === "pay_now" &&
+                                paymentData?.receiptUrl && (
+                                  <a
+                                    href={paymentData.receiptUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center justify-center gap-2 w-full mt-2 px-4 py-2 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100 transition-colors"
+                                  >
+                                    <ExternalLink className="w-3.5 h-3.5" />
+                                    View Receipt
+                                  </a>
+                                )}
+                            </div>
                           )}
                         </div>
                       )}
+
+                      {/* Wound photos */}
+                      <div>
+                        <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">
+                          Wound Photos
+                        </h3>
+                        {woundPhotos.length === 0 ? (
+                          <p className="text-xs text-gray-400">
+                            No wound photos uploaded
+                          </p>
+                        ) : (
+                          <div className="grid grid-cols-3 gap-1.5">
+                            {woundPhotos.map((photo) =>
+                              woundPhotoUrls[photo.id] ? (
+                                <button
+                                  key={photo.id}
+                                  type="button"
+                                  onClick={() =>
+                                    window.open(
+                                      woundPhotoUrls[photo.id],
+                                      "_blank",
+                                      "noopener,noreferrer",
+                                    )
+                                  }
+                                >
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={woundPhotoUrls[photo.id]}
+                                    alt={photo.fileName}
+                                    className="w-full aspect-square object-cover rounded-xl border border-gray-100"
+                                  />
+                                </button>
+                              ) : (
+                                <div
+                                  key={photo.id}
+                                  className="w-full aspect-square rounded-xl border border-gray-100 bg-gray-100 animate-pulse"
+                                />
+                              ),
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Right footer */}
+                    <div className="flex-shrink-0 px-6 py-4 border-t border-gray-100">
+                      <button
+                        type="button"
+                        onClick={() => toast("ZIP download coming soon.")}
+                        className="flex items-center gap-2 text-xs text-gray-400 hover:text-gray-600 transition-colors font-medium"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        Download ZIP
+                      </button>
                     </div>
                   </div>
-
-                  {/* Right footer */}
-                  <div className="flex-shrink-0 px-6 py-4 border-t border-gray-100">
-                    <button
-                      type="button"
-                      onClick={() => toast("ZIP download coming soon.")}
-                      className="flex items-center gap-2 text-xs text-gray-400 hover:text-gray-600 transition-colors font-medium"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                      Download ZIP
-                    </button>
-                  </div>
+                  {/* end right column */}
                 </div>
-                {/* end right column */}
+                {/* end two-column body */}
               </div>
-              {/* end two-column body */}
-            </div>
             )}
           </RadixDialog.Content>
         </DialogPortal>
       </RadixDialog.Root>
 
       {/* ── Request Info reason modal ── */}
-      <RadixDialog.Root open={requestInfoOpen} onOpenChange={(v) => { if (!requestingInfo) setRequestInfoOpen(v); }}>
+      <RadixDialog.Root
+        open={requestInfoOpen}
+        onOpenChange={(v) => {
+          if (!requestingInfo) setRequestInfoOpen(v);
+        }}
+      >
         <RadixDialog.Portal>
           <RadixDialog.Overlay className="fixed inset-0 z-[55] bg-black/40" />
           <RadixDialog.Content
@@ -2566,7 +2821,9 @@ export function OrderDetailModal({
               <textarea
                 autoFocus
                 value={requestInfoReason}
-                onChange={(e) => setRequestInfoReason(e.target.value.slice(0, 500))}
+                onChange={(e) =>
+                  setRequestInfoReason(e.target.value.slice(0, 500))
+                }
                 maxLength={500}
                 rows={4}
                 placeholder="e.g. Missing wound measurements, incomplete patient history..."
@@ -2592,7 +2849,10 @@ export function OrderDetailModal({
                   onClick={async () => {
                     setRequestingInfo(true);
                     try {
-                      await requestAdditionalInfo(order.id, requestInfoReason.trim());
+                      await requestAdditionalInfo(
+                        order.id,
+                        requestInfoReason.trim(),
+                      );
                       toast.success("Additional info requested.");
                       setRequestInfoOpen(false);
                       refreshOrder();

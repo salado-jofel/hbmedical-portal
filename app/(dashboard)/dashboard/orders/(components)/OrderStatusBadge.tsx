@@ -4,7 +4,7 @@ import { cn } from "@/utils/utils";
 import type { OrderStatus } from "@/utils/interfaces/orders";
 
 const STATUS_CONFIG: Record<
-  OrderStatus,
+  OrderStatus | "processed",
   { label: string; className: string }
 > = {
   draft: {
@@ -39,10 +39,14 @@ const STATUS_CONFIG: Record<
     label: "Canceled",
     className: "bg-slate-100 text-slate-500 border-slate-200",
   },
+  processed: {
+    label: "Processed",
+    className: "bg-green-100 text-green-700 border-green-200",
+  },
 };
 
 interface OrderStatusBadgeProps {
-  status: OrderStatus;
+  status: OrderStatus | "processed";
   className?: string;
 }
 

@@ -1,7 +1,13 @@
 "use client";
 
 import type { DashboardOrder } from "@/utils/interfaces/orders";
-import { User, Package, CalendarDays, FileText, MessageSquare } from "lucide-react";
+import {
+  User,
+  Package,
+  CalendarDays,
+  FileText,
+  MessageSquare,
+} from "lucide-react";
 import { OrderStatusBadge } from "./OrderStatusBadge";
 import { cn } from "@/utils/utils";
 
@@ -12,7 +18,12 @@ interface OrderCardProps {
   statusOverride?: string;
 }
 
-export function OrderCard({ order, onClick, unreadCount, statusOverride }: OrderCardProps) {
+export function OrderCard({
+  order,
+  onClick,
+  unreadCount,
+  statusOverride,
+}: OrderCardProps) {
   return (
     <div
       className="rounded-2xl border border-[#E2E8F0] bg-white p-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)] transition-all hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] cursor-pointer"
@@ -24,11 +35,26 @@ export function OrderCard({ order, onClick, unreadCount, statusOverride }: Order
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#15689E]">
             Order
           </p>
-          <h3 className="text-sm font-bold text-[#0F172A]">{order.order_number}</h3>
+          <h3 className="text-sm font-bold text-[#0F172A]">
+            {order.order_number}
+          </h3>
         </div>
-        {statusOverride === "paid" ? (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border bg-green-100 text-green-700 border-green-200">
-            ✓ Paid
+        {statusOverride === "processed" ? (
+          <span
+            className={cn(
+              "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap",
+              order.payment_status === "paid"
+                ? "bg-green-100 text-green-700"
+                : order.payment_method === "pay_now"
+                  ? "bg-blue-100 text-blue-700"
+                  : "bg-purple-100 text-purple-700",
+            )}
+          >
+            {order.payment_status === "paid"
+              ? "Paid"
+              : order.payment_method === "pay_now"
+                ? "Pay Now"
+                : "Net-30"}
           </span>
         ) : (
           <OrderStatusBadge status={order.order_status} />
@@ -46,7 +72,9 @@ export function OrderCard({ order, onClick, unreadCount, statusOverride }: Order
         {order.wound_type && (
           <div className="flex items-center gap-1.5 text-xs text-slate-600">
             <FileText className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-            <span className="capitalize">{order.wound_type.replace("_", " ")} wound</span>
+            <span className="capitalize">
+              {order.wound_type.replace("_", " ")} wound
+            </span>
           </div>
         )}
         {order.date_of_service && (
@@ -65,17 +93,31 @@ export function OrderCard({ order, onClick, unreadCount, statusOverride }: Order
         )}
       </div>
 
-      {statusOverride === "paid" ? (
-        /* Paid column — show paid date only */
-        order.paid_at && (
-          <div className="mt-1">
+      {statusOverride === "processed" ? (
+        /* Processed column — due date for net_30 pending, paid date for paid */
+        <div className="flex items-center gap-1.5 mt-1">
+          {order.payment_method === "net_30" &&
+            order.payment_status !== "paid" &&
+            order.invoice_due_at && (
+              <span className="text-[9px] text-red-500 font-semibold">
+                Due{" "}
+                {new Date(order.invoice_due_at).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })}
+              </span>
+            )}
+          {order.payment_status === "paid" && order.paid_at && (
             <span className="text-[9px] text-gray-400">
-              Paid {new Date(order.paid_at).toLocaleDateString("en-US", {
-                month: "short", day: "numeric",
+              Paid{" "}
+              {new Date(order.paid_at).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
               })}
             </span>
-          </div>
-        )
+          )}
+        </div>
       ) : (
         <>
           {/* Payment badge — approved / shipped / delivered orders */}
@@ -84,27 +126,34 @@ export function OrderCard({ order, onClick, unreadCount, statusOverride }: Order
             order.order_status === "delivered") &&
             order.payment_method && (
               <div className="flex items-center gap-1.5 mt-1">
-                <span className={cn(
-                  "text-[9px] font-bold px-1.5 py-0.5 rounded-full",
-                  order.payment_status === "paid"
-                    ? "bg-green-100 text-green-700"
-                    : order.payment_method === "pay_now"
-                    ? "bg-blue-100 text-blue-700"
-                    : "bg-purple-100 text-purple-700",
-                )}>
+                <span
+                  className={cn(
+                    "text-[9px] font-bold px-1.5 py-0.5 rounded-full",
+                    order.payment_status === "paid"
+                      ? "bg-green-100 text-green-700"
+                      : order.payment_method === "pay_now"
+                        ? "bg-blue-100 text-blue-700"
+                        : "bg-purple-100 text-purple-700",
+                  )}
+                >
                   {order.payment_status === "paid"
-                    ? "✓ Paid"
+                    ? "Paid"
                     : order.payment_method === "pay_now"
-                    ? "💳 Pay Now"
-                    : "📄 Net-30"}
+                      ? "Pay Now"
+                      : "Net-30"}
                 </span>
                 {order.payment_method === "net_30" &&
                   order.payment_status !== "paid" &&
                   order.invoice_due_at && (
                     <span className="text-[9px] text-red-500 font-semibold">
-                      Due {new Date(order.invoice_due_at).toLocaleDateString("en-US", {
-                        month: "short", day: "numeric",
-                      })}
+                      Due{" "}
+                      {new Date(order.invoice_due_at).toLocaleDateString(
+                        "en-US",
+                        {
+                          month: "short",
+                          day: "numeric",
+                        },
+                      )}
                     </span>
                   )}
               </div>
@@ -114,7 +163,7 @@ export function OrderCard({ order, onClick, unreadCount, statusOverride }: Order
           {order.order_status === "approved" && !order.payment_method && (
             <div className="mt-1">
               <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
-                💳 Payment Pending
+                Payment Pending
               </span>
             </div>
           )}

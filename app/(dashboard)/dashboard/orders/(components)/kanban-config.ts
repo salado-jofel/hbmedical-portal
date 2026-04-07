@@ -83,12 +83,12 @@ export function groupOrdersByStatus(
   return grouped;
 }
 
-/* ── Virtual "Paid" column (approved + payment_status="paid") ── */
+/* ── Virtual "Processed" column (approved + payment_method IS NOT NULL) ── */
 export const PAID_COLUMN_CONFIG = {
-  label:      "Paid",
-  dot:        "bg-green-600",
-  badge:      "bg-green-100 text-green-700",
-  badgeSolid: "bg-green-600 text-white",
+  label:      "Processed",
+  dot:        "bg-green-500",
+  badge:      "bg-green-100 text-green-700 border-green-200",
+  badgeSolid: "bg-green-500 text-white",
 } as const;
 
 /* ── Keep legacy types/exports for backwards compat ── */

@@ -54,12 +54,16 @@ export function OrdersPageClient({
   const orders = useAppSelector((state) => state.orders.items);
   const dispatch = useAppDispatch();
 
-  const [selectedOrder, setSelectedOrder] = useState<DashboardOrder | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<DashboardOrder | null>(
+    null,
+  );
   const [modalOpen, setModalOpen] = useState(false);
   const [initialTab, setInitialTab] = useState("overview");
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const currentUserIdRef = useRef(currentUserId);
-  useEffect(() => { currentUserIdRef.current = currentUserId; }, [currentUserId]);
+  useEffect(() => {
+    currentUserIdRef.current = currentUserId;
+  }, [currentUserId]);
 
   // Keep the open modal's order in sync with Redux store (so updateOrderInStore refreshes it)
   useEffect(() => {
@@ -88,7 +92,9 @@ export function OrdersPageClient({
 
     // CustomEvent: dispatched by NotificationBell when already on this page
     function handleOpenOrderModal(e: Event) {
-      const { orderId, tab } = (e as CustomEvent<{ orderId: string; tab: string }>).detail;
+      const { orderId, tab } = (
+        e as CustomEvent<{ orderId: string; tab: string }>
+      ).detail;
       openModal(orderId, tab ?? "overview");
     }
 
@@ -96,22 +102,28 @@ export function OrdersPageClient({
     const pending = sessionStorage.getItem("pending-order-open");
     if (pending) {
       try {
-        const { orderId, tab } = JSON.parse(pending) as { orderId: string; tab: string };
+        const { orderId, tab } = JSON.parse(pending) as {
+          orderId: string;
+          tab: string;
+        };
         sessionStorage.removeItem("pending-order-open");
         setTimeout(() => openModal(orderId, tab ?? "overview"), 600);
-      } catch { /* ignore malformed */ }
+      } catch {
+        /* ignore malformed */
+      }
     }
 
     window.addEventListener("open-order-modal", handleOpenOrderModal);
-    return () => window.removeEventListener("open-order-modal", handleOpenOrderModal);
+    return () =>
+      window.removeEventListener("open-order-modal", handleOpenOrderModal);
   }, [orders]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Handle Stripe return — payment_success / payment_cancelled query params
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const paymentSuccess   = params.get("payment_success");
+    const paymentSuccess = params.get("payment_success");
     const paymentCancelled = params.get("payment_cancelled");
-    const returnOrderId    = params.get("order_id");
+    const returnOrderId = params.get("order_id");
 
     if (!paymentSuccess && !paymentCancelled) return;
 
@@ -172,7 +184,9 @@ export function OrdersPageClient({
       )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [currentUserId, canCreate, isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Realtime: re-fetch and update order card when status changes
@@ -195,7 +209,9 @@ export function OrdersPageClient({
       )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [dispatch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleClearUnread(orderId: string) {
@@ -243,12 +259,17 @@ export function OrdersPageClient({
 
   const grouped = useMemo(() => groupOrdersByStatus(filtered), [filtered]);
 
-  const approvedUnpaid = useMemo(
-    () => (grouped["approved"] ?? []).filter((o) => o.payment_status !== "paid"),
+  // "Approved" = no payment method set yet
+  const approvedPending = useMemo(
+    () => (grouped["approved"] ?? []).filter((o) => !o.payment_method),
     [grouped],
   );
-  const approvedPaid = useMemo(
-    () => (grouped["approved"] ?? []).filter((o) => o.payment_status === "paid"),
+  // "Processed" = payment initiated (pay_now OR net_30, any payment_status)
+  const approvedProcessed = useMemo(
+    () =>
+      (grouped["approved"] ?? []).filter(
+        (o) => o.payment_method !== null && o.payment_method !== undefined,
+      ),
     [grouped],
   );
 
@@ -392,26 +413,32 @@ export function OrdersPageClient({
                     <td className="px-4 py-3 hidden xl:table-cell">
                       {order.payment_method ? (
                         <div className="flex flex-col gap-1">
-                          <span className={cn(
-                            "text-[10px] font-bold px-2 py-0.5 rounded-full w-fit",
-                            order.payment_status === "paid"
-                              ? "bg-green-100 text-green-700"
-                              : order.payment_method === "pay_now"
-                              ? "bg-blue-100 text-blue-700"
-                              : "bg-purple-100 text-purple-700",
-                          )}>
+                          <span
+                            className={cn(
+                              "text-[10px] font-bold px-2 py-0.5 rounded-full w-fit",
+                              order.payment_status === "paid"
+                                ? "bg-green-100 text-green-700"
+                                : order.payment_method === "pay_now"
+                                  ? "bg-blue-100 text-blue-700"
+                                  : "bg-purple-100 text-purple-700",
+                            )}
+                          >
                             {order.payment_status === "paid"
                               ? "✓ Paid"
                               : order.payment_method === "pay_now"
-                              ? "💳 Pay Now"
-                              : "📄 Net-30"}
+                                ? "💳 Pay Now"
+                                : "📄 Net-30"}
                           </span>
                           {order.payment_method === "net_30" &&
                             order.payment_status !== "paid" &&
                             order.invoice_due_at && (
                               <span className="text-[10px] text-red-500 font-medium">
-                                Due {new Date(order.invoice_due_at).toLocaleDateString("en-US", {
-                                  month: "short", day: "numeric",
+                                Due{" "}
+                                {new Date(
+                                  order.invoice_due_at,
+                                ).toLocaleDateString("en-US", {
+                                  month: "short",
+                                  day: "numeric",
                                 })}
                               </span>
                             )}
@@ -469,10 +496,10 @@ export function OrdersPageClient({
                   ? PAID_COLUMN_CONFIG.dot
                   : KANBAN_STATUS_CONFIG[col.status].dot;
                 const count = isPaid
-                  ? approvedPaid.length
+                  ? approvedProcessed.length
                   : col.status === "approved"
-                  ? approvedUnpaid.length
-                  : grouped[col.status].length;
+                    ? approvedPending.length
+                    : grouped[col.status].length;
                 const isActive = mobileTab === key;
                 return (
                   <button
@@ -506,14 +533,15 @@ export function OrdersPageClient({
               {(() => {
                 const colOrders =
                   mobileTab === "paid"
-                    ? approvedPaid
+                    ? approvedProcessed
                     : mobileTab === "approved"
-                    ? approvedUnpaid
-                    : grouped[mobileTab as OrderStatus] ?? [];
+                      ? approvedPending
+                      : (grouped[mobileTab as OrderStatus] ?? []);
                 const label =
                   mobileTab === "paid"
                     ? PAID_COLUMN_CONFIG.label
-                    : KANBAN_STATUS_CONFIG[mobileTab as OrderStatus]?.label ?? mobileTab;
+                    : (KANBAN_STATUS_CONFIG[mobileTab as OrderStatus]?.label ??
+                      mobileTab);
                 return colOrders.length === 0 ? (
                   <div className="bg-[#F8FAFC] rounded-xl border border-[#E2E8F0] py-14">
                     <EmptyState
@@ -528,7 +556,9 @@ export function OrdersPageClient({
                       order={order}
                       onClick={() => handleOrderClick(order)}
                       unreadCount={unreadCounts[order.id] ?? 0}
-                      statusOverride={mobileTab === "paid" ? "paid" : undefined}
+                      statusOverride={
+                        mobileTab === "paid" ? "processed" : undefined
+                      }
                     />
                   ))
                 );
@@ -548,14 +578,14 @@ export function OrdersPageClient({
                 ? PAID_COLUMN_CONFIG.dot
                 : KANBAN_STATUS_CONFIG[col.status].dot;
               const columnOrders = isPaid
-                ? approvedPaid
+                ? approvedProcessed
                 : col.status === "approved"
-                ? approvedUnpaid
-                : grouped[col.status];
+                  ? approvedPending
+                  : grouped[col.status];
               return (
                 <div
                   key={key}
-                  className="flex flex-col bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl min-w-[220px] flex-1"
+                  className="flex flex-col bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl min-w-[320px] flex-1"
                 >
                   <div className="flex items-center justify-between px-4 py-3 border-b border-[#E2E8F0]">
                     <div className="flex items-center gap-2">
@@ -582,7 +612,7 @@ export function OrdersPageClient({
                           order={order}
                           onClick={() => handleOrderClick(order)}
                           unreadCount={unreadCounts[order.id] ?? 0}
-                          statusOverride={isPaid ? "paid" : undefined}
+                          statusOverride={isPaid ? "processed" : undefined}
                         />
                       ))
                     )}
