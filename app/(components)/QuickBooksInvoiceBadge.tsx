@@ -2,21 +2,19 @@
 
 import { FileText, CheckCircle2, XCircle, DollarSign } from "lucide-react";
 
-interface Props {
+export default function QuickBooksInvoiceBadge({
+  qbInvoiceId,
+  qbInvoiceStatus,
+  facilityQbCustomerId,
+  productQbItemId,
+}: {
   orderId: string;
   orderDocNumber: string;
   qbInvoiceId?: string | null;
   qbInvoiceStatus?: string | null;
   facilityQbCustomerId?: string | null;
   productQbItemId?: string | null;
-}
-
-export default function QuickBooksInvoiceBadge({
-  qbInvoiceId,
-  qbInvoiceStatus,
-  facilityQbCustomerId,
-  productQbItemId,
-}: Props) {
+}) {
   // ── Invoice exists — show status badge ──────────────────────────
   if (qbInvoiceId) {
     if (qbInvoiceStatus === "paid") {

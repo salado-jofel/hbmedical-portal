@@ -1,7 +1,8 @@
 "use server";
 
-import { z } from "zod";
 import { revalidatePath } from "next/cache";
+import { inviteSubRepSchema, clinicStaffInviteSchema } from "@/utils/validators/onboarding";
+import type { RepWithFacility } from "@/utils/interfaces/onboarding";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUserOrThrow, getUserRole, requireAdminOrThrow } from "@/lib/supabase/auth";
@@ -51,17 +52,6 @@ function getBaseUrl(): string {
 
 const LOGO_URL =
   "https://eyrefohymvvabazvmemq.supabase.co/storage/v1/object/public/spearhead-assets/assets/email/hb-logo-name-2.png";
-
-/* -------------------------------------------------------------------------- */
-/* RepWithFacility type                                                       */
-/* -------------------------------------------------------------------------- */
-
-export type RepWithFacility = {
-  id: string;
-  name: string;
-  facilityId: string;
-  facilityName: string;
-};
 
 /* -------------------------------------------------------------------------- */
 /* getSalesRepsWithFacilities                                                 */
@@ -408,10 +398,6 @@ export async function deleteInviteToken(tokenId: string): Promise<void> {
 /* inviteSubRep                                                               */
 /* -------------------------------------------------------------------------- */
 
-const inviteSubRepSchema = z.object({
-  email: z.string().email("Enter a valid email address.").min(1, "Email is required."),
-});
-
 export async function inviteSubRep(
   _prev: IInviteTokenFormState | null,
   formData: FormData,
@@ -600,11 +586,6 @@ export async function getMySubReps(): Promise<ISubRep[]> {
 /* -------------------------------------------------------------------------- */
 /* generateClinicMemberInvite — clinical_provider invites clinical_staff     */
 /* -------------------------------------------------------------------------- */
-
-const clinicStaffInviteSchema = z.object({
-  email: z.string().email("Enter a valid email address.").min(1, "Email is required."),
-  expires_in_days: z.coerce.number().int().min(1).max(365).default(30),
-});
 
 export async function generateClinicMemberInvite(
   _prevState: IInviteTokenFormState | null,

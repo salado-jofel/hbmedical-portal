@@ -1,6 +1,7 @@
 "use client";
 
 import { useAppSelector, useAppDispatch } from "@/store/hooks";
+import { isAdmin as checkIsAdmin } from "@/utils/helpers/role";
 import {
   FileText,
   Presentation,
@@ -17,6 +18,7 @@ import { AdminBulkBar } from "@/app/(components)/AdminBulkBar";
 import { EmptyState } from "@/app/(components)/EmptyState";
 import { MaterialsSection } from "@/app/(components)/MaterialSection";
 import { MarketingMaterial } from "@/utils/interfaces/marketing";
+import { getMaterialSearchText, normalizeMaterialText } from "@/utils/helpers/material-display";
 import {
   toggleSelectMarketingItem,
   selectAllMarketingItems,
@@ -36,25 +38,8 @@ type DisplayKind =
   | "reimbursement-guide"
   | "brochure";
 
-function normalizeText(value?: string | null) {
-  return (value ?? "").trim().toLowerCase();
-}
-
-function getSearchText(item: MarketingMaterial) {
-  return [
-    item.title,
-    item.tag,
-    item.description,
-    item.file_name,
-    item.file_path,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-}
-
 function getDisplayKind(item: MarketingMaterial): DisplayKind {
-  const text = getSearchText(item);
+  const text = getMaterialSearchText(item);
   if (text.includes("reimbursement")) return "reimbursement-guide";
   if (
     text.includes("pitch deck") ||
@@ -109,7 +94,7 @@ function getMarketingIcon(item: MarketingMaterial) {
 function prettifyTitle(raw?: string | null) {
   const title = (raw ?? "").trim();
   if (!title) return "";
-  const normalized = normalizeText(title);
+  const normalized = normalizeMaterialText(title);
   const exactTitleMap: Record<string, string> = {
     "file 1085": "FILE_1085",
     "file 7919": "FILE_7919",
@@ -124,7 +109,7 @@ function prettifyTitle(raw?: string | null) {
 }
 
 function getDisplayDescription(item: MarketingMaterial) {
-  const title = normalizeText(item.title);
+  const title = normalizeMaterialText(item.title);
   const exactDescriptionMap: Record<string, string> = {
     "clinical ii collagen dressing":
       "Clinical reference document covering bioactive collagen dressings — indications, wound types, and evidence-based applications for surgical and chronic wound care.",
@@ -182,7 +167,7 @@ export default function MarketingCards() {
 
   const items = useAppSelector((state) => state.marketing.items);
   const selectedIds = useAppSelector((state) => state.marketing.selectedIds);
-  const isAdmin = useAppSelector((state) => state.dashboard.role) === "admin";
+  const isAdmin = checkIsAdmin(useAppSelector((state) => state.dashboard.role));
 
   useEffect(() => {
     setMounted(true);

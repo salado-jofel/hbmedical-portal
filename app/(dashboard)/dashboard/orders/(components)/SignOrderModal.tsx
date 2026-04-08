@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, AlertTriangle, PenLine } from "lucide-react";
 import { cn } from "@/utils/utils";
 import type { DashboardOrder } from "@/utils/interfaces/orders";
-import { signOrder } from "../(services)/actions";
+import { signOrder } from "../(services)/order-workflow-actions";
 import toast from "react-hot-toast";
 
 interface SignOrderModalProps {

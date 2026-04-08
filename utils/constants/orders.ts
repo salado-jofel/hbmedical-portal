@@ -136,3 +136,38 @@ export const ORDER_WITH_RELATIONS_SELECT = `
   payments (${PAYMENTS_SELECT}),
   invoices (${INVOICES_SELECT})
 `;
+
+export const WOUND_TYPES = [
+  { value: "chronic" as const, label: "Chronic" },
+  { value: "post_surgical" as const, label: "Post-Surgical" },
+];
+
+export const REQUIRED_DOC_TYPES = [
+  { type: "facesheet",       label: "Facesheet" },
+  { type: "additional_ivr",  label: "Additional IVR Info" },
+  { type: "clinical_docs",   label: "Clinical Docs" },
+  { type: "form_1500",       label: "1500 Form" },
+  { type: "order_form",      label: "Order Form" },
+] as const;
+
+export const ALL_DOC_TYPES: Array<{ type: string; label: string }> = [
+  { type: "facesheet",       label: "Facesheet" },
+  { type: "clinical_docs",   label: "Clinical Docs" },
+  { type: "order_form",      label: "Order Form" },
+  { type: "additional_ivr",  label: "Additional IVR Info" },
+  { type: "form_1500",       label: "1500 Form" },
+  { type: "wound_pictures",  label: "Wound Pictures" },
+  { type: "other",           label: "Other" },
+];
+
+export const ORDER_STATUS_FILTER_OPTIONS: { value: string; label: string }[] = [
+  { value: "all",                    label: "All Statuses" },
+  { value: "draft",                  label: "Draft" },
+  { value: "pending_signature",      label: "Pending Signature" },
+  { value: "manufacturer_review",    label: "Mfr. Review" },
+  { value: "additional_info_needed", label: "Info Needed" },
+  { value: "approved",               label: "Approved" },
+  { value: "shipped",                label: "Shipped" },
+  { value: "delivered",              label: "Delivered" },
+  { value: "canceled",               label: "Canceled" },
+];

@@ -1,16 +1,19 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole, getCurrentUserOrThrow } from "@/lib/supabase/auth";
 import { isSalesRep, isAdmin, isClinicalProvider } from "@/utils/helpers/role";
+
+export const metadata: Metadata = { title: "Onboarding" };
 import {
   getMyInviteTokens,
   getSalesRepsWithFacilities,
-  getMySubReps,
-  type RepWithFacility,
-} from "@/app/(dashboard)/dashboard/onboarding/(services)/actions";
+} from "@/app/(dashboard)/dashboard/onboarding/(services)/onboarding-read-actions";
+import type { RepWithFacility } from "@/utils/interfaces/onboarding";
+import { getMySubReps } from "@/app/(dashboard)/dashboard/onboarding/(services)/sub-rep-actions";
 import type { ISubRep } from "@/utils/interfaces/sub-reps";
 import Providers from "./(sections)/Providers";
-import { OnboardingPageClient } from "./(sections)/OnboardingPageClient";
+import { OnboardingDashboard } from "./(sections)/OnboardingDashboard";
 
 export const dynamic = "force-dynamic";
 
@@ -44,7 +47,7 @@ export default async function OnboardingPage() {
 
   return (
     <Providers tokens={tokens}>
-      <OnboardingPageClient
+      <OnboardingDashboard
         role={role}
         hasCompletedSetup={hasCompletedSetup}
         isAdmin={adminUser}

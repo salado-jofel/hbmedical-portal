@@ -2,13 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { requireAdminOrThrow, getCurrentUserOrThrow } from "@/lib/supabase/auth";
 import {
   createProductSchema,
   updateProductSchema,
   type Product,
 } from "@/utils/interfaces/products";
-
-const PRODUCTS_TABLE = "products";
+import { PRODUCT_TABLE } from "@/utils/constants/orders";
 const PRODUCTS_SELECT = `
   id,
   sku,
@@ -65,9 +65,10 @@ function mapProduct(row: any): Product {
 
 export async function getAllProducts(): Promise<Product[]> {
   const supabase = await createClient();
+  await getCurrentUserOrThrow(supabase);
 
   const { data, error } = await supabase
-    .from(PRODUCTS_TABLE)
+    .from(PRODUCT_TABLE)
     .select(PRODUCTS_SELECT)
     .order("sort_order", { ascending: true })
     .order("name", { ascending: true });
@@ -81,6 +82,9 @@ export async function getAllProducts(): Promise<Product[]> {
 }
 
 export async function addProduct(formData: FormData): Promise<Product> {
+  const supabase = await createClient();
+  await requireAdminOrThrow(supabase);
+
   const parsed = createProductSchema.parse({
     sku: normalizeText(formData.get("sku")) ?? "",
     name: normalizeText(formData.get("name")) ?? "",
@@ -90,8 +94,6 @@ export async function addProduct(formData: FormData): Promise<Product> {
     is_active: parseBoolean(formData.get("is_active"), true),
     sort_order: formData.get("sort_order") ?? 0,
   });
-
-  const supabase = await createClient();
 
   const payload = {
     sku: parsed.sku,
@@ -104,7 +106,7 @@ export async function addProduct(formData: FormData): Promise<Product> {
   };
 
   const { data, error } = await supabase
-    .from(PRODUCTS_TABLE)
+    .from(PRODUCT_TABLE)
     .insert(payload)
     .select(PRODUCTS_SELECT)
     .single();
@@ -122,6 +124,9 @@ export async function editProduct(
   id: string,
   formData: FormData,
 ): Promise<Product> {
+  const supabase = await createClient();
+  await requireAdminOrThrow(supabase);
+
   const parsed = updateProductSchema.parse({
     sku: formData.has("sku")
       ? (normalizeText(formData.get("sku")) ?? "")
@@ -157,10 +162,8 @@ export async function editProduct(
   if (parsed.is_active !== undefined) payload.is_active = parsed.is_active;
   if (parsed.sort_order !== undefined) payload.sort_order = parsed.sort_order;
 
-  const supabase = await createClient();
-
   const { data, error } = await supabase
-    .from(PRODUCTS_TABLE)
+    .from(PRODUCT_TABLE)
     .update(payload)
     .eq("id", id)
     .select(PRODUCTS_SELECT)
@@ -177,8 +180,9 @@ export async function editProduct(
 
 export async function deleteProduct(id: string): Promise<void> {
   const supabase = await createClient();
+  await requireAdminOrThrow(supabase);
 
-  const { error } = await supabase.from(PRODUCTS_TABLE).delete().eq("id", id);
+  const { error } = await supabase.from(PRODUCT_TABLE).delete().eq("id", id);
 
   if (error) {
     console.error("[deleteProduct] Error:", error);

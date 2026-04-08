@@ -11,23 +11,16 @@ import { editProduct, deleteProduct } from "../(services)/actions";
 import type { Product } from "@/utils/interfaces/products";
 import type { TableColumn } from "@/utils/interfaces/table-column";
 import { Input } from "@/components/ui/input";
-import SubmitButton from "@/app/(components)/SubmitButton";
 import ConfirmModal from "@/app/(components)/ConfirmModal";
 import { EmptyState } from "@/app/(components)/EmptyState";
 import { TableToolbar } from "@/app/(components)/TableToolbar";
 import { DataTable } from "@/app/(components)/DataTable";
 import { AddProductModal } from "../(components)/AddProductModal";
 import { ProductCard } from "../(components)/ProductCard";
-import { Package, Trash2, Pencil, X, Check } from "lucide-react";
+import { ProductRowActions } from "../(components)/ProductRowActions";
+import type { RowEdit } from "@/utils/interfaces/products";
+import { Package } from "lucide-react";
 import toast from "react-hot-toast";
-
-type RowEdit = {
-  sku: string;
-  name: string;
-  category: string;
-  unit_price: string;
-  is_active: boolean;
-};
 
 export default function ProductsTable() {
   const dispatch = useAppDispatch();
@@ -274,71 +267,18 @@ export default function ProductsTable() {
     {
       key: "actions",
       label: "Actions",
-      render: (product) => {
-        const edit = editingRows[product.id];
-        const isEditing = !!edit;
-        const saving = savingId === product.id;
-        const deleting = deletingId === product.id;
-
-        const isRowValid =
-          isEditing &&
-          edit.sku.trim() !== "" &&
-          edit.name.trim() !== "" &&
-          edit.unit_price.trim() !== "" &&
-          Number(edit.unit_price) >= 0;
-
-        return (
-          <div
-            className="flex items-center gap-1"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {isEditing ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => cancelEditing(product.id)}
-                  disabled={saving}
-                  className="p-1.5 text-[#94A3B8] hover:text-[#64748B] transition-colors rounded disabled:opacity-40 cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-
-                <SubmitButton
-                  type="button"
-                  onClick={() => handleSave(product)}
-                  isPending={saving}
-                  disabled={!isRowValid || saving}
-                  cta={<Check className="w-4 h-4" />}
-                  isPendingMesssage=""
-                  variant="ghost"
-                  size="icon-xs"
-                  classname="text-[#15689E] hover:text-[#125d8e] hover:bg-transparent cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                />
-              </>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={() => startEditing(product)}
-                  disabled={deleting}
-                  className="p-1.5 text-[#94A3B8] hover:text-[#15689E] transition-colors rounded disabled:opacity-40 cursor-pointer"
-                >
-                  <Pencil className="w-4 h-4" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setConfirmId(product.id)}
-                  disabled={deleting}
-                  className="p-1.5 text-[#94A3B8] hover:text-red-600 transition-colors rounded disabled:opacity-40 cursor-pointer"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </>
-            )}
-          </div>
-        );
-      },
+      render: (product) => (
+        <ProductRowActions
+          product={product}
+          editingRow={editingRows[product.id]}
+          savingId={savingId}
+          deletingId={deletingId}
+          onStartEditing={startEditing}
+          onCancelEditing={cancelEditing}
+          onSave={handleSave}
+          onDeleteClick={setConfirmId}
+        />
+      ),
     },
   ];
 
@@ -381,6 +321,7 @@ export default function ProductsTable() {
           searchValue={search}
           onSearchChange={(value) => dispatch(setSearch(value))}
           searchPlaceholder="Search by SKU, name, or category..."
+          className="p-4 border-b border-[#E2E8F0]"
         />
 
         <div className="overflow-auto flex-1">

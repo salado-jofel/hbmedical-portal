@@ -8,12 +8,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Building2, Package, DollarSign, Layers, Pencil } from "lucide-react";
+import { Building2, Package, DollarSign, Layers, Pencil, AlertTriangle } from "lucide-react";
+import { editOrder } from "../(services)/order-write-actions";
 import {
-  editOrder,
   getUserFacility,
   getActiveProducts,
-} from "../(services)/actions";
+} from "../(services)/order-misc-actions";
 import { useAppDispatch } from "@/store/hooks";
 import { updateOrderInStore } from "../(redux)/orders-slice";
 import type {
@@ -208,8 +208,9 @@ export function EditOrderModal({
                     )}
                   </div>
                 ) : (
-                  <span className="text-sm text-red-500">
-                    ⚠ No facility found — contact support
+                  <span className="inline-flex items-center gap-1.5 text-sm text-red-500">
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    No facility found — contact support
                   </span>
                 )}
               </div>

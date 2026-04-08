@@ -42,3 +42,4 @@ next-env.d.ts
 
 .claude
 .codebase_patterns
+.CODEBASE_PATTERNS.md

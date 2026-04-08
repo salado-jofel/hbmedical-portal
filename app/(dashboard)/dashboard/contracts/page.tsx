@@ -12,6 +12,8 @@ export const metadata: Metadata = {
   title: "Contracts",
 };
 
+export const dynamic = "force-dynamic";
+
 export default async function ContractsPage() {
   const supabase = await createClient();
   const role = await getUserRole(supabase);

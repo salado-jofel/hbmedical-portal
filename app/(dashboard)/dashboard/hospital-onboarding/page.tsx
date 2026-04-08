@@ -13,6 +13,8 @@ export const metadata: Metadata = {
   title: "Hospital Onboarding",
 };
 
+export const dynamic = "force-dynamic";
+
 export default async function HospitalOnboardingPage() {
   const supabase = await createClient();
   const role = await getUserRole(supabase);

@@ -1,6 +1,9 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole, getCurrentUserOrThrow } from "@/lib/supabase/auth";
+
+export const metadata: Metadata = { title: "Orders" };
 import {
   isAdmin,
   isClinicalProvider,
@@ -11,8 +14,8 @@ import {
   isDistributionSide,
 } from "@/utils/helpers/role";
 import Providers from "./(sections)/Providers";
-import { OrdersPageClient } from "./(sections)/OrdersPageClient";
-import { getOrders } from "./(services)/actions";
+import { OrdersKanban } from "./(sections)/OrdersKanban";
+import { getOrders } from "./(services)/order-read-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -45,7 +48,7 @@ export default async function OrdersPage() {
   return (
     <div className="p-4 md:p-8 max-w-[1600px] mx-auto space-y-6">
       <Providers orders={orders}>
-        <OrdersPageClient
+        <OrdersKanban
           canCreate={canCreate}
           canSign={canSign}
           isAdmin={adminUser}

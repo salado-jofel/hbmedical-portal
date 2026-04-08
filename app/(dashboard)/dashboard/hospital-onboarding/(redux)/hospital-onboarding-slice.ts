@@ -1,7 +1,7 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 import { initialState } from "./hospital-onboarding-state";
 import { HospitalOnboardingMaterial } from "@/utils/interfaces/hospital-onboarding";
-import { UserData } from "../../(services)/actions";
+import type { UserData } from "@/utils/interfaces/users";
 
 const hospitalOnboarding = createSlice({
   name: "Hospital Onboarding",

@@ -1,7 +1,7 @@
 "use server";
 
-import { z } from "zod";
 import { revalidatePath } from "next/cache";
+import { updateProfileSchema } from "@/utils/validators/profile";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUserOrThrow } from "@/lib/supabase/auth";
@@ -11,22 +11,6 @@ import type {
 } from "@/utils/interfaces/profiles";
 
 const SETTINGS_PATH = "/dashboard/settings";
-
-const updateProfileSchema = z.object({
-  first_name: z
-    .string()
-    .trim()
-    .min(1, "First name is required."),
-  last_name: z
-    .string()
-    .trim()
-    .min(1, "Last name is required."),
-  phone: z
-    .string()
-    .regex(/^\+[1-9][0-9]{7,14}$/, "Enter a valid phone number.")
-    .optional()
-    .or(z.literal("")),
-});
 
 /* -------------------------------------------------------------------------- */
 /* getProfile                                                                 */

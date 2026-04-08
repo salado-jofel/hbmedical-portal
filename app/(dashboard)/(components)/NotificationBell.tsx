@@ -1,45 +1,20 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Bell } from "lucide-react";
+import { STATUS_COLORS, TYPE_ICONS } from "@/utils/constants/notifications";
 import { cn } from "@/utils/utils";
 import { createClient } from "@/lib/supabase/client";
 import {
   getNotifications,
+  getUnreadNotificationCount,
+} from "@/app/(dashboard)/dashboard/orders/(services)/order-read-actions";
+import {
   markNotificationRead,
   markAllNotificationsRead,
-  getUnreadNotificationCount,
-} from "@/app/(dashboard)/dashboard/orders/(services)/actions";
+} from "@/app/(dashboard)/dashboard/orders/(services)/order-messaging-actions";
 import type { INotification } from "@/utils/interfaces/orders";
 import { useRouter, usePathname } from "next/navigation";
-
-const STATUS_COLORS: Record<string, string> = {
-  order_submitted:   "bg-blue-100 text-blue-700",
-  order_signed:      "bg-purple-100 text-purple-700",
-  info_requested:    "bg-amber-100 text-amber-700",
-  order_resubmitted: "bg-blue-100 text-blue-700",
-  order_approved:    "bg-green-100 text-green-700",
-  order_shipped:     "bg-green-100 text-green-700",
-  order_delivered:   "bg-emerald-100 text-emerald-700",
-  order_canceled:    "bg-red-100 text-red-700",
-  order_recalled:    "bg-amber-100 text-amber-700",
-  message_received:  "bg-gray-100 text-gray-700",
-  payment_initiated: "bg-green-100 text-green-700",
-};
-
-const TYPE_ICONS: Record<string, string> = {
-  order_submitted:   "📋",
-  order_signed:      "✍️",
-  info_requested:    "⚠️",
-  order_resubmitted: "🔄",
-  order_approved:    "✅",
-  order_shipped:     "📦",
-  order_delivered:   "🏠",
-  order_canceled:    "❌",
-  order_recalled:    "↩️",
-  message_received:  "💬",
-  payment_initiated: "💳",
-};
 
 export function NotificationBell({
   currentUserId,
@@ -285,7 +260,7 @@ export function NotificationBell({
                       STATUS_COLORS[notif.type] ?? "bg-gray-100 text-gray-600",
                     )}
                   >
-                    {TYPE_ICONS[notif.type] ?? "🔔"}
+                    {TYPE_ICONS[notif.type] ?? <Bell className="w-4 h-4" />}
                   </div>
 
                   {/* Content */}

@@ -47,7 +47,7 @@ export async function getActivitiesByFacility(
     .order("created_at", { ascending: false });
 
   if (error) {
-    console.error("[getActivitiesByFacility] Error:", error);
+    console.error("[getActivitiesByFacility] Error:", JSON.stringify(error));
     throw new Error(error.message || "Failed to fetch activities.");
   }
 
@@ -148,7 +148,7 @@ export async function updateActivity(
       .eq("facility_id", facilityId);
 
     if (error) {
-      console.error("[updateActivity] Error:", error);
+      console.error("[updateActivity] Error:", JSON.stringify(error));
       return { error: error.message || "Failed to update activity.", success: false };
     }
 
@@ -178,7 +178,7 @@ export async function deleteActivity(
     .eq("facility_id", facilityId);
 
   if (error) {
-    console.error("[deleteActivity] Error:", error);
+    console.error("[deleteActivity] Error:", JSON.stringify(error));
     throw new Error(error.message || "Failed to delete activity.");
   }
 

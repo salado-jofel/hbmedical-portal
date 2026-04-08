@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import type { InviteSignUpState } from "@/utils/interfaces/invite";
 import bcrypt from "bcryptjs";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -11,10 +12,6 @@ import {
 import { addFacilityMember } from "@/app/(dashboard)/dashboard/(services)/facility-members/actions";
 import { formatMessage } from "@/utils/helpers/signup";
 import type { InviteTokenRole } from "@/utils/interfaces/invite-tokens";
-
-export interface InviteSignUpState {
-  error: string | null;
-}
 
 const initialInviteSignUpState: InviteSignUpState = { error: null };
 

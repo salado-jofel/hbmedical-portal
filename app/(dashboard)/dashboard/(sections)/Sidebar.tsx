@@ -19,7 +19,7 @@ import {
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAppSelector, useAppDispatch } from "@/store/hooks";
-import { NavItem } from "@/app/(components)/NavItem";
+import { SidebarNavItem, type NavItemDef } from "../(components)/SidebarNavItem";
 import { SidebarUserCard } from "@/app/(components)/SidebarUserCard";
 import { NotificationBell } from "@/app/(dashboard)/(components)/NotificationBell";
 import { HBLogo } from "@/app/(components)/HBLogo";
@@ -28,7 +28,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { signOut } from "../(services)/actions";
 import { closeSidebar } from "../(redux)/dashboard-slice";
 import { cn } from "@/utils/utils";
-import type { LucideIcon } from "lucide-react";
 import type { UserRole } from "@/utils/helpers/role";
 import {
   isAdmin,
@@ -39,13 +38,6 @@ import {
 } from "@/utils/helpers/role";
 
 const STORAGE_KEY = "hb-sidebar-collapsed";
-
-interface NavItemDef {
-  icon: LucideIcon;
-  label: string;
-  href: string;
-  visible: (role: UserRole) => boolean;
-}
 
 interface NavGroupDef {
   label: string;
@@ -291,16 +283,10 @@ export function Sidebar() {
 
               <div className={cn("space-y-0.5", collapsed ? "px-[10px]" : "px-2")}>
                 {group.items.map((item) => (
-                  <NavItem
+                  <SidebarNavItem
                     key={item.label}
-                    icon={item.icon}
-                    label={item.label}
-                    href={item.href}
-                    isActive={
-                      pathname === item.href ||
-                      (item.href !== "/dashboard" &&
-                        pathname.startsWith(item.href + "/"))
-                    }
+                    item={item}
+                    pathname={pathname}
                     collapsed={collapsed}
                   />
                 ))}

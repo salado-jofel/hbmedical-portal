@@ -15,7 +15,7 @@ export default function SubmitButton({
   onClick,
   form,
   style,
-  disabled, // ✅ added
+  disabled,
 }: {
   isPending?: boolean;
   type: "button" | "submit" | "reset" | undefined;
@@ -46,13 +46,13 @@ export default function SubmitButton({
   onClick?: () => void;
   form?: string;
   style?: CSSProperties;
-  disabled?: boolean; // ✅ added
+  disabled?: boolean;
 }) {
   return (
     <Button
       asChild={asChild}
       type={type}
-      disabled={isPending || disabled} // ✅ either pending OR explicitly disabled
+      disabled={isPending || disabled}
       variant={variant}
       size={size}
       className={`${classname} duration-200 cursor-pointer`}
