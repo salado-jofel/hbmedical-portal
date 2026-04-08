@@ -1,6 +1,7 @@
 "use client";
 
 import { useAppSelector, useAppDispatch } from "@/store/hooks";
+import { isAdmin as checkIsAdmin } from "@/utils/helpers/role";
 import {
   FileText,
   ScrollText,
@@ -16,6 +17,7 @@ import { AdminBulkBar } from "@/app/(components)/AdminBulkBar";
 import { EmptyState } from "@/app/(components)/EmptyState";
 import { MaterialsSection } from "@/app/(components)/MaterialSection";
 import { ContractMaterial } from "@/utils/interfaces/contracts";
+import { getMaterialSearchText, prettifyMaterialTitle } from "@/utils/helpers/material-display";
 import {
   toggleSelectContractItem,
   selectAllContractItems,
@@ -37,21 +39,17 @@ type DisplayKind =
   | "policy-form"
   | "document";
 
-function getSearchText(item: ContractMaterial) {
-  return [
-    item.title,
-    item.tag,
-    item.description,
-    item.file_name,
-    item.file_path,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-}
+const CONTRACT_ACRONYMS: Array<[RegExp, string]> = [
+  [/\bNda\b/g, "NDA"],
+  [/\bMsa\b/g, "MSA"],
+  [/\bHipaa\b/g, "HIPAA"],
+  [/\bBaa\b/g, "BAA"],
+  [/\bPhi\b/g, "PHI"],
+  [/\bOcm\b/g, "OCM"],
+];
 
 function getDisplayKind(item: ContractMaterial): DisplayKind {
-  const text = getSearchText(item);
+  const text = getMaterialSearchText(item);
 
   if (text.includes("nda") || text.includes("confidential")) {
     return "nda";
@@ -126,16 +124,7 @@ function getContractsIcon(item: ContractMaterial) {
 }
 
 function prettifyTitle(raw?: string | null) {
-  const title = (raw ?? "").trim();
-  if (!title) return "";
-
-  return title
-    .replace(/\bNda\b/g, "NDA")
-    .replace(/\bMsa\b/g, "MSA")
-    .replace(/\bHipaa\b/g, "HIPAA")
-    .replace(/\bBaa\b/g, "BAA")
-    .replace(/\bPhi\b/g, "PHI")
-    .replace(/\bOcm\b/g, "OCM");
+  return prettifyMaterialTitle(raw, CONTRACT_ACRONYMS);
 }
 
 function getDisplayDescription(item: ContractMaterial) {
@@ -198,7 +187,7 @@ export default function ContractsCards() {
   ) as ContractMaterial[];
 
   const selectedIds = useAppSelector((state) => state.contracts.selectedIds);
-  const isAdmin = useAppSelector((state) => state.dashboard.role === "admin");
+  const isAdmin = checkIsAdmin(useAppSelector((state) => state.dashboard.role));
 
   useEffect(() => {
     setMounted(true);

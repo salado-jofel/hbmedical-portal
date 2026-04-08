@@ -2,7 +2,7 @@
 
 import { Menu, X } from "lucide-react";
 import { useAppSelector, useAppDispatch } from "@/store/hooks";
-import { HBLogo } from "@/app/(components)/HBLogo"; // ✅ swapped import
+import { HBLogo } from "@/app/(components)/HBLogo";
 import { toggleSidebar } from "../(redux)/dashboard-slice";
 
 export function MobileTopBar() {
@@ -12,7 +12,6 @@ export function MobileTopBar() {
   return (
     <header className="md:hidden fixed top-0 left-0 right-0 z-50 h-16 bg-white border-b border-[#E2E8F0] flex items-center justify-between px-4 shadow-sm">
 
-      {/* ✅ Same component as sidebar, light variant for white bg */}
       <HBLogo variant="light" size="md" />
 
       <button

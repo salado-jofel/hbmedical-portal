@@ -1,14 +1,18 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole } from "@/lib/supabase/auth";
 import { isAdmin as checkIsAdmin } from "@/utils/helpers/role";
+import { DashboardHeader } from "@/app/(components)/DashboardHeader";
+
+export const metadata: Metadata = { title: "Tasks" };
 import { getTasks } from "@/app/(dashboard)/dashboard/tasks/(services)/actions";
 import {
   getAccounts,
   getSalesReps,
 } from "@/app/(dashboard)/dashboard/accounts/(services)/actions";
 import Providers from "./(sections)/Providers";
-import { TasksPageClient } from "./(sections)/TasksPageClient";
+import { TasksBoard } from "./(sections)/TasksBoard";
 
 export const dynamic = "force-dynamic";
 
@@ -27,17 +31,9 @@ export default async function TasksPage() {
 
   return (
     <div className="p-6 md:p-8 max-w-480 mx-auto space-y-6">
-      {/* ── Header ── */}
-      <div className="pb-5 border-b border-[#E2E8F0]">
-        <h1 className="text-xl font-semibold text-[#0F172A]">Tasks</h1>
-        <p className="text-sm text-[#64748B] mt-1">
-          Track follow-ups and action items
-        </p>
-      </div>
-
-      {/* ── Board ── */}
+      <DashboardHeader title="Tasks" description="Track follow-ups and action items" />
       <Providers tasks={tasks}>
-        <TasksPageClient
+        <TasksBoard
           accounts={accounts}
           salesReps={salesReps}
           isAdmin={admin}

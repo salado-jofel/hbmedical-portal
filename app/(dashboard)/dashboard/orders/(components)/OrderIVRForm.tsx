@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Info, Loader2 } from "lucide-react";
-import { upsertOrderIVR } from "../(services)/actions";
+import { upsertOrderIVR } from "../(services)/order-ivr-actions";
 import type { DashboardOrder, IOrderIVR } from "@/utils/interfaces/orders";
 import { cn } from "@/utils/utils";
 import toast from "react-hot-toast";

@@ -1,3 +1,5 @@
+import type { AccountStatus } from "@/utils/interfaces/accounts";
+
 export const ACCOUNTS_TABLE = "facilities";
 export const CONTACTS_TABLE = "contacts";
 export const PROFILES_TABLE = "profiles";
@@ -81,3 +83,10 @@ export const SALES_REP_SELECT = `
   last_name,
   email
 `;
+
+export const ACCOUNT_STATUS_FILTER_OPTIONS: { value: AccountStatus | "all"; label: string }[] = [
+  { value: "all",      label: "All statuses" },
+  { value: "active",   label: "Active" },
+  { value: "prospect", label: "Prospect" },
+  { value: "inactive", label: "Inactive" },
+];

@@ -1,0 +1,499 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  getCurrentUserOrThrow,
+  getUserRole,
+} from "@/lib/supabase/auth";
+import {
+  isAdmin,
+  isClinicalProvider,
+  isSupport,
+} from "@/utils/helpers/role";
+import {
+  ORDERS_PATH,
+  requireClinicRole,
+  insertOrderHistory,
+  createNotifications,
+} from "./_shared";
+
+/* -------------------------------------------------------------------------- */
+/* submitForSignature                                                         */
+/* -------------------------------------------------------------------------- */
+
+export async function submitForSignature(
+  orderId: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { userId } = await requireClinicRole();
+    const adminClient = createAdminClient();
+
+    const { data: order } = await adminClient
+      .from("orders")
+      .select("id, order_status, facility_id, order_number")
+      .eq("id", orderId)
+      .maybeSingle();
+
+    if (!order) return { success: false, error: "Order not found." };
+    if (order.order_status !== "draft") return { success: false, error: "Only draft orders can be submitted." };
+
+    const { error } = await adminClient
+      .from("orders")
+      .update({ order_status: "pending_signature" })
+      .eq("id", orderId);
+
+    if (error) {
+      console.error("[submitForSignature]", JSON.stringify(error));
+      return { success: false, error: "Failed to submit order." };
+    }
+
+    await insertOrderHistory(adminClient, orderId, "Submitted for signature", "draft", "pending_signature", userId);
+    createNotifications({
+      adminClient,
+      orderId,
+      orderNumber: order.order_number,
+      facilityId:  order.facility_id,
+      type:        "order_submitted",
+      title:       "Order ready for signature",
+      body:        `Order ${order.order_number} has been submitted and requires your signature.`,
+      oldStatus:   "draft",
+      newStatus:   "pending_signature",
+      notifyRoles:    ["clinical_provider"],
+      excludeUserId:  userId,
+    }).catch(() => {});
+    revalidatePath(ORDERS_PATH);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* recallOrder                                                                */
+/* -------------------------------------------------------------------------- */
+
+export async function recallOrder(
+  orderId: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { userId } = await requireClinicRole();
+    const adminClient = createAdminClient();
+
+    const { data: order } = await adminClient
+      .from("orders")
+      .select("id, order_status, facility_id, order_number")
+      .eq("id", orderId)
+      .maybeSingle();
+
+    if (!order) return { success: false, error: "Order not found." };
+    if (order.order_status !== "pending_signature") {
+      return { success: false, error: "Only pending_signature orders can be recalled." };
+    }
+
+    const { error } = await adminClient
+      .from("orders")
+      .update({ order_status: "draft" })
+      .eq("id", orderId);
+
+    if (error) {
+      console.error("[recallOrder]", JSON.stringify(error));
+      return { success: false, error: "Failed to recall order." };
+    }
+
+    await insertOrderHistory(adminClient, orderId, "Order recalled to draft", "pending_signature", "draft", userId);
+    createNotifications({
+      adminClient,
+      orderId,
+      orderNumber: order.order_number,
+      facilityId:  order.facility_id,
+      type:        "order_recalled",
+      title:       "Order recalled to draft",
+      body:        `Order ${order.order_number} has been recalled and returned to draft status.`,
+      oldStatus:   "pending_signature",
+      newStatus:   "draft",
+      notifyRoles:    ["clinical_staff", "clinical_provider"],
+      excludeUserId:  userId,
+    }).catch(() => {});
+    revalidatePath(ORDERS_PATH);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* signOrder                                                                  */
+/* -------------------------------------------------------------------------- */
+
+export async function signOrder(
+  orderId: string,
+  pin: string,
+): Promise<{ success: boolean; error?: string; noPinSet?: boolean }> {
+  try {
+    const supabase = await createClient();
+    const user = await getCurrentUserOrThrow(supabase);
+    const role = await getUserRole(supabase);
+
+    if (!isClinicalProvider(role)) {
+      return { success: false, error: "Only clinical providers can sign orders." };
+    }
+
+    // Get PIN hash
+    const adminClient = createAdminClient();
+    const { data: creds, error: credError } = await adminClient
+      .from("provider_credentials")
+      .select("pin_hash")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    console.log("[signOrder] verifying PIN for user:", user.id);
+    console.log("[signOrder] creds:", !!creds, credError?.message ?? null);
+    console.log("[signOrder] pin_hash found:", !!creds?.pin_hash);
+
+    if (!creds?.pin_hash) {
+      return { success: false, error: "No PIN set. Please set up your provider PIN.", noPinSet: true };
+    }
+
+    const { data: isValid, error: rpcError } = await adminClient.rpc("verify_pin", {
+      input_pin:   pin,
+      stored_hash: creds.pin_hash,
+    });
+
+    console.log("[signOrder] verify result:", isValid, rpcError?.message ?? null);
+
+    if (rpcError || !isValid) {
+      return { success: false, error: "Incorrect PIN. Please try again." };
+    }
+
+    const { data: order } = await adminClient
+      .from("orders")
+      .select("id, order_status, facility_id, order_number")
+      .eq("id", orderId)
+      .maybeSingle();
+
+    if (!order) return { success: false, error: "Order not found." };
+    if (order.order_status !== "pending_signature") {
+      return { success: false, error: "Order is not pending signature." };
+    }
+
+    // Verify the signing user is a clinical_provider in this order's facility
+    const { data: membership } = await adminClient
+      .from("facility_members")
+      .select("user_id")
+      .eq("user_id", user.id)
+      .eq("facility_id", order.facility_id)
+      .eq("role_type", "clinical_provider")
+      .maybeSingle();
+
+    if (!membership) {
+      return { success: false, error: "You are not a clinical provider for this facility." };
+    }
+
+    const { error } = await adminClient
+      .from("orders")
+      .update({
+        order_status: "manufacturer_review",
+        signed_by: user.id,
+        signed_at: new Date().toISOString(),
+      })
+      .eq("id", orderId);
+
+    if (error) {
+      console.error("[signOrder]", JSON.stringify(error));
+      return { success: false, error: "Failed to sign order." };
+    }
+
+    await insertOrderHistory(
+      adminClient,
+      orderId,
+      "Order signed by provider",
+      "pending_signature",
+      "manufacturer_review",
+      user.id,
+    );
+    createNotifications({
+      adminClient,
+      orderId,
+      orderNumber: order.order_number,
+      facilityId:  order.facility_id,
+      type:        "order_signed",
+      title:       "Order signed and submitted",
+      body:        `Order ${order.order_number} has been signed and is ready for review.`,
+      oldStatus:   "pending_signature",
+      newStatus:   "manufacturer_review",
+      notifyRoles:    ["admin", "support_staff"],
+      excludeUserId:  user.id,
+    }).catch(() => {});
+    revalidatePath(ORDERS_PATH);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* approveOrder                                                               */
+/* -------------------------------------------------------------------------- */
+
+export async function approveOrder(
+  orderId: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await createClient();
+    const user = await getCurrentUserOrThrow(supabase);
+    const role = await getUserRole(supabase);
+
+    if (!isAdmin(role) && !isSupport(role)) {
+      return { success: false, error: "Only admins and support staff can approve orders." };
+    }
+
+    const adminClient = createAdminClient();
+
+    const { data: order } = await adminClient
+      .from("orders")
+      .select("id, order_status, facility_id, order_number")
+      .eq("id", orderId)
+      .maybeSingle();
+
+    if (!order) return { success: false, error: "Order not found." };
+    if (order.order_status !== "manufacturer_review") {
+      return { success: false, error: "Order must be in manufacturer_review to approve." };
+    }
+
+    const { error } = await adminClient
+      .from("orders")
+      .update({ order_status: "approved" })
+      .eq("id", orderId);
+
+    if (error) {
+      console.error("[approveOrder]", JSON.stringify(error));
+      return { success: false, error: "Failed to approve order." };
+    }
+
+    await insertOrderHistory(
+      adminClient,
+      orderId,
+      "Order approved",
+      "manufacturer_review",
+      "approved",
+      user.id,
+    );
+    createNotifications({
+      adminClient,
+      orderId,
+      orderNumber: order.order_number,
+      facilityId:  order.facility_id,
+      type:        "order_approved",
+      title:       "Order approved! 🎉",
+      body:        `Order ${order.order_number} has been approved and is being prepared for shipment.`,
+      oldStatus:   "manufacturer_review",
+      newStatus:   "approved",
+      notifyRoles:    ["clinical_staff", "clinical_provider"],
+      excludeUserId:  user.id,
+    }).catch(() => {});
+    revalidatePath(ORDERS_PATH);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* requestAdditionalInfo                                                      */
+/* -------------------------------------------------------------------------- */
+
+export async function requestAdditionalInfo(
+  orderId: string,
+  notes?: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await createClient();
+    const user = await getCurrentUserOrThrow(supabase);
+    const role = await getUserRole(supabase);
+
+    if (!isAdmin(role) && !isSupport(role)) {
+      return { success: false, error: "Only admins and support staff can request additional info." };
+    }
+
+    const adminClient = createAdminClient();
+
+    const { data: order } = await adminClient
+      .from("orders")
+      .select("id, order_status, facility_id, order_number")
+      .eq("id", orderId)
+      .maybeSingle();
+
+    if (!order) return { success: false, error: "Order not found." };
+    if (order.order_status !== "manufacturer_review") {
+      return { success: false, error: "Order must be in manufacturer_review." };
+    }
+
+    const { error } = await adminClient
+      .from("orders")
+      .update({
+        order_status: "additional_info_needed",
+        admin_notes:  notes ?? null,
+      })
+      .eq("id", orderId);
+
+    if (error) {
+      console.error("[requestAdditionalInfo]", JSON.stringify(error));
+      return { success: false, error: "Failed to update order." };
+    }
+
+    await insertOrderHistory(
+      adminClient,
+      orderId,
+      "Additional info requested",
+      "manufacturer_review",
+      "additional_info_needed",
+      user.id,
+      notes,
+    );
+    createNotifications({
+      adminClient,
+      orderId,
+      orderNumber: order.order_number,
+      facilityId:  order.facility_id,
+      type:        "info_requested",
+      title:       "Additional information needed",
+      body:        notes
+        ? `Order ${order.order_number} requires additional information: "${notes}"`
+        : `Order ${order.order_number} requires additional information before it can be approved.`,
+      oldStatus:   "manufacturer_review",
+      newStatus:   "additional_info_needed",
+      notifyRoles:    ["clinical_staff", "clinical_provider"],
+      excludeUserId:  user.id,
+    }).catch(() => {});
+    revalidatePath(ORDERS_PATH);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* resubmitForReview                                                          */
+/* -------------------------------------------------------------------------- */
+
+export async function resubmitForReview(
+  orderId: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { userId } = await requireClinicRole();
+    const adminClient = createAdminClient();
+
+    const { data: order } = await adminClient
+      .from("orders")
+      .select("id, order_status, facility_id, order_number")
+      .eq("id", orderId)
+      .maybeSingle();
+
+    if (!order) return { success: false, error: "Order not found." };
+    if (order.order_status !== "additional_info_needed") {
+      return { success: false, error: "Order must be in additional_info_needed to resubmit." };
+    }
+
+    const { error } = await adminClient
+      .from("orders")
+      .update({ order_status: "manufacturer_review", admin_notes: null })
+      .eq("id", orderId);
+
+    if (error) {
+      console.error("[resubmitForReview]", JSON.stringify(error));
+      return { success: false, error: "Failed to resubmit order." };
+    }
+
+    await insertOrderHistory(
+      adminClient,
+      orderId,
+      "Resubmitted for manufacturer review",
+      "additional_info_needed",
+      "manufacturer_review",
+      userId,
+    );
+    createNotifications({
+      adminClient,
+      orderId,
+      orderNumber: order.order_number,
+      facilityId:  order.facility_id,
+      type:        "order_resubmitted",
+      title:       "Order resubmitted for review",
+      body:        `Order ${order.order_number} has been resubmitted for manufacturer review.`,
+      oldStatus:   "additional_info_needed",
+      newStatus:   "manufacturer_review",
+      notifyRoles:    ["admin", "support_staff"],
+      excludeUserId:  userId,
+    }).catch(() => {});
+    revalidatePath(ORDERS_PATH);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* markOrderDelivered                                                          */
+/* -------------------------------------------------------------------------- */
+
+export async function markOrderDelivered(
+  orderId: string,
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const supabase = await createClient();
+    const user = await getCurrentUserOrThrow(supabase);
+    const role = await getUserRole(supabase);
+
+    if (!isAdmin(role) && !isSupport(role)) {
+      return { success: false, error: "Only admins and support staff can mark orders as delivered." };
+    }
+
+    const adminClient = createAdminClient();
+
+    const { data: order } = await adminClient
+      .from("orders")
+      .select("id, order_status, facility_id, order_number")
+      .eq("id", orderId)
+      .maybeSingle();
+
+    if (!order) return { success: false, error: "Order not found." };
+    if (order.order_status !== "shipped") {
+      return { success: false, error: "Only shipped orders can be marked as delivered." };
+    }
+
+    const { error } = await adminClient
+      .from("orders")
+      .update({
+        order_status: "delivered",
+        delivery_status: "delivered",
+        delivered_at: new Date().toISOString(),
+      })
+      .eq("id", orderId);
+
+    if (error) {
+      console.error("[markOrderDelivered]", JSON.stringify(error));
+      return { success: false, error: "Failed to mark order as delivered." };
+    }
+
+    await insertOrderHistory(adminClient, orderId, "Order marked as delivered", "shipped", "delivered", user.id);
+    createNotifications({
+      adminClient,
+      orderId,
+      orderNumber: order.order_number,
+      facilityId:  order.facility_id,
+      type:        "order_delivered",
+      title:       "Order delivered",
+      body:        `Order ${order.order_number} has been delivered.`,
+      oldStatus:   "shipped",
+      newStatus:   "delivered",
+      notifyRoles:    ["clinical_staff", "clinical_provider"],
+      excludeUserId:  user.id,
+    }).catch(() => {});
+    revalidatePath(ORDERS_PATH);
+    return { success: true, error: null };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  }
+}

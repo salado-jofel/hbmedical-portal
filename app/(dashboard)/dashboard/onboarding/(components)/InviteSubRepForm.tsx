@@ -6,7 +6,7 @@ import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { inviteSubRep } from "@/app/(dashboard)/dashboard/onboarding/(services)/actions";
+import { inviteSubRep } from "@/app/(dashboard)/dashboard/onboarding/(services)/sub-rep-actions";
 import type { IInviteTokenFormState } from "@/utils/interfaces/invite-tokens";
 
 export function InviteSubRepForm() {

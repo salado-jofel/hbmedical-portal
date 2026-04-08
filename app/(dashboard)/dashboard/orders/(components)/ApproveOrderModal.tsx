@@ -10,7 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Loader2, CheckCircle } from "lucide-react";
 import type { DashboardOrder } from "@/utils/interfaces/orders";
-import { approveOrder } from "../(services)/actions";
+import { approveOrder } from "../(services)/order-workflow-actions";
 import toast from "react-hot-toast";
 
 interface ApproveOrderModalProps {

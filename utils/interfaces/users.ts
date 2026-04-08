@@ -2,6 +2,17 @@ import type { UserRole } from "@/utils/helpers/role";
 
 export type UserStatus = "pending" | "active" | "inactive";
 
+export type StatusFilter = "all" | "active" | "pending" | "inactive";
+
+export type UserData = {
+  name: string;
+  email: string;
+  initials: string;
+  role: UserRole;
+  isSubRep: boolean;
+  userId: string;
+};
+
 export interface IUser {
   id: string;
   first_name: string;

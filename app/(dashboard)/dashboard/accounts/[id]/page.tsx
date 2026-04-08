@@ -14,8 +14,8 @@ import { getContactsByFacility } from "@/app/(dashboard)/dashboard/(services)/co
 import { getActivitiesByFacility } from "@/app/(dashboard)/dashboard/(services)/activities/actions";
 import Providers from "./(sections)/Providers";
 import { AccountHeader } from "./(sections)/AccountHeader";
-import { AccountDetailClient } from "./(sections)/AccountDetailClient";
-import { getOrdersByFacility } from "@/app/(dashboard)/dashboard/orders/(services)/actions";
+import { AccountDetail } from "./(sections)/AccountDetail";
+import { getOrdersByFacility } from "@/app/(dashboard)/dashboard/orders/(services)/order-read-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -61,7 +61,7 @@ export default async function AccountDetailPage({
           isAdmin={adminUser}
           salesReps={salesReps}
         />
-        <AccountDetailClient
+        <AccountDetail
           account={account}
           contacts={contacts}
           orders={orders}

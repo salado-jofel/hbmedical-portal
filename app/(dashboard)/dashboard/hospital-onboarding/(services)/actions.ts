@@ -18,6 +18,7 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdminOrThrow, getUserRole } from "@/lib/supabase/auth";
+import { isAdmin } from "@/utils/helpers/role";
 import {
   PrepareHospitalOnboardingUploadInput,
   PrepareHospitalOnboardingUploadResult,
@@ -65,7 +66,7 @@ export async function getHospitalOnboardingMaterials(): Promise<
     .order("sort_order", { ascending: true })
     .order("created_at", { ascending: false });
 
-  if (role !== "admin") {
+  if (!isAdmin(role)) {
     query = query.eq("is_active", true);
   }
 

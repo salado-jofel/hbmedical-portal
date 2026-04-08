@@ -121,3 +121,5 @@ export function mapActivity(raw: RawActivityRecord): IActivity {
 export function mapActivities(rows: RawActivityRecord[]): IActivity[] {
   return rows.map(mapActivity);
 }
+
+export type TypeFilter = ActivityType | "all";
