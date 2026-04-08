@@ -154,129 +154,65 @@ type DraftOrderItem = {
   isNew?: boolean;
 };
 
-/* ── Skeleton ── */
+/* ── Per-tab Skeletons ── */
 
-function OrderDetailSkeleton() {
+function FormSkeleton() {
   return (
-    <div className="bg-white w-[95vw] max-w-[1200px] h-[90vh] rounded-3xl shadow-2xl border border-gray-100 overflow-hidden flex flex-col">
-      {/* Header */}
-      <div className="flex-shrink-0 px-8 py-5 border-b border-gray-100 flex items-center justify-between animate-pulse">
-        <div className="space-y-2">
-          <div className="h-7 w-48 bg-gray-200 rounded-lg" />
-          <div className="h-4 w-32 bg-gray-100 rounded-md" />
+    <div className="p-4 space-y-4 animate-pulse">
+      <div className="h-4 bg-gray-200 rounded w-1/3" />
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} className="space-y-1.5">
+          <div className="h-3 bg-gray-200 rounded w-1/4" />
+          <div className="h-9 bg-gray-100 rounded-xl w-full" />
         </div>
-        <div className="flex items-center gap-3">
-          <div className="h-6 w-16 bg-gray-200 rounded-full" />
-          <div className="w-9 h-9 rounded-full bg-gray-100" />
+      ))}
+      <div className="h-4 bg-gray-200 rounded w-1/4 mt-6" />
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div key={i} className="space-y-1.5">
+          <div className="h-3 bg-gray-200 rounded w-1/3" />
+          <div className="h-9 bg-gray-100 rounded-xl w-full" />
         </div>
-      </div>
+      ))}
+    </div>
+  );
+}
 
-      {/* Two-column body */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left column */}
-        <div className="flex-1 flex flex-col border-r border-gray-100 overflow-hidden">
-          {/* Tab bar */}
-          <div className="flex-shrink-0 border-b border-gray-100 px-6">
-            <div className="flex gap-1 py-1 animate-pulse">
-              {[80, 100, 80, 90, 60, 70].map((w, i) => (
-                <div
-                  key={i}
-                  className="h-11 rounded-md bg-gray-100"
-                  style={{ width: w }}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* Content */}
-          <div className="flex-1 px-6 py-6 space-y-4 animate-pulse">
-            <div className="h-3 w-24 bg-gray-200 rounded" />
-            <div className="rounded-xl border border-gray-100 overflow-hidden">
-              <div className="bg-gray-50 px-4 py-3 flex gap-4">
-                <div className="h-3 flex-1 bg-gray-200 rounded" />
-                <div className="h-3 w-16 bg-gray-200 rounded" />
-                <div className="h-3 w-16 bg-gray-200 rounded" />
-                <div className="h-3 w-16 bg-gray-200 rounded" />
-              </div>
-              {[1, 2, 3].map((i) => (
-                <div
-                  key={i}
-                  className="px-4 py-3 flex items-center gap-4 border-t border-gray-50"
-                >
-                  <div className="flex-1 space-y-1.5">
-                    <div className="h-3.5 w-40 bg-gray-200 rounded" />
-                    <div className="h-2.5 w-20 bg-gray-100 rounded" />
-                  </div>
-                  <div className="h-3 w-12 bg-gray-200 rounded" />
-                  <div className="h-3 w-12 bg-gray-200 rounded" />
-                  <div className="h-3 w-12 bg-gray-200 rounded" />
-                </div>
-              ))}
-              <div className="px-4 py-3 bg-gray-50 flex justify-end gap-4">
-                <div className="h-3 w-20 bg-gray-200 rounded" />
-                <div className="h-4 w-16 bg-gray-300 rounded" />
-              </div>
-            </div>
-            <div className="space-y-2 mt-4">
-              <div className="h-3 w-12 bg-gray-200 rounded" />
-              <div className="h-24 w-full bg-gray-100 rounded-xl" />
-            </div>
-          </div>
-
-          {/* Footer */}
-          <div className="flex-shrink-0 px-6 py-4 border-t border-gray-100 flex items-center justify-end gap-3 animate-pulse">
-            <div className="h-9 w-28 bg-gray-200 rounded-xl" />
-            <div className="h-9 w-44 bg-gray-200 rounded-xl" />
+function ChatSkeleton() {
+  return (
+    <div className="p-4 space-y-3 animate-pulse">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div
+          key={i}
+          className={`flex gap-2 ${i % 2 === 0 ? "" : "flex-row-reverse"}`}
+        >
+          <div className="w-8 h-8 rounded-full bg-gray-200 shrink-0" />
+          <div
+            className={`space-y-1 flex-1 flex flex-col ${
+              i % 2 === 0 ? "items-start" : "items-end"
+            }`}
+          >
+            <div className="h-3 bg-gray-200 rounded w-20" />
+            <div className="h-16 bg-gray-100 rounded-xl w-3/4" />
           </div>
         </div>
+      ))}
+    </div>
+  );
+}
 
-        {/* Right column */}
-        <div className="w-[380px] flex-shrink-0 flex flex-col bg-gray-50/50 overflow-hidden">
-          {/* Right header */}
-          <div className="flex-shrink-0 p-6 border-b border-gray-100 space-y-3 animate-pulse">
-            <div className="h-3 w-36 bg-gray-200 rounded" />
-            <div className="h-6 w-16 bg-gray-200 rounded-full" />
-            <div className="flex gap-5">
-              <div className="space-y-1.5">
-                <div className="h-2.5 w-20 bg-gray-100 rounded" />
-                <div className="h-3.5 w-24 bg-gray-200 rounded" />
-              </div>
-              <div className="space-y-1.5">
-                <div className="h-2.5 w-12 bg-gray-100 rounded" />
-                <div className="h-3.5 w-20 bg-gray-200 rounded" />
-              </div>
-            </div>
+function HistorySkeleton() {
+  return (
+    <div className="p-4 space-y-3 animate-pulse">
+      {Array.from({ length: 5 }).map((_, i) => (
+        <div key={i} className="flex gap-3">
+          <div className="w-2 h-2 rounded-full bg-gray-300 mt-1.5 shrink-0" />
+          <div className="flex-1 space-y-1">
+            <div className="h-3 bg-gray-200 rounded w-1/2" />
+            <div className="h-3 bg-gray-100 rounded w-3/4" />
           </div>
-
-          {/* Right body */}
-          <div className="flex-1 p-6 space-y-6 animate-pulse">
-            <div>
-              <div className="h-3 w-20 bg-gray-200 rounded mb-3" />
-              <div className="grid grid-cols-2 gap-2">
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <div key={i} className="h-11 rounded-xl bg-gray-100" />
-                ))}
-              </div>
-            </div>
-            <div className="space-y-2">
-              <div className="h-3 w-36 bg-gray-200 rounded" />
-              <div className="h-10 w-full bg-gray-100 rounded-xl" />
-            </div>
-            <div className="space-y-2">
-              <div className="h-3 w-24 bg-gray-200 rounded" />
-              <div className="grid grid-cols-3 gap-1.5">
-                <div className="aspect-square rounded-xl bg-gray-200" />
-                <div className="aspect-square rounded-xl bg-gray-100" />
-              </div>
-            </div>
-          </div>
-
-          {/* Right footer */}
-          <div className="flex-shrink-0 px-6 py-4 border-t border-gray-100 animate-pulse">
-            <div className="h-4 w-28 bg-gray-200 rounded" />
-          </div>
+          <div className="h-3 bg-gray-100 rounded w-16" />
         </div>
-      </div>
+      ))}
     </div>
   );
 }
@@ -343,8 +279,8 @@ export function OrderDetailModal({
   );
   const [loadingDocs, setLoadingDocs] = useState(false);
 
-  /* -- Modal ready (all initial data loaded) -- */
-  const [modalReady, setModalReady] = useState(false);
+  /* -- Tab load tracking (single source of truth) -- */
+  const [loadedTabs, setLoadedTabs] = useState<Set<string>>(new Set());
 
   /* -- Payment + invoice data -- */
   const [paymentData, setPaymentData] = useState<IPayment | null>(null);
@@ -354,18 +290,14 @@ export function OrderDetailModal({
   >(false);
   const [markingDelivered, setMarkingDelivered] = useState(false);
 
-  /* -- IVR + HCFA (pre-fetched on modal open) -- */
+  /* -- IVR + HCFA (lazy-loaded on first tab visit) -- */
   const [ivrData, setIvrData] = useState<Partial<IOrderIVR> | null>(null);
   const [hcfaData, setHcfaData] = useState<Record<string, unknown> | null>(
     null,
   );
-  const [ivrLoaded, setIvrLoaded] = useState(false);
-  const [hcfaLoaded, setHcfaLoaded] = useState(false);
 
   /* -- Messages (lazy-loaded on first chat visit) -- */
   const [messages, setMessages] = useState<IOrderMessage[]>([]);
-  const [loadingMessages, setLoadingMessages] = useState(false);
-  const [msgLoaded, setMsgLoaded] = useState(false);
   const [newMessage, setNewMessage] = useState("");
   const [sendingMsg, setSendingMsg] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -376,8 +308,6 @@ export function OrderDetailModal({
 
   /* -- History (lazy-loaded) -- */
   const [history, setHistory] = useState<IOrderHistory[]>([]);
-  const [loadingHistory, setLoadingHistory] = useState(false);
-  const [historyLoaded, setHistoryLoaded] = useState(false);
 
   /* -- Product picker -- */
   const [showProductPicker, setShowProductPicker] = useState(false);
@@ -498,51 +428,56 @@ export function OrderDetailModal({
     setLocalDocuments(order.documents ?? []);
   }, [order.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* ── Load documents + IVR + HCFA when modal opens ── */
+  /* ── Modal open/close: reset tabs, load background data ── */
   useEffect(() => {
-    if (!open) return;
-    setModalReady(false);
+    if (!open) {
+      // Reset all tab data on close
+      setLoadedTabs(new Set());
+      setIvrData(null);
+      setHcfaData(null);
+      setDocuments([]);
+      setPaymentData(null);
+      setInvoiceData(null);
+      setMessages([]);
+      setHistory([]);
+      return;
+    }
+
+    // Mark immediately-ready tabs; others load on first visit
+    setLoadedTabs(new Set(["overview", "order-form"]));
     setTab((initialTab as TabValue) ?? "overview");
-    setMsgLoaded(false);
-    setHistoryLoaded(false);
     setShowProductPicker(false);
     setQuantities({});
-    setIvrLoaded(false);
-    setHcfaLoaded(false);
 
+    // Load right-panel data in background (non-blocking)
     setLoadingDocs(true);
     Promise.all([
       getOrderDocuments(order.id),
-      getOrderIVR(order.id),
-      getForm1500(order.id),
       getOrderPayment(order.id),
       getOrderInvoice(order.id),
-    ]).then(async ([docs, ivr, hcfa, payment, invoice]) => {
-      // Documents
+    ]).then(([docs, payment, invoice]) => {
       setDocuments(docs);
       setLocalDocuments(docs);
       setLoadingDocs(false);
-
-      // Payment + invoice
       setPaymentData(payment);
       setInvoiceData(invoice);
 
-      // Wound photos
+      // Wound photos — non-blocking, resolves independently
       const photos = docs.filter((d) => d.documentType === "wound_pictures");
-      const urlMap: Record<string, string> = {};
-      await Promise.all(
-        photos.map(async (p) => {
-          const { url } = await getDocumentSignedUrl(p.filePath);
-          if (url) urlMap[p.id] = url;
-        }),
-      );
-      setWoundPhotoUrls(urlMap);
-
-      // IVR + HCFA
-      setIvrData(ivr ?? {});
-      setIvrLoaded(true);
-      setHcfaData((hcfa as Record<string, unknown>) ?? {});
-      setHcfaLoaded(true);
+      if (photos.length > 0) {
+        Promise.all(
+          photos.map(async (p) => {
+            const { url } = await getDocumentSignedUrl(p.filePath);
+            return { id: p.id, url };
+          }),
+        ).then((results) => {
+          const urlMap: Record<string, string> = {};
+          for (const { id, url } of results) {
+            if (url) urlMap[id] = url;
+          }
+          setWoundPhotoUrls(urlMap);
+        });
+      }
 
       // AI polling check
       if (!order.ai_extracted) {
@@ -554,9 +489,6 @@ export function OrderDetailModal({
           beginPolling();
         }
       }
-
-      // All data ready — skeleton fades out
-      setModalReady(true);
     });
   }, [open, order.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -595,26 +527,6 @@ export function OrderDetailModal({
       }
     };
   }, [open, order.id, order.ai_extracted]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  /* ── Lazy load messages / history on tab switch ── */
-  useEffect(() => {
-    if (tab === "conversation" && !msgLoaded) {
-      setLoadingMessages(true);
-      getOrderMessages(order.id).then((msgs) => {
-        setMessages(msgs);
-        setLoadingMessages(false);
-        setMsgLoaded(true);
-      });
-    }
-    if (tab === "history" && !historyLoaded) {
-      setLoadingHistory(true);
-      getOrderHistory(order.id).then((hist) => {
-        setHistory(hist);
-        setLoadingHistory(false);
-        setHistoryLoaded(true);
-      });
-    }
-  }, [tab, msgLoaded, historyLoaded, order.id]);
 
   /* ── Load products when picker opens ── */
   useEffect(() => {
@@ -800,12 +712,41 @@ export function OrderDetailModal({
 
   /* ── Handlers ── */
 
-  function handleTabClick(value: TabValue) {
+  async function handleTabChange(value: TabValue) {
     setTab(value);
+
+    // Already loaded — don't reload
+    if (loadedTabs.has(value)) {
+      if (value === "conversation") {
+        markMessagesAsRead(order.id).then(() => onClearUnread?.());
+      }
+      return;
+    }
+
+    if (value === "ivr") {
+      const data = await getOrderIVR(order.id);
+      setIvrData(data ?? {});
+      setLoadedTabs((prev) => new Set([...prev, "ivr"]));
+    }
+
+    if (value === "hcfa") {
+      const data = await getForm1500(order.id);
+      setHcfaData((data as Record<string, unknown>) ?? {});
+      setLoadedTabs((prev) => new Set([...prev, "hcfa"]));
+    }
+
     if (value === "conversation") {
-      markMessagesAsRead(order.id).then(() => {
-        onClearUnread?.();
-      });
+      const data = await getOrderMessages(order.id);
+      setMessages(data ?? []);
+      setLoadedTabs((prev) => new Set([...prev, "conversation"]));
+      await markMessagesAsRead(order.id);
+      onClearUnread?.();
+    }
+
+    if (value === "history") {
+      const data = await getOrderHistory(order.id);
+      setHistory(data ?? []);
+      setLoadedTabs((prev) => new Set([...prev, "history"]));
     }
   }
 
@@ -1317,9 +1258,6 @@ export function OrderDetailModal({
               Order {order.order_number}
             </DialogTitle>
 
-            {!modalReady ? (
-              <OrderDetailSkeleton />
-            ) : (
               <div className="bg-white w-[95vw] max-w-[1200px] h-[90vh] rounded-3xl shadow-2xl border border-gray-100 overflow-hidden flex flex-col">
                 {/* ════════ FULL-WIDTH HEADER ════════ */}
                 <div className="flex-shrink-0 px-8 py-5 border-b border-gray-100 flex items-center justify-between bg-white">
@@ -1357,7 +1295,7 @@ export function OrderDetailModal({
                           return (
                             <button
                               key={t.value}
-                              onClick={() => handleTabClick(t.value)}
+                              onClick={() => handleTabChange(t.value)}
                               className={cn(
                                 "px-5 py-3.5 text-sm font-semibold border-b-2 whitespace-nowrap transition-colors shrink-0 flex items-center gap-1.5",
                                 tab === t.value
@@ -1958,25 +1896,29 @@ export function OrderDetailModal({
                           tab !== "ivr" && "hidden",
                         )}
                       >
-                        <OrderIVRForm
-                          key={resetIvrKey}
-                          orderId={order.id}
-                          canEdit={canEdit}
-                          initialData={ivrData}
-                          isReady={ivrLoaded}
-                          order={order}
-                          hcfaData={hcfaData}
-                          onDirtyChange={setIsIvrDirty}
-                          onSave={async (saved) => {
-                            setIvrData(saved);
-                            setIsIvrDirty(false);
-                            setGeneratingPdfType("additional_ivr");
-                            setTimeout(async () => {
-                              await refreshDocuments();
-                              setGeneratingPdfType(null);
-                            }, 3000);
-                          }}
-                        />
+                        {!loadedTabs.has("ivr") ? (
+                          <FormSkeleton />
+                        ) : (
+                          <OrderIVRForm
+                            key={resetIvrKey}
+                            orderId={order.id}
+                            canEdit={canEdit}
+                            initialData={ivrData}
+                            isReady={true}
+                            order={order}
+                            hcfaData={hcfaData}
+                            onDirtyChange={setIsIvrDirty}
+                            onSave={async (saved) => {
+                              setIvrData(saved);
+                              setIsIvrDirty(false);
+                              setGeneratingPdfType("additional_ivr");
+                              setTimeout(async () => {
+                                await refreshDocuments();
+                                setGeneratingPdfType(null);
+                              }, 3000);
+                            }}
+                          />
+                        )}
                       </div>
 
                       {/* HCFA / CMS-1500 */}
@@ -1986,23 +1928,27 @@ export function OrderDetailModal({
                           tab !== "hcfa" && "hidden",
                         )}
                       >
-                        <Form1500Tab
-                          key={resetHcfaKey}
-                          orderId={order.id}
-                          canEdit={canEdit}
-                          initialData={hcfaData}
-                          isReady={hcfaLoaded}
-                          onDirtyChange={setIsHcfaDirty}
-                          onSave={async (saved) => {
-                            setHcfaData(saved);
-                            setIsHcfaDirty(false);
-                            setGeneratingPdfType("form_1500");
-                            setTimeout(async () => {
-                              await refreshDocuments();
-                              setGeneratingPdfType(null);
-                            }, 3000);
-                          }}
-                        />
+                        {!loadedTabs.has("hcfa") ? (
+                          <FormSkeleton />
+                        ) : (
+                          <Form1500Tab
+                            key={resetHcfaKey}
+                            orderId={order.id}
+                            canEdit={canEdit}
+                            initialData={hcfaData}
+                            isReady={true}
+                            onDirtyChange={setIsHcfaDirty}
+                            onSave={async (saved) => {
+                              setHcfaData(saved);
+                              setIsHcfaDirty(false);
+                              setGeneratingPdfType("form_1500");
+                              setTimeout(async () => {
+                                await refreshDocuments();
+                                setGeneratingPdfType(null);
+                              }, 3000);
+                            }}
+                          />
+                        )}
                       </div>
 
                       {/* CHAT */}
@@ -2013,10 +1959,8 @@ export function OrderDetailModal({
                         )}
                       >
                         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 min-h-0">
-                          {loadingMessages ? (
-                            <div className="flex justify-center py-8">
-                              <Loader2 className="w-5 h-5 animate-spin text-gray-300" />
-                            </div>
+                          {!loadedTabs.has("conversation") ? (
+                            <ChatSkeleton />
                           ) : messages.length === 0 ? (
                             <div className="flex flex-col items-center justify-center h-full text-center py-12">
                               <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-3">
@@ -2157,10 +2101,8 @@ export function OrderDetailModal({
                           tab !== "history" && "hidden",
                         )}
                       >
-                        {loadingHistory ? (
-                          <div className="flex justify-center py-8">
-                            <Loader2 className="w-5 h-5 animate-spin text-gray-300" />
-                          </div>
+                        {!loadedTabs.has("history") ? (
+                          <HistorySkeleton />
                         ) : history.length === 0 ? (
                           <div className="flex flex-col items-center py-12 text-center">
                             <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mb-3">
@@ -2783,7 +2725,6 @@ export function OrderDetailModal({
                 </div>
                 {/* end two-column body */}
               </div>
-            )}
           </RadixDialog.Content>
         </DialogPortal>
       </RadixDialog.Root>
