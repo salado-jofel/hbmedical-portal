@@ -217,6 +217,32 @@ function HistorySkeleton() {
   );
 }
 
+function OrderFormSkeleton() {
+  return (
+    <div className="animate-pulse space-y-4 p-4">
+      <div className="h-4 bg-gray-200 rounded w-1/4" />
+      <div className="border border-gray-100 rounded-xl overflow-hidden">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div
+            key={i}
+            className="flex gap-4 px-4 py-3 border-t border-gray-100 first:border-0"
+          >
+            <div className="flex-1 space-y-1">
+              <div className="h-3 bg-gray-200 rounded w-3/4" />
+              <div className="h-2.5 bg-gray-100 rounded w-1/3" />
+            </div>
+            <div className="h-3 bg-gray-200 rounded w-12" />
+            <div className="h-3 bg-gray-200 rounded w-16" />
+            <div className="h-3 bg-gray-200 rounded w-16" />
+          </div>
+        ))}
+      </div>
+      <div className="h-4 bg-gray-200 rounded w-16 mt-4" />
+      <div className="h-24 bg-gray-100 rounded-xl w-full" />
+    </div>
+  );
+}
+
 /* ── Props ── */
 
 interface OrderDetailModalProps {
@@ -1729,6 +1755,10 @@ export function OrderDetailModal({
                           tab !== "order-form" && "hidden",
                         )}
                       >
+                        {!loadedTabs.has("order-form") ? (
+                          <OrderFormSkeleton />
+                        ) : (
+                          <>
                         {/* SPINNER: AI processing */}
                         {aiStatus === "processing" && (
                           <div className="flex items-center gap-4 p-5 rounded-2xl bg-blue-50 border border-blue-100">
@@ -1886,6 +1916,8 @@ export function OrderDetailModal({
                               </p>
                             </div>
                           </div>
+                        )}
+                          </>
                         )}
                       </div>
 
