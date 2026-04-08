@@ -78,16 +78,16 @@ export function OrderOverviewTab({
       )}
     >
       {/* ── Unified Save/Discard toolbar ── */}
-      {canEdit && status === "draft" && (
-        <div className="sticky top-0 z-10 bg-white border-b border-gray-300 py-3 flex items-center justify-between">
-          <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">
-            Overview
-            {isOverviewDirty && !isSavingOverview && (
-              <span className="ml-2 text-amber-500 normal-case font-normal tracking-normal">
-                • Unsaved changes
-              </span>
-            )}
-          </h3>
+      <div className="sticky top-0 z-10 bg-white border-b border-gray-300 py-3 flex items-center justify-between">
+        <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">
+          Overview
+          {canEdit && status === "draft" && isOverviewDirty && !isSavingOverview && (
+            <span className="ml-2 text-amber-500 normal-case font-normal tracking-normal">
+              • Unsaved changes
+            </span>
+          )}
+        </h3>
+        {canEdit && status === "draft" && (
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -120,8 +120,8 @@ export function OrderOverviewTab({
               {isSavingOverview ? "Saving..." : "Save changes"}
             </button>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* ── Order Items ── */}
       <div className="space-y-3 ">
