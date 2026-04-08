@@ -157,6 +157,88 @@ function sanitizeForm1500Fields(
   return sanitized;
 }
 
+const ORDER_IVR_ALLOWED_FIELDS = new Set([
+  "insurance_provider",
+  "insurance_phone",
+  "member_id",
+  "group_number",
+  "plan_name",
+  "plan_type",
+  "subscriber_name",
+  "subscriber_dob",
+  "subscriber_relationship",
+]);
+
+const ORDER_IVR_ALIASES: Record<string, string> = {
+  insured_plan_name:    "plan_name",
+  insured_id_number:    "member_id",
+  insured_policy_group: "group_number",
+  insurance_name:       "insurance_provider",
+  insured_dob:          "subscriber_dob",
+  patient_relationship: "subscriber_relationship",
+};
+
+function sanitizeIvrFields(
+  raw: Record<string, unknown>,
+): Record<string, unknown> {
+  // Combine insured_first_name + insured_last_name → subscriber_name (single text column)
+  const firstName = raw.insured_first_name as string | undefined;
+  const lastName  = raw.insured_last_name  as string | undefined;
+  const working: Record<string, unknown> = { ...raw };
+  if (firstName || lastName) {
+    const full = [firstName, lastName].filter(Boolean).join(" ").trim();
+    if (full) working.subscriber_name = full;
+  }
+  delete working.insured_first_name;
+  delete working.insured_last_name;
+
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(working)) {
+    if (value === null || value === undefined) continue;
+    const mappedKey = ORDER_IVR_ALIASES[key] ?? key;
+    if (ORDER_IVR_ALLOWED_FIELDS.has(mappedKey)) {
+      sanitized[mappedKey] = value;
+    }
+  }
+  return sanitized;
+}
+
+/* ── PDF generation helper ── */
+
+async function generatePDFWithRetry(
+  baseUrl: string,
+  orderId: string,
+  formType: string,
+): Promise<void> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, 1000));
+      const res = await fetch(`${baseUrl}/api/generate-pdf`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId, formType }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        console.error(
+          `[PDF auto-gen] ${formType} attempt ${attempt + 1} failed:`,
+          data.error ?? res.status,
+        );
+        continue;
+      }
+      return; // success
+    } catch (err) {
+      console.error(
+        `[PDF auto-gen] ${formType} attempt ${attempt + 1} network error:`,
+        err,
+      );
+    }
+  }
+  console.error(
+    `[PDF auto-gen] ${formType} failed after 2 attempts for order ${orderId}`,
+  );
+}
+
 /* ── Route handler ── */
 
 export async function POST(req: NextRequest) {
@@ -319,6 +401,28 @@ export async function POST(req: NextRequest) {
           }
         }
       }
+
+      /* -- Upsert insurance data into order_ivr -- */
+      const safeIvrFields = sanitizeIvrFields(extractedFields);
+      if (Object.keys(safeIvrFields).length > 0) {
+        const { error: ivrError } = await adminClient
+          .from("order_ivr")
+          .upsert(
+            {
+              order_id: orderId,
+              ai_extracted: true,
+              ai_extracted_at: new Date().toISOString(),
+              ...safeIvrFields,
+            },
+            { onConflict: "order_id" },
+          );
+        if (ivrError) {
+          console.error(
+            "[AI Extract] order_ivr upsert error:",
+            JSON.stringify(ivrError),
+          );
+        }
+      }
     } else {
       const safeFields = sanitizeOrderFormFields(extractedFields);
 
@@ -361,14 +465,17 @@ export async function POST(req: NextRequest) {
       if (error) console.error("[AI history]", error.message);
     });
 
-    /* -- Auto-generate PDF (non-blocking) -- */
+    /* -- Auto-generate PDFs (both types, awaited with retry) -- */
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-    const pdfFormType = documentType === "facesheet" ? "hcfa_1500" : "order_form";
-    fetch(`${baseUrl}/api/generate-pdf`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderId, formType: pdfFormType }),
-    }).catch(err => console.error("[PDF auto-gen]", err));
+
+    // Small delay to let the DB upsert propagate before generate-pdf reads it
+    await new Promise((r) => setTimeout(r, 500));
+
+    await Promise.allSettled([
+      generatePDFWithRetry(baseUrl, orderId, "order_form"),
+      generatePDFWithRetry(baseUrl, orderId, "hcfa_1500"),
+      generatePDFWithRetry(baseUrl, orderId, "ivr"),
+    ]);
 
     return NextResponse.json({ success: true, documentType, extractedFields });
   } catch (err) {
@@ -410,8 +517,13 @@ Return ONLY a valid JSON object. Use null for any field not found. No text outsi
   "insured_dob": "YYYY-MM-DD" | null,
   "insured_sex": "male" | "female" | "other" | null,
   "insured_employer": string | null,
+  "insurance_name": string | null,
   "insured_plan_name": string | null
 }
+
+IMPORTANT: "insurance_name" is the insurance COMPANY name (e.g. "BlueCross BlueShield", "Aetna", "UnitedHealthcare").
+"insured_plan_name" is the specific PLAN or benefit name (e.g. "PPO Gold 500", "HMO Select", "Medicare Supplement Plan G").
+Do NOT put the company name in "insured_plan_name".
 `.trim();
 
 const CLINICAL_DOCS_PROMPT = `

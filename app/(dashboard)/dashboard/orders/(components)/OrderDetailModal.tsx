@@ -34,6 +34,7 @@ import {
   CreditCard,
   FileText,
   Info,
+  RefreshCw,
 } from "lucide-react";
 import type {
   DashboardOrder,
@@ -79,10 +80,7 @@ import {
   sendOrderMessage,
   markMessagesAsRead,
 } from "../(services)/order-messaging-actions";
-import {
-  getOrderIVR,
-  getOrderAiStatus,
-} from "../(services)/order-ivr-actions";
+import { getOrderIVR, getOrderAiStatus } from "../(services)/order-ivr-actions";
 import {
   getProducts,
   addOrderItems,
@@ -177,6 +175,7 @@ export function OrderDetailModal({
   const [generatingPdfType, setGeneratingPdfType] = useState<string | null>(
     null,
   );
+  const [aiWindowExpired, setAiWindowExpired] = useState(true);
   const [woundPhotoUrls, setWoundPhotoUrls] = useState<Record<string, string>>(
     {},
   );
@@ -441,6 +440,22 @@ export function OrderDetailModal({
     });
   }, [showProductPicker]);
 
+  /* ── AI-generating window: show spinner for 30 s after ai_extracted_at ── */
+  useEffect(() => {
+    if (!open || !liveOrder.ai_extracted || !liveOrder.ai_extracted_at) {
+      setAiWindowExpired(true);
+      return;
+    }
+    const elapsed = Date.now() - new Date(liveOrder.ai_extracted_at).getTime();
+    if (elapsed >= 30_000) {
+      setAiWindowExpired(true);
+      return;
+    }
+    setAiWindowExpired(false);
+    const timer = setTimeout(() => setAiWindowExpired(true), 30_000 - elapsed);
+    return () => clearTimeout(timer);
+  }, [open, liveOrder.ai_extracted, liveOrder.ai_extracted_at]);
+
   /* ── Auto-scroll chat to latest message ── */
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -613,6 +628,62 @@ export function OrderDetailModal({
     };
   }, [open, order.id, dispatch]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /* ── Realtime: append newly generated/uploaded documents while modal is open ── */
+  useEffect(() => {
+    if (!open) return;
+
+    const supabase = createClient();
+    const channel = supabase
+      .channel(`docs-${order.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "order_documents",
+          filter: `order_id=eq.${order.id}`,
+        },
+        (payload) => {
+          const raw = payload.new as {
+            id: string;
+            order_id: string;
+            document_type: string;
+            bucket: string;
+            file_path: string;
+            file_name: string;
+            mime_type: string | null;
+            file_size: number | null;
+            uploaded_by: string | null;
+            created_at: string;
+          };
+
+          const newDoc: IOrderDocument = {
+            id: raw.id,
+            orderId: raw.order_id,
+            documentType: raw.document_type as DocumentType,
+            bucket: raw.bucket,
+            filePath: raw.file_path,
+            fileName: raw.file_name,
+            mimeType: raw.mime_type,
+            fileSize: raw.file_size,
+            uploadedBy: raw.uploaded_by,
+            createdAt: raw.created_at,
+          };
+
+          setLocalDocuments((prev) => {
+            // Avoid duplicates if polling already added this record
+            if (prev.some((d) => d.id === newDoc.id)) return prev;
+            return [...prev, newDoc];
+          });
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [open, order.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /* ── Handlers ── */
 
   async function handleTabChange(value: TabValue) {
@@ -676,7 +747,9 @@ export function OrderDetailModal({
   async function handleViewDocByType(type: string) {
     const doc = documents.find((d) => d.documentType === type);
     if (!doc) {
-      toast("No document uploaded yet.", { icon: <Info className="w-4 h-4 text-blue-500" /> });
+      toast("No document uploaded yet.", {
+        icon: <Info className="w-4 h-4 text-blue-500" />,
+      });
       return;
     }
     handleViewDoc(doc);
@@ -721,6 +794,36 @@ export function OrderDetailModal({
         toast.error(result.error ?? "Failed to delete.");
       }
     });
+  }
+
+  async function handleRegeneratePdf(docType: string) {
+    const formTypeMap: Record<string, string> = {
+      order_form: "order_form",
+      form_1500: "hcfa_1500",
+      additional_ivr: "ivr",
+    };
+    const formType = formTypeMap[docType];
+    if (!formType) return;
+
+    setGeneratingPdfType(docType);
+    try {
+      const res = await fetch("/api/generate-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: order.id, formType }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        toast.error("Failed to generate PDF. Please try again.");
+        return;
+      }
+      // Refresh documents so badge updates regardless of INSERT vs UPDATE
+      await refreshDocuments();
+    } catch {
+      toast.error("Failed to generate PDF. Please try again.");
+    } finally {
+      setGeneratingPdfType(null);
+    }
   }
 
   async function handleUploadDoc(file: File, docType: string) {
@@ -1186,7 +1289,7 @@ export function OrderDetailModal({
               {/* ════════ TWO-COLUMN BODY ════════ */}
               <div className="flex flex-1 overflow-hidden">
                 {/* ──── LEFT COLUMN: Tabs ──── */}
-                <div className="flex-1 flex flex-col border-r border-gray-100 overflow-hidden min-w-0">
+                <div className="flex-1 flex flex-col border-r border-gray-100 overflow-hidden min-w-0 ">
                   {/* Tab bar */}
                   <div className="flex-shrink-0 border-b border-gray-100 px-6">
                     <div className="flex overflow-x-auto">
@@ -1450,7 +1553,9 @@ export function OrderDetailModal({
                           {markingDelivered ? (
                             <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                           ) : null}
-                          {markingDelivered ? "Marking..." : "Mark as Delivered"}
+                          {markingDelivered
+                            ? "Marking..."
+                            : "Mark as Delivered"}
                         </button>
                       )}
                     </div>
@@ -1521,45 +1626,76 @@ export function OrderDetailModal({
                               viewingDocId === docRecord?.id;
                             const isPdfGenerating =
                               generatingPdfType === doc.type;
+                            const isRegenerableType = [
+                              "order_form",
+                              "form_1500",
+                              "additional_ivr",
+                            ].includes(doc.type);
+                            const isAiGenerating =
+                              isRegenerableType &&
+                              !uploaded &&
+                              !isPdfGenerating &&
+                              liveOrder.ai_extracted &&
+                              !aiWindowExpired;
                             return (
-                              <button
-                                key={doc.type}
-                                type="button"
-                                disabled={
-                                  (!uploaded && !isPdfGenerating) ||
-                                  isViewLoading ||
-                                  isPdfGenerating
-                                }
-                                onClick={() =>
-                                  uploaded &&
+                              <div key={doc.type} className="relative">
+                                <button
+                                  type="button"
+                                  disabled={
+                                    (!uploaded &&
+                                      !isPdfGenerating &&
+                                      !isAiGenerating) ||
+                                    isViewLoading ||
+                                    isPdfGenerating ||
+                                    isAiGenerating
+                                  }
+                                  onClick={() =>
+                                    uploaded &&
+                                    !isPdfGenerating &&
+                                    !isAiGenerating &&
+                                    handleViewDocument(doc.type)
+                                  }
+                                  className={cn(
+                                    "flex items-center gap-2 px-3 py-3 rounded-xl border text-xs font-bold text-left w-full transition-colors",
+                                    isPdfGenerating || isAiGenerating
+                                      ? "bg-blue-50 border-blue-200 text-blue-700 cursor-wait"
+                                      : uploaded
+                                        ? "bg-green-50 border-green-200 text-green-800 hover:bg-green-100 cursor-pointer"
+                                        : "bg-amber-50 border-amber-200 text-amber-800 cursor-default",
+                                    isViewLoading && "opacity-60",
+                                  )}
+                                >
+                                  {isPdfGenerating || isAiGenerating ? (
+                                    <Loader2 className="w-3.5 h-3.5 text-blue-500 animate-spin shrink-0" />
+                                  ) : isViewLoading ? (
+                                    <div className="w-3.5 h-3.5 border-2 border-green-500 border-t-transparent rounded-full animate-spin shrink-0" />
+                                  ) : uploaded ? (
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0" />
+                                  ) : (
+                                    <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                  )}
+                                  <span className="truncate">
+                                    {isPdfGenerating || isAiGenerating
+                                      ? "Generating..."
+                                      : doc.label}
+                                  </span>
+                                </button>
+                                {!uploaded &&
                                   !isPdfGenerating &&
-                                  handleViewDocument(doc.type)
-                                }
-                                className={cn(
-                                  "flex items-center gap-2 px-3 py-3 rounded-xl border text-xs font-bold text-left w-full transition-colors",
-                                  isPdfGenerating
-                                    ? "bg-blue-50 border-blue-200 text-blue-700 cursor-wait"
-                                    : uploaded
-                                      ? "bg-green-50 border-green-200 text-green-800 hover:bg-green-100 cursor-pointer"
-                                      : "bg-amber-50 border-amber-200 text-amber-800 cursor-default",
-                                  isViewLoading && "opacity-60",
-                                )}
-                              >
-                                {isPdfGenerating ? (
-                                  <div className="w-3.5 h-3.5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin shrink-0" />
-                                ) : isViewLoading ? (
-                                  <div className="w-3.5 h-3.5 border-2 border-green-500 border-t-transparent rounded-full animate-spin shrink-0" />
-                                ) : uploaded ? (
-                                  <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0" />
-                                ) : (
-                                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                                )}
-                                <span className="truncate">
-                                  {isPdfGenerating
-                                    ? "Generating..."
-                                    : doc.label}
-                                </span>
-                              </button>
+                                  !isAiGenerating &&
+                                  isRegenerableType && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handleRegeneratePdf(doc.type)
+                                      }
+                                      className="absolute top-1.5 right-2 p-0.5 rounded hover:bg-amber-200 transition-colors"
+                                      title="Regenerate PDF"
+                                    >
+                                      <RefreshCw className="w-3 h-3 text-amber-600" />
+                                    </button>
+                                  )}
+                              </div>
                             );
                           })}
                         </div>
@@ -1622,9 +1758,7 @@ export function OrderDetailModal({
                               <button
                                 type="button"
                                 disabled={initiatingPayment !== false}
-                                onClick={() =>
-                                  handleInitiatePayment("pay_now")
-                                }
+                                onClick={() => handleInitiatePayment("pay_now")}
                                 className="flex flex-col items-center gap-1.5 px-3 py-3 rounded-xl border-2 border-blue-200 bg-blue-50 hover:bg-blue-100 hover:border-blue-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                               >
                                 {initiatingPayment === "pay_now" ? (
@@ -1643,9 +1777,7 @@ export function OrderDetailModal({
                               <button
                                 type="button"
                                 disabled={initiatingPayment !== false}
-                                onClick={() =>
-                                  handleInitiatePayment("net_30")
-                                }
+                                onClick={() => handleInitiatePayment("net_30")}
                                 className="flex flex-col items-center gap-1.5 px-3 py-3 rounded-xl border-2 border-purple-200 bg-purple-50 hover:bg-purple-100 hover:border-purple-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                               >
                                 {initiatingPayment === "net_30" ? (

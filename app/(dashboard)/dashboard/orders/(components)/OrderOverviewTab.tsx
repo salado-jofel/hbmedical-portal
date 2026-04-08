@@ -35,7 +35,9 @@ interface OrderOverviewTabProps {
   orderTotal: number;
   setDraftNotes: (v: string) => void;
   setShowProductPicker: (v: boolean) => void;
-  setQuantities: (fn: (prev: Record<string, number>) => Record<string, number>) => void;
+  setQuantities: (
+    fn: (prev: Record<string, number>) => Record<string, number>,
+  ) => void;
   setItemToDelete: (v: { id: string; name: string } | null) => void;
   draftQtyChange: (itemId: string, newQty: number) => void;
   handleDiscardOverview: () => void;
@@ -122,7 +124,7 @@ export function OrderOverviewTab({
       )}
 
       {/* ── Order Items ── */}
-      <div className="space-y-3">
+      <div className="space-y-3 ">
         <div className="flex items-center justify-between">
           <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">
             Order Items
