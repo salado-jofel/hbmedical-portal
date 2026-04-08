@@ -1,7 +1,7 @@
 "use server";
 
-import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { repSetupSchema } from "@/utils/validators/onboarding";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUserOrThrow, getUserRole } from "@/lib/supabase/auth";
 import { isSalesRep } from "@/utils/helpers/role";
@@ -14,17 +14,6 @@ export interface RepSetupState {
     last_name?: string;
   };
 }
-
-const repSetupSchema = z.object({
-  first_name: z.string().min(1, "First name is required.").transform((s) => s.trim()),
-  last_name: z.string().min(1, "Last name is required.").transform((s) => s.trim()),
-  practice_name: z.string().min(1, "Practice name is required."),
-  phone: z.string().min(1, "Phone number is required."),
-  address_line_1: z.string().min(1, "Address is required."),
-  city: z.string().min(1, "City is required."),
-  state: z.string().min(2, "State is required."),
-  postal_code: z.string().min(1, "ZIP code is required."),
-});
 
 export async function completeRepSetup(
   _prev: RepSetupState | null,

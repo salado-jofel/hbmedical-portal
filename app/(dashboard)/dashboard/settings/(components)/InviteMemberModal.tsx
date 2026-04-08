@@ -21,24 +21,10 @@ import {
 } from "@/components/ui/select";
 import { generateMemberInviteToken } from "@/app/(dashboard)/dashboard/settings/(services)/actions";
 import type { IInviteTokenFormState } from "@/utils/interfaces/invite-tokens";
+import { EXPIRY_OPTIONS } from "@/utils/constants/onboarding";
+import { MEMBER_ROLE_OPTIONS } from "@/utils/constants/settings";
 
-const ROLE_OPTIONS = [
-  { value: "clinical_provider", label: "Clinical Provider" },
-  { value: "clinical_staff", label: "Clinical Staff" },
-];
-
-const EXPIRY_OPTIONS = [
-  { value: "7", label: "7 days" },
-  { value: "14", label: "14 days" },
-  { value: "30", label: "30 days" },
-  { value: "90", label: "90 days" },
-];
-
-interface InviteMemberModalProps {
-  baseUrl: string;
-}
-
-export function InviteMemberModal({ baseUrl }: InviteMemberModalProps) {
+export function InviteMemberModal({ baseUrl }: { baseUrl: string }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -90,7 +76,7 @@ export function InviteMemberModal({ baseUrl }: InviteMemberModalProps) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {ROLE_OPTIONS.map((o) => (
+                  {MEMBER_ROLE_OPTIONS.map((o) => (
                     <SelectItem key={o.value} value={o.value} className="text-sm">
                       {o.label}
                     </SelectItem>

@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 
-import { getAllOrders } from "./orders/(services)/actions";
+import { getAllOrders } from "./orders/(services)/order-read-actions";
 import RecentOrdersTable from "./(sections)/RecentOrdersTable";
 import StatsCards from "./(sections)/StatsCard";
 import { DashboardHeader } from "@/app/(components)/DashboardHeader";

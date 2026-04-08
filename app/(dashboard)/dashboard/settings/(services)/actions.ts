@@ -15,6 +15,7 @@ import { isSalesRep, isClinicalProvider } from "@/utils/helpers/role";
 import type { UserRole } from "@/utils/helpers/role";
 import type { ISubRep } from "@/utils/interfaces/sub-reps";
 import type { AccountStatus } from "@/utils/interfaces/accounts";
+import type { IClinicAccount } from "@/utils/interfaces/settings";
 
 import {
   getMyCredentials as _getMyCredentials,
@@ -30,7 +31,7 @@ import {
 
 import {
   generateInviteToken,
-} from "@/app/(dashboard)/dashboard/onboarding/(services)/actions";
+} from "@/app/(dashboard)/dashboard/onboarding/(services)/invite-actions";
 
 import type { Profile, IProfileFormState, IChangePasswordFormState } from "@/utils/interfaces/profiles";
 import type {
@@ -218,15 +219,6 @@ export async function generateMemberInviteToken(
 /* -------------------------------------------------------------------------- */
 /* Team — Rep: clinic accounts                                                 */
 /* -------------------------------------------------------------------------- */
-
-export interface IClinicAccount {
-  id: string;
-  name: string;
-  status: AccountStatus;
-  primaryDoctor: string;
-  doctorEmail: string;
-  memberCount: number;
-}
 
 export async function getMyClinicAccounts(): Promise<IClinicAccount[]> {
   try {

@@ -18,6 +18,7 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdminOrThrow, getUserRole } from "@/lib/supabase/auth";
+import { isAdmin } from "@/utils/helpers/role";
 
 const CONTRACT_MATERIALS_SELECT = `
   id,
@@ -77,14 +78,14 @@ export async function getContractMaterials(): Promise<ContractMaterial[]> {
     .order("sort_order", { ascending: true })
     .order("created_at", { ascending: false });
 
-  if (role !== "admin") {
+  if (!isAdmin(role)) {
     query = query.eq("is_active", true);
   }
 
   const { data, error } = await query;
 
   if (error) {
-    console.error("Failed to fetch contract materials:", error);
+    console.error("Failed to fetch contract materials:", JSON.stringify(error));
     return [];
   }
 
@@ -108,7 +109,7 @@ export async function getSignedDownloadUrl(
     );
 
   if (error) {
-    console.error("Failed to create signed URL:", error);
+    console.error("Failed to create signed URL:", JSON.stringify(error));
     return null;
   }
 
@@ -157,7 +158,7 @@ export async function prepareContractUpload(
     .createSignedUploadUrl(filePath);
 
   if (error || !data?.token) {
-    console.error("[prepareContractUpload] Signed upload error:", error);
+    console.error("[prepareContractUpload] Signed upload error:", JSON.stringify(error));
     throw new Error(error?.message || "Failed to prepare upload.");
   }
 
@@ -208,7 +209,7 @@ export async function completeContractUpload(
 
   if (insertError) {
     await admin.storage.from(bucket).remove([filePath]);
-    console.error("[completeContractUpload] DB insert error:", insertError);
+    console.error("[completeContractUpload] DB insert error:", JSON.stringify(insertError));
     throw new Error(insertError.message || "Failed to save material record.");
   }
 
@@ -239,7 +240,7 @@ export async function deleteContractMaterial(id: string): Promise<void> {
     .eq("id", id);
 
   if (error) {
-    console.error("[deleteContractMaterial] Error:", error);
+    console.error("[deleteContractMaterial] Error:", JSON.stringify(error));
     throw new Error(error.message || "Failed to delete material.");
   }
 
@@ -285,7 +286,7 @@ export async function bulkDeleteContractMaterials(
     .in("id", ids);
 
   if (error) {
-    console.error("[bulkDeleteContractMaterials] Error:", error);
+    console.error("[bulkDeleteContractMaterials] Error:", JSON.stringify(error));
     throw new Error(error.message || "Failed to bulk delete materials.");
   }
 

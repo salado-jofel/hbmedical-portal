@@ -1,7 +1,11 @@
+import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole } from "@/lib/supabase/auth";
 import { isSalesRep, isClinicalProvider } from "@/utils/helpers/role";
+import { DashboardHeader } from "@/app/(components)/DashboardHeader";
 import type { UserRole } from "@/utils/helpers/role";
+
+export const metadata: Metadata = { title: "Settings" };
 import {
   getMyProfile,
   getMyCredentials,
@@ -11,7 +15,7 @@ import {
 } from "@/app/(dashboard)/dashboard/settings/(services)/actions";
 import { notFound } from "next/navigation";
 import Providers from "./(sections)/Providers";
-import { SettingsPageClient } from "./(sections)/SettingsPageClient";
+import { SettingsTabs } from "./(sections)/SettingsTabs";
 
 export const dynamic = "force-dynamic";
 
@@ -39,29 +43,19 @@ export default async function SettingsPage() {
 
   return (
     <div className="p-6 md:p-8 max-w-480 mx-auto space-y-6">
-      <div className="pb-5 border-b border-[#E2E8F0]">
-        <h1 className="text-xl font-semibold text-[#0F172A]">Settings</h1>
-        <p className="text-sm text-[#64748B] mt-1">
-          Manage your profile, team, and credentials
-        </p>
-        <div className="p-6 md:p-8 max-w-3xl mx-auto space-y-6">
-          {/* ── Header ── */}
-
-          {/* ── Tabbed content ── */}
-          <Providers>
-            <SettingsPageClient
-              profile={profile}
-              isRep={repUser}
-              myClinicAccounts={myClinicAccounts}
-              mySubReps={mySubReps}
-              myClinicMembers={myClinicMembers}
-              credentials={credentials}
-              showTeamTab={showTeamTab}
-              showCredentials={showCredentials}
-            />
-          </Providers>
-        </div>
-      </div>
+      <DashboardHeader title="Settings" description="Manage your profile, team, and credentials" />
+      <Providers>
+        <SettingsTabs
+          profile={profile}
+          isRep={repUser}
+          myClinicAccounts={myClinicAccounts}
+          mySubReps={mySubReps}
+          myClinicMembers={myClinicMembers}
+          credentials={credentials}
+          showTeamTab={showTeamTab}
+          showCredentials={showCredentials}
+        />
+      </Providers>
     </div>
   );
 }

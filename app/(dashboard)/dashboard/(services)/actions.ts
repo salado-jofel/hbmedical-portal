@@ -6,15 +6,7 @@ import { revalidatePath } from "next/cache";
 
 import type { UserRole } from "@/utils/helpers/role";
 import { isSalesRep } from "@/utils/helpers/role";
-
-export type UserData = {
-  name: string;
-  email: string;
-  initials: string;
-  role: UserRole;
-  isSubRep: boolean;
-  userId: string;
-};
+import type { UserData } from "@/utils/interfaces/users";
 
 export async function signOut() {
   const supabase = await createClient();

@@ -1,10 +1,12 @@
 "use server";
 
-import { z } from "zod";
 import { revalidatePath } from "next/cache";
+import { inviteSubRepSchema } from "@/utils/validators/onboarding";
+import type { InviteTokenInvalidReason } from "@/utils/interfaces/invite";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUserOrThrow, getUserRole } from "@/lib/supabase/auth";
+import { isAdmin, isSalesRep } from "@/utils/helpers/role";
 import { resend, PAYMENTS_FROM_EMAIL } from "@/lib/emails/resend";
 import {
   generateInviteTokenSchema,
@@ -50,7 +52,7 @@ export async function generateInviteToken(
     const user = await getCurrentUserOrThrow(supabase);
     const role = await getUserRole(supabase);
 
-    if (role !== "sales_representative" && role !== "admin") {
+    if (!isSalesRep(role) && !isAdmin(role)) {
       return { error: "Unauthorized.", success: false };
     }
 
@@ -116,7 +118,7 @@ export async function getMyInviteTokens(): Promise<IInviteToken[]> {
     .order("created_at", { ascending: false });
 
   // Sales reps see only their own tokens; admins see all
-  if (role === "sales_representative") {
+  if (isSalesRep(role)) {
     query = query.eq("created_by", user.id);
   }
 
@@ -133,8 +135,6 @@ export async function getMyInviteTokens(): Promise<IInviteToken[]> {
 /* -------------------------------------------------------------------------- */
 /* getInviteTokenStatus — differentiate not_found / expired / used / valid   */
 /* -------------------------------------------------------------------------- */
-
-export type InviteTokenInvalidReason = "not_found" | "expired" | "used";
 
 export async function getInviteTokenStatus(token: string): Promise<
   | { valid: true; inviteToken: IInviteToken }
@@ -244,10 +244,6 @@ export async function deleteInviteToken(tokenId: string): Promise<void> {
 const LOGO_URL =
   "https://eyrefohymvvabazvmemq.supabase.co/storage/v1/object/public/spearhead-assets/assets/email/hb-logo-name-2.png";
 
-const inviteSubRepSchema = z.object({
-  email: z.string().email("Enter a valid email address.").min(1, "Email is required."),
-});
-
 export async function inviteSubRep(
   _prev: IInviteTokenFormState | null,
   formData: FormData,
@@ -257,7 +253,7 @@ export async function inviteSubRep(
     const user = await getCurrentUserOrThrow(supabase);
     const role = await getUserRole(supabase);
 
-    if (role !== "sales_representative" && role !== "admin") {
+    if (!isSalesRep(role) && !isAdmin(role)) {
       return { error: "Unauthorized.", success: false };
     }
 

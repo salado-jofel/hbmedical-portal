@@ -4,16 +4,7 @@ import { useEffect } from "react";
 import { useAppDispatch } from "@/store/hooks";
 import { setUser } from "../(redux)/dashboard-slice";
 
-import type { UserRole } from "@/utils/helpers/role";
-
-type UserData = {
-  name: string;
-  email: string;
-  initials: string;
-  role: UserRole;
-  isSubRep: boolean;
-  userId: string;
-};
+import type { UserData } from "@/utils/interfaces/users";
 
 export default function Providers({
   children,

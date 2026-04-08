@@ -16,7 +16,7 @@ export default function Providers({
 
   useEffect(() => {
     dispatch(setProfile(profile));
-  }, [profile]);
+  }, [profile, dispatch]);
 
   return <>{children}</>;
 }

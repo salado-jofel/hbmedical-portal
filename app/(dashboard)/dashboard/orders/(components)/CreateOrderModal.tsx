@@ -10,17 +10,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, Loader2, Upload, X, FileText } from "lucide-react";
-import { createOrder, uploadOrderDocument } from "../(services)/actions";
+import { createOrder } from "../(services)/order-write-actions";
+import { uploadOrderDocument } from "../(services)/order-document-actions";
 import toast from "react-hot-toast";
 import { cn } from "@/utils/utils";
 import type { DocumentType } from "@/utils/interfaces/orders";
+import { WOUND_TYPES } from "@/utils/constants/orders";
 
 type DocFile = { file: File; type: string };
-
-const WOUND_TYPES = [
-  { value: "chronic" as const, label: "Chronic" },
-  { value: "post_surgical" as const, label: "Post-Surgical" },
-];
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const ACCEPT = ".pdf,.jpg,.jpeg,.png,.heic,image/*";

@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, Truck } from "lucide-react";
 import type { DashboardOrder } from "@/utils/interfaces/orders";
-import { addShippingInfo } from "../(services)/actions";
+import { addShippingInfo } from "../(services)/order-misc-actions";
 import toast from "react-hot-toast";
 
 interface AddShippingModalProps {

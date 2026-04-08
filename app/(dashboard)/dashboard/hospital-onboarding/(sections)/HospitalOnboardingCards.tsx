@@ -1,6 +1,7 @@
 "use client";
 
 import { useAppSelector, useAppDispatch } from "@/store/hooks";
+import { isAdmin as checkIsAdmin } from "@/utils/helpers/role";
 import {
   FileText,
   BookOpen,
@@ -17,6 +18,7 @@ import { AdminBulkBar } from "@/app/(components)/AdminBulkBar";
 import { EmptyState } from "@/app/(components)/EmptyState";
 import { MaterialsSection } from "@/app/(components)/MaterialSection";
 import { HospitalOnboardingMaterial } from "@/utils/interfaces/hospital-onboarding";
+import { getMaterialSearchText, prettifyMaterialTitle } from "@/utils/helpers/material-display";
 import {
   toggleSelectHospitalOnboardingItem,
   selectAllHospitalOnboardingItems,
@@ -40,21 +42,17 @@ type DisplayKind =
   | "presentation"
   | "document";
 
-function getSearchText(item: HospitalOnboardingMaterial) {
-  return [
-    item.title,
-    item.tag,
-    item.description,
-    item.file_name,
-    item.file_path,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-}
+const HOSPITAL_ACRONYMS: Array<[RegExp, string]> = [
+  [/\bHipaa\b/g, "HIPAA"],
+  [/\bPhi\b/g, "PHI"],
+  [/\bNda\b/g, "NDA"],
+  [/\bOcm\b/g, "OCM"],
+  [/\bCgs\b/g, "CGS"],
+  [/\bNgs\b/g, "NGS"],
+];
 
 function getDisplayKind(item: HospitalOnboardingMaterial): DisplayKind {
-  const text = getSearchText(item);
+  const text = getMaterialSearchText(item);
 
   if (text.includes("onboarding")) return "onboarding-guide";
   if (text.includes("orientation")) return "orientation";
@@ -117,16 +115,7 @@ function getHospitalOnboardingIcon(item: HospitalOnboardingMaterial) {
 }
 
 function prettifyTitle(raw?: string | null) {
-  const title = (raw ?? "").trim();
-  if (!title) return "";
-
-  return title
-    .replace(/\bHipaa\b/g, "HIPAA")
-    .replace(/\bPhi\b/g, "PHI")
-    .replace(/\bNda\b/g, "NDA")
-    .replace(/\bOcm\b/g, "OCM")
-    .replace(/\bCgs\b/g, "CGS")
-    .replace(/\bNgs\b/g, "NGS");
+  return prettifyMaterialTitle(raw, HOSPITAL_ACRONYMS);
 }
 
 function getDisplayDescription(item: HospitalOnboardingMaterial) {
@@ -204,7 +193,7 @@ export default function HospitalOnboardingCards() {
     (state) => state.hospitalOnboarding.selectedIds,
   );
 
-  const isAdmin = useAppSelector((state) => state.dashboard.role === "admin");
+  const isAdmin = checkIsAdmin(useAppSelector((state) => state.dashboard.role));
 
   useEffect(() => {
     setMounted(true);

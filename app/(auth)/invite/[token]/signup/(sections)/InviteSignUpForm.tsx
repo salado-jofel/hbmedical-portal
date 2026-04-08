@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronRight, ChevronLeft, UserCheck, User, Lock, FileCheck, Building2, Loader2, AlertCircle } from "lucide-react";
+import { ChevronRight, ChevronLeft, UserCheck, User, Lock, FileCheck, Building2, Loader2, AlertCircle, Check } from "lucide-react";
 import { HBLogo } from "@/app/(components)/HBLogo";
 import { AuthField } from "@/app/(components)/AuthField";
 import { AuthCard } from "@/app/(components)/AuthCard";
@@ -16,7 +16,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { inviteSignUp, getContractSignedUrls, type InviteSignUpState } from "../(services)/actions";
+import { inviteSignUp, getContractSignedUrls } from "../(services)/actions";
+import type { InviteSignUpState } from "@/utils/interfaces/invite";
+import { CREDENTIAL_OPTIONS } from "@/utils/constants/auth";
 import type { InviteTokenRole } from "@/utils/interfaces/invite-tokens";
 
 interface InviteSignUpFormProps {
@@ -29,18 +31,6 @@ interface InviteSignUpFormProps {
   productServicesUrl: string | null;
   contractsError: string | null;
 }
-
-const CREDENTIAL_OPTIONS = [
-  { value: "MD", label: "MD — Medical Doctor" },
-  { value: "DO", label: "DO — Doctor of Osteopathic Medicine" },
-  { value: "ARNP", label: "ARNP — Advanced Registered Nurse Practitioner" },
-  { value: "PA", label: "PA — Physician Assistant" },
-  { value: "RN", label: "RN — Registered Nurse" },
-  { value: "CCA", label: "CCA — Certified Coding Associate" },
-  { value: "LPN", label: "LPN — Licensed Practical Nurse" },
-  { value: "Admin", label: "Admin" },
-  { value: "Other", label: "Other" },
-];
 
 const slideVariants = {
   enter: (dir: number) => ({
@@ -231,7 +221,7 @@ export default function InviteSignUpForm({
                     : "bg-[#F8FAFC] text-[#94A3B8] border border-[#E2E8F0]"
               }`}
             >
-              {i < step ? "✓" : i + 1}
+              {i < step ? <Check className="w-3.5 h-3.5" /> : i + 1}
             </div>
             {i < STEPS.length - 1 && (
               <div

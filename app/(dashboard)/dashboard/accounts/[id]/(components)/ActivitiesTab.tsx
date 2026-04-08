@@ -4,13 +4,17 @@ import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { cva } from "class-variance-authority";
 import {
-  MapPin,
-  Phone,
-  Mail,
-  Video,
   Trash2,
   Activity,
 } from "lucide-react";
+import {
+  TYPE_ICONS,
+  TYPE_LABELS,
+  TYPE_COLORS,
+  OUTCOME_LABELS,
+  OUTCOME_DOTS,
+  ACTIVITY_TYPE_FILTER_OPTIONS,
+} from "@/utils/constants/activities";
 import toast from "react-hot-toast";
 import { useAppSelector, useAppDispatch } from "@/store/hooks";
 import { removeActivityFromStore } from "@/app/(dashboard)/dashboard/(redux)/activities-slice";
@@ -20,32 +24,11 @@ import ConfirmModal from "@/app/(components)/ConfirmModal";
 import { EmptyState } from "@/app/(components)/EmptyState";
 import { staggerContainer, fadeUp } from "@/components/ui/animations";
 import { cn } from "@/utils/utils";
-import type { ActivityType, ActivityOutcome } from "@/utils/interfaces/activities";
+import type { ActivityType, ActivityOutcome, TypeFilter } from "@/utils/interfaces/activities";
 
 /* -------------------------------------------------------------------------- */
 /* Config                                                                    */
 /* -------------------------------------------------------------------------- */
-
-const TYPE_ICONS: Record<ActivityType, React.ElementType> = {
-  visit: MapPin,
-  call: Phone,
-  email: Mail,
-  demo: Video,
-};
-
-const TYPE_LABELS: Record<ActivityType, string> = {
-  visit: "Visit",
-  call: "Call",
-  email: "Email",
-  demo: "Demo",
-};
-
-const TYPE_COLORS: Record<ActivityType, string> = {
-  visit: "bg-emerald-50 text-emerald-700",
-  call: "bg-blue-50 text-[#15689E]",
-  email: "bg-violet-50 text-violet-700",
-  demo: "bg-[#e8821a]/10 text-[#e8821a]",
-};
 
 const outcomeBadgeVariants = cva(
   "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap",
@@ -62,43 +45,18 @@ const outcomeBadgeVariants = cva(
   },
 );
 
-const OUTCOME_LABELS: Record<ActivityOutcome, string> = {
-  positive: "Positive",
-  neutral: "Neutral",
-  negative: "Negative",
-  no_response: "No Response",
-};
-
-const OUTCOME_DOTS: Record<ActivityOutcome, string> = {
-  positive: "bg-emerald-500",
-  neutral: "bg-zinc-400",
-  negative: "bg-red-500",
-  no_response: "bg-yellow-400",
-};
-
-type TypeFilter = ActivityType | "all";
-
-const TYPE_FILTER_OPTIONS: { value: TypeFilter; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "visit", label: "Visit" },
-  { value: "call", label: "Call" },
-  { value: "email", label: "Email" },
-  { value: "demo", label: "Demo" },
-];
 
 /* -------------------------------------------------------------------------- */
 /* Component                                                                 */
 /* -------------------------------------------------------------------------- */
 
-interface ActivitiesTabProps {
-  facilityId: string;
-  canEdit: boolean;
-}
-
 export function ActivitiesTab({
   facilityId,
   canEdit,
-}: ActivitiesTabProps) {
+}: {
+  facilityId: string;
+  canEdit: boolean;
+}) {
   const dispatch = useAppDispatch();
   const activities = useAppSelector((s) => s.activities.items);
   const canManage = canEdit;
@@ -135,7 +93,7 @@ export function ActivitiesTab({
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         {/* Type filter pills */}
         <div className="flex overflow-x-auto gap-1.5 pb-1 flex-nowrap [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-          {TYPE_FILTER_OPTIONS.map((opt) => (
+          {ACTIVITY_TYPE_FILTER_OPTIONS.map((opt) => (
             <button
               key={opt.value}
               type="button"

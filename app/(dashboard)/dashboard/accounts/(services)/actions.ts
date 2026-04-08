@@ -53,14 +53,14 @@ export async function getAccounts(
   }
 
   // Rep filter (admin only)
-  if (role === "admin" && filters?.rep_id && filters.rep_id !== "all") {
+  if (checkIsAdmin(role) && filters?.rep_id && filters.rep_id !== "all") {
     query = query.eq("assigned_rep", filters.rep_id);
   }
 
   const { data, error } = await query;
 
   if (error) {
-    console.error("[getAccounts] Error:", error);
+    console.error("[getAccounts] Error:", JSON.stringify(error));
     throw new Error(error.message || "Failed to fetch accounts.");
   }
 
@@ -103,7 +103,7 @@ export async function getAccountById(id: string): Promise<IAccount | null> {
   const { data, error } = await query.maybeSingle();
 
   if (error) {
-    console.error("[getAccountById] Error:", error);
+    console.error("[getAccountById] Error:", JSON.stringify(error));
     throw new Error(error.message || "Failed to fetch account.");
   }
 
@@ -127,7 +127,7 @@ export async function getSalesReps(): Promise<IRepProfile[]> {
     .order("first_name", { ascending: true });
 
   if (error) {
-    console.error("[getSalesReps] Error:", error);
+    console.error("[getSalesReps] Error:", JSON.stringify(error));
     throw new Error(error.message || "Failed to fetch sales reps.");
   }
 
@@ -153,7 +153,7 @@ export async function updateAccountStatus(
     .eq("id", accountId);
 
   if (error) {
-    console.error("[updateAccountStatus] Error:", error);
+    console.error("[updateAccountStatus] Error:", JSON.stringify(error));
     throw new Error(error.message || "Failed to update account status.");
   }
 
@@ -182,7 +182,7 @@ export async function assignRep(
     .eq("id", accountId);
 
   if (error) {
-    console.error("[assignRep] Error:", error);
+    console.error("[assignRep] Error:", JSON.stringify(error));
     throw new Error(error.message || "Failed to assign rep.");
   }
 

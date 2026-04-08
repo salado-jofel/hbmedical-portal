@@ -1,4 +1,6 @@
-import { Building2 } from "lucide-react";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Accounts" };
 import {
   getAccounts,
   getSalesReps,
@@ -6,8 +8,9 @@ import {
 import { getUserRole } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 import { isAdmin } from "@/utils/helpers/role";
+import { DashboardHeader } from "@/app/(components)/DashboardHeader";
 import Providers from "./(sections)/Providers";
-import { AccountsPageClient } from "./(sections)/AccountsPageClient";
+import { AccountsList } from "./(sections)/AccountsList";
 
 export const dynamic = "force-dynamic";
 
@@ -23,9 +26,9 @@ export default async function AccountsPage() {
 
   return (
     <div className="p-6 md:p-8 max-w-480 mx-auto space-y-6">
-      {/* ── Table with Redux hydration ── */}
+      <DashboardHeader title="Accounts" description="Manage your clinic accounts and activity" />
       <Providers accounts={accounts}>
-        <AccountsPageClient salesReps={salesReps} isAdmin={admin} />
+        <AccountsList salesReps={salesReps} isAdmin={admin} />
       </Providers>
     </div>
   );

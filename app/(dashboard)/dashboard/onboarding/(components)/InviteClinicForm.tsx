@@ -13,23 +13,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { generateInviteToken } from "@/app/(dashboard)/dashboard/onboarding/(services)/actions";
+import { generateInviteToken } from "@/app/(dashboard)/dashboard/onboarding/(services)/invite-actions";
 import type { IInviteTokenFormState } from "@/utils/interfaces/invite-tokens";
-import type { RepWithFacility } from "../(services)/actions";
+import type { RepWithFacility } from "@/utils/interfaces/onboarding";
+import { EXPIRY_OPTIONS } from "@/utils/constants/onboarding";
 
-const EXPIRY_OPTIONS = [
-  { value: "7", label: "7 days" },
-  { value: "14", label: "14 days" },
-  { value: "30", label: "30 days" },
-  { value: "90", label: "90 days" },
-];
-
-interface InviteClinicFormProps {
+export function InviteClinicForm({ isAdmin = false, repsWithFacilities = [] }: {
   isAdmin?: boolean;
   repsWithFacilities?: RepWithFacility[];
-}
-
-export function InviteClinicForm({ isAdmin = false, repsWithFacilities = [] }: InviteClinicFormProps) {
+}) {
   const [state, formAction, isPending] = useActionState<
     IInviteTokenFormState | null,
     FormData

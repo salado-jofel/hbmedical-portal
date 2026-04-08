@@ -12,6 +12,8 @@ export const metadata: Metadata = {
   title: "Trainings",
 };
 
+export const dynamic = "force-dynamic";
+
 export default async function TrainingsPage() {
   const supabase = await createClient();
   const role = await getUserRole(supabase);

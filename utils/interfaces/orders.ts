@@ -957,3 +957,7 @@ export type OrderRow = {
 export function getOrderBoardStatus(deliveryStatus: OrderDeliveryStatus): OrderBoardStatus {
   return deliveryStatus === "delivered" ? "Delivered" : "New Orders";
 }
+
+export type KanbanColumn =
+  | { type: "status"; status: OrderStatus }
+  | { type: "paid" };

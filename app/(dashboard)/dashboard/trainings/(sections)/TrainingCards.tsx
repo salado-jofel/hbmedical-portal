@@ -1,6 +1,7 @@
 "use client";
 
 import { useAppSelector, useAppDispatch } from "@/store/hooks";
+import { isAdmin as checkIsAdmin } from "@/utils/helpers/role";
 import {
   FileText,
   Presentation,
@@ -17,6 +18,7 @@ import { AdminBulkBar } from "@/app/(components)/AdminBulkBar";
 import { EmptyState } from "@/app/(components)/EmptyState";
 import { MaterialsSection } from "@/app/(components)/MaterialSection";
 import { TrainingMaterial } from "@/utils/interfaces/trainings";
+import { getMaterialSearchText, normalizeMaterialText, prettifyMaterialTitle } from "@/utils/helpers/material-display";
 import {
   toggleSelectTrainingItem,
   selectAllTrainingItems,
@@ -38,25 +40,16 @@ type DisplayKind =
   | "training-checklist"
   | "document";
 
-function normalizeText(value?: string | null) {
-  return (value ?? "").trim().toLowerCase();
-}
-
-function getSearchText(item: TrainingMaterial) {
-  return [
-    item.title,
-    item.tag,
-    item.description,
-    item.file_name,
-    item.file_path,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-}
+const TRAINING_ACRONYMS: Array<[RegExp, string]> = [
+  [/\bIfu\b/g, "IFU"],
+  [/\bHipaa\b/g, "HIPAA"],
+  [/\bOcm\b/g, "OCM"],
+  [/\bCgs\b/g, "CGS"],
+  [/\bNgs\b/g, "NGS"],
+];
 
 function getDisplayKind(item: TrainingMaterial): DisplayKind {
-  const text = getSearchText(item);
+  const text = getMaterialSearchText(item);
   if (text.includes("onboarding") || text.includes("orientation"))
     return "onboarding-guide";
   if (
@@ -115,14 +108,7 @@ function getTrainingIcon(item: TrainingMaterial) {
 }
 
 function prettifyTitle(raw?: string | null) {
-  const title = (raw ?? "").trim();
-  if (!title) return "";
-  return title
-    .replace(/\bIfu\b/g, "IFU")
-    .replace(/\bHipaa\b/g, "HIPAA")
-    .replace(/\bOcm\b/g, "OCM")
-    .replace(/\bCgs\b/g, "CGS")
-    .replace(/\bNgs\b/g, "NGS");
+  return prettifyMaterialTitle(raw, TRAINING_ACRONYMS);
 }
 
 function getDisplayDescription(item: TrainingMaterial) {
@@ -176,7 +162,7 @@ export default function TrainingsCards() {
     (state) => state.trainings.items,
   ) as TrainingMaterial[];
   const selectedIds = useAppSelector((state) => state.trainings.selectedIds);
-  const isAdmin = useAppSelector((state) => state.dashboard.role) === "admin";
+  const isAdmin = checkIsAdmin(useAppSelector((state) => state.dashboard.role));
 
   useEffect(() => {
     setMounted(true);
