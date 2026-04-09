@@ -195,6 +195,7 @@ export function OrderDetailModal({
 
   /* -- IVR + HCFA (lazy-loaded on first tab visit) -- */
   const [ivrData, setIvrData] = useState<Partial<IOrderIVR> | null>(null);
+  const [ivrPhysicianName, setIvrPhysicianName] = useState<string | null>(null);
   const [hcfaData, setHcfaData] = useState<Record<string, unknown> | null>(
     null,
   );
@@ -337,6 +338,7 @@ export function OrderDetailModal({
       // Reset all tab data on close
       setLoadedTabs(new Set());
       setIvrData(null);
+      setIvrPhysicianName(null);
       setHcfaData(null);
       setDocuments([]);
       setPaymentData(null);
@@ -699,8 +701,9 @@ export function OrderDetailModal({
     }
 
     if (value === "ivr") {
-      const data = await getOrderIVR(order.id);
-      setIvrData(data ?? {});
+      const { ivr, physicianName } = await getOrderIVR(order.id);
+      setIvrData(ivr ?? {});
+      setIvrPhysicianName(physicianName);
       setLoadedTabs((prev) => new Set([...prev, "ivr"]));
     }
 
@@ -1370,6 +1373,7 @@ export function OrderDetailModal({
                       ivrData={ivrData}
                       hcfaData={hcfaData}
                       order={order}
+                      physicianName={ivrPhysicianName}
                       resetIvrKey={resetIvrKey}
                       isReady={loadedTabs.has("ivr")}
                       onDirtyChange={setIsIvrDirty}

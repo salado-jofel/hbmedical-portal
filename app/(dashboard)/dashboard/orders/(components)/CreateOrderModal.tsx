@@ -79,7 +79,7 @@ function UploadZone({
             "flex flex-col items-center justify-center border-2 border-dashed rounded-xl px-3 py-4 cursor-pointer transition-all text-center",
             error
               ? "border-red-300 bg-red-50"
-              : "border-slate-200 bg-slate-50 hover:border-[var(--navy)]/50 hover:bg-blue-50/30"
+              : "border-slate-200 bg-slate-50 hover:border-[var(--navy)]/50 hover:bg-blue-50/30",
           )}
         >
           <Upload className="w-5 h-5 text-slate-300 mb-1.5" />
@@ -163,10 +163,10 @@ function UploadZone({
 export function CreateOrderModal() {
   const [open, setOpen] = useState(false);
   const [woundType, setWoundType] = useState<"chronic" | "post_surgical">(
-    "chronic"
+    "chronic",
   );
   const [dateOfService, setDateOfService] = useState(
-    new Date().toISOString().split("T")[0]
+    new Date().toISOString().split("T")[0],
   );
   const [notes, setNotes] = useState("");
   const [docs, setDocs] = useState<DocFile[]>([]);
@@ -192,11 +192,16 @@ export function CreateOrderModal() {
   }
 
   const hasFacesheet = docs.some((d) => d.type === "facesheet");
+  const hasClinicalDocs = docs.some((d) => d.type === "clinical_docs");
   const needsWoundPics = woundType === "chronic";
   const hasWoundPics = docs.some((d) => d.type === "wound_pictures");
 
   const canSubmit =
-    !!woundType && !!dateOfService && hasFacesheet && (!needsWoundPics || hasWoundPics);
+    !!woundType &&
+    !!dateOfService &&
+    hasFacesheet &&
+    hasClinicalDocs &&
+    (!needsWoundPics || hasWoundPics);
 
   function handleClose() {
     if (!isPending) {
@@ -232,7 +237,7 @@ export function CreateOrderModal() {
         const res = await uploadOrderDocument(
           orderId,
           d.type as DocumentType,
-          docFd
+          docFd,
         );
         if (!res.success) {
           toast.error(`Failed to upload ${d.file.name}: ${res.error}`);
@@ -247,6 +252,7 @@ export function CreateOrderModal() {
   }
 
   const facesheetError = submitted && !hasFacesheet;
+  const clinicalDocsError = submitted && !hasClinicalDocs;
   const woundPicsError = submitted && needsWoundPics && !hasWoundPics;
 
   return (
@@ -279,7 +285,7 @@ export function CreateOrderModal() {
               </h3>
 
               {/* Wound Type */}
-              <div className="space-y-1.5">
+              <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium text-slate-700">
                   Wound Type <span className="text-red-500">*</span>
                 </label>
@@ -293,7 +299,7 @@ export function CreateOrderModal() {
                         "flex-1 py-2.5 px-3 rounded-xl border-2 text-sm font-medium transition-all",
                         woundType === wt.value
                           ? "border-[var(--navy)] bg-blue-50 text-[var(--navy)]"
-                          : "border-slate-200 text-slate-600 hover:border-slate-300"
+                          : "border-slate-200 text-slate-600 hover:border-slate-300",
                       )}
                     >
                       {wt.label}
@@ -303,7 +309,7 @@ export function CreateOrderModal() {
               </div>
 
               {/* Date of Service */}
-              <div className="space-y-1.5">
+              <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium text-slate-700">
                   Date of Service <span className="text-red-500">*</span>
                 </label>
@@ -330,7 +336,7 @@ export function CreateOrderModal() {
               </div>
 
               {/* Notes */}
-              <div className="space-y-1.5">
+              <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium text-slate-700">
                   Notes (optional)
                 </label>
@@ -366,17 +372,23 @@ export function CreateOrderModal() {
                   label="Clinical Documentation"
                   description="Doctor's notes, records"
                   docType="clinical_docs"
-                  required={false}
+                  required={true}
                   multiple
                   files={docs}
                   onAdd={addDocs}
                   onRemove={removeDoc}
+                  error={clinicalDocsError}
                 />
               </div>
 
               {facesheetError && (
                 <p className="text-xs text-red-500">
                   Patient facesheet is required.
+                </p>
+              )}
+              {clinicalDocsError && (
+                <p className="text-xs text-red-500">
+                  Clinical documentation is required.
                 </p>
               )}
 
