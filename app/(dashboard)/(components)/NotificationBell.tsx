@@ -1,8 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { Bell } from "lucide-react";
-import { STATUS_COLORS, TYPE_ICONS } from "@/utils/constants/notifications";
 import { cn } from "@/utils/utils";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -15,6 +14,7 @@ import {
 } from "@/app/(dashboard)/dashboard/orders/(services)/order-messaging-actions";
 import type { INotification } from "@/utils/interfaces/orders";
 import { useRouter, usePathname } from "next/navigation";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 export function NotificationBell({
   currentUserId,
@@ -27,29 +27,17 @@ export function NotificationBell({
   const [unreadCount, setUnreadCount] = useState(0);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const panelRef = useRef<HTMLDivElement>(null);
+  const [mounted, setMounted] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
 
-  console.log("[NotificationBell] render", { currentUserId, unreadCount, notifications: notifications.length });
+  useEffect(() => setMounted(true), []);
 
   // Load when userId arrives
   useEffect(() => {
     if (!currentUserId) return;
-    console.log("[NotificationBell] userId ready, loading...");
     loadNotifications();
   }, [currentUserId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Close panel on outside click
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
 
   // Close panel on route change
   useEffect(() => {
@@ -72,9 +60,7 @@ export function NotificationBell({
           filter: `user_id=eq.${currentUserId}`,
         },
         (payload) => {
-          console.log("[NotificationBell] realtime event:", payload);
           const n = payload.new as Record<string, unknown>;
-
           const notif: INotification = {
             id:          n.id as string,
             userId:      n.user_id as string,
@@ -89,7 +75,6 @@ export function NotificationBell({
             readAt:      null,
             createdAt:   n.created_at as string,
           };
-
           setNotifications((prev) => [notif, ...prev]);
           setUnreadCount((prev) => prev + 1);
         },
@@ -100,20 +85,17 @@ export function NotificationBell({
   }, [currentUserId]);
 
   async function loadNotifications() {
-    console.log("[NotificationBell] loading notifications...");
     setLoading(true);
     const [notifs, count] = await Promise.all([
       getNotifications(),
       getUnreadNotificationCount(),
     ]);
-    console.log("[NotificationBell] loaded:", { notifs: notifs.length, count });
     setNotifications(notifs);
     setUnreadCount(count);
     setLoading(false);
   }
 
-  async function handleBellClick() {
-    const next = !open;
+  async function handleOpenChange(next: boolean) {
     setOpen(next);
     if (next && currentUserId) {
       await loadNotifications();
@@ -134,161 +116,161 @@ export function NotificationBell({
     setUnreadCount(0);
   }
 
-  return (
-    <div className="relative" ref={panelRef}>
-      {/* Nav-item styled button */}
-      <button
-        type="button"
-        onClick={handleBellClick}
-        aria-label="Notifications"
+  const bellButton = (
+    <button
+      type="button"
+      aria-label="Notifications"
+      className={cn(
+        "relative flex items-center text-sm font-normal transition-all duration-150 select-none outline-none rounded-lg w-full",
+        collapsed
+          ? "justify-center w-10 h-10 mx-auto"
+          : "gap-2.5 px-3 py-[7px]",
+        open
+          ? "bg-[#EBF4FF] text-[var(--navy)] font-medium"
+          : "text-[#475569] hover:bg-[#F5F8FB] hover:text-[var(--navy)]",
+      )}
+    >
+      <Bell
         className={cn(
-          "relative flex items-center text-sm font-normal transition-all duration-150 select-none outline-none rounded-lg w-full",
-          collapsed
-            ? "justify-center w-10 h-10 mx-auto"
-            : "gap-2.5 px-3 py-[7px]",
-          open
-            ? "bg-[#EBF4FF] text-[var(--navy)] font-medium"
-            : "text-[#475569] hover:bg-[#F5F8FB] hover:text-[var(--navy)]",
+          "shrink-0 transition-colors duration-150",
+          collapsed ? "w-5 h-5" : "w-[15px] h-[15px]",
+          open ? "text-[var(--navy)]" : "text-[var(--text3)]",
         )}
-      >
-        <Bell
+        strokeWidth={open ? 2.2 : 1.8}
+      />
+
+      {!collapsed && (
+        <span className="truncate leading-none tracking-[-0.01em]">
+          Notifications
+        </span>
+      )}
+
+      {/* Badge */}
+      {unreadCount > 0 && (
+        <span
           className={cn(
-            "shrink-0 transition-colors duration-150",
-            collapsed ? "w-[17px] h-[17px]" : "w-[15px] h-[15px]",
-            open ? "text-[var(--navy)]" : "text-[var(--text3)]",
+            "min-w-[18px] h-[18px] px-1 bg-[#dc2626] text-white text-[10px] font-bold rounded-full flex items-center justify-center leading-none",
+            collapsed ? "absolute -top-0.5 -right-0.5" : "ml-auto",
           )}
-          strokeWidth={open ? 2.2 : 1.8}
-        />
+        >
+          {unreadCount > 99 ? "99+" : unreadCount}
+        </span>
+      )}
+    </button>
+  );
 
-        {!collapsed && (
-          <span className="truncate leading-none tracking-[-0.01em]">
-            Notifications
-          </span>
-        )}
+  // Before client mount: render trigger only (no Popover to avoid hydration mismatch)
+  if (!mounted) {
+    return bellButton;
+  }
 
-        {/* Badge */}
-        {unreadCount > 0 && (
-          <span
-            className={cn(
-              "min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center leading-none",
-              collapsed ? "absolute -top-0.5 -right-0.5" : "ml-auto",
-            )}
-          >
-            {unreadCount > 99 ? "99+" : unreadCount}
-          </span>
-        )}
-      </button>
+  return (
+    <Popover open={open} onOpenChange={handleOpenChange}>
+      <PopoverTrigger asChild>
+        {bellButton}
+      </PopoverTrigger>
 
-      {/* Dropdown panel — fixed, floats to the right of sidebar */}
-      {open && (
-        <div className={cn(
-          "fixed top-4 w-80 max-h-[480px]",
-          "bg-white rounded-2xl shadow-2xl",
-          "border border-gray-100 overflow-hidden",
-          "flex flex-col z-[100]",
-          collapsed ? "left-[72px]" : "left-[228px]",
-        )}>
-          {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-            <h3 className="text-sm font-bold text-gray-800">
+      <PopoverContent
+        align="end"
+        side="bottom"
+        sideOffset={8}
+        className="w-[calc(100vw-32px)] max-w-[360px] p-0 rounded-[10px] border border-[#e2e8f0] bg-white shadow-lg flex flex-col overflow-hidden"
+        style={{ maxHeight: "480px" }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[#e2e8f0] shrink-0">
+          <div className="flex items-center gap-2">
+            <h3 className="text-[14px] font-semibold text-[var(--navy)]">
               Notifications
-              {unreadCount > 0 && (
-                <span className="ml-2 text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-semibold">
-                  {unreadCount} new
-                </span>
-              )}
             </h3>
             {unreadCount > 0 && (
-              <button
-                onClick={handleMarkAllRead}
-                className="text-xs text-[var(--navy)] font-semibold hover:underline"
-              >
-                Mark all read
-              </button>
+              <span className="min-w-[20px] h-5 px-1.5 bg-[var(--teal)] text-white text-xs font-semibold rounded-full flex items-center justify-center leading-none">
+                {unreadCount > 99 ? "99+" : unreadCount}
+              </span>
             )}
           </div>
-
-          {/* List */}
-          <div className="flex-1 overflow-y-auto">
-            {loading ? (
-              <div className="flex justify-center py-8">
-                <div className="w-5 h-5 border-2 border-gray-200 border-t-[var(--navy)] rounded-full animate-spin" />
-              </div>
-            ) : notifications.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <Bell className="w-8 h-8 text-gray-200 mb-3" />
-                <p className="text-sm text-gray-400 font-medium">No notifications yet</p>
-                <p className="text-xs text-gray-300 mt-1">Order updates will appear here</p>
-              </div>
-            ) : (
-              notifications.map((notif) => (
-                <div
-                  key={notif.id}
-                  onClick={() => {
-                    if (!notif.isRead) handleMarkRead(notif.id);
-                    setOpen(false);
-                    const tab = notif.type === "message_received"
-                      ? "conversation"
-                      : "overview";
-                    const isOnOrdersPage =
-                      window.location.pathname === "/dashboard/orders";
-                    if (isOnOrdersPage) {
-                      window.dispatchEvent(
-                        new CustomEvent("open-order-modal", {
-                          detail: { orderId: notif.orderId, tab },
-                        }),
-                      );
-                    } else {
-                      sessionStorage.setItem(
-                        "pending-order-open",
-                        JSON.stringify({ orderId: notif.orderId, tab }),
-                      );
-                      router.push("/dashboard/orders");
-                    }
-                  }}
-                  className={cn(
-                    "flex gap-3 px-4 py-3 cursor-pointer",
-                    "border-b border-gray-50 last:border-0",
-                    "hover:bg-gray-50 transition-colors",
-                    !notif.isRead && "bg-blue-50/40",
-                  )}
-                >
-                  {/* Icon */}
-                  <div
-                    className={cn(
-                      "w-9 h-9 rounded-full flex items-center justify-center text-base shrink-0",
-                      STATUS_COLORS[notif.type] ?? "bg-gray-100 text-gray-600",
-                    )}
-                  >
-                    {TYPE_ICONS[notif.type] ?? <Bell className="w-4 h-4" />}
-                  </div>
-
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <p className={cn("text-sm text-gray-800 leading-snug", !notif.isRead && "font-semibold")}>
-                      {notif.title}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">
-                      {notif.body}
-                    </p>
-                    <p className="text-[10px] text-gray-400 mt-1">
-                      {new Date(notif.createdAt).toLocaleString("en-US", {
-                        month: "short", day: "numeric",
-                        hour: "numeric", minute: "2-digit",
-                      })}
-                    </p>
-                  </div>
-
-                  {/* Unread dot */}
-                  {!notif.isRead && (
-                    <div className="w-2 h-2 rounded-full bg-[var(--navy)] shrink-0 mt-1.5" />
-                  )}
-                </div>
-              ))
-            )}
-          </div>
+          {unreadCount > 0 && (
+            <button
+              onClick={handleMarkAllRead}
+              className="text-[12px] text-[var(--teal)] font-medium hover:opacity-75 transition-opacity"
+            >
+              Mark all read
+            </button>
+          )}
         </div>
-      )}
-    </div>
+
+        {/* List */}
+        <div className="flex-1 overflow-y-auto">
+          {loading ? (
+            <div className="flex justify-center py-8">
+              <div className="w-5 h-5 border-2 border-[#e2e8f0] border-t-[var(--navy)] rounded-full animate-spin" />
+            </div>
+          ) : notifications.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <Bell className="w-8 h-8 text-[#cbd5e1] mb-3" />
+              <p className="text-[13px] text-[#64748b]">No notifications</p>
+            </div>
+          ) : (
+            notifications.map((notif) => (
+              <div
+                key={notif.id}
+                onClick={() => {
+                  if (!notif.isRead) handleMarkRead(notif.id);
+                  setOpen(false);
+                  const tab = notif.type === "message_received"
+                    ? "conversation"
+                    : "overview";
+                  const isOnOrdersPage =
+                    window.location.pathname === "/dashboard/orders";
+                  if (isOnOrdersPage) {
+                    window.dispatchEvent(
+                      new CustomEvent("open-order-modal", {
+                        detail: { orderId: notif.orderId, tab },
+                      }),
+                    );
+                  } else {
+                    sessionStorage.setItem(
+                      "pending-order-open",
+                      JSON.stringify({ orderId: notif.orderId, tab }),
+                    );
+                    router.push("/dashboard/orders");
+                  }
+                }}
+                className={cn(
+                  "flex items-start gap-3 px-4 py-3 cursor-pointer border-b border-[#f1f5f9] last:border-0",
+                  "hover:bg-[#f8fafc] transition-colors",
+                  !notif.isRead && "bg-[#f0fdf4]",
+                )}
+              >
+                {/* Dot indicator */}
+                <div
+                  className="mt-[5px] w-2 h-2 rounded-full shrink-0"
+                  style={{ background: notif.isRead ? "transparent" : "var(--teal)" }}
+                />
+
+                {/* Content */}
+                <div className="flex-1 min-w-0">
+                  <p className={cn(
+                    "text-[13px] leading-snug text-[var(--navy)]",
+                    !notif.isRead && "font-semibold",
+                  )}>
+                    {notif.title}
+                  </p>
+                  <p className="text-[12px] text-[#64748b] mt-0.5 line-clamp-2 leading-relaxed">
+                    {notif.body}
+                  </p>
+                  <p className="text-[11px] text-[#64748b] mt-1">
+                    {new Date(notif.createdAt).toLocaleString("en-US", {
+                      month: "short", day: "numeric",
+                      hour: "numeric", minute: "2-digit",
+                    })}
+                  </p>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }

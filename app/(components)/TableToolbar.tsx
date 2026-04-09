@@ -1,7 +1,7 @@
 "use client";
 
 import { Search } from "lucide-react";
-import { type ReactNode } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import {
   Select,
   SelectContent,
@@ -32,6 +32,9 @@ export function TableToolbar({
   /** Classes merged onto the wrapper div (use to add padding, border, etc.) */
   className?: string;
 }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   return (
     <div className={cn("flex items-center gap-3", className)}>
       <div className="relative flex-1">
@@ -45,25 +48,36 @@ export function TableToolbar({
         />
       </div>
 
-      {filters?.map((filter, i) => (
-        <Select key={i} value={filter.value} onValueChange={filter.onChange}>
-          <SelectTrigger
+      {/* Radix Select — only rendered after client mount to avoid aria-controls hydration mismatch */}
+      {filters?.map((filter, i) =>
+        mounted ? (
+          <Select key={i} value={filter.value} onValueChange={filter.onChange}>
+            <SelectTrigger
+              className={cn(
+                "h-9 text-sm bg-white border-[var(--border)] text-[var(--navy)] rounded-lg shrink-0",
+                filter.className,
+              )}
+            >
+              <SelectValue placeholder={filter.placeholder} />
+            </SelectTrigger>
+            <SelectContent>
+              {filter.options.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <div
+            key={i}
             className={cn(
-              "h-9 text-sm bg-white border-[var(--border)] text-[var(--navy)] rounded-lg shrink-0",
+              "h-9 rounded-lg border border-[var(--border)] bg-[#e2e8f0] animate-pulse shrink-0",
               filter.className,
             )}
-          >
-            <SelectValue placeholder={filter.placeholder} />
-          </SelectTrigger>
-          <SelectContent>
-            {filter.options.map((o) => (
-              <SelectItem key={o.value} value={o.value}>
-                {o.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      ))}
+          />
+        ),
+      )}
 
       {filterElement && <div className="shrink-0">{filterElement}</div>}
     </div>
