@@ -167,11 +167,19 @@ export function IVRFormPDF({
 
   const patientFirst  = order.patient?.first_name ?? "";
   const patientLast   = order.patient?.last_name  ?? "";
-  const patientName   = patientFirst || patientLast
+  const fallbackPatientName = patientFirst || patientLast
     ? `${patientFirst} ${patientLast}`.trim()
-    : "—";
+    : null;
 
-  const resolvedPhysician = physicianName ?? "—";
+  // Override fields: prefer ivr DB values, fall back to source table values
+  const displayFacilityName  = i.facility_name   || order.facility?.name || "—";
+  const displayPhysicianName = i.physician_name  || physicianName || "—";
+  const displayPatientName   = i.patient_name    || fallbackPatientName || "—";
+  const displayPatientDob    = i.patient_dob
+    ? fmtDate(i.patient_dob)
+    : order.patient?.date_of_birth
+      ? fmtDate(order.patient.date_of_birth)
+      : "—";
 
   const dateOfService = order.date_of_service
     ? fmtDate(order.date_of_service)
@@ -192,7 +200,7 @@ export function IVRFormPDF({
         <View style={styles.sectionBody}>
           <TwoColRows
             left={{ label: "Place of Service",           value: f(i.place_of_service) }}
-            right={{ label: "Facility Name",              value: f(order.facility?.name) }}
+            right={{ label: "Facility Name",              value: displayFacilityName }}
           />
           <TwoColRows
             left={{ label: "Medicare Admin Contractor",   value: f(i.medicare_admin_contractor) }}
@@ -212,7 +220,7 @@ export function IVRFormPDF({
         <SectionHeader title="Physician Information" />
         <View style={styles.sectionBody}>
           <TwoColRows
-            left={{ label: "Physician Name",   value: resolvedPhysician }}
+            left={{ label: "Physician Name",   value: displayPhysicianName }}
             right={{ label: "TIN",             value: f(i.physician_tin) }}
           />
           <TwoColRows
@@ -225,8 +233,8 @@ export function IVRFormPDF({
         <SectionHeader title="Patient Information" />
         <View style={styles.sectionBody}>
           <TwoColRows
-            left={{ label: "Patient Name",       value: patientName }}
-            right={{ label: "Date of Birth",      value: order.patient?.date_of_birth ? fmtDate(order.patient.date_of_birth) : "—" }}
+            left={{ label: "Patient Name",       value: displayPatientName }}
+            right={{ label: "Date of Birth",      value: displayPatientDob }}
           />
           <TwoColRows
             left={{ label: "Phone",              value: f(i.patient_phone) }}
