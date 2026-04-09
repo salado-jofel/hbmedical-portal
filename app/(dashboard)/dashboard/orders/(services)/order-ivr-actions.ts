@@ -68,6 +68,16 @@ function mapIvrRow(data: Record<string, unknown>): IOrderIVR {
     secondaryPlanType:           data.secondary_plan_type as string | null,
     secondaryGroupNumber:        data.secondary_group_number as string | null,
     secondarySubscriberRelationship: data.secondary_subscriber_relationship as string | null,
+    // Override / display fields
+    facilityName:                data.facility_name as string | null,
+    facilityAddress:             data.facility_address as string | null,
+    facilityPhone:               data.facility_phone as string | null,
+    facilityContact:             data.facility_contact as string | null,
+    physicianName:               data.physician_name as string | null,
+    physicianPhone:              data.physician_phone as string | null,
+    physicianNpi:                data.physician_npi as string | null,
+    patientName:                 data.patient_name as string | null,
+    patientDob:                  data.patient_dob as string | null,
     applicationCpts:             data.application_cpts as string | null,
     surgicalGlobalPeriod:        data.surgical_global_period as boolean | null,
     globalPeriodCpt:             data.global_period_cpt as string | null,
@@ -89,64 +99,46 @@ export async function getOrderIVR(
     await getCurrentUserOrThrow(supabase);
 
     const adminClient = createAdminClient();
-    let { data, error } = await adminClient
-      .from("order_ivr")
-      .select("*")
-      .eq("order_id", orderId)
-      .maybeSingle();
 
-    if (error) {
-      console.error("[getOrderIVR]", JSON.stringify(error));
+    // Fetch IVR record and order context in parallel
+    const [ivrRes, orderCtxRes] = await Promise.all([
+      adminClient.from("order_ivr").select("*").eq("order_id", orderId).maybeSingle(),
+      adminClient
+        .from("orders")
+        .select(`
+          assigned_provider_id, created_by,
+          facilities!orders_facility_id_fkey(name, address_line_1, phone, contact),
+          patients!orders_patient_id_fkey(first_name, last_name, date_of_birth)
+        `)
+        .eq("id", orderId)
+        .single(),
+    ]);
+
+    if (ivrRes.error) {
+      console.error("[getOrderIVR]", JSON.stringify(ivrRes.error));
       return { ivr: null, physicianName: null };
     }
 
-    // Auto-initialize a new IVR record with sensible defaults
-    if (!data) {
-      // Fetch patient name from the order (for subscriber_name default)
-      const { data: orderRow } = await adminClient
-        .from("orders")
-        .select("patient_id, patients(first_name, last_name)")
-        .eq("id", orderId)
-        .single();
+    const orderCtx = orderCtxRes.data;
 
-      const patientRow = orderRow?.patients as unknown;
-      const patient = (
-        Array.isArray(patientRow) ? patientRow[0] : patientRow
-      ) as { first_name: string; last_name: string } | null | undefined;
-      const patientName = patient?.first_name
-        ? `${patient.first_name} ${patient.last_name ?? ""}`.trim()
-        : null;
+    // Resolve facility from join
+    const facilityRaw = orderCtx?.facilities as unknown;
+    const facility = (Array.isArray(facilityRaw) ? facilityRaw[0] : facilityRaw) as
+      | { name: string; address_line_1: string | null; phone: string | null; contact: string | null }
+      | null | undefined;
 
-      await adminClient
-        .from("order_ivr")
-        .upsert(
-          {
-            order_id:        orderId,
-            place_of_service: "office",
-            subscriber_name:  patientName,
-          },
-          { onConflict: "order_id" },
-        );
-
-      const { data: created } = await adminClient
-        .from("order_ivr")
-        .select("*")
-        .eq("order_id", orderId)
-        .single();
-
-      data = created;
-    }
-
-    if (!data) return { ivr: null, physicianName: null };
+    // Resolve patient from join
+    const patientRaw = orderCtx?.patients as unknown;
+    const patient = (Array.isArray(patientRaw) ? patientRaw[0] : patientRaw) as
+      | { first_name: string; last_name: string; date_of_birth: string | null }
+      | null | undefined;
+    const resolvedPatientName = patient?.first_name
+      ? `${patient.first_name} ${patient.last_name ?? ""}`.trim()
+      : null;
 
     // Resolve physician name: assigned_provider_id → created_by fallback
     let physicianName: string | null = null;
     try {
-      const { data: orderCtx } = await adminClient
-        .from("orders")
-        .select("assigned_provider_id, created_by")
-        .eq("id", orderId)
-        .single();
       const providerId = orderCtx?.assigned_provider_id || orderCtx?.created_by;
       if (providerId) {
         const { data: profile } = await adminClient
@@ -159,10 +151,49 @@ export async function getOrderIVR(
         }
       }
     } catch {
-      // Non-fatal — physician name stays null
+      // Non-fatal
     }
 
-    return { ivr: mapIvrRow(data as Record<string, unknown>), physicianName };
+    let data = ivrRes.data;
+
+    // Auto-initialize a new IVR record pre-populated from source tables (Fix 5)
+    if (!data) {
+      await adminClient.from("order_ivr").upsert(
+        {
+          order_id:         orderId,
+          place_of_service: "office",
+          subscriber_name:  resolvedPatientName,
+          // Override columns pre-populated from source tables
+          facility_name:    facility?.name ?? null,
+          facility_address: facility?.address_line_1 ?? null,
+          facility_phone:   facility?.phone ?? null,
+          facility_contact: facility?.contact ?? null,
+          physician_name:   physicianName,
+          patient_name:     resolvedPatientName,
+          patient_dob:      patient?.date_of_birth ?? null,
+        },
+        { onConflict: "order_id" },
+      );
+
+      const { data: created } = await adminClient
+        .from("order_ivr").select("*").eq("order_id", orderId).single();
+      data = created;
+    }
+
+    if (!data) return { ivr: null, physicianName };
+
+    const ivrData = mapIvrRow(data as Record<string, unknown>);
+
+    // Fix 2: Apply source table fallback for null override fields
+    if (!ivrData.facilityName)    ivrData.facilityName    = facility?.name    ?? null;
+    if (!ivrData.facilityAddress) ivrData.facilityAddress = facility?.address_line_1 ?? null;
+    if (!ivrData.facilityPhone)   ivrData.facilityPhone   = facility?.phone   ?? null;
+    if (!ivrData.facilityContact) ivrData.facilityContact = facility?.contact  ?? null;
+    if (!ivrData.physicianName)   ivrData.physicianName   = physicianName;
+    if (!ivrData.patientName)     ivrData.patientName     = resolvedPatientName;
+    if (!ivrData.patientDob)      ivrData.patientDob      = patient?.date_of_birth ?? null;
+
+    return { ivr: ivrData, physicianName };
   } catch (err) {
     console.error("[getOrderIVR] unexpected:", err);
     return { ivr: null, physicianName: null };
@@ -235,6 +266,16 @@ export async function upsertOrderIVR(
     if (data.secondaryGroupNumber !== undefined) payload.secondary_group_number = data.secondaryGroupNumber;
     if (data.secondarySubscriberRelationship !== undefined) payload.secondary_subscriber_relationship = data.secondarySubscriberRelationship;
     // CPT / global period
+    // Override columns
+    if (data.facilityName !== undefined)    payload.facility_name    = data.facilityName;
+    if (data.facilityAddress !== undefined) payload.facility_address = data.facilityAddress;
+    if (data.facilityPhone !== undefined)   payload.facility_phone   = data.facilityPhone;
+    if (data.facilityContact !== undefined) payload.facility_contact = data.facilityContact;
+    if (data.physicianName !== undefined)   payload.physician_name   = data.physicianName;
+    if (data.physicianPhone !== undefined)  payload.physician_phone  = data.physicianPhone;
+    if (data.physicianNpi !== undefined)    payload.physician_npi    = data.physicianNpi;
+    if (data.patientName !== undefined)     payload.patient_name     = data.patientName;
+    if (data.patientDob !== undefined)      payload.patient_dob      = data.patientDob;
     if (data.applicationCpts !== undefined) payload.application_cpts = data.applicationCpts;
     if (data.surgicalGlobalPeriod !== undefined) payload.surgical_global_period = data.surgicalGlobalPeriod;
     if (data.globalPeriodCpt !== undefined) payload.global_period_cpt = data.globalPeriodCpt;
