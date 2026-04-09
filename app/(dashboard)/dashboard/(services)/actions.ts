@@ -33,17 +33,16 @@ export async function getUserData(): Promise<UserData | null> {
   } = await supabase.auth.getUser();
   if (error || !user) return null;
 
-  const firstName = user.user_metadata?.first_name || "";
-  const lastName = user.user_metadata?.last_name || "";
-  const fullName = `${firstName} ${lastName}`.trim() || "User";
-  const initials =
-    `${firstName?.[0] || ""}${lastName?.[0] || ""}`.toUpperCase() || "U";
-
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role")
+    .select("first_name, last_name, role")
     .eq("id", user.id)
     .maybeSingle();
+
+  const firstName = profile?.first_name || user.user_metadata?.first_name || "";
+  const lastName  = profile?.last_name  || user.user_metadata?.last_name  || "";
+  const fullName  = `${firstName} ${lastName}`.trim() || "User";
+  const initials  = `${firstName?.[0] || ""}${lastName?.[0] || ""}`.toUpperCase() || "U";
 
   const role: UserRole = profile?.role ?? user.user_metadata?.role ?? "sales_representative";
 
