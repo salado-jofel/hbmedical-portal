@@ -13,7 +13,6 @@ import {
   Users,
   ChevronLeft,
   DollarSign,
-  Receipt,
   TrendingUp,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
@@ -123,13 +122,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
         href: "/dashboard/commissions",
         visible: isAdmin,
       },
-      {
-        icon: Receipt,
-        label: "Sales",
-        href: "/dashboard/sales-log",
-        visible: (role) => isAdmin(role) || isSalesRep(role),
-      },
-      {
+{
         icon: TrendingUp,
         label: "My Performance",
         href: "/dashboard/rep-performance",
