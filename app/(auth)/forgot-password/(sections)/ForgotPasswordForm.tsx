@@ -41,7 +41,7 @@ export default function ForgotPasswordForm() {
         <p className="text-sm text-[#64748B] mb-8 leading-relaxed">
           We&apos;ve sent a password reset link to your email. Click the link to
           set a new password for your{" "}
-          <span className="text-[#15689E] font-medium">HB Medical</span> account.
+          <span className="text-[var(--navy)] font-medium">HB Medical</span> account.
         </p>
 
         <div className="space-y-4">
@@ -98,7 +98,7 @@ export default function ForgotPasswordForm() {
 
         <div className="space-y-3 pt-1">
           <SubmitButton
-            classname="h-9 w-full font-medium bg-[#15689E] hover:bg-[#125d8e] text-white rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            classname="h-9 w-full font-medium bg-[var(--navy)] hover:bg-[var(--navy)]/80 text-white rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             isPending={isPending}
             disabled={!isFormValid}
             type="submit"
@@ -114,7 +114,7 @@ export default function ForgotPasswordForm() {
       <div className="mt-8 text-center">
         <Link
           href="/sign-in"
-          className="inline-flex items-center gap-2 text-sm font-medium text-[#64748B] hover:text-[#15689E] transition-colors"
+          className="inline-flex items-center gap-2 text-sm font-medium text-[#64748B] hover:text-[var(--navy)] transition-colors"
         >
           <ArrowLeft className="w-4 h-4" /> Back to Sign In
         </Link>

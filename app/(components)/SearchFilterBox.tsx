@@ -37,7 +37,7 @@ export function SearchFilterBar({
           placeholder={placeholder}
           value={searchValue}
           onChange={(e) => onSearchChange(e.target.value)}
-          className="w-full pl-9 pr-4 h-9 bg-white border border-[#E2E8F0] rounded-lg text-sm text-[#0F172A] placeholder:text-[#94A3B8] focus:outline-none focus:border-[#15689E] focus:ring-2 focus:ring-[#15689E]/10 transition-colors"
+          className="w-full pl-9 pr-4 h-9 bg-white border border-[var(--border)] rounded-lg text-sm text-[var(--navy)] placeholder:text-[var(--text3)] focus:outline-none focus:border-[var(--navy)] focus:ring-2 focus:ring-[var(--navy)]/10 transition-colors"
         />
       </div>
 
@@ -45,7 +45,7 @@ export function SearchFilterBar({
         <select
           value={filterValue}
           onChange={(e) => onFilterChange(e.target.value)}
-          className="w-full sm:w-auto border border-[#E2E8F0] rounded-lg px-3 h-9 text-sm text-[#0F172A] focus:outline-none focus:border-[#15689E] focus:ring-2 focus:ring-[#15689E]/10 bg-white transition-colors"
+          className="w-full sm:w-auto border border-[var(--border)] rounded-lg px-3 h-9 text-sm text-[var(--navy)] focus:outline-none focus:border-[var(--navy)] focus:ring-2 focus:ring-[var(--navy)]/10 bg-white transition-colors"
         >
           {filterOptions.map((opt) => (
             <option key={opt.value} value={opt.value}>

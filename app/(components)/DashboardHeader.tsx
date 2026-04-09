@@ -1,4 +1,5 @@
 "use client";
+// @deprecated — use PageHeader from "@/app/(components)/PageHeader" for new pages.
 
 import { ReactNode, useEffect, useState } from "react";
 import { useAppSelector } from "@/store/hooks";
@@ -26,22 +27,22 @@ export function DashboardHeader({
   const showGreetingText = mounted && showGreeting && !!userData.name;
 
   return (
-    <div className="flex items-start justify-between gap-4 pb-5 mb-6 border-b border-[#E2E8F0]">
+    <div className="flex items-start justify-between gap-4 pb-5 mb-5 border-b border-[var(--border)]">
       <div className="flex items-start gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-[#0F172A] leading-tight">
+          <h1 className="text-[13px] font-semibold text-[var(--navy)] leading-tight">
             {title}
           </h1>
 
           {showGreeting ? (
             <p
-              className="text-sm text-[#64748B] mt-0.5 min-h-[20px]"
+              className="text-[11px] text-[var(--text3)] mt-0.5 min-h-[18px]"
               suppressHydrationWarning
             >
               {showGreetingText ? (
                 <>
                   Welcome back,{" "}
-                  <span className="font-semibold text-[#0F172A]">
+                  <span className="font-semibold text-[var(--navy)]">
                     {userData.name}
                   </span>
                   ! Here&apos;s your sales overview.
@@ -51,7 +52,7 @@ export function DashboardHeader({
               )}
             </p>
           ) : description ? (
-            <p className="text-sm text-[#64748B] mt-0.5">
+            <p className="text-[11px] text-[var(--text3)] mt-0.5">
               {description}
             </p>
           ) : null}

@@ -36,7 +36,7 @@ const outcomeBadgeVariants = cva(
     variants: {
       outcome: {
         positive: "bg-emerald-50 text-emerald-700",
-        neutral: "bg-[#F1F5F9] text-[#64748B]",
+        neutral: "bg-[var(--border)] text-[var(--text2)]",
         negative: "bg-red-50 text-red-600",
         no_response: "bg-amber-50 text-amber-700",
       },
@@ -101,8 +101,8 @@ export function ActivitiesTab({
               className={cn(
                 "px-3 py-1 rounded-full text-xs font-medium transition-colors",
                 typeFilter === opt.value
-                  ? "bg-[#15689E] text-white"
-                  : "bg-[#F1F5F9] text-[#64748B] hover:bg-[#E2E8F0]",
+                  ? "bg-[var(--navy)] text-white"
+                  : "bg-[var(--border)] text-[var(--text2)] hover:bg-[var(--border)]",
               )}
             >
               {opt.label}
@@ -136,7 +136,7 @@ export function ActivitiesTab({
               <motion.div
                 key={activity.id}
                 variants={fadeUp}
-                className="bg-white border border-[#E2E8F0] rounded-xl p-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)]"
+                className="bg-white border border-[var(--border)] rounded-xl p-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)]"
               >
                 <div className="flex items-start gap-3">
                   {/* Type icon */}
@@ -152,7 +152,7 @@ export function ActivitiesTab({
                   {/* Content */}
                   <div className="flex-1 min-w-0 space-y-1.5">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-semibold text-[#0F172A]">
+                      <span className="text-sm font-semibold text-[var(--navy)]">
                         {TYPE_LABELS[activity.type]}
                       </span>
                       <span
@@ -171,9 +171,9 @@ export function ActivitiesTab({
                         {OUTCOME_LABELS[activity.outcome]}
                       </span>
                       {activity.contact && (
-                        <span className="text-xs text-[#94A3B8]">
+                        <span className="text-xs text-[var(--text3)]">
                           with{" "}
-                          <span className="font-medium text-[#64748B]">
+                          <span className="font-medium text-[var(--text2)]">
                             {activity.contact.first_name}{" "}
                             {activity.contact.last_name}
                           </span>
@@ -181,7 +181,7 @@ export function ActivitiesTab({
                       )}
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-3 text-xs text-[#94A3B8]">
+                    <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--text3)]">
                       <span>
                         {new Date(activity.activity_date + "T00:00:00").toLocaleDateString(
                           "en-US",
@@ -191,7 +191,7 @@ export function ActivitiesTab({
                       {activity.logged_by_profile && (
                         <span>
                           Logged by{" "}
-                          <span className="text-[#64748B]">
+                          <span className="text-[var(--text2)]">
                             {activity.logged_by_profile.first_name}{" "}
                             {activity.logged_by_profile.last_name}
                           </span>
@@ -200,7 +200,7 @@ export function ActivitiesTab({
                     </div>
 
                     {activity.notes && (
-                      <p className="text-sm text-[#64748B] leading-relaxed border-t border-[#F1F5F9] pt-2 mt-2">
+                      <p className="text-sm text-[var(--text2)] leading-relaxed border-t border-[var(--border)] pt-2 mt-2">
                         {activity.notes}
                       </p>
                     )}
@@ -216,7 +216,7 @@ export function ActivitiesTab({
                       <button
                         type="button"
                         onClick={() => { setDeleteId(activity.id); setConfirmOpen(true); }}
-                        className="w-7 h-7 flex items-center justify-center rounded-md text-[#94A3B8] hover:text-red-600 hover:bg-red-50 transition-colors"
+                        className="w-7 h-7 flex items-center justify-center rounded-md text-[var(--text3)] hover:text-red-600 hover:bg-red-50 transition-colors"
                         title="Delete activity"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -230,7 +230,7 @@ export function ActivitiesTab({
         </motion.div>
       )}
 
-      <p className="text-xs text-[#94A3B8] text-right">
+      <p className="text-xs text-[var(--text3)] text-right">
         {filtered.length} of {activities.length} activit
         {activities.length !== 1 ? "ies" : "y"}
       </p>

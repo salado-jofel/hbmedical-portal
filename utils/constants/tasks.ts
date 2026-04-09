@@ -11,7 +11,7 @@ export const GROUP_CONFIG = {
   },
   upcoming: {
     label: "Upcoming",
-    dotClass: "bg-[#15689E]",
+    dotClass: "bg-[var(--navy)]",
     emptyLabel: "No upcoming tasks",
   },
   done: {

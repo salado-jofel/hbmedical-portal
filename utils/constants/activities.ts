@@ -18,7 +18,7 @@ export const TYPE_LABELS: Record<ActivityType, string> = {
 
 export const TYPE_COLORS: Record<ActivityType, string> = {
   visit: "bg-emerald-50 text-emerald-700",
-  call:  "bg-blue-50 text-[#15689E]",
+  call:  "bg-blue-50 text-[var(--navy)]",
   email: "bg-violet-50 text-violet-700",
   demo:  "bg-[#e8821a]/10 text-[#e8821a]",
 };

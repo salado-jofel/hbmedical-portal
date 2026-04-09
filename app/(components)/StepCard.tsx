@@ -42,12 +42,12 @@ export function StepCard({
           },
         }}
       >
-        <p className="text-[#15689E]/40 text-xs font-bold tracking-widest mb-2">
+        <p className="text-[var(--navy)]/40 text-xs font-bold tracking-widest mb-2">
           {number}
         </p>
 
         <motion.div
-          className="w-14 h-14 rounded-2xl bg-[#15689E] text-white flex items-center justify-center shadow-lg shadow-[#15689E]/20 mb-4 shrink-0"
+          className="w-14 h-14 rounded-2xl bg-[var(--navy)] text-white flex items-center justify-center shadow-lg /20 mb-4 shrink-0"
           whileHover={{ scale: 1.12, rotate: -6 }}
           transition={{ type: "spring", stiffness: 300, damping: 15 }}
         >

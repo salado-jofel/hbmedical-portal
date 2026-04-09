@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole } from "@/lib/supabase/auth";
 import { isAdmin as checkIsAdmin } from "@/utils/helpers/role";
-import { DashboardHeader } from "@/app/(components)/DashboardHeader";
+import { PageHeader } from "@/app/(components)/PageHeader";
 
 export const metadata: Metadata = { title: "Tasks" };
 import { getTasks } from "@/app/(dashboard)/dashboard/tasks/(services)/actions";
@@ -30,8 +30,8 @@ export default async function TasksPage() {
   ]);
 
   return (
-    <div className="p-6 md:p-8 max-w-480 mx-auto space-y-6">
-      <DashboardHeader title="Tasks" description="Track follow-ups and action items" />
+    <>
+      <PageHeader title="Tasks" subtitle="Track follow-ups and action items" />
       <Providers tasks={tasks}>
         <TasksBoard
           accounts={accounts}
@@ -39,6 +39,6 @@ export default async function TasksPage() {
           isAdmin={admin}
         />
       </Providers>
-    </div>
+    </>
   );
 }

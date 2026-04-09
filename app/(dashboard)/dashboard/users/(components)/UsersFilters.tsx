@@ -24,7 +24,7 @@ export function UsersFilters({
   return (
     <>
       {/* Status filter tabs */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-[#E2E8F0]">
+      <div className="flex gap-[3px] overflow-x-auto rounded-[var(--r)] border border-[var(--border)] bg-[var(--surface)] p-1">
         {(
           [
             { key: "all",      label: "All Users", count: stats.total    },
@@ -39,15 +39,15 @@ export function UsersFilters({
               key={key}
               type="button"
               onClick={() => onStatusFilterChange(key)}
-              className={`inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors relative -mb-px ${
+              className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-[7px] px-3 py-[6px] text-[12px] font-medium transition-all duration-150 ${
                 isActive
-                  ? "text-[#15689E] border-b-2 border-[#15689E]"
-                  : "text-[#94A3B8] hover:text-[#64748B]"
+                  ? "bg-[var(--navy)] text-white"
+                  : "text-[var(--text2)] hover:bg-[var(--bg)]"
               }`}
             >
               {label}
-              <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
-                isActive ? "bg-[#EFF6FF] text-[#15689E]" : "bg-[#F1F5F9] text-[#64748B]"
+              <span className={`text-[11px] px-1.5 py-0.5 rounded-full font-semibold ${
+                isActive ? "bg-white/20 text-white" : "bg-[var(--border)] text-[var(--text2)]"
               }`}>
                 {count}
               </span>

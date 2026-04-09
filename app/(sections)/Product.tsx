@@ -104,7 +104,7 @@ export function Product() {
           viewport={VIEWPORT}
           variants={badgePop}
         >
-          <span className="bg-[#15689E]/10 text-[#15689E] text-xs font-semibold tracking-widest uppercase px-4 py-1.5 rounded-full border border-[#15689E]/20">
+          <span className="bg-[var(--navy)]/10 text-[var(--navy)] text-xs font-semibold tracking-widest uppercase px-4 py-1.5 rounded-full border border-[var(--navy)]/20">
             The Product
           </span>
         </motion.div>
@@ -139,12 +139,12 @@ export function Product() {
             variants={fadeLeft}
           >
             <motion.div
-              className="relative w-56 h-56 rounded-full border-2 border-[#15689E]/30 flex items-center justify-center bg-[#15689E]/5 shadow-xl shadow-[#15689E]/10"
+              className="relative w-56 h-56 rounded-full border-2 border-[var(--navy)]/30 flex items-center justify-center bg-[var(--navy)]/5 shadow-xl /10"
               whileHover={{ scale: 1.04, rotate: 2 }}
               transition={{ type: "spring", stiffness: 200, damping: 15 }}
             >
-              <div className="w-44 h-44 rounded-full border border-[#15689E]/20 flex items-center justify-center bg-white">
-                <div className="w-32 h-32 rounded-full bg-gradient-to-br from-[#15689E] to-[#0d4a72] flex items-center justify-center shadow-lg">
+              <div className="w-44 h-44 rounded-full border border-[var(--navy)]/20 flex items-center justify-center bg-white">
+                <div className="w-32 h-32 rounded-full bg-gradient-to-br from-[var(--navy)] to-[#0d4a72] flex items-center justify-center shadow-lg">
                   <svg
                     className="w-14 h-14 text-white"
                     fill="none"

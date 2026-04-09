@@ -182,7 +182,7 @@ export function Form1500Modal({
                     <select
                       value={str("insurance_type")}
                       onChange={(e) => handleChange("insurance_type", e.target.value)}
-                      className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-[#15689E]"
+                      className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-[var(--navy)]"
                     >
                       <option value="">Select...</option>
                       <option value="medicare">Medicare</option>

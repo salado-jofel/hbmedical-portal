@@ -99,7 +99,7 @@ export function AddProductModal() {
           type="button"
           variant="default"
           size="default"
-          classname="bg-[#15689E] hover:bg-[#0f4f7a] text-white cursor-pointer"
+          classname="bg-[var(--navy)] hover:bg-[#0f4f7a] text-white cursor-pointer"
           cta={
             <>
               <Plus className="w-4 h-4 mr-2" />
@@ -109,9 +109,9 @@ export function AddProductModal() {
         />
       </DialogTrigger>
 
-      <DialogContent className="w-[calc(100%-2rem)] sm:max-w-2xl sm:rounded-2xl border border-[#E2E8F0] shadow-[0_20px_60px_rgba(0,0,0,0.12)]">
+      <DialogContent className="w-[calc(100%-2rem)] sm:max-w-2xl sm:rounded-2xl border border-[var(--border)] shadow-[0_20px_60px_rgba(0,0,0,0.12)]">
         <DialogHeader>
-          <DialogTitle className="text-lg font-semibold text-[#0F172A]">
+          <DialogTitle className="text-lg font-semibold text-[var(--navy)]">
             Add New Product
           </DialogTitle>
         </DialogHeader>
@@ -120,7 +120,7 @@ export function AddProductModal() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label className="flex items-center gap-2 text-sm font-medium text-[#374151]">
-                <Hash className="w-4 h-4 text-[#15689E]" />
+                <Hash className="w-4 h-4 text-[var(--navy)]" />
                 SKU
               </label>
               <Input
@@ -135,7 +135,7 @@ export function AddProductModal() {
 
             <div className="space-y-1.5">
               <label className="flex items-center gap-2 text-sm font-medium text-[#374151]">
-                <Package className="w-4 h-4 text-[#15689E]" />
+                <Package className="w-4 h-4 text-[var(--navy)]" />
                 Product Name
               </label>
               <Input
@@ -150,7 +150,7 @@ export function AddProductModal() {
 
             <div className="space-y-1.5">
               <label className="flex items-center gap-2 text-sm font-medium text-[#374151]">
-                <Tag className="w-4 h-4 text-[#15689E]" />
+                <Tag className="w-4 h-4 text-[var(--navy)]" />
                 Category
               </label>
               <Input
@@ -164,7 +164,7 @@ export function AddProductModal() {
 
             <div className="space-y-1.5">
               <label className="flex items-center gap-2 text-sm font-medium text-[#374151]">
-                <DollarSign className="w-4 h-4 text-[#15689E]" />
+                <DollarSign className="w-4 h-4 text-[var(--navy)]" />
                 Unit Price
               </label>
               <Input
@@ -182,7 +182,7 @@ export function AddProductModal() {
 
             <div className="space-y-1.5">
               <label className="flex items-center gap-2 text-sm font-medium text-[#374151]">
-                <ArrowUpDown className="w-4 h-4 text-[#15689E]" />
+                <ArrowUpDown className="w-4 h-4 text-[var(--navy)]" />
                 Sort Order
               </label>
               <Input
@@ -213,7 +213,7 @@ export function AddProductModal() {
 
           <div className="space-y-1.5">
             <label className="flex items-center gap-2 text-sm font-medium text-[#374151]">
-              <FileText className="w-4 h-4 text-[#15689E]" />
+              <FileText className="w-4 h-4 text-[var(--navy)]" />
               Description
             </label>
             <textarea
@@ -223,7 +223,7 @@ export function AddProductModal() {
               rows={4}
               disabled={isSubmitting}
               placeholder="Optional product description..."
-              className="w-full rounded-md border border-[#E2E8F0] px-3 py-2 text-sm text-[#0F172A] outline-none focus:border-[#15689E] focus:ring-2 focus:ring-[#15689E]/10 disabled:opacity-50"
+              className="w-full rounded-md border border-[var(--border)] px-3 py-2 text-sm text-[var(--navy)] outline-none focus:border-[var(--navy)] focus:ring-2 focus:ring-[var(--navy)]/10 disabled:opacity-50"
             />
           </div>
 
@@ -234,7 +234,7 @@ export function AddProductModal() {
               size="default"
               onClick={() => handleOpenChange(false)}
               disabled={isSubmitting}
-              classname="w-full sm:w-auto border-[#E2E8F0] text-[#374151] hover:bg-[#F8FAFC] cursor-pointer"
+              classname="w-full sm:w-auto border-[var(--border)] text-[#374151] hover:bg-[var(--bg)] cursor-pointer"
               cta={<span>Cancel</span>}
             />
             <SubmitButton
@@ -250,7 +250,7 @@ export function AddProductModal() {
               isPendingMesssage="Saving..."
               variant="default"
               size="default"
-              classname="w-full sm:w-auto bg-[#15689E] hover:bg-[#0f4f7a] text-white cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              classname="w-full sm:w-auto bg-[var(--navy)] hover:bg-[#0f4f7a] text-white cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             />
           </div>
         </form>

@@ -41,6 +41,7 @@
     - 15.2 [Redux Store Layout](#152-redux-store-layout)
     - 15.3 [Shared Components](#153-shared-components)
     - 15.4 [Database Tables Reference](#154-database-tables-reference)
+16. [Commissions](#16-commissions)
 
 ---
 
@@ -1208,7 +1209,8 @@ store
 ├── marketing     → items[], selectedIds[], isSelecting
 ├── trainings     → items[], selectedIds[], isSelecting
 ├── hospitalOnboarding → items[], selectedIds[], isSelecting
-└── profile       → item (Profile | null)
+├── profile       → item (Profile | null)
+└── commissions   → rates[], commissions[], payouts[], summary{}
 ```
 
 **Pattern:** Each feature's `Providers.tsx` hydrates its slice from server-fetched data on mount. Mutations call server actions then dispatch optimistic Redux updates.
@@ -1261,6 +1263,9 @@ store
 | `message_reads` | Orders | Read receipts per user per message |
 | `order_history` | Orders | Audit trail of status transitions |
 | `notifications` | Orders | Per-user notifications from status changes |
+| `commission_rates` | Commissions | Versioned rates per rep (effective_from/to); active = effective_to IS NULL |
+| `commissions` | Commissions | One row per paid order per rep; snapshots rate at calculation time |
+| `payouts` | Commissions | Monthly payout batches per rep; unique on (rep_id, period) |
 
 **DB functions:**
 - `get_unread_message_counts(user_id)` → `{order_id, unread_count}[]`
@@ -1271,3 +1276,114 @@ store
 - `is_facility_member(facility_id)` → boolean
 - `is_rep_facility(rep_id, facility_id)` → boolean (recursive via rep_hierarchy)
 - `set_updated_at()` / `set_row_updated_at()` — BEFORE UPDATE triggers on all tables
+
+---
+
+## 16. Commissions
+
+### Purpose
+Commission tracking and payout management for sales representatives. Admins set per-rep rates, commissions are auto-calculated when an order is paid, admins approve and batch commissions into monthly payouts.
+
+### User Roles
+
+| Role | Access |
+|------|--------|
+| admin | Full access — set rates for any rep, view all commissions, approve, adjust, generate and mark payouts |
+| sales_representative | View own commissions and payouts; set rates for direct sub-reps only |
+| all others | Redirected to `/dashboard` |
+
+### Pages & Routes
+
+| Route | Description |
+|-------|-------------|
+| `/dashboard/commissions` | Commission overview — KPIs, calculator, rate management, ledger, payouts |
+
+### Business Logic
+
+**Commission flow:**
+1. **Rate set:** Admin (or rep for sub-reps) creates a rate record via `setCommissionRate`. A new rate is inserted first (with `effective_to = NULL`), then all other active rates for that rep are closed (`effective_to = today`), excluding the newly inserted row. The active rate is always the one where `effective_to IS NULL`.
+2. **Order paid:** Stripe webhook (`checkout.session.completed`, `checkout.session.async_payment_succeeded`, or `invoice.paid`) triggers `calculateOrderCommission(orderId)` inside a non-blocking try/catch — payment flow is never blocked by commission failure.
+3. **Commission calculated:** `calculateOrderCommission` looks up the facility's `assigned_rep`, resolves the active rate for that rep, inserts a `direct` commission row. If the rep has a parent rep (`rep_hierarchy`), also inserts an `override` commission for the parent at the parent's `override_percent`.
+4. **Admin approves:** Admin selects pending commissions in the ledger and bulk-approves via `approveCommissions(ids)`. Status: `pending` → `approved`.
+5. **Payout generated:** Admin calls `generatePayout(repId, period)` — upserts a payout record (unique on rep_id + period) that sums all `approved` commissions for that rep and period. Status starts as `draft`.
+6. **Payout paid:** Admin calls `markPayoutPaid(payoutId)` — sets payout `status = "paid"` and updates all linked commissions to `status = "paid"`, recording `paid_at` and `paid_by`.
+
+**Commission types:**
+- `direct` — standard commission for the rep assigned to the facility
+- `override` — commission for the parent rep based on `override_percent` from their rate
+
+**Statuses:**
+- `commissions.status`: `pending` → `approved` → `paid`; `void` (manual nullification)
+- `payouts.status`: `draft` → `approved` → `paid`
+
+**Rate versioning:** Only one active rate per rep at a time (`effective_to IS NULL`). New rate is inserted first, then prior active rates are closed — insert failure leaves prior rate intact.
+
+**Adjustment:** Admin can apply a dollar adjustment to any commission via `adjustCommission`. `final_amount` is a generated column (`commission_amount + adjustment`); falls back to `commission_amount + adjustment` if null.
+
+### Server Actions
+**File:** `app/(dashboard)/dashboard/commissions/(services)/actions.ts`
+
+| Action | Auth | Description |
+|--------|------|-------------|
+| `getCommissionRates()` | admin/rep | Fetches all commission rates with rep and set-by name joins. Returns `ICommissionRate[]`. |
+| `setCommissionRate(_prev, formData)` | admin/rep | Validates (rep_id, rate_percent 0–100, override_percent 0–100). Inserts new rate first (captures new row ID), then closes prior active rates excluding the new one. Returns `ICommissionRateFormState`. |
+| `getCommissions()` | admin/rep | Fetches commissions with order number and rep name. Admin sees all; rep sees own only (RLS). Returns `ICommission[]`. |
+| `calculateOrderCommission(orderId)` | server-only | Resolves `assigned_rep` from facility; resolves active rate; idempotency pre-check before insert. Inserts direct commission. If rep has parent in `rep_hierarchy`, idempotency-checks then inserts override commission. Skips $0 orders and $0 overrides. |
+| `adjustCommission(id, adjustment, notes)` | admin | Validates adjustment is finite and within ±$1,000,000. Updates `adjustment` and `notes` on a commission row. Returns `{ success, error }`. |
+| `approveCommissions(ids)` | admin | Bulk-updates `status = "approved"` for given commission IDs. Returns `{ success, error }`. |
+| `getPayouts()` | admin/rep | Fetches payouts with rep name. Admin sees all; rep sees own. Returns `IPayout[]`. |
+| `generatePayout(repId, period)` | admin | Upserts payout for rep+period; sums approved commissions into `total_amount`. Returns `{ success, error }`. |
+| `markPayoutPaid(payoutId)` | admin | Sets payout `status = "paid"`, records `paid_at` and `paid_by`. Updates linked commissions to `status = "paid"`. Returns `{ success, error }`. |
+| `getRepCommissionSummary()` | admin/rep | Returns `ICommissionSummary`: `totalEarned`, `totalPending`, `totalPaid`, `currentRate`. |
+
+### Redux State
+**Slice:** `commissions-slice.ts` — `CommissionsState`
+
+| Key | Type | Updated by |
+|-----|------|-----------|
+| `rates` | `ICommissionRate[]` | `setRates`, `addRateToStore` |
+| `commissions` | `ICommission[]` | `setCommissions`, `updateCommissionInStore` |
+| `payouts` | `IPayout[]` | `setPayouts`, `updatePayoutInStore` |
+| `summary` | `ICommissionSummary` | `setSummary` |
+
+### Database Tables
+
+**`commission_rates`**
+- `id`, `rep_id` (FK → profiles), `set_by` (FK → profiles), `rate_percent`, `override_percent`, `effective_from`, `effective_to` (NULL = active), `created_at`, `updated_at`
+- Active rate query: `.eq("rep_id", repId).is("effective_to", null)`
+
+**`commissions`**
+- `id`, `order_id` (FK → orders), `rep_id` (FK → profiles), `type` (direct|override), `order_amount`, `rate_percent` (snapshotted), `commission_amount`, `adjustment`, `final_amount` (generated: commission_amount + adjustment), `status` (pending|approved|paid|void), `payout_period` (YYYY-MM), `paid_at`, `notes`, `created_at`, `updated_at`
+
+**`payouts`**
+- `id`, `rep_id` (FK → profiles), `period` (YYYY-MM), `total_amount`, `status` (draft|approved|paid), `paid_at`, `paid_by` (FK → profiles), `notes`, `created_at`, `updated_at`
+- Unique constraint on `(rep_id, period)` — enforced via upsert
+
+### UI Sections
+
+| Section | Component | Description |
+|---------|-----------|-------------|
+| KPI Row | `page.tsx` | Total Earned, Pending Approval, Total Paid, Current Rate |
+| Commission Calculator | `CommissionCalculator.tsx` | Estimate tool; pre-fills from `summary.currentRate` |
+| Rate Management | `RateManagement.tsx` | Rates table per rep; "Set Rate" dialog (rep select, rate %, override %) |
+| Commission Ledger | `CommissionLedger.tsx` | Full commission table; period filter; bulk approve; per-row adjust; CSV export |
+| Payouts | `PayoutTable.tsx` | Monthly payout batches; "Mark Paid" per approved payout; rep selector (derived from approved commissions in current period) + "Generate Payout" button |
+
+### Webhook Integration
+`calculateOrderCommission` is called non-blocking (wrapped in try/catch) after:
+- `checkout.session.completed` — inside `!wasAlreadyPaid && didMarkPaid` guard
+- `checkout.session.async_payment_succeeded` — inside same guard
+- `invoice.paid` — after receipt email hook in `handleInvoicePaid`
+
+**File references:**
+- `lib/stripe/payments/handle-checkout-webhook.ts` → `calculateCommissionSafely`
+- `lib/stripe/invoices/handle-stripe-invoice-webhook.ts` → `calculateCommissionSafely`
+
+### Edge Cases
+- Commission calculation is idempotent: explicit pre-checks query for existing `(order_id, rep_id, type)` before inserting; unique DB index `commissions_order_rep_type_uidx` is the final backstop.
+- $0 orders are skipped before any DB writes; $0 override amounts are skipped before the override pre-check.
+- Override commissions are only created if the rep has a parent in `rep_hierarchy` AND the parent has an active rate with `override_percent > 0`.
+- `final_amount` is a DB generated column (`commission_amount + adjustment`); UI falls back to `commission_amount + adjustment` when null.
+- Payout `generatePayout` uses upsert — calling it twice for the same rep+period updates the total rather than creating duplicates.
+- Rate insert-first-then-close: if the insert fails, the prior active rate is unchanged. If the close step fails, the new rate is still active; a future `setCommissionRate` call will close the orphaned rate.
+- `CommissionCalculator` initializes commission rate to `5` as a default, then syncs to `summary.currentRate` via `useEffect` once Redux hydrates — avoids stale `useState` initialization from null Redux state on first render.

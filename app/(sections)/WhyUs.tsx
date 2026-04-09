@@ -163,7 +163,7 @@ export function WhyUs() {
       className="py-24 overflow-hidden"
       style={{
         background:
-          "radial-gradient(ellipse at top, #1a7ab8 0%, #15689E 35%, #0d4a72 70%, #082d47 100%)",
+          "radial-gradient(ellipse at top, #1a7ab8 0%, var(--navy) 35%, #0d4a72 70%, #082d47 100%)",
       }}
     >
       <div className="max-w-7xl mx-auto px-6">

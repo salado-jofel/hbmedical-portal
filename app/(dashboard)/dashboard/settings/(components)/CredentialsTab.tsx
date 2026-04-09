@@ -119,7 +119,7 @@ function ChangePinModal({
                   value={currentPin}
                   onChange={(e) => setCurrentPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
                   placeholder="••••"
-                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-[#15689E]/20 focus:border-[#15689E] tracking-widest"
+                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--navy)]/20 focus:border-[var(--navy)] tracking-widest"
                 />
                 <button
                   type="button"
@@ -145,7 +145,7 @@ function ChangePinModal({
                 value={newPin}
                 onChange={(e) => setNewPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
                 placeholder="••••"
-                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-[#15689E]/20 focus:border-[#15689E] tracking-widest"
+                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--navy)]/20 focus:border-[var(--navy)] tracking-widest"
               />
               <button
                 type="button"
@@ -163,7 +163,7 @@ function ChangePinModal({
                   className={cn(
                     "w-3 h-3 rounded-full border-2 transition-all duration-150",
                     newPin.length > i
-                      ? "bg-[#15689E] border-[#15689E]"
+                      ? "bg-[var(--navy)] border-[var(--navy)]"
                       : "border-gray-300",
                   )}
                 />
@@ -184,7 +184,7 @@ function ChangePinModal({
                 value={confirmPin}
                 onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
                 placeholder="••••"
-                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-[#15689E]/20 focus:border-[#15689E] tracking-widest"
+                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--navy)]/20 focus:border-[var(--navy)] tracking-widest"
               />
               <button
                 type="button"
@@ -202,7 +202,7 @@ function ChangePinModal({
                   className={cn(
                     "w-3 h-3 rounded-full border-2 transition-all duration-150",
                     confirmPin.length > i
-                      ? "bg-[#15689E] border-[#15689E]"
+                      ? "bg-[var(--navy)] border-[var(--navy)]"
                       : "border-gray-300",
                   )}
                 />
@@ -241,7 +241,7 @@ function ChangePinModal({
               type="button"
               onClick={handleSubmit}
               disabled={saving}
-              className="flex-1 px-4 py-2.5 rounded-xl bg-[#15689E] text-white text-sm font-semibold hover:bg-[#15689E]/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+              className="flex-1 px-4 py-2.5 rounded-xl bg-[var(--navy)] text-white text-sm font-semibold hover:bg-[var(--navy)]/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
             >
               {saving && (
                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -306,7 +306,7 @@ export function CredentialsTab({ credentials }: CredentialsTabProps) {
           <button
             type="button"
             onClick={() => setShowChangePIN(true)}
-            className="text-sm font-semibold text-[#15689E] hover:underline shrink-0"
+            className="text-sm font-semibold text-[var(--navy)] hover:underline shrink-0"
           >
             {hasPinSet ? "Change PIN" : "Set PIN"}
           </button>

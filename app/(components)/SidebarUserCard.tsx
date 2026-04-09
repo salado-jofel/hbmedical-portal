@@ -26,7 +26,7 @@ interface SidebarUserCardProps {
 function getRoleBadge(role: string, isSubRep?: boolean) {
   if (role === "admin") {
     return {
-      className: "bg-[#EFF6FF] text-[#15689E]",
+      className: "bg-[#EFF6FF] text-[var(--navy)]",
       icon: <ShieldCheck className="w-3 h-3" />,
       label: "ADMIN",
     };
@@ -75,7 +75,7 @@ export function SidebarUserCard({
   collapsed = false,
 }: SidebarUserCardProps) {
   const avatar = (
-    <div className="w-8 h-8 rounded-full bg-[#15689E] flex items-center justify-center text-white text-[11px] font-semibold shrink-0 ring-2 ring-white">
+    <div className="w-8 h-8 rounded-full bg-[var(--navy)] flex items-center justify-center text-white text-[11px] font-semibold shrink-0 ring-2 ring-white">
       {initials || <User className="w-4 h-4" />}
     </div>
   );
@@ -103,10 +103,10 @@ export function SidebarUserCard({
       {avatar}
 
       <div className="flex flex-col overflow-hidden gap-0.5 min-w-0 flex-1">
-        <span className="text-[13px] font-semibold text-[#0F172A] leading-tight truncate tracking-[-0.01em]">
+        <span className="text-[13px] font-semibold text-[var(--navy)] leading-tight truncate tracking-[-0.01em]">
           {name || "—"}
         </span>
-        <span className="text-[10px] text-[#94A3B8] truncate leading-none">
+        <span className="text-[10px] text-[var(--text3)] truncate leading-none">
           {email || "—"}
         </span>
 

@@ -15,9 +15,9 @@ export function CountBadge({
     <span
       className={cn(
         "min-w-5 h-5 inline-flex items-center justify-center rounded-full text-xs font-bold px-1.5",
-        variant === "default" && "bg-[#15689E] text-white",
+        variant === "default" && "bg-[var(--navy)] text-white",
         variant === "overdue" && "bg-red-50 text-red-600 border border-red-200",
-        variant === "muted" && "bg-[#F1F5F9] text-[#64748B]",
+        variant === "muted" && "bg-[var(--border)] text-[var(--text2)]",
         variant === "accent" && "bg-blue-50 text-blue-700",
         className,
       )}

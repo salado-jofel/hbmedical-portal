@@ -79,13 +79,13 @@ function UploadZone({
             "flex flex-col items-center justify-center border-2 border-dashed rounded-xl px-3 py-4 cursor-pointer transition-all text-center",
             error
               ? "border-red-300 bg-red-50"
-              : "border-slate-200 bg-slate-50 hover:border-[#15689E]/50 hover:bg-blue-50/30"
+              : "border-slate-200 bg-slate-50 hover:border-[var(--navy)]/50 hover:bg-blue-50/30"
           )}
         >
           <Upload className="w-5 h-5 text-slate-300 mb-1.5" />
           <span className="text-xs text-slate-500">
             Drag & drop or{" "}
-            <span className="text-[#15689E] font-medium">browse</span>
+            <span className="text-[var(--navy)] font-medium">browse</span>
           </span>
           <span className="text-[11px] text-slate-400 mt-1">
             PDF, JPG, PNG, HEIC · max 10 MB
@@ -132,7 +132,7 @@ function UploadZone({
               </button>
             </div>
           ))}
-          <label className="flex items-center gap-1 text-[11px] text-[#15689E] hover:underline cursor-pointer mt-1">
+          <label className="flex items-center gap-1 text-[11px] text-[var(--navy)] hover:underline cursor-pointer mt-1">
             <Plus className="w-3 h-3" />
             Add more
             <input
@@ -254,18 +254,18 @@ export function CreateOrderModal() {
       <Button
         type="button"
         onClick={() => setOpen(true)}
-        className="bg-[#15689E] hover:bg-[#125d8e] text-white cursor-pointer rounded-lg shadow-sm"
+        className="bg-[var(--navy)] hover:bg-[var(--navy)]/80 text-white cursor-pointer rounded-lg shadow-sm"
       >
         <Plus className="w-4 h-4 mr-2" />
         New Order
       </Button>
 
       <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="w-[calc(100%-2rem)] sm:max-w-lg max-h-[92dvh] overflow-y-auto rounded-2xl border-[#E2E8F0] shadow-2xl p-0">
+        <DialogContent className="w-[calc(100%-2rem)] sm:max-w-lg max-h-[92dvh] overflow-y-auto rounded-2xl border-[var(--border)] shadow-2xl p-0">
           {/* Header */}
-          <div className="sticky top-0 bg-white z-10 px-6 pt-5 pb-4 border-b border-[#E2E8F0]">
+          <div className="sticky top-0 bg-white z-10 px-6 pt-5 pb-4 border-b border-[var(--border)]">
             <DialogHeader>
-              <DialogTitle className="text-lg font-semibold text-[#0F172A]">
+              <DialogTitle className="text-lg font-semibold text-[var(--navy)]">
                 Create Order
               </DialogTitle>
             </DialogHeader>
@@ -292,7 +292,7 @@ export function CreateOrderModal() {
                       className={cn(
                         "flex-1 py-2.5 px-3 rounded-xl border-2 text-sm font-medium transition-all",
                         woundType === wt.value
-                          ? "border-[#15689E] bg-blue-50 text-[#15689E]"
+                          ? "border-[var(--navy)] bg-blue-50 text-[var(--navy)]"
                           : "border-slate-200 text-slate-600 hover:border-slate-300"
                       )}
                     >
@@ -313,7 +313,7 @@ export function CreateOrderModal() {
                     value={dateOfService}
                     max={new Date().toISOString().split("T")[0]}
                     onChange={(e) => setDateOfService(e.target.value)}
-                    className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#15689E]/20 focus:border-[#15689E]"
+                    className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--navy)]/20 focus:border-[var(--navy)]"
                   />
                   <Button
                     type="button"
@@ -409,11 +409,11 @@ export function CreateOrderModal() {
           </div>
 
           {/* Footer */}
-          <div className="sticky bottom-0 bg-white border-t border-[#E2E8F0] px-6 py-4 flex items-center justify-end gap-3">
+          <div className="sticky bottom-0 bg-white border-t border-[var(--border)] px-6 py-4 flex items-center justify-end gap-3">
             <Button
               type="button"
               variant="outline"
-              className="border-[#E2E8F0]"
+              className="border-[var(--border)]"
               disabled={isPending}
               onClick={handleClose}
             >
@@ -423,7 +423,7 @@ export function CreateOrderModal() {
               type="button"
               disabled={isPending}
               onClick={handleSubmit}
-              className="bg-[#15689E] hover:bg-[#125d8e] text-white"
+              className="bg-[var(--navy)] hover:bg-[var(--navy)]/80 text-white"
             >
               {isPending ? (
                 <>

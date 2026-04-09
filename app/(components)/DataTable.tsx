@@ -40,54 +40,52 @@ export function DataTable<T>({
   }
 
   return (
-    <div className="bg-white rounded-xl border border-[#E2E8F0] overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm text-left">
-          <thead>
-            <tr className="bg-[#F8FAFC] border-b border-[#E2E8F0]">
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm text-left">
+        <thead>
+          <tr className="bg-[var(--bg)] border-b border-[var(--border)]">
+            {rowNumbered && (
+              <th className="px-4 py-[9px] text-[10px] uppercase tracking-[0.6px] font-semibold text-[var(--text3)] w-10">
+                #
+              </th>
+            )}
+            {columns.map((col) => (
+              <th
+                key={col.key}
+                className={`px-4 py-[9px] text-[10px] uppercase tracking-[0.6px] font-semibold text-[var(--text3)] ${col.headerClassName ?? ""}`}
+              >
+                {col.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <motion.tbody variants={staggerContainer} initial="hidden" animate="visible">
+          {data.map((row, index) => (
+            <motion.tr
+              key={keyExtractor(row)}
+              variants={fadeUp}
+              onClick={() => onRowClick?.(row)}
+              className={`border-b border-[var(--border)] last:border-0 hover:bg-[var(--bg)] transition-colors ${
+                onRowClick ? "cursor-pointer" : ""
+              } ${rowClassName}`}
+            >
               {rowNumbered && (
-                <th className="px-4 py-3 text-[10px] uppercase tracking-wider font-semibold text-[#94A3B8] w-10">
-                  #
-                </th>
+                <td className="px-4 py-[10px] text-[13px] font-medium text-[var(--text3)] w-10 select-none">
+                  {index + 1}
+                </td>
               )}
               {columns.map((col) => (
-                <th
+                <td
                   key={col.key}
-                  className={`px-4 py-3 text-[10px] uppercase tracking-wider font-semibold text-[#94A3B8] ${col.headerClassName ?? ""}`}
+                  className={`px-4 py-[10px] text-[13px] ${col.cellClassName ?? ""}`}
                 >
-                  {col.label}
-                </th>
+                  {col.render(row)}
+                </td>
               ))}
-            </tr>
-          </thead>
-          <motion.tbody variants={staggerContainer} initial="hidden" animate="visible">
-            {data.map((row, index) => (
-              <motion.tr
-                key={keyExtractor(row)}
-                variants={fadeUp}
-                onClick={() => onRowClick?.(row)}
-                className={`border-b border-[#F1F5F9] last:border-0 hover:bg-[#FAFBFC] transition-colors ${
-                  onRowClick ? "cursor-pointer" : ""
-                } ${rowClassName}`}
-              >
-                {rowNumbered && (
-                  <td className="px-4 py-3.5 text-xs font-medium text-[#94A3B8] w-10 select-none">
-                    {index + 1}
-                  </td>
-                )}
-                {columns.map((col) => (
-                  <td
-                    key={col.key}
-                    className={`px-4 py-3.5 ${col.cellClassName ?? ""}`}
-                  >
-                    {col.render(row)}
-                  </td>
-                ))}
-              </motion.tr>
-            ))}
-          </motion.tbody>
-        </table>
-      </div>
+            </motion.tr>
+          ))}
+        </motion.tbody>
+      </table>
     </div>
   );
 }

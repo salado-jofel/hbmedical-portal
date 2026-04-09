@@ -7,9 +7,9 @@ const accountStatusBadgeVariants = cva(
   {
     variants: {
       status: {
-        active: "bg-emerald-50 text-emerald-700",
-        prospect: "bg-amber-50 text-amber-700",
-        inactive: "bg-[#F1F5F9] text-[#64748B]",
+        active: "bg-[var(--green-lt)] text-[var(--green)]",
+        prospect: "bg-[var(--gold-lt)] text-[var(--gold)]",
+        inactive: "bg-[var(--border)] text-[var(--text2)]",
       },
     },
     defaultVariants: {
@@ -25,9 +25,9 @@ const STATUS_LABELS: Record<AccountStatus, string> = {
 };
 
 const STATUS_DOTS: Record<AccountStatus, string> = {
-  active: "bg-emerald-500",
-  prospect: "bg-amber-500",
-  inactive: "bg-[#94A3B8]",
+  active: "bg-[var(--green)]",
+  prospect: "bg-[var(--gold)]",
+  inactive: "bg-[var(--text3)]",
 };
 
 interface AccountStatusBadgeProps

@@ -124,6 +124,7 @@ export async function getSalesReps(): Promise<IRepProfile[]> {
     .from(PROFILES_TABLE)
     .select(SALES_REP_SELECT)
     .eq("role", "sales_representative")
+    .eq("status", "active")
     .order("first_name", { ascending: true });
 
   if (error) {

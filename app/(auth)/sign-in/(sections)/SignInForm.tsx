@@ -102,7 +102,7 @@ export default function SignInForm() {
         <div className="flex justify-end -mt-1">
           <Link
             href="/forgot-password"
-            className="text-xs font-medium text-[#15689E] hover:text-[#125d8e] transition-colors"
+            className="text-xs font-medium text-[var(--navy)] hover:text-[#125d8e] transition-colors"
           >
             Forgot password?
           </Link>
@@ -113,7 +113,7 @@ export default function SignInForm() {
           <Checkbox
             id="remember"
             name="remember"
-            className="border-[#E2E8F0] data-[state=checked]:bg-[#15689E] data-[state=checked]:border-[#15689E]"
+            className="border-[#E2E8F0] data-[state=checked]:bg-[var(--navy)] data-[state=checked]:border-[var(--navy)]"
           />
           <label
             htmlFor="remember"
@@ -127,7 +127,7 @@ export default function SignInForm() {
 
           {/* Primary CTA */}
           <SubmitButton
-            classname="h-9 w-full font-medium bg-[#15689E] hover:bg-[#125d8e] text-white rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            classname="h-9 w-full font-medium bg-[var(--navy)] hover:bg-[var(--navy)]/80 text-white rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             isPending={isPending}
             disabled={!isFormValid}
             type="submit"
@@ -144,7 +144,7 @@ export default function SignInForm() {
       <div className="mt-8 text-center">
         <Link
           href="/"
-          className="inline-flex items-center gap-2 text-sm font-medium text-[#64748B] hover:text-[#15689E] transition-colors"
+          className="inline-flex items-center gap-2 text-sm font-medium text-[#64748B] hover:text-[var(--navy)] transition-colors"
         >
           <ArrowLeft className="w-4 h-4" /> Back to Main Site
         </Link>

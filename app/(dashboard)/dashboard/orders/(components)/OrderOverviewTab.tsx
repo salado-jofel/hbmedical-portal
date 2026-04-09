@@ -78,16 +78,16 @@ export function OrderOverviewTab({
       )}
     >
       {/* ── Unified Save/Discard toolbar ── */}
-      {canEdit && status === "draft" && (
-        <div className="sticky top-0 z-10 bg-white border-b border-gray-300 py-3 flex items-center justify-between">
-          <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">
-            Overview
-            {isOverviewDirty && !isSavingOverview && (
-              <span className="ml-2 text-amber-500 normal-case font-normal tracking-normal">
-                • Unsaved changes
-              </span>
-            )}
-          </h3>
+      <div className="sticky top-0 z-10 bg-white border-b border-gray-300 py-3 flex items-center justify-between">
+        <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">
+          Overview
+          {canEdit && status === "draft" && isOverviewDirty && !isSavingOverview && (
+            <span className="ml-2 text-amber-500 normal-case font-normal tracking-normal">
+              • Unsaved changes
+            </span>
+          )}
+        </h3>
+        {canEdit && status === "draft" && (
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -108,8 +108,8 @@ export function OrderOverviewTab({
               disabled={!isOverviewDirty || isSavingOverview}
               className={cn(
                 "px-4 py-1.5 text-sm font-semibold rounded-lg",
-                "bg-[#15689E] text-white",
-                "hover:bg-[#15689E]/90 transition-colors",
+                "bg-[var(--navy)] text-white",
+                "hover:bg-[var(--navy)]/90 transition-colors",
                 "disabled:opacity-40 disabled:cursor-not-allowed",
                 "flex items-center gap-2",
               )}
@@ -120,8 +120,8 @@ export function OrderOverviewTab({
               {isSavingOverview ? "Saving..." : "Save changes"}
             </button>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* ── Order Items ── */}
       <div className="space-y-3 ">
@@ -284,7 +284,7 @@ export function OrderOverviewTab({
           <button
             type="button"
             onClick={() => setShowProductPicker(true)}
-            className="text-sm text-[#15689E] font-medium hover:underline flex items-center gap-1"
+            className="text-sm text-[var(--navy)] font-medium hover:underline flex items-center gap-1"
           >
             <Plus className="w-3.5 h-3.5" /> Add Product
           </button>
@@ -384,7 +384,7 @@ export function OrderOverviewTab({
                   </Button>
                   <Button
                     size="sm"
-                    className="flex-1 text-xs bg-[#15689E] text-white"
+                    className="flex-1 text-xs bg-[var(--navy)] text-white"
                     disabled={!hasCartItems}
                     onClick={handleAddProductsToDraft}
                   >
@@ -434,7 +434,7 @@ export function OrderOverviewTab({
               : "No notes added."
           }
           rows={4}
-          className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm text-gray-700 border border-gray-100 focus:outline-none focus:ring-2 focus:ring-[#15689E]/20 resize-none disabled:opacity-60 disabled:cursor-default transition-shadow"
+          className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm text-gray-700 border border-gray-100 focus:outline-none focus:ring-2 focus:ring-[var(--navy)]/20 resize-none disabled:opacity-60 disabled:cursor-default transition-shadow"
         />
       </div>
     </div>

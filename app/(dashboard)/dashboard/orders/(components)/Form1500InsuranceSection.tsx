@@ -48,7 +48,7 @@ export function Form1500InsuranceSection({
               disabled={!canEdit}
               onChange={(e) => handleChange("insurance_type", e.target.value)}
               className={cn(
-                "w-full border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-[#15689E] disabled:opacity-60",
+                "w-full border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-[var(--navy)] disabled:opacity-60",
                 fieldError("insurance_type")
                   ? "border-red-400 bg-red-50"
                   : "border-slate-200",

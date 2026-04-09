@@ -1,7 +1,7 @@
 "use client";
 
 import { Search } from "lucide-react";
-import { type ReactNode } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import {
   Select,
   SelectContent,
@@ -32,38 +32,52 @@ export function TableToolbar({
   /** Classes merged onto the wrapper div (use to add padding, border, etc.) */
   className?: string;
 }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   return (
     <div className={cn("flex items-center gap-3", className)}>
       <div className="relative flex-1">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8]" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text3)]" />
         <input
           type="text"
           value={searchValue}
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder={searchPlaceholder}
-          className="w-full pl-9 pr-4 h-9 text-sm rounded-lg border border-[#E2E8F0] bg-white placeholder:text-[#94A3B8] text-[#0F172A] focus:outline-none focus:border-[#15689E] focus:ring-2 focus:ring-[#15689E]/10 transition-colors"
+          className="w-full pl-9 pr-4 h-9 text-sm rounded-lg border border-[var(--border)] bg-white placeholder:text-[var(--text3)] text-[var(--navy)] focus:outline-none focus:border-[var(--navy)] focus:ring-2 focus:ring-[var(--navy)]/10 transition-colors"
         />
       </div>
 
-      {filters?.map((filter, i) => (
-        <Select key={i} value={filter.value} onValueChange={filter.onChange}>
-          <SelectTrigger
+      {/* Radix Select — only rendered after client mount to avoid aria-controls hydration mismatch */}
+      {filters?.map((filter, i) =>
+        mounted ? (
+          <Select key={i} value={filter.value} onValueChange={filter.onChange}>
+            <SelectTrigger
+              className={cn(
+                "h-9 text-sm bg-white border-[var(--border)] text-[var(--navy)] rounded-lg shrink-0",
+                filter.className,
+              )}
+            >
+              <SelectValue placeholder={filter.placeholder} />
+            </SelectTrigger>
+            <SelectContent>
+              {filter.options.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <div
+            key={i}
             className={cn(
-              "h-9 text-sm bg-white border-[#E2E8F0] text-[#0F172A] rounded-lg shrink-0",
+              "h-9 rounded-lg border border-[var(--border)] bg-[#e2e8f0] animate-pulse shrink-0",
               filter.className,
             )}
-          >
-            <SelectValue placeholder={filter.placeholder} />
-          </SelectTrigger>
-          <SelectContent>
-            {filter.options.map((o) => (
-              <SelectItem key={o.value} value={o.value}>
-                {o.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      ))}
+          />
+        ),
+      )}
 
       {filterElement && <div className="shrink-0">{filterElement}</div>}
     </div>

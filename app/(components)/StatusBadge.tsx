@@ -4,16 +4,16 @@ export function StatusBadge({ status }: StatusBadgeProps) {
   const s: string = status?.toLowerCase() ?? "";
 
   const styles: Record<string, string> = {
-    active: "bg-emerald-50 text-emerald-700",
-    inactive: "bg-[#F1F5F9] text-[#64748B]",
-    pending: "bg-amber-50 text-amber-700",
+    active: "bg-[var(--green-lt)] text-[var(--green)]",
+    inactive: "bg-[var(--border)] text-[var(--text3)]",
+    pending: "bg-[var(--gold-lt)] text-[var(--gold)]",
   };
 
   const cls: string =
-    styles[s] ?? "bg-[#F1F5F9] text-[#64748B]";
+    styles[s] ?? "bg-[var(--border)] text-[var(--text3)]";
 
   return (
-    <span className={`px-2 py-0.5 rounded-full text-xs font-medium inline-flex items-center gap-1 ${cls}`}>
+    <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium inline-flex items-center gap-1 ${cls}`}>
       {status}
     </span>
   );

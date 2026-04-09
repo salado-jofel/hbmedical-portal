@@ -72,6 +72,7 @@ export async function getSalesRepsWithFacilities(): Promise<RepWithFacility[]> {
       facility:facilities!facilities_user_id_fkey(id, name)
     `)
     .eq("role", "sales_representative")
+    .eq("status", "active")
     .order("first_name", { ascending: true });
 
   if (error) {

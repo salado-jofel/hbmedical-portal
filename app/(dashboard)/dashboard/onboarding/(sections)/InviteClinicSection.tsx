@@ -21,14 +21,14 @@ export function InviteClinicSection({
   if (!showSection) return null;
 
   return (
-    <section className="bg-white rounded-xl border border-[#E2E8F0] p-5 space-y-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+    <section className="bg-white rounded-xl border border-[var(--border)] p-5 space-y-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
       <div className="flex items-center gap-2">
-        <Users className="w-4 h-4 text-[#15689E]" />
-        <h2 className="text-base font-semibold text-[#0F172A]">
+        <Users className="w-4 h-4 text-[var(--navy)]" />
+        <h2 className="text-base font-semibold text-[var(--navy)]">
           Invite Clinic User
         </h2>
       </div>
-      <p className="text-sm text-[#64748B]">
+      <p className="text-sm text-[var(--text2)]">
         Generate a one-time link to onboard a Clinical Provider or
         Clinical Staff member to the portal.
       </p>
@@ -45,7 +45,7 @@ export function InviteClinicSection({
             <Button
               asChild
               size="sm"
-              className="self-start h-9 bg-[#15689E] hover:bg-[#125d8e] text-white rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors"
+              className="self-start h-9 bg-[var(--navy)] hover:bg-[var(--navy)]/80 text-white rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors"
             >
               <a href="/onboarding/setup">Complete Setup</a>
             </Button>

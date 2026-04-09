@@ -26,14 +26,19 @@ export function KanbanColumn({
   return (
     <div
       className={cn(
-        "flex flex-col bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl",
+        "flex flex-col bg-[var(--bg)] border border-[var(--border)] rounded-xl",
         className,
       )}
     >
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[#E2E8F0]">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
         <div className="flex items-center gap-2">
           {dot && <div className={cn("w-2 h-2 rounded-full", dot)} />}
-          <span className={cn("text-sm font-semibold text-[#0F172A]", labelClassName)}>
+          <span
+            className={cn(
+              "text-[10px] font-semibold uppercase tracking-[0.6px] text-[var(--text3)]",
+              labelClassName,
+            )}
+          >
             {label}
           </span>
         </div>

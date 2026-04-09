@@ -37,7 +37,7 @@ export function Navbar() {
               <Link
                 key={href}
                 href={href}
-                className="hover:text-[#15689E] transition-colors"
+                className="hover:text-[var(--navy)] transition-colors"
               >
                 {label}
               </Link>
@@ -98,7 +98,7 @@ export function Navbar() {
                     <Link
                       href={href}
                       onClick={closeMenu}
-                      className="block py-2.5 text-sm font-medium text-gray-600 hover:text-[#15689E] transition-colors border-b border-gray-100 last:border-0"
+                      className="block py-2.5 text-sm font-medium text-gray-600 hover:text-[var(--navy)] transition-colors border-b border-gray-100 last:border-0"
                     >
                       {label}
                     </Link>
@@ -154,7 +154,7 @@ function CTAButtons({
       <Link
         href="#sp-contact"
         onClick={onNavigate}
-        className={`bg-[#15689E] hover:bg-[#126091] text-white text-sm font-semibold px-4 py-2 rounded-full flex items-center justify-center gap-2 transition-colors ${stacked ? "w-full" : ""
+        className={`bg-[var(--navy)] hover:bg-[#126091] text-white text-sm font-semibold px-4 py-2 rounded-full flex items-center justify-center gap-2 transition-colors ${stacked ? "w-full" : ""
           }`}
       >
         <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -168,7 +168,7 @@ function CTAButtons({
       <Link
         href="/sign-in"
         onClick={onNavigate}
-        className={`border border-[#15689E]/40 hover:border-[#15689E] text-[#15689E]/70 hover:text-[#15689E] text-sm font-semibold px-4 py-2 rounded-full flex items-center justify-center gap-2 transition-colors ${stacked ? "w-full" : ""
+        className={`border border-[var(--navy)]/40 hover:border-[var(--navy)] text-[var(--navy)]/70 hover:text-[var(--navy)] text-sm font-semibold px-4 py-2 rounded-full flex items-center justify-center gap-2 transition-colors ${stacked ? "w-full" : ""
           }`}
       >
         <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">

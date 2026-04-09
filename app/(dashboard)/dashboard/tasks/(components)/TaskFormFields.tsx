@@ -80,7 +80,7 @@ export function TaskFormFields({
             type="date"
             required
             defaultValue={task?.due_date ?? ""}
-            className="h-9 w-full rounded-md border border-[#E2E8F0] bg-white px-3 py-1 text-sm text-[#0F172A] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#15689E]/10 focus-visible:border-[#15689E]"
+            className="h-9 w-full rounded-md border border-[var(--border)] bg-white px-3 py-1 text-sm text-[var(--navy)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--navy)]/10 focus-visible:border-[var(--navy)]"
           />
         </div>
 
@@ -117,7 +117,7 @@ export function TaskFormFields({
               <SelectValue placeholder="Select rep" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="none" className="text-sm text-[#94A3B8]">
+              <SelectItem value="none" className="text-sm text-[var(--text3)]">
                 Unassigned
               </SelectItem>
               {salesReps
@@ -136,7 +136,7 @@ export function TaskFormFields({
       <div className="space-y-1.5">
         <Label htmlFor="facility_id" className="text-xs">
           Account{" "}
-          <span className="text-[#94A3B8] font-normal">(optional)</span>
+          <span className="text-[var(--text3)] font-normal">(optional)</span>
         </Label>
         <Select
           name="facility_id"
@@ -147,7 +147,7 @@ export function TaskFormFields({
             <SelectValue placeholder="No account linked" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="none" className="text-sm text-[#94A3B8]">
+            <SelectItem value="none" className="text-sm text-[var(--text3)]">
               No account linked
             </SelectItem>
             {accounts
@@ -165,7 +165,7 @@ export function TaskFormFields({
       <div className="space-y-1.5">
         <Label htmlFor="contact_id" className="text-xs">
           Contact{" "}
-          <span className="text-[#94A3B8] font-normal">(optional)</span>
+          <span className="text-[var(--text3)] font-normal">(optional)</span>
         </Label>
         <Select
           name="contact_id"
@@ -184,7 +184,7 @@ export function TaskFormFields({
             />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="none" className="text-sm text-[#94A3B8]">
+            <SelectItem value="none" className="text-sm text-[var(--text3)]">
               No contact linked
             </SelectItem>
             {facilityContacts
@@ -225,7 +225,7 @@ export function TaskFormFields({
           type="button"
           variant="outline"
           size="sm"
-          className="w-full sm:w-auto border-[#E2E8F0] text-[#374151] hover:bg-[#F8FAFC]"
+          className="w-full sm:w-auto border-[var(--border)] text-[#374151] hover:bg-[var(--bg)]"
           onClick={onCancel}
         >
           Cancel
@@ -234,7 +234,7 @@ export function TaskFormFields({
           type="submit"
           size="sm"
           disabled={isPending}
-          className="w-full sm:w-auto bg-[#15689E] hover:bg-[#125d8e] text-white gap-1.5 rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
+          className="w-full sm:w-auto bg-[var(--navy)] hover:bg-[var(--navy)]/80 text-white gap-1.5 rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
         >
           {isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
           {isEdit ? "Save changes" : "Create task"}

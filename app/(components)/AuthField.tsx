@@ -37,7 +37,7 @@ export function AuthField({
         htmlFor={id}
         className="flex items-center gap-2 text-xs font-medium text-[#374151] mb-1.5"
       >
-        {icon && <span className="text-[#15689E]">{icon}</span>}
+        {icon && <span className="text-[var(--navy)]">{icon}</span>}
         {label}
       </Label>
       <div className="relative">
@@ -49,7 +49,7 @@ export function AuthField({
           required={required}
           {...(value !== undefined && { value })}
           {...(onChange !== undefined && { onChange })}
-          className={`${height} h-9 text-sm text-[#0F172A] placeholder:text-[#94A3B8] border border-[#E2E8F0] bg-white rounded-lg px-3 focus-visible:ring-2 focus-visible:ring-[#15689E]/10 focus-visible:border-[#15689E] transition-colors`}
+          className={`${height} h-9 text-sm text-[var(--navy)] placeholder:text-[var(--text3)] border border-[var(--border)] bg-white rounded-lg px-3 focus-visible:ring-2 focus-visible:ring-[var(--navy)]/10 focus-visible:border-[var(--navy)] transition-colors`}
           style={{
             paddingRight: rightElement ? "2.5rem" : undefined,
           }}

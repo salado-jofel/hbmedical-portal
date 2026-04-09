@@ -42,7 +42,7 @@ export function PasswordInput({
           <button
             type="button"
             onClick={() => setShow((p) => !p)}
-            className="text-[#94A3B8] hover:text-[#64748B] transition-colors"
+            className="text-[var(--text3)] hover:text-[var(--text2)] transition-colors"
           >
             {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
           </button>
