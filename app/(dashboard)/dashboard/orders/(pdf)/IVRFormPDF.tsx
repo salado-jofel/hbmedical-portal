@@ -17,29 +17,29 @@ const styles = StyleSheet.create({
     fontFamily: "Helvetica",
     fontSize: 9,
     padding: 40,
+    paddingBottom: 60,
     backgroundColor: "#fff",
   },
   title: {
     textAlign: "center",
-    fontSize: 14,
+    fontSize: 13,
     fontFamily: "Helvetica-Bold",
-    marginBottom: 4,
+    marginBottom: 3,
   },
   subtitle: {
     textAlign: "center",
-    fontSize: 9,
+    fontSize: 8,
     color: GRAY,
-    marginBottom: 16,
+    marginBottom: 14,
   },
   sectionHeader: {
     backgroundColor: DARK,
     color: WHITE,
     fontFamily: "Helvetica-Bold",
-    fontSize: 8,
+    fontSize: 7.5,
     padding: "4 8",
     marginBottom: 0,
     letterSpacing: 0.8,
-    textAlign: "center",
     marginTop: 10,
   },
   sectionBody: {
@@ -53,21 +53,22 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
   },
   fieldLabel: {
-    fontSize: 7.5,
+    fontSize: 7,
     color: GRAY,
-    width: 130,
+    width: 120,
     paddingBottom: 1,
+    flexShrink: 0,
   },
   fieldValue: {
     flex: 1,
-    fontSize: 9,
+    fontSize: 8.5,
     borderBottom: `0.5px solid ${DARK}`,
     paddingBottom: 2,
-    minWidth: 80,
+    minWidth: 60,
   },
   twoCol: {
     flexDirection: "row",
-    gap: 12,
+    gap: 10,
   },
   fieldBlock: {
     flex: 1,
@@ -91,314 +92,273 @@ const styles = StyleSheet.create({
   },
 });
 
-const f = (v: unknown) =>
-  v != null && v !== "" ? String(v) : " ";
+/* ---------- helpers ---------- */
 
-const yesNo = (v: boolean | null | undefined) =>
-  v === true ? "Yes" : v === false ? "No" : " ";
+const f = (v: unknown): string =>
+  v != null && v !== "" ? String(v) : "—";
 
-const money = (v: number | null | undefined) =>
-  v != null ? `$${Number(v).toFixed(2)}` : " ";
+const yesNo = (v: boolean | null | undefined): string =>
+  v === true ? "Yes" : v === false ? "No" : "—";
+
+const money = (v: number | null | undefined): string =>
+  v != null ? `$${Number(v).toFixed(2)}` : "—";
+
+const pct = (v: number | null | undefined): string =>
+  v != null ? `${v}%` : "—";
+
+const fmtDate = (v: string | null | undefined): string => {
+  if (!v) return "—";
+  try {
+    return new Date(v).toLocaleDateString("en-US");
+  } catch {
+    return v;
+  }
+};
+
+/* ---------- building blocks ---------- */
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.fieldRow}>
+      <Text style={styles.fieldLabel}>{label}:</Text>
+      <Text style={styles.fieldValue}>{value}</Text>
+    </View>
+  );
+}
+
+function TwoColRows({
+  left,
+  right,
+}: {
+  left: { label: string; value: string };
+  right: { label: string; value: string };
+}) {
+  return (
+    <View style={styles.twoCol}>
+      <View style={styles.fieldBlock}>
+        <Row label={left.label} value={left.value} />
+      </View>
+      <View style={styles.fieldBlock}>
+        <Row label={right.label} value={right.value} />
+      </View>
+    </View>
+  );
+}
+
+function SectionHeader({ title }: { title: string }) {
+  return <Text style={styles.sectionHeader}>{title.toUpperCase()}</Text>;
+}
+
+/* ---------- PDF component ---------- */
 
 export function IVRFormPDF({
   order,
   ivr,
-  hcfa,
+  form,
+  physicianName,
 }: {
   order: Record<string, any>;
   ivr: Record<string, any> | null;
-  hcfa: Record<string, any> | null;
+  form: Record<string, any> | null;
+  physicianName?: string | null;
 }) {
   const i = ivr ?? {};
-  const patientName = order.patient
-    ? `${order.patient.first_name} ${order.patient.last_name}`
-    : " ";
+  const orderForm = form ?? {};
+
+  const patientFirst  = order.patient?.first_name ?? "";
+  const patientLast   = order.patient?.last_name  ?? "";
+  const patientName   = patientFirst || patientLast
+    ? `${patientFirst} ${patientLast}`.trim()
+    : "—";
+
+  const resolvedPhysician = physicianName ?? "—";
+
+  const dateOfService = order.date_of_service
+    ? fmtDate(order.date_of_service)
+    : "—";
 
   return (
     <Document>
       <Page size="LETTER" style={styles.page}>
 
-        {/* Title */}
-        <Text style={styles.title}>INSURANCE VERIFICATION RECORD</Text>
+        {/* ── Header ── */}
+        <Text style={styles.title}>Patient Insurance Support Form</Text>
         <Text style={styles.subtitle}>
-          Order #{order.order_number}  |  HB Medical Portal  |  Date of Service:{" "}
-          {order.date_of_service
-            ? new Date(order.date_of_service).toLocaleDateString("en-US")
-            : " "}
+          HB Medical Portal  |  Order #{order.order_number ?? "—"}  |  Date of Service: {dateOfService}
         </Text>
 
-        {/* Insured Individual Information */}
-        <Text style={styles.sectionHeader}>INSURED INDIVIDUAL INFORMATION</Text>
+        {/* ── 1. Facility Information ── */}
+        <SectionHeader title="Facility Information" />
         <View style={styles.sectionBody}>
-          <View style={styles.twoCol}>
-            <View style={styles.fieldBlock}>
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>Name:</Text>
-                <Text style={styles.fieldValue}>{patientName}</Text>
-              </View>
-            </View>
-            <View style={[styles.fieldBlock, { maxWidth: 100 }]}>
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>Sex:</Text>
-                <Text style={styles.fieldValue}>{f(hcfa?.patient_sex)}</Text>
-              </View>
-            </View>
-          </View>
-          <View style={styles.twoCol}>
-            <View style={styles.fieldBlock}>
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>Date of Birth:</Text>
-                <Text style={styles.fieldValue}>
-                  {order.patient?.date_of_birth
-                    ? new Date(order.patient.date_of_birth).toLocaleDateString("en-US")
-                    : " "}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.fieldBlock}>
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>Social Security Number:</Text>
-                <Text style={styles.fieldValue}> </Text>
-              </View>
-            </View>
-          </View>
-          <View style={styles.fieldRow}>
-            <Text style={styles.fieldLabel}>Street Address:</Text>
-            <Text style={styles.fieldValue}>{f(hcfa?.patient_address)}</Text>
-          </View>
-          <View style={styles.twoCol}>
-            <View style={styles.fieldBlock}>
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>City:</Text>
-                <Text style={styles.fieldValue}>{f(hcfa?.patient_city)}</Text>
-              </View>
-            </View>
-            <View style={[styles.fieldBlock, { maxWidth: 80 }]}>
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>State:</Text>
-                <Text style={styles.fieldValue}>{f(hcfa?.patient_state)}</Text>
-              </View>
-            </View>
-            <View style={[styles.fieldBlock, { maxWidth: 80 }]}>
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>ZIP:</Text>
-                <Text style={styles.fieldValue}>{f(hcfa?.patient_zip)}</Text>
-              </View>
-            </View>
-          </View>
-          <View style={styles.twoCol}>
-            <View style={styles.fieldBlock}>
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>Phone:</Text>
-                <Text style={styles.fieldValue}>{f(hcfa?.patient_phone)}</Text>
-              </View>
-            </View>
-            <View style={styles.fieldBlock}>
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>E-Mail:</Text>
-                <Text style={styles.fieldValue}> </Text>
-              </View>
-            </View>
-          </View>
+          <TwoColRows
+            left={{ label: "Place of Service",           value: f(i.place_of_service) }}
+            right={{ label: "Facility Name",              value: f(order.facility?.name) }}
+          />
+          <TwoColRows
+            left={{ label: "Medicare Admin Contractor",   value: f(i.medicare_admin_contractor) }}
+            right={{ label: "NPI",                        value: f(i.facility_npi) }}
+          />
+          <TwoColRows
+            left={{ label: "TIN",                         value: f(i.facility_tin) }}
+            right={{ label: "PTAN",                       value: f(i.facility_ptan) }}
+          />
+          <TwoColRows
+            left={{ label: "Fax",                         value: f(i.facility_fax) }}
+            right={{ label: "",                           value: "" }}
+          />
         </View>
 
-        {/* Insurance Company */}
-        <Text style={styles.sectionHeader}>INSURANCE COMPANY</Text>
+        {/* ── 2. Physician Information ── */}
+        <SectionHeader title="Physician Information" />
         <View style={styles.sectionBody}>
-          <View style={styles.twoCol}>
-            <View style={styles.fieldBlock}>
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>Insurance Company:</Text>
-                <Text style={styles.fieldValue}>{f(i.insurance_provider)}</Text>
-              </View>
-            </View>
-            <View style={styles.fieldBlock}>
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>Phone:</Text>
-                <Text style={styles.fieldValue}>{f(i.insurance_phone)}</Text>
-              </View>
-            </View>
-          </View>
-          <View style={styles.fieldRow}>
-            <Text style={styles.fieldLabel}>Plan Name:</Text>
-            <Text style={styles.fieldValue}>{f(i.plan_name)}</Text>
-          </View>
-          <View style={styles.twoCol}>
-            <View style={styles.fieldBlock}>
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>Policy Number:</Text>
-                <Text style={styles.fieldValue}>{f(i.member_id)}</Text>
-              </View>
-            </View>
-            <View style={styles.fieldBlock}>
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>Group Number:</Text>
-                <Text style={styles.fieldValue}>{f(i.group_number)}</Text>
-              </View>
-            </View>
-          </View>
-          <View style={styles.twoCol}>
-            <View style={styles.fieldBlock}>
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>Subscriber Name:</Text>
-                <Text style={styles.fieldValue}>{f(i.subscriber_name)}</Text>
-              </View>
-            </View>
-            <View style={styles.fieldBlock}>
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>Subscriber DOB:</Text>
-                <Text style={styles.fieldValue}>{f(i.subscriber_dob)}</Text>
-              </View>
-            </View>
-          </View>
-          <View style={styles.fieldRow}>
-            <Text style={styles.fieldLabel}>Subscriber Relationship to Insured:</Text>
-            <Text style={styles.fieldValue}>{f(i.subscriber_relationship)}</Text>
-          </View>
+          <TwoColRows
+            left={{ label: "Physician Name",   value: resolvedPhysician }}
+            right={{ label: "TIN",             value: f(i.physician_tin) }}
+          />
+          <TwoColRows
+            left={{ label: "Fax",             value: f(i.physician_fax) }}
+            right={{ label: "Address",         value: f(i.physician_address) }}
+          />
         </View>
 
-        {/* Eligibility */}
-        <Text style={styles.sectionHeader}>ELIGIBILITY</Text>
+        {/* ── 3. Patient Information ── */}
+        <SectionHeader title="Patient Information" />
         <View style={styles.sectionBody}>
-          <View style={styles.twoCol}>
-            <View style={styles.fieldBlock}>
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>Coverage Start Date:</Text>
-                <Text style={styles.fieldValue}>{f(i.coverage_start_date)}</Text>
-              </View>
-            </View>
-            <View style={styles.fieldBlock}>
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>Coverage End Date:</Text>
-                <Text style={styles.fieldValue}>{f(i.coverage_end_date)}</Text>
-              </View>
-            </View>
-          </View>
-          <View style={styles.fieldRow}>
-            <Text style={styles.fieldLabel}>Plan Type:</Text>
-            <Text style={styles.fieldValue}>{f(i.plan_type)}</Text>
-          </View>
-          <View style={styles.twoCol}>
-            <View style={styles.fieldBlock}>
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>Deductible:</Text>
-                <Text style={styles.fieldValue}>{money(i.deductible_amount)}</Text>
-              </View>
-            </View>
-            <View style={styles.fieldBlock}>
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>Deductible Amount Met:</Text>
-                <Text style={styles.fieldValue}>{money(i.deductible_met)}</Text>
-              </View>
-            </View>
-          </View>
-          <View style={styles.twoCol}>
-            <View style={styles.fieldBlock}>
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>Copayment:</Text>
-                <Text style={styles.fieldValue}>{money(i.copay_amount)}</Text>
-              </View>
-            </View>
-            <View style={styles.fieldBlock}>
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>Coinsurance:</Text>
-                <Text style={styles.fieldValue}>
-                  {i.coinsurance_percent != null ? `${i.coinsurance_percent}%` : " "}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.fieldBlock}>
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>Out-of-Pocket Limit:</Text>
-                <Text style={styles.fieldValue}>{money(i.out_of_pocket_max)}</Text>
-              </View>
-            </View>
-          </View>
-          <View style={styles.twoCol}>
-            <View style={styles.fieldBlock}>
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>Out-of-Pocket Met:</Text>
-                <Text style={styles.fieldValue}>{money(i.out_of_pocket_met)}</Text>
-              </View>
-            </View>
-          </View>
+          <TwoColRows
+            left={{ label: "Patient Name",       value: patientName }}
+            right={{ label: "Date of Birth",      value: order.patient?.date_of_birth ? fmtDate(order.patient.date_of_birth) : "—" }}
+          />
+          <TwoColRows
+            left={{ label: "Phone",              value: f(i.patient_phone) }}
+            right={{ label: "Address",            value: f(i.patient_address) }}
+          />
+          <Row label="OK to Contact Patient" value={yesNo(i.ok_to_contact_patient)} />
         </View>
 
-        {/* DME / Wound Care Coverage */}
-        <Text style={styles.sectionHeader}>DME / WOUND CARE COVERAGE</Text>
+        {/* ── 4. Primary Insurance ── */}
+        <SectionHeader title="Primary Insurance" />
         <View style={styles.sectionBody}>
-          <View style={styles.twoCol}>
-            <View style={styles.fieldBlock}>
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>DME Covered:</Text>
-                <Text style={styles.fieldValue}>{yesNo(i.dme_covered)}</Text>
-              </View>
-            </View>
-            <View style={styles.fieldBlock}>
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>Wound Care Covered:</Text>
-                <Text style={styles.fieldValue}>{yesNo(i.wound_care_covered)}</Text>
-              </View>
-            </View>
-          </View>
-          <View style={styles.twoCol}>
-            <View style={styles.fieldBlock}>
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>Prior Auth Required:</Text>
-                <Text style={styles.fieldValue}>{yesNo(i.prior_auth_required)}</Text>
-              </View>
-            </View>
-            <View style={styles.fieldBlock}>
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>Prior Auth Number:</Text>
-                <Text style={styles.fieldValue}>{f(i.prior_auth_number)}</Text>
-              </View>
-            </View>
-          </View>
-          <View style={styles.twoCol}>
-            <View style={styles.fieldBlock}>
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>Auth Start:</Text>
-                <Text style={styles.fieldValue}>{f(i.prior_auth_start_date)}</Text>
-              </View>
-            </View>
-            <View style={styles.fieldBlock}>
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>Auth End:</Text>
-                <Text style={styles.fieldValue}>{f(i.prior_auth_end_date)}</Text>
-              </View>
-            </View>
-            <View style={styles.fieldBlock}>
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>Units Authorized:</Text>
-                <Text style={styles.fieldValue}>{f(i.units_authorized)}</Text>
-              </View>
-            </View>
-          </View>
+          <TwoColRows
+            left={{ label: "Insurance Provider",         value: f(i.insurance_provider) }}
+            right={{ label: "Insurance Phone",           value: f(i.insurance_phone) }}
+          />
+          <TwoColRows
+            left={{ label: "Subscriber Name",            value: f(i.subscriber_name) }}
+            right={{ label: "Policy / Member ID",        value: f(i.member_id) }}
+          />
+          <TwoColRows
+            left={{ label: "Subscriber DOB",             value: f(i.subscriber_dob) }}
+            right={{ label: "Group Number",              value: f(i.group_number) }}
+          />
+          <TwoColRows
+            left={{ label: "Plan Type",                  value: f(i.plan_type) }}
+            right={{ label: "Plan Name",                 value: f(i.plan_name) }}
+          />
+          <TwoColRows
+            left={{ label: "Subscriber Relationship",    value: f(i.subscriber_relationship) }}
+            right={{ label: "Provider Participates",     value: f(i.provider_participates_primary) }}
+          />
+          <TwoColRows
+            left={{ label: "Coverage Start Date",        value: f(i.coverage_start_date) }}
+            right={{ label: "Coverage End Date",         value: f(i.coverage_end_date) }}
+          />
         </View>
 
-        {/* Verification Details */}
-        <Text style={styles.sectionHeader}>VERIFICATION DETAILS</Text>
+        {/* ── 5. Secondary Insurance ── */}
+        <SectionHeader title="Secondary Insurance" />
         <View style={styles.sectionBody}>
-          <View style={styles.twoCol}>
-            <View style={styles.fieldBlock}>
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>Verified By:</Text>
-                <Text style={styles.fieldValue}>{f(i.verified_by)}</Text>
-              </View>
-            </View>
-            <View style={styles.fieldBlock}>
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>Verified Date:</Text>
-                <Text style={styles.fieldValue}>{f(i.verified_date)}</Text>
-              </View>
-            </View>
-          </View>
-          <View style={styles.fieldRow}>
-            <Text style={styles.fieldLabel}>Reference Number:</Text>
-            <Text style={styles.fieldValue}>{f(i.verification_reference)}</Text>
-          </View>
-          {i.notes && (
+          <TwoColRows
+            left={{ label: "Insurance Provider",         value: f(i.secondary_insurance_provider) }}
+            right={{ label: "Insurance Phone",           value: f(i.secondary_insurance_phone) }}
+          />
+          <TwoColRows
+            left={{ label: "Subscriber Name",            value: f(i.secondary_subscriber_name) }}
+            right={{ label: "Policy Number",             value: f(i.secondary_policy_number) }}
+          />
+          <TwoColRows
+            left={{ label: "Subscriber DOB",             value: f(i.secondary_subscriber_dob) }}
+            right={{ label: "Group Number",              value: f(i.secondary_group_number) }}
+          />
+          <TwoColRows
+            left={{ label: "Plan Type",                  value: f(i.secondary_plan_type) }}
+            right={{ label: "Subscriber Relationship",   value: f(i.secondary_subscriber_relationship) }}
+          />
+          <Row label="Provider Participates" value={f(i.provider_participates_secondary)} />
+        </View>
+
+        {/* ── 6. Benefits & Coverage ── */}
+        <SectionHeader title="Benefits & Coverage" />
+        <View style={styles.sectionBody}>
+          <TwoColRows
+            left={{ label: "Deductible Amount",   value: money(i.deductible_amount) }}
+            right={{ label: "Deductible Met",     value: money(i.deductible_met) }}
+          />
+          <TwoColRows
+            left={{ label: "Out of Pocket Max",   value: money(i.out_of_pocket_max) }}
+            right={{ label: "Out of Pocket Met",  value: money(i.out_of_pocket_met) }}
+          />
+          <TwoColRows
+            left={{ label: "Copay",               value: money(i.copay_amount) }}
+            right={{ label: "Coinsurance",        value: pct(i.coinsurance_percent) }}
+          />
+          <TwoColRows
+            left={{ label: "DME Covered",         value: yesNo(i.dme_covered) }}
+            right={{ label: "Wound Care Covered", value: yesNo(i.wound_care_covered) }}
+          />
+        </View>
+
+        {/* ── 7. Prior Authorization ── */}
+        <SectionHeader title="Prior Authorization" />
+        <View style={styles.sectionBody}>
+          <TwoColRows
+            left={{ label: "Prior Auth Required",           value: yesNo(i.prior_auth_required) }}
+            right={{ label: "Auth Number",                  value: f(i.prior_auth_number) }}
+          />
+          <TwoColRows
+            left={{ label: "Auth Start Date",               value: f(i.prior_auth_start_date) }}
+            right={{ label: "Auth End Date",                value: f(i.prior_auth_end_date) }}
+          />
+          <TwoColRows
+            left={{ label: "Units Authorized",              value: f(i.units_authorized) }}
+            right={{ label: "Permission to Work with Payer", value: yesNo(i.prior_auth_permission) }}
+          />
+        </View>
+
+        {/* ── 8. Wound & Procedure ── */}
+        <SectionHeader title="Wound & Procedure" />
+        <View style={styles.sectionBody}>
+          <TwoColRows
+            left={{ label: "Wound Type",              value: f(order.wound_type) }}
+            right={{ label: "Date of Procedure",      value: dateOfService }}
+          />
+          <TwoColRows
+            left={{ label: "ICD-10 Code(s)",          value: f(orderForm.icd10_code) }}
+            right={{ label: "Application CPTs",       value: f(i.application_cpts) }}
+          />
+          <TwoColRows
+            left={{ label: "Surgical Global Period",  value: yesNo(i.surgical_global_period) }}
+            right={{ label: "Global Period CPT",      value: f(i.global_period_cpt) }}
+          />
+        </View>
+
+        {/* ── 9. Additional Information ── */}
+        <SectionHeader title="Additional Information" />
+        <View style={styles.sectionBody}>
+          <TwoColRows
+            left={{ label: "Patient in SNF",          value: yesNo(orderForm.is_patient_at_snf) }}
+            right={{ label: "Specialty Site Name",    value: f(i.specialty_site_name) }}
+          />
+        </View>
+
+        {/* ── 10. Verification ── */}
+        <SectionHeader title="Verification" />
+        <View style={styles.sectionBody}>
+          <TwoColRows
+            left={{ label: "Verified By",             value: f(i.verified_by) }}
+            right={{ label: "Verified Date",          value: f(i.verified_date) }}
+          />
+          <Row label="Reference Number" value={f(i.verification_reference)} />
+          {i.notes ? (
             <View style={styles.fieldRow}>
               <Text style={styles.fieldLabel}>Notes:</Text>
               <Text
@@ -410,14 +370,16 @@ export function IVRFormPDF({
                 {i.notes}
               </Text>
             </View>
+          ) : (
+            <Row label="Notes" value="—" />
           )}
         </View>
 
-        {/* Signature */}
+        {/* ── Signature ── */}
         <View
           style={{
-            marginTop: 20,
-            paddingTop: 12,
+            marginTop: 16,
+            paddingTop: 10,
             borderTop: `1px solid ${LINE}`,
             flexDirection: "row",
             justifyContent: "space-between",
@@ -435,8 +397,9 @@ export function IVRFormPDF({
           </View>
         </View>
 
+        {/* ── Footer ── */}
         <View style={styles.footer} fixed>
-          <Text>HB Medical Portal — Insurance Verification Record</Text>
+          <Text>HB Medical Portal — Patient Insurance Support Form</Text>
           <Text
             render={({ pageNumber, totalPages }) =>
               `Page ${pageNumber} of ${totalPages}`

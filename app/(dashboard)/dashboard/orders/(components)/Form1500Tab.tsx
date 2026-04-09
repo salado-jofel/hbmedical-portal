@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   Accordion,
 } from "@/components/ui/accordion";
@@ -53,39 +53,46 @@ export function Form1500Tab({
   onSave,
   onDirtyChange,
 }: Form1500TabProps) {
-  const [savedData, setSavedData] = useState<Form1500Data>(
+  const [formData, setFormData] = useState<Form1500Data>(
     (initialData as Form1500Data) ?? {},
   );
-  const [draftData, setDraftData] = useState<Form1500Data>(
+  const [baseline, setBaseline] = useState<Form1500Data>(
     (initialData as Form1500Data) ?? {},
   );
   const [isSaving, setIsSaving] = useState(false);
   const [validationTouched, setValidationTouched] = useState(false);
 
-  const isDirty = JSON.stringify(draftData) !== JSON.stringify(savedData);
+  /* Dirty = any field differs between formData and baseline */
+  const isDirty = useMemo(() => {
+    const allKeys = new Set([...Object.keys(formData), ...Object.keys(baseline)]);
+    return Array.from(allKeys).some(
+      (k) => String((formData as Record<string, unknown>)[k] ?? "") !== String((baseline as Record<string, unknown>)[k] ?? ""),
+    );
+  }, [formData, baseline]);
 
   useEffect(() => {
     onDirtyChange?.(isDirty);
   }, [isDirty]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Sync when initialData changes (modal reopened for different order)
+  /* Sync when initialData changes (modal reopened for different order) */
   useEffect(() => {
-    setSavedData((initialData as Form1500Data) ?? {});
-    setDraftData((initialData as Form1500Data) ?? {});
+    const snap = (initialData as Form1500Data) ?? {};
+    setFormData(snap);
+    setBaseline(snap);
     setValidationTouched(false);
   }, [initialData]);
 
-  function handleChange(name: string, value: string | boolean) {
-    setDraftData((prev) => ({ ...prev, [name]: value }));
-  }
+  const handleChange = useCallback((name: string, value: string | boolean) => {
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  }, []);
 
   function handleDiscard() {
-    setDraftData(savedData);
+    setFormData({ ...baseline } as Form1500Data);
     setValidationTouched(false);
   }
 
   function getServiceLines(): IServiceLine[] {
-    return (draftData.service_lines as IServiceLine[] | null) ?? [];
+    return (formData.service_lines as IServiceLine[] | null) ?? [];
   }
 
   function updateServiceLine(
@@ -93,7 +100,7 @@ export function Form1500Tab({
     field: keyof IServiceLine,
     value: string | boolean,
   ) {
-    setDraftData((prev) => ({
+    setFormData((prev) => ({
       ...prev,
       service_lines: getServiceLines().map((l) =>
         l.id === id ? { ...l, [field]: value } : l,
@@ -120,14 +127,14 @@ export function Form1500Tab({
       id_qualifier:      "",
       rendering_npi:     "",
     };
-    setDraftData((prev) => ({
+    setFormData((prev) => ({
       ...prev,
       service_lines: [...getServiceLines(), newLine],
     }));
   }
 
   function removeServiceLine(id: string) {
-    setDraftData((prev) => ({
+    setFormData((prev) => ({
       ...prev,
       service_lines: getServiceLines().filter((l) => l.id !== id),
     }));
@@ -136,17 +143,17 @@ export function Form1500Tab({
   const validationErrors = useMemo(() => {
     const errors: Record<string, string> = {};
     REQUIRED_FIELDS.forEach(({ field, label, box }) => {
-      const value = draftData[field];
+      const value = formData[field];
       if (!value || (typeof value === "string" && !value.trim())) {
         errors[field] = `Box ${box}: ${label} is required`;
       }
     });
-    const sl = (draftData.service_lines as IServiceLine[] | null) ?? [];
+    const sl = (formData.service_lines as IServiceLine[] | null) ?? [];
     if (!sl.length) {
       errors["service_lines"] = "Box 24: At least one service line is required";
     }
     return errors;
-  }, [draftData]);
+  }, [formData]);
 
   const hasErrors = Object.keys(validationErrors).length > 0;
 
@@ -168,11 +175,11 @@ export function Form1500Tab({
     try {
       const result = await upsertForm1500(
         orderId,
-        draftData as Record<string, unknown>,
+        formData as Record<string, unknown>,
       );
       if (result.success) {
-        setSavedData(draftData);
-        onSave?.(draftData as Record<string, unknown>);
+        setBaseline({ ...formData } as Form1500Data);
+        onSave?.(formData as Record<string, unknown>);
         toast.success("1500 form saved successfully");
       } else {
         toast.error(result.error ?? "Failed to save");
@@ -183,11 +190,11 @@ export function Form1500Tab({
   }
 
   function str(key: string): string {
-    return (draftData[key] as string) ?? "";
+    return (formData[key] as string) ?? "";
   }
 
   function bool(key: string): boolean {
-    return !!(draftData[key] as boolean);
+    return !!(formData[key] as boolean);
   }
 
   if (!isReady) {

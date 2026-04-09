@@ -204,6 +204,7 @@ export interface IInvoice {
 export interface IOrderIVR {
   id: string;
   orderId: string;
+  // Primary insurance
   insuranceProvider: string | null;
   insurancePhone: string | null;
   memberId: string | null;
@@ -228,6 +229,38 @@ export interface IOrderIVR {
   priorAuthStartDate: string | null;
   priorAuthEndDate: string | null;
   unitsAuthorized: number | null;
+  // Facility / physician / patient context
+  placeOfService: string | null;
+  medicareAdminContractor: string | null;
+  facilityNpi: string | null;
+  facilityTin: string | null;
+  facilityPtan: string | null;
+  facilityFax: string | null;
+  physicianTin: string | null;
+  physicianFax: string | null;
+  physicianAddress: string | null;
+  patientPhone: string | null;
+  patientAddress: string | null;
+  okToContactPatient: boolean | null;
+  // Network / auth
+  providerParticipatesPrimary: string | null;
+  providerParticipatesSecondary: string | null;
+  priorAuthPermission: boolean | null;
+  specialtySiteName: string | null;
+  // Secondary insurance
+  secondaryInsuranceProvider: string | null;
+  secondaryInsurancePhone: string | null;
+  secondarySubscriberName: string | null;
+  secondaryPolicyNumber: string | null;
+  secondarySubscriberDob: string | null;
+  secondaryPlanType: string | null;
+  secondaryGroupNumber: string | null;
+  secondarySubscriberRelationship: string | null;
+  // CPT / global period
+  applicationCpts: string | null;
+  surgicalGlobalPeriod: boolean | null;
+  globalPeriodCpt: string | null;
+  // Verification
   verifiedBy: string | null;
   verifiedDate: string | null;
   verificationReference: string | null;

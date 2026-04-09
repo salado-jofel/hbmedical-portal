@@ -32,6 +32,7 @@ interface IVRTabProps {
   ivrData: Partial<IOrderIVR> | null;
   hcfaData: Record<string, unknown> | null;
   order: DashboardOrder;
+  physicianName?: string | null;
   resetIvrKey: number;
   isReady: boolean;
   onDirtyChange: (dirty: boolean) => void;
@@ -45,6 +46,7 @@ export function IVRTab({
   ivrData,
   hcfaData,
   order,
+  physicianName,
   resetIvrKey,
   isReady,
   onDirtyChange,
@@ -67,6 +69,7 @@ export function IVRTab({
           initialData={ivrData}
           isReady={true}
           order={order}
+          physicianName={physicianName}
           hcfaData={hcfaData}
           onDirtyChange={onDirtyChange}
           onSave={onSave}

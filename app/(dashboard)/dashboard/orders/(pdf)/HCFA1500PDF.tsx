@@ -353,11 +353,11 @@ export function HCFA1500PDF({
           </View>
           <View style={[s.cell, { flex: 3 }]}>
             <BoxLabel num="9" label="Other Insured's Name" />
-            <Text style={s.val}> </Text>
+            <Text style={s.val}>{f(h.other_insured_name)}</Text>
           </View>
           <View style={[s.cellLast, { flex: 3 }]}>
             <BoxLabel num="9a" label="Other Insured's Policy or Group Number" />
-            <Text style={s.val}> </Text>
+            <Text style={s.val}>{f(h.other_insured_policy)}</Text>
           </View>
         </View>
 
@@ -391,16 +391,22 @@ export function HCFA1500PDF({
                 </View>
               </View>
               <View style={{ flex: 1 }}>
+                <Text style={s.boxLabel}>11b. Employer's Name or School Name</Text>
+                <Text style={s.val}>{f(h.insured_employer)}</Text>
+              </View>
+            </View>
+            <View style={{ flexDirection: "row", marginTop: 3, gap: 6 }}>
+              <View style={{ flex: 1 }}>
                 <Text style={s.boxLabel}>11c. Insurance Plan Name</Text>
                 <Text style={s.val}>{f(h.insured_plan_name)}</Text>
               </View>
-            </View>
-            <View style={{ marginTop: 3 }}>
-              <Text style={s.boxLabel}>11d. Another Health Benefit Plan?</Text>
-              <Text style={{ fontSize: 7 }}>
-                {check(f(h.another_health_benefit) === "yes")} Yes{" "}
-                {check(f(h.another_health_benefit) === "no")} No
-              </Text>
+              <View style={{ flex: 1 }}>
+                <Text style={s.boxLabel}>11d. Another Health Benefit Plan?</Text>
+                <Text style={{ fontSize: 7 }}>
+                  {check(h.another_health_benefit === true)} Yes{" "}
+                  {check(h.another_health_benefit !== true)} No
+                </Text>
+              </View>
             </View>
           </View>
         </View>
@@ -412,8 +418,9 @@ export function HCFA1500PDF({
             <Text style={{ fontSize: 7, marginTop: 2 }}>
               I authorize the release of any medical or other information necessary to process this claim.
             </Text>
-            <Text style={{ fontSize: 7, marginTop: 6 }}>
-              Signed ________________________  Date ____________
+            <Text style={{ fontSize: 7, marginTop: 4 }}>
+              Signed {h.patient_signature ? f(h.patient_signature) : "________________________"}
+              {"  "}Date {h.patient_signature_date ? fmtDate(h.patient_signature_date) : "____________"}
             </Text>
           </View>
           <View style={[s.cellLast, { flex: 1 }]}>
@@ -421,8 +428,8 @@ export function HCFA1500PDF({
             <Text style={{ fontSize: 7, marginTop: 2 }}>
               I authorize payment of medical benefits to the undersigned physician or supplier.
             </Text>
-            <Text style={{ fontSize: 7, marginTop: 6 }}>
-              Signed ________________________
+            <Text style={{ fontSize: 7, marginTop: 4 }}>
+              Signed {h.insured_signature ? f(h.insured_signature) : "________________________"}
             </Text>
           </View>
         </View>
@@ -601,7 +608,13 @@ export function HCFA1500PDF({
         <View style={[s.band, { borderLeft: `0.75px solid ${BLACK}`, borderRight: `0.75px solid ${BLACK}` }]}>
           <View style={[s.cell, { flex: 2 }]}>
             <BoxLabel num="25" label="Federal Tax ID Number  SSN / EIN" />
-            <Text style={s.val}>{f(h.federal_tax_id)}</Text>
+            <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
+              <Text style={s.val}>{f(h.federal_tax_id)}</Text>
+              <Text style={{ fontSize: 6 }}>
+                {check(h.tax_id_ssn === true)} SSN{" "}
+                {check(h.tax_id_ssn !== true)} EIN
+              </Text>
+            </View>
           </View>
           <View style={[s.cell, { flex: 2 }]}>
             <BoxLabel num="26" label="Patient's Account No." />
@@ -624,7 +637,7 @@ export function HCFA1500PDF({
           </View>
           <View style={[s.cellLast, { flex: 1.5 }]}>
             <BoxLabel num="30" label="Reserved for NUCC Use" />
-            <Text style={s.val}> </Text>
+            <Text style={s.val}>{f(h.rsvd_nucc)}</Text>
           </View>
         </View>
 

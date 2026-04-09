@@ -158,6 +158,7 @@ function sanitizeForm1500Fields(
 }
 
 const ORDER_IVR_ALLOWED_FIELDS = new Set([
+  // Primary insurance
   "insurance_provider",
   "insurance_phone",
   "member_id",
@@ -167,6 +168,20 @@ const ORDER_IVR_ALLOWED_FIELDS = new Set([
   "subscriber_name",
   "subscriber_dob",
   "subscriber_relationship",
+  "coverage_start_date",
+  "coverage_end_date",
+  // Patient context (facesheet-extractable)
+  "patient_phone",
+  "patient_address",
+  // Secondary insurance
+  "secondary_insurance_provider",
+  "secondary_insurance_phone",
+  "secondary_subscriber_name",
+  "secondary_policy_number",
+  "secondary_subscriber_dob",
+  "secondary_plan_type",
+  "secondary_group_number",
+  "secondary_subscriber_relationship",
 ]);
 
 const ORDER_IVR_ALIASES: Record<string, string> = {
@@ -518,12 +533,30 @@ Return ONLY a valid JSON object. Use null for any field not found. No text outsi
   "insured_sex": "male" | "female" | "other" | null,
   "insured_employer": string | null,
   "insurance_name": string | null,
-  "insured_plan_name": string | null
+  "insurance_phone": string | null,
+  "insured_plan_name": string | null,
+  "plan_type": "HMO" | "PPO" | "Medicare" | "Medicaid" | "Other" | null,
+  "coverage_start_date": "YYYY-MM-DD" | null,
+  "coverage_end_date": "YYYY-MM-DD" | null,
+  "secondary_insurance_provider": string | null,
+  "secondary_insurance_phone": string | null,
+  "secondary_subscriber_name": string | null,
+  "secondary_policy_number": string | null,
+  "secondary_subscriber_dob": "YYYY-MM-DD" | null,
+  "secondary_plan_type": string | null,
+  "secondary_group_number": string | null,
+  "secondary_subscriber_relationship": "self" | "spouse" | "child" | "other" | null
 }
 
-IMPORTANT: "insurance_name" is the insurance COMPANY name (e.g. "BlueCross BlueShield", "Aetna", "UnitedHealthcare").
-"insured_plan_name" is the specific PLAN or benefit name (e.g. "PPO Gold 500", "HMO Select", "Medicare Supplement Plan G").
-Do NOT put the company name in "insured_plan_name".
+IMPORTANT:
+- "insurance_name" is the PRIMARY insurance COMPANY name (e.g. "BlueCross BlueShield", "Aetna", "UnitedHealthcare").
+- "insurance_phone" is the PRIMARY insurance company's customer service / call-back phone number (NOT the insured person's phone).
+- "insured_plan_name" is the specific PRIMARY PLAN or benefit name (e.g. "PPO Gold 500", "HMO Select", "Medicare Supplement Plan G"). Do NOT put the company name here.
+- "plan_type" is the PRIMARY plan network type: HMO, PPO, Medicare, Medicaid, or Other.
+- "coverage_start_date" and "coverage_end_date" are the PRIMARY insurance effective dates (format YYYY-MM-DD).
+- For secondary insurance fields: only populate if the document explicitly shows a second/secondary insurance policy.
+- "secondary_insurance_provider" is the secondary insurance company name.
+- "secondary_plan_type" is the plan type or benefit name for the secondary policy.
 `.trim();
 
 const CLINICAL_DOCS_PROMPT = `
