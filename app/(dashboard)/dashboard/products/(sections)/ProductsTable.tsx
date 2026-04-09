@@ -15,7 +15,6 @@ import ConfirmModal from "@/app/(components)/ConfirmModal";
 import { EmptyState } from "@/app/(components)/EmptyState";
 import { TableToolbar } from "@/app/(components)/TableToolbar";
 import { DataTable } from "@/app/(components)/DataTable";
-import { AddProductModal } from "../(components)/AddProductModal";
 import { ProductCard } from "../(components)/ProductCard";
 import { ProductRowActions } from "../(components)/ProductRowActions";
 import type { RowEdit } from "@/utils/interfaces/products";
@@ -314,7 +313,6 @@ export default function ProductsTable() {
               products
             </p>
           </div>
-          <AddProductModal />
         </div>
 
         <TableToolbar

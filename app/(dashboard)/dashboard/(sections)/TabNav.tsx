@@ -16,9 +16,14 @@ export function TabNav() {
   const pathname = usePathname();
   const role = useAppSelector((state) => state.dashboard.role) as UserRole;
 
-  // Flatten all groups → visible items for this role
+  // Flatten all groups → visible items for this role (Settings/Profile live in avatar dropdown)
   const visibleItems = NAV_GROUPS.flatMap((group) =>
     group.items.filter((item) => role && item.visible(role)),
+  ).filter(
+    (item) =>
+      item.href !== "/dashboard/settings" &&
+      item.href !== "/dashboard/tasks" &&
+      item.href !== "/dashboard/onboarding",
   );
 
   if (visibleItems.length === 0) return null;

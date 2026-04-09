@@ -1,4 +1,5 @@
 "use client";
+// @deprecated — use PageHeader from "@/app/(components)/PageHeader" for new pages.
 
 import { ReactNode, useEffect, useState } from "react";
 import { useAppSelector } from "@/store/hooks";

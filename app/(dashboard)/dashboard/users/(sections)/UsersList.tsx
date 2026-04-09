@@ -220,7 +220,6 @@ export function UsersList() {
       <PageHeader
         title="Users"
         subtitle="Check and manage all HB Medical portal users"
-        className="pb-5 mb-6"
         action={
           <Button
             size="sm"

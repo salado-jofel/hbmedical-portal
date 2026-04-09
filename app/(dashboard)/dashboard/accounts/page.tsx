@@ -8,7 +8,7 @@ import {
 import { getUserRole } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 import { isAdmin } from "@/utils/helpers/role";
-import { DashboardHeader } from "@/app/(components)/DashboardHeader";
+import { PageHeader } from "@/app/(components)/PageHeader";
 import Providers from "./(sections)/Providers";
 import { AccountsList } from "./(sections)/AccountsList";
 
@@ -25,11 +25,11 @@ export default async function AccountsPage() {
   ]);
 
   return (
-    <div className="p-6 md:p-8 max-w-480 mx-auto space-y-6">
-      <DashboardHeader title="Accounts" description="Manage your clinic accounts and activity" />
+    <>
+      <PageHeader title="Accounts" subtitle="Manage clinic accounts and facilities" />
       <Providers accounts={accounts}>
         <AccountsList salesReps={salesReps} isAdmin={admin} />
       </Providers>
-    </div>
+    </>
   );
 }

@@ -5,7 +5,7 @@ import { isAdmin, isSalesRep } from "@/utils/helpers/role";
 import { getHospitalOnboardingMaterials } from "./(services)/actions";
 import Providers from "./(sections)/Providers";
 import HospitalOnboardingCards from "./(sections)/HospitalOnboardingCards";
-import { DashboardHeader } from "@/app/(components)/DashboardHeader";
+import { PageHeader } from "@/app/(components)/PageHeader";
 import { Metadata } from "next";
 import { getUserData } from "../(services)/actions";
 
@@ -23,14 +23,11 @@ export default async function HospitalOnboardingPage() {
   const hospitalOnboardings = await getHospitalOnboardingMaterials();
 
   return (
-    <Providers hospitalOnboardings={hospitalOnboardings}>
-      <div className="p-6 md:p-8 max-w-480 mx-auto space-y-6">
-        <DashboardHeader
-          title="Hospital Onboarding"
-          description="Your onboarding documents & resources"
-        />
+    <>
+      <PageHeader title="Hospital Onboarding" subtitle="Your onboarding documents & resources" />
+      <Providers hospitalOnboardings={hospitalOnboardings}>
         <HospitalOnboardingCards />
-      </div>
-    </Providers>
+      </Providers>
+    </>
   );
 }

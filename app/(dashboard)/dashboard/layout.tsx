@@ -28,16 +28,16 @@ export default async function DashboardLayout({
           className="sticky top-0 z-50 px-4 pt-5"
           style={{ background: "var(--bg)" }}
         >
-          <div className="mx-auto max-w-[1120px]">
+          <div className="mx-auto max-w-7xl">
             <TopBar />
             <TabNav />
           </div>
         </header>
 
         {/* ── Page content ── */}
-        <main className="mx-auto max-w-[1120px] px-4 pb-12">
-          {children}
-        </main>
+        <div className=" px-4 pb-5">
+          <main className="mx-auto max-w-7xl">{children}</main>
+        </div>
       </div>
     </Providers>
   );

@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import { ActionBar } from "@/app/(components)/ActionBar";
 import { PillBadge } from "@/app/(components)/PillBadge";
-import { SectionHeader } from "@/app/(components)/SectionHeader";
 import { formatAmount, formatDate } from "@/utils/helpers/formatter";
 
 const REPS = [
@@ -51,8 +50,6 @@ export default function SalesTable() {
 
   return (
     <div className="space-y-4">
-      <SectionHeader title="Sales Log" />
-
       {/* Action bar */}
       <ActionBar
         searchValue={search}

@@ -4,6 +4,7 @@ import { getAllOrders } from "./orders/(services)/order-read-actions";
 import RecentOrdersTable from "./(sections)/RecentOrdersTable";
 import StatsCards from "./(sections)/StatsCard";
 import { BarChart2 } from "lucide-react";
+import { PageHeader } from "@/app/(components)/PageHeader";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -22,6 +23,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="select-none">
+      <PageHeader title="Dashboard" subtitle="Overview and recent activity" />
       {/* KPI grid */}
       <StatsCards
         totalOrders={totalOrders}

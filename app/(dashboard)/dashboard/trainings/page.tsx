@@ -5,7 +5,7 @@ import { isAdmin, isSalesRep } from "@/utils/helpers/role";
 import { getTrainingMaterials } from "./(services)/actions";
 import Providers from "./(sections)/Providers";
 import TrainingCards from "./(sections)/TrainingCards";
-import { DashboardHeader } from "@/app/(components)/DashboardHeader";
+import { PageHeader } from "@/app/(components)/PageHeader";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -22,14 +22,11 @@ export default async function TrainingsPage() {
   const trainings = await getTrainingMaterials();
 
   return (
-    <Providers trainings={trainings}>
-      <div className="p-6 md:p-8 max-w-480 mx-auto space-y-6">
-        <DashboardHeader
-          title="Trainings"
-          description="Your training documents & resources"
-        />
+    <>
+      <PageHeader title="Trainings" subtitle="Your training documents & resources" />
+      <Providers trainings={trainings}>
         <TrainingCards />
-      </div>
-    </Providers>
+      </Providers>
+    </>
   );
 }

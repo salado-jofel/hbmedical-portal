@@ -348,17 +348,7 @@ export function OnboardingDashboard({
   ];
 
   return (
-    <div className="p-6 md:p-8 max-w-480 mx-auto space-y-6">
-      {/* ── Header ── */}
-      <div className="flex items-start justify-between gap-4 pb-5 mb-6 border-b border-[var(--border)]">
-        <div>
-          <h1 className="text-xl font-semibold text-[var(--navy)]">Onboarding</h1>
-          <p className="text-sm text-[var(--text2)] mt-0.5">
-            Invite clinic users and manage rep access
-          </p>
-        </div>
-      </div>
-      <div className="max-w-3xl mx-auto space-y-6">
+    <div className="max-w-3xl mx-auto space-y-6">
         {/* ── Admin note ── */}
         {isAdmin && (
           <div className="flex items-start gap-2.5 bg-[#EFF6FF] border border-[var(--navy)]/20 rounded-xl px-4 py-3">
@@ -474,7 +464,6 @@ export function OnboardingDashboard({
           isLoading={isDeletingToken}
           onConfirm={handleDeleteTokenConfirm}
         />
-      </div>
     </div>
   );
 }

@@ -19,12 +19,13 @@ export default async function ResourcesPage() {
   const role = await getUserRole(supabase);
   if (!isAdmin(role) && !isSalesRep(role)) redirect("/dashboard");
 
-  const [marketing, contracts, trainings, hospitalOnboarding] = await Promise.all([
-    getMarketingMaterials(),
-    getContractMaterials(),
-    getTrainingMaterials(),
-    getHospitalOnboardingMaterials(),
-  ]);
+  const [marketing, contracts, trainings, hospitalOnboarding] =
+    await Promise.all([
+      getMarketingMaterials(),
+      getContractMaterials(),
+      getTrainingMaterials(),
+      getHospitalOnboardingMaterials(),
+    ]);
 
   return (
     <Providers
@@ -33,9 +34,7 @@ export default async function ResourcesPage() {
       trainings={trainings}
       hospitalOnboarding={hospitalOnboarding}
     >
-      <div className="p-6 md:p-8 max-w-480 mx-auto space-y-6">
-        <ResourcesView />
-      </div>
+      <ResourcesView />
     </Providers>
   );
 }

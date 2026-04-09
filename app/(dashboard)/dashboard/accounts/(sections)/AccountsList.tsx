@@ -8,7 +8,6 @@ import { AccountStatusBadge } from "../(components)/AccountStatusBadge";
 import { AccountsFilters } from "../(components)/AccountsFilters";
 import { DataTable } from "@/app/(components)/DataTable";
 import { CountBadge } from "@/app/(components)/CountBadge";
-import { PageHeader } from "@/app/(components)/PageHeader";
 import type { TableColumn } from "@/utils/interfaces/table-column";
 import type { IRepProfile, AccountStatus } from "@/utils/interfaces/accounts";
 
@@ -121,13 +120,6 @@ export function AccountsList({ salesReps, isAdmin }: {
 
   return (
     <div className="space-y-4">
-      {/* ── Header ── */}
-      <PageHeader
-        title="Accounts"
-        subtitle="Manage your facilities and prospects"
-        className="pb-5 mb-6"
-      />
-
       {/* ── Filters ── */}
       <AccountsFilters
         search={search}
