@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Select,
   SelectContent,
@@ -8,12 +8,35 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useAppSelector } from "@/store/hooks";
 import { formatAmount } from "@/utils/helpers/formatter";
 
 export default function CommissionCalculator() {
+  const summary = useAppSelector((s) => s.commissions.summary);
+
   const [saleAmount, setSaleAmount] = useState(25000);
   const [commRate, setCommRate] = useState(5);
   const [override, setOverride] = useState("2");
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
+
+  // Sync rate slider with actual commission rate once Redux hydrates from Providers
+  useEffect(() => {
+    if (summary?.currentRate != null) setCommRate(summary.currentRate);
+  }, [summary?.currentRate]);
+
+  if (!mounted) return (
+    <div className="overflow-hidden rounded-[var(--r)] border border-[var(--border)] bg-[var(--surface)] p-5">
+      <div className="animate-pulse space-y-4">
+        <div className="h-4 w-44 rounded bg-[var(--border2)]" />
+        <div className="h-8 w-full rounded bg-[var(--border2)]" />
+        <div className="h-8 w-full rounded bg-[var(--border2)]" />
+        <div className="h-8 w-full rounded bg-[var(--border2)]" />
+        <div className="h-20 w-full rounded-[9px] bg-[var(--teal-lt)]" />
+      </div>
+    </div>
+  );
 
   const overridePct = parseFloat(override);
   const repComm = saleAmount * (commRate / 100);
@@ -59,7 +82,7 @@ export default function CommissionCalculator() {
         </div>
         <input
           type="range"
-          min={1}
+          min={0}
           max={20}
           step={0.5}
           value={commRate}
@@ -67,7 +90,7 @@ export default function CommissionCalculator() {
           className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[var(--border2)] accent-[var(--teal)]"
         />
         <div className="mt-0.5 flex justify-between text-[10px] text-[var(--text3)]">
-          <span>1%</span>
+          <span>0%</span>
           <span>20%</span>
         </div>
       </div>

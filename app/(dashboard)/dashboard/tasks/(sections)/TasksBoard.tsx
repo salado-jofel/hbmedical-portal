@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import toast from "react-hot-toast";
 import { motion } from "framer-motion";
 import { CheckSquare } from "lucide-react";
@@ -52,6 +52,9 @@ export function TasksBoard({ accounts, salesReps, isAdmin }: {
   const [statusFilter, setStatusFilter] = useState<TaskStatus | "all">("all");
   const [priorityFilter, setPriorityFilter] = useState<TaskPriority | "all">("all");
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -95,6 +98,8 @@ export function TasksBoard({ accounts, salesReps, isAdmin }: {
   }
 
   const totalOpen = tasks.filter((t) => t.status === "open").length;
+
+  if (!mounted) return null;
 
   return (
     <div className="space-y-5">

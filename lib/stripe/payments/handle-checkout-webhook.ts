@@ -4,6 +4,7 @@ import Stripe from "stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendPaymentReceiptEmail } from "@/lib/emails/send-payment-receipt";
 import { syncOrderToShipStation } from "@/lib/actions/shipstation";
+import { calculateOrderCommission } from "@/app/(dashboard)/dashboard/commissions/(services)/actions";
 import { stripe } from "../server";
 
 type PaymentRecordLookup = {
@@ -460,6 +461,18 @@ async function syncToShipStationSafely(orderId: string) {
   }
 }
 
+async function calculateCommissionSafely(orderId: string) {
+  try {
+    await calculateOrderCommission(orderId);
+  } catch (error) {
+    console.error(
+      "[payments.calculateCommissionSafely] Commission calculation failed for order:",
+      orderId,
+      error,
+    );
+  }
+}
+
 async function handleCheckoutSessionCompleted(
   session: Stripe.Checkout.Session,
 ) {
@@ -497,6 +510,7 @@ async function handleCheckoutSessionCompleted(
     );
     await sendSuccessfulPaymentReceipt(orderId, session);
     await syncToShipStationSafely(orderId);
+    await calculateCommissionSafely(orderId);
   } else {
     console.warn(
       "[payments.handleCheckoutSessionCompleted] Guard FAILED — email skipped. wasAlreadyPaid:",
@@ -523,6 +537,7 @@ async function handleCheckoutSessionAsyncSucceeded(
   if (!wasAlreadyPaid && didMarkPaid) {
     await sendSuccessfulPaymentReceipt(orderId, session);
     await syncToShipStationSafely(orderId);
+    await calculateCommissionSafely(orderId);
   }
 }
 

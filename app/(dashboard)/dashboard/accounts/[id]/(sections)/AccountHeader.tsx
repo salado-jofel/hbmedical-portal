@@ -40,13 +40,16 @@ export function AccountHeader({ accountId, isAdmin, salesReps }: AccountHeaderPr
   const [error, setError] = useState<string | null>(null);
   const [isAssigning, setIsAssigning] = useState(false);
   const [selectedRep, setSelectedRep] = useState(account?.assigned_rep ?? "none");
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
 
   // Sync with Redux after Providers hydrates on first render (hard refresh)
   useEffect(() => {
     setSelectedRep(account?.assigned_rep ?? "none");
   }, [account?.assigned_rep]);
 
-  if (!account) return null;
+  if (!mounted || !account) return null;
 
   function handleStatusChange(value: string) {
     setError(null);

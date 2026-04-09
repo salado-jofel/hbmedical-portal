@@ -1,3 +1,4 @@
+import commissionsSlice from "@/app/(dashboard)/dashboard/commissions/(redux)/commissions-slice";
 import dashboardSlice from "@/app/(dashboard)/dashboard/(redux)/dashboard-slice";
 import accountsSlice from "@/app/(dashboard)/dashboard/accounts/(redux)/accounts-slice";
 import activitiesSlice from "@/app/(dashboard)/dashboard/(redux)/activities-slice";
@@ -29,6 +30,7 @@ export const store = configureStore({
     contracts: contractsSlice,
     trainings: trainingsSlice,
     hospitalOnboarding: hospitalOnboardingSlice,
+    commissions: commissionsSlice,
     dashboard: dashboardSlice,
   },
 });

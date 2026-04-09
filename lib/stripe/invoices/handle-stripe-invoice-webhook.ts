@@ -7,6 +7,7 @@ import type { OrderInvoiceStatus } from "@/utils/interfaces/orders";
 import { sendNet30InvoiceCreatedEmail } from "@/lib/emails/send-net30-invoice-created";
 import { sendNet30ReceiptEmail } from "@/lib/emails/send-net30-receipt";
 import { sendNet30ReminderEmail } from "@/lib/emails/send-net30-reminder";
+import { calculateOrderCommission } from "@/app/(dashboard)/dashboard/commissions/(services)/actions";
 
 type FacilityRelation = {
   name?: string | null;
@@ -422,6 +423,18 @@ async function runEmailHookSafely(
   }
 }
 
+async function calculateCommissionSafely(orderId: string) {
+  try {
+    await calculateOrderCommission(orderId);
+  } catch (error) {
+    console.error(
+      "[invoices.calculateCommissionSafely] Commission calculation failed for order:",
+      orderId,
+      error,
+    );
+  }
+}
+
 async function sendInvoiceFinalizedEmail(invoice: Stripe.Invoice) {
   const context = await getOrderEmailContext(invoice);
 
@@ -650,6 +663,8 @@ async function handleInvoicePaid(invoice: Stripe.Invoice) {
   await runEmailHookSafely("handleInvoicePaid", async () => {
     await sendInvoicePaidEmail(invoice);
   });
+
+  await calculateCommissionSafely(orderId);
 }
 
 /**
