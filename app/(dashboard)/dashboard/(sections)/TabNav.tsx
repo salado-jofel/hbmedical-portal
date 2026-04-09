@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useAppSelector } from "@/store/hooks";
 import { cn } from "@/utils/utils";
 import type { UserRole } from "@/utils/helpers/role";
+import { isSalesRep } from "@/utils/helpers/role";
 import { NAV_GROUPS } from "./Sidebar";
 
 function isActive(href: string, pathname: string): boolean {
@@ -49,7 +50,11 @@ export function TabNav() {
             )}
           >
             <Icon className="h-[13px] w-[13px] shrink-0" strokeWidth={1.8} />
-            <span>{item.label}</span>
+            <span>
+              {item.href === "/dashboard/rep-performance"
+                ? isSalesRep(role) ? "My Performance" : "Rep Performance"
+                : item.label}
+            </span>
           </Link>
         );
       })}

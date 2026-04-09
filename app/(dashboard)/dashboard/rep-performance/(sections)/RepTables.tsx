@@ -1,119 +1,124 @@
 "use client";
 
-import { PillBadge } from "@/app/(components)/PillBadge";
+import {
+  AreaChart, Area, XAxis, YAxis, CartesianGrid,
+  Tooltip, ResponsiveContainer,
+} from "recharts";
+import { useAppSelector } from "@/store/hooks";
 import { formatAmount } from "@/utils/helpers/formatter";
+import type { IRepPerformance } from "@/utils/interfaces/quotas";
 
-const MY_SALES = [
-  { order: "HB-2604-1", client: "Mass General Brigham",   amount: 18400, status: "completed" },
-  { order: "HB-2604-5", client: "Boston Children's",      amount: 9800,  status: "completed" },
-  { order: "HB-2604-9", client: "Lahey Hospital",         amount: 14200, status: "completed" },
-  { order: "HB-2604-11",client: "Mass Eye and Ear",       amount: 6800,  status: "pending"   },
-];
+const TEAL = "#0d7a6b";
+const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
-const MY_CLIENTS = [
-  { name: "Mass General Brigham",  category: "Hospital",    purchases: 185000 },
-  { name: "Boston Children's",     category: "Hospital",    purchases: 92000  },
-  { name: "Lahey Hospital",        category: "Hospital",    purchases: 41000  },
-  { name: "Mass Eye and Ear",      category: "Specialty",   purchases: 28000  },
-];
+function formatCurrency(v: number): string {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(v);
+}
+
+function attainmentColor(pct: number | null): string {
+  if (pct === null) return "text-[var(--text3)]";
+  if (pct >= 100)   return "text-emerald-600";
+  if (pct >= 75)    return "text-[var(--teal)]";
+  if (pct >= 25)    return "text-[var(--gold)]";
+  return "text-red-500";
+}
+
+function SubRepRow({ rep }: { rep: IRepPerformance }) {
+  const pct    = rep.attainmentPct;
+  const capped = Math.min(pct ?? 0, 100);
+  return (
+    <tr className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--bg)]">
+      <td className="px-4 py-[10px] text-[13px] font-medium text-[var(--navy)]">{rep.repName}</td>
+      <td className="px-4 py-[10px] text-[13px]" style={{ fontFamily: "var(--font-dm-mono), monospace" }}>{formatAmount(rep.actualRevenue)}</td>
+      <td className="px-4 py-[10px] text-[13px] text-[var(--text2)]" style={{ fontFamily: "var(--font-dm-mono), monospace" }}>
+        {rep.quota != null ? formatAmount(rep.quota) : "—"}
+      </td>
+      <td className="px-4 py-[10px]">
+        {pct !== null ? (
+          <div className="flex items-center gap-2">
+            <div className="h-[6px] w-[60px] overflow-hidden rounded-full bg-[var(--border2)]">
+              <div className="h-full rounded-full bg-[var(--teal-mid)]" style={{ width: `${capped}%` }} />
+            </div>
+            <span className={`text-[12px] font-semibold ${attainmentColor(pct)}`}>{pct.toFixed(1)}%</span>
+          </div>
+        ) : <span className="text-[12px] text-[var(--text3)]">—</span>}
+      </td>
+      <td className="px-4 py-[10px] text-[13px]" style={{ fontFamily: "var(--font-dm-mono), monospace" }}>{formatAmount(rep.commissionEarned)}</td>
+      <td className="px-4 py-[10px] text-[13px] text-[var(--text2)]">{rep.paidOrders}</td>
+    </tr>
+  );
+}
 
 export default function RepTables() {
+  const summary  = useAppSelector((s) => s.repPerformance.summary);
+  const subReps  = summary?.subRepPerformance ?? [];
+  const monthly  = (summary?.monthlyRevenue ?? []).map(({ period, revenue }) => {
+    const [, mo] = period.split("-");
+    return { label: MONTH_NAMES[(Number(mo) - 1)] ?? period, revenue };
+  });
+
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-      {/* My Recent Sales */}
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+      {/* Revenue Trend */}
       <div className="overflow-hidden rounded-[var(--r)] border border-[var(--border)] bg-[var(--surface)]">
         <div className="border-b border-[var(--border)] px-4 py-[0.8rem]">
-          <p className="text-[13px] font-semibold text-[var(--navy)]">My Recent Sales</p>
+          <p className="text-[13px] font-semibold text-[var(--navy)]">Revenue Trend</p>
+          <p className="mt-[1px] text-[11px] text-[var(--text3)]">Last 6 months</p>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="border-b border-[var(--border)] bg-[var(--bg)]">
-                {["Order", "Client", "Amount", "Status"].map((h) => (
-                  <th
-                    key={h}
-                    className="px-4 py-[9px] text-[10px] font-semibold uppercase tracking-[0.6px] text-[var(--text3)]"
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {MY_SALES.map((row) => (
-                <tr
-                  key={row.order}
-                  className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--bg)]"
-                >
-                  <td
-                    className="px-4 py-[10px] text-[13px] font-medium text-[var(--navy)]"
-                    style={{ fontFamily: "var(--font-dm-mono), monospace" }}
-                  >
-                    {row.order}
-                  </td>
-                  <td className="px-4 py-[10px] text-[13px] text-[var(--text)]">{row.client}</td>
-                  <td
-                    className="px-4 py-[10px] text-[13px]"
-                    style={{ fontFamily: "var(--font-dm-mono), monospace" }}
-                  >
-                    {formatAmount(row.amount)}
-                  </td>
-                  <td className="px-4 py-[10px]">
-                    <PillBadge
-                      label={row.status === "completed" ? "Done" : "Pending"}
-                      variant={row.status === "completed" ? "green" : "gold"}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="p-4">
+          {monthly.length === 0 ? (
+            <div className="flex h-[200px] items-center justify-center text-[13px] text-[var(--text3)]">No data yet</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={200}>
+              <AreaChart data={monthly} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="repRevenueGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%"  stopColor={TEAL} stopOpacity={0.08} />
+                    <stop offset="95%" stopColor={TEAL} stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                <YAxis tickFormatter={formatCurrency} tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} width={60} />
+                <Tooltip
+                  formatter={(v) => [formatCurrency(Number(v ?? 0)), "Revenue"]}
+                  labelStyle={{ fontSize: 11, color: "#0f2d4a" }}
+                  contentStyle={{ backgroundColor: "#fff", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "8px 12px", fontSize: "12px" }}
+                />
+                <Area type="monotone" dataKey="revenue" stroke={TEAL} strokeWidth={2} fill="url(#repRevenueGrad)" activeDot={{ r: 4, fill: TEAL }} />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
         </div>
       </div>
 
-      {/* My Clients */}
-      <div className="overflow-hidden rounded-[var(--r)] border border-[var(--border)] bg-[var(--surface)]">
-        <div className="border-b border-[var(--border)] px-4 py-[0.8rem]">
-          <p className="text-[13px] font-semibold text-[var(--navy)]">My Clients</p>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="border-b border-[var(--border)] bg-[var(--bg)]">
-                {["Client", "Category", "Purchases"].map((h) => (
-                  <th
-                    key={h}
-                    className="px-4 py-[9px] text-[10px] font-semibold uppercase tracking-[0.6px] text-[var(--text3)]"
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {MY_CLIENTS.map((row) => (
-                <tr
-                  key={row.name}
-                  className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--bg)]"
-                >
-                  <td className="px-4 py-[10px] text-[13px] font-medium text-[var(--navy)]">
-                    {row.name}
-                  </td>
-                  <td className="px-4 py-[10px]">
-                    <PillBadge label={row.category} variant="blue" />
-                  </td>
-                  <td
-                    className="px-4 py-[10px] text-[13px]"
-                    style={{ fontFamily: "var(--font-dm-mono), monospace" }}
-                  >
-                    {formatAmount(row.purchases)}
-                  </td>
+      {/* Sub-rep Performance (only if sub-reps exist) */}
+      {subReps.length > 0 ? (
+        <div className="overflow-hidden rounded-[var(--r)] border border-[var(--border)] bg-[var(--surface)]">
+          <div className="border-b border-[var(--border)] px-4 py-[0.8rem]">
+            <p className="text-[13px] font-semibold text-[var(--navy)]">Sub-Rep Performance</p>
+            <p className="mt-[1px] text-[11px] text-[var(--text3)]">Current period</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="border-b border-[var(--border)] bg-[var(--bg)]">
+                  {["Rep", "Revenue", "Quota", "Attainment", "Commission", "Orders"].map((h) => (
+                    <th key={h} className="px-4 py-[9px] text-[10px] font-semibold uppercase tracking-[0.6px] text-[var(--text3)] whitespace-nowrap">{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {subReps.map((rep) => <SubRepRow key={rep.repId} rep={rep} />)}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="flex items-center justify-center overflow-hidden rounded-[var(--r)] border border-[var(--border)] bg-[var(--surface)] px-4 py-8">
+          <p className="text-[13px] text-[var(--text3)]">No sub-reps assigned</p>
+        </div>
+      )}
     </div>
   );
 }

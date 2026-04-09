@@ -726,6 +726,7 @@ export async function getSubRepsForRateDropdown(): Promise<Array<{ id: string; n
       .from("profiles")
       .select("id, first_name, last_name")
       .eq("role", "sales_representative")
+      .eq("status", "active")
       .order("first_name");
     return (data ?? []).map((p: any) => ({ id: p.id, name: `${p.first_name} ${p.last_name}`.trim() }));
   }
@@ -733,12 +734,12 @@ export async function getSubRepsForRateDropdown(): Promise<Array<{ id: string; n
   if (isSalesRep(role)) {
     const { data } = await adminClient
       .from("rep_hierarchy")
-      .select("child:profiles!rep_hierarchy_child_rep_id_fkey(id, first_name, last_name)")
+      .select("child:profiles!rep_hierarchy_child_rep_id_fkey(id, first_name, last_name, status)")
       .eq("parent_rep_id", user.id);
     return (data ?? [])
       .map((r: any) => {
         const child = Array.isArray(r.child) ? r.child[0] : r.child;
-        if (!child?.id) return null;
+        if (!child?.id || child.status !== "active") return null;
         return { id: child.id, name: `${child.first_name} ${child.last_name}`.trim() };
       })
       .filter(Boolean) as Array<{ id: string; name: string }>;

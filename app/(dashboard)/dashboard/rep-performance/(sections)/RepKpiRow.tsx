@@ -1,30 +1,33 @@
 "use client";
 
 import { KpiCard } from "@/app/(components)/KpiCard";
+import { useAppSelector } from "@/store/hooks";
+import { formatAmount } from "@/utils/helpers/formatter";
 
 export default function RepKpiRow() {
+  const perf = useAppSelector((s) => s.repPerformance.summary?.myPerformance ?? null);
+
   return (
-    <div className="mb-5 grid grid-cols-1 gap-[10px] sm:grid-cols-3">
+    <div className="mb-5 grid grid-cols-2 gap-[10px] lg:grid-cols-4">
       <KpiCard
-        label="My Sales"
-        value="$61,200"
-        delta="Goal hit!"
-        deltaType="up"
+        label="Revenue This Month"
+        value={formatAmount(perf?.actualRevenue ?? 0)}
         accentColor="teal"
       />
       <KpiCard
-        label="My Clients"
-        value="7"
-        delta="Active accounts"
-        deltaType="warn"
+        label="Orders This Month"
+        value={String(perf?.paidOrders ?? 0)}
         accentColor="blue"
       />
       <KpiCard
-        label="Commission"
-        value="$3,060"
-        delta="This month"
-        deltaType="warn"
-        accentColor="gold"
+        label="Commission Earned"
+        value={formatAmount(perf?.commissionEarned ?? 0)}
+        accentColor="green"
+      />
+      <KpiCard
+        label="Avg Order Value"
+        value={formatAmount(perf?.avgOrderValue ?? 0)}
+        accentColor="purple"
       />
     </div>
   );

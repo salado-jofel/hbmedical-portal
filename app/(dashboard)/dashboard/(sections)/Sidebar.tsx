@@ -126,7 +126,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
         icon: TrendingUp,
         label: "My Performance",
         href: "/dashboard/rep-performance",
-        visible: isSalesRep,
+        visible: (role) => isSalesRep(role) || isAdmin(role),
       },
     ],
   },
