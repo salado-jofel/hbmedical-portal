@@ -1,6 +1,5 @@
 "use server";
 
-import { getUserData } from "@/app/(dashboard)/dashboard/(services)/actions";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 
@@ -35,10 +34,5 @@ export async function signIn(
     }
   }
 
-  const userData = await getUserData();
-  if (userData?.role === "admin") {
-    redirect("/dashboard/products");
-  } else {
-    redirect("/dashboard");
-  }
+  redirect("/dashboard");
 }
