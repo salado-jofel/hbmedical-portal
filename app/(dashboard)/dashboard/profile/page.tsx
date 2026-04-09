@@ -1,8 +1,8 @@
 export const dynamic = "force-dynamic";
 
 import { getProfile } from "./(services)/actions";
+import { PageHeader } from "@/app/(components)/PageHeader";
 import Providers from "./(sections)/Providers";
-import Header from "./(sections)/Header";
 import ProfileForm from "./(sections)/ProfileForm";
 import { notFound } from "next/navigation";
 import { Metadata } from "next";
@@ -17,11 +17,11 @@ export default async function ProfilePage() {
   if (!profile) notFound();
 
   return (
-    <Providers profile={profile}>
-      <div className="p-6 md:p-8 max-w-480 mx-auto space-y-6">
-        <Header />
+    <>
+      <PageHeader title="My Profile" subtitle="Manage your account" />
+      <Providers profile={profile}>
         <ProfileForm />
-      </div>
-    </Providers>
+      </Providers>
+    </>
   );
 }

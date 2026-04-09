@@ -56,7 +56,7 @@ export function InviteClinicForm({ isAdmin = false, repsWithFacilities = [] }: {
         </div>
         <button
           onClick={resetForm}
-          className="text-sm text-[#64748B] underline underline-offset-2 hover:text-[#0F172A] transition-colors"
+          className="text-sm text-[var(--text2)] underline underline-offset-2 hover:text-[var(--navy)] transition-colors"
         >
           Send another invite
         </button>
@@ -110,8 +110,8 @@ export function InviteClinicForm({ isAdmin = false, repsWithFacilities = [] }: {
         {/* Role — always Clinical Provider for admin and rep invites */}
         <input type="hidden" name="role_type" value="clinical_provider" />
         <div className="space-y-1.5">
-          <Label className="text-xs text-[#64748B]">Inviting as</Label>
-          <p className="text-sm h-9 flex items-center px-3 rounded-md bg-[#F8FAFC] border border-[#E2E8F0] text-[#0F172A] font-medium">
+          <Label className="text-xs text-[var(--text2)]">Inviting as</Label>
+          <p className="text-sm h-9 flex items-center px-3 rounded-md bg-[var(--bg)] border border-[var(--border)] text-[var(--navy)] font-medium">
             Clinical Provider
           </p>
         </div>
@@ -161,7 +161,7 @@ export function InviteClinicForm({ isAdmin = false, repsWithFacilities = [] }: {
           type="submit"
           size="sm"
           disabled={isPending || hasNoReps || (isAdmin && !selectedFacilityId)}
-          className="w-full h-9 bg-[#15689E] hover:bg-[#125d8e] text-white gap-1.5 rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors"
+          className="w-full h-9 bg-[var(--navy)] hover:bg-[var(--navy)]/80 text-white gap-1.5 rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors"
         >
           {isPending ? (
             <Loader2 className="w-3.5 h-3.5 animate-spin" />

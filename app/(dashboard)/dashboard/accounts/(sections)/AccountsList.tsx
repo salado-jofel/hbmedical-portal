@@ -8,7 +8,6 @@ import { AccountStatusBadge } from "../(components)/AccountStatusBadge";
 import { AccountsFilters } from "../(components)/AccountsFilters";
 import { DataTable } from "@/app/(components)/DataTable";
 import { CountBadge } from "@/app/(components)/CountBadge";
-import { PageHeader } from "@/app/(components)/PageHeader";
 import type { TableColumn } from "@/utils/interfaces/table-column";
 import type { IRepProfile, AccountStatus } from "@/utils/interfaces/accounts";
 
@@ -46,10 +45,10 @@ export function AccountsList({ salesReps, isAdmin }: {
       label: "Account",
       render: (account) => (
         <div className="min-w-0">
-          <p className="text-sm font-medium text-[#0F172A] truncate group-hover:text-[#15689E] transition-colors">
+          <p className="text-sm font-medium text-[var(--navy)] truncate group-hover:text-[var(--navy)] transition-colors">
             {account.name}
           </p>
-          <p className="text-xs text-[#94A3B8] truncate mt-0.5">
+          <p className="text-xs text-[var(--text3)] truncate mt-0.5">
             {account.city}, {account.state} · {account.country}
           </p>
         </div>
@@ -72,15 +71,15 @@ export function AccountsList({ salesReps, isAdmin }: {
           {account.assigned_rep_profile ? (
             <>
               <div className="w-6 h-6 rounded-full bg-[#EFF6FF] flex items-center justify-center shrink-0">
-                <User className="w-3 h-3 text-[#15689E]" />
+                <User className="w-3 h-3 text-[var(--navy)]" />
               </div>
-              <span className="text-xs text-[#64748B] truncate">
+              <span className="text-xs text-[var(--text2)] truncate">
                 {account.assigned_rep_profile.first_name}{" "}
                 {account.assigned_rep_profile.last_name}
               </span>
             </>
           ) : (
-            <span className="text-xs text-[#94A3B8]">Unassigned</span>
+            <span className="text-xs text-[var(--text3)]">Unassigned</span>
           )}
         </div>
       ),
@@ -91,7 +90,7 @@ export function AccountsList({ salesReps, isAdmin }: {
       headerClassName: "hidden lg:table-cell",
       cellClassName: "hidden lg:table-cell",
       render: (account) => (
-        <span className="text-xs text-[#64748B]">
+        <span className="text-xs text-[var(--text2)]">
           {account.city}, {account.state}
         </span>
       ),
@@ -113,7 +112,7 @@ export function AccountsList({ salesReps, isAdmin }: {
       render: (account) => (
         <div className="inline-flex items-center gap-3 justify-end">
           <CountBadge count={account.orders_count} variant="accent" />
-          <ChevronRight className="w-4 h-4 text-[#94A3B8] group-hover:text-[#15689E] transition-colors shrink-0" />
+          <ChevronRight className="w-4 h-4 text-[var(--text3)] group-hover:text-[var(--navy)] transition-colors shrink-0" />
         </div>
       ),
     },
@@ -121,13 +120,6 @@ export function AccountsList({ salesReps, isAdmin }: {
 
   return (
     <div className="space-y-4">
-      {/* ── Header ── */}
-      <PageHeader
-        title="Accounts"
-        subtitle="Manage your facilities and prospects"
-        className="pb-5 mb-6"
-      />
-
       {/* ── Filters ── */}
       <AccountsFilters
         search={search}
@@ -141,17 +133,19 @@ export function AccountsList({ salesReps, isAdmin }: {
       />
 
       {/* ── Table ── */}
-      <DataTable
-        columns={columns}
-        data={filtered}
-        keyExtractor={(a) => a.id}
-        emptyMessage="No accounts found"
-        emptyIcon={<Building2 className="w-10 h-10 stroke-1" />}
-        onRowClick={(account) => router.push(`/dashboard/accounts/${account.id}`)}
-        rowClassName="group"
-      />
+      <div className="overflow-hidden rounded-[var(--r)] border border-[var(--border)] bg-[var(--surface)]">
+        <DataTable
+          columns={columns}
+          data={filtered}
+          keyExtractor={(a) => a.id}
+          emptyMessage="No accounts found"
+          emptyIcon={<Building2 className="w-10 h-10 stroke-1" />}
+          onRowClick={(account) => router.push(`/dashboard/accounts/${account.id}`)}
+          rowClassName="group"
+        />
+      </div>
 
-      <p className="text-xs text-[#94A3B8] text-right">
+      <p className="text-xs text-[var(--text3)] text-right">
         {filtered.length} of {accounts.length} account{accounts.length !== 1 ? "s" : ""}
       </p>
     </div>

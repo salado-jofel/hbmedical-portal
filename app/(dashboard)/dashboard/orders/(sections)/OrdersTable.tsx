@@ -2,6 +2,7 @@
 
 import type { DashboardOrder, OrderStatus } from "@/utils/interfaces/orders";
 import { OrderStatusBadge } from "../(components)/OrderStatusBadge";
+import { PillBadge } from "@/app/(components)/PillBadge";
 import { EmptyState } from "@/app/(components)/EmptyState";
 import { PageHeader } from "@/app/(components)/PageHeader";
 import { TableToolbar } from "@/app/(components)/TableToolbar";
@@ -40,14 +41,14 @@ export function OrdersTable({
         subtitle="All orders across facilities"
         className="pb-4"
         action={(isAdmin || isSupport) ? (
-          <div className="flex items-center gap-1 border border-gray-200 rounded-lg p-0.5 shrink-0">
+          <div className="flex items-center gap-[3px] border border-[var(--border)] rounded-[var(--r)] p-1 shrink-0 bg-[var(--surface)]">
             <button
               onClick={() => onTableModeChange(false)}
               className={cn(
-                "px-3 py-1.5 rounded-md text-xs font-semibold transition-colors",
+                "px-3 py-[5px] rounded-[7px] text-[12px] font-medium transition-colors",
                 !tableMode
-                  ? "bg-[#15689E] text-white"
-                  : "text-gray-500 hover:text-gray-700",
+                  ? "bg-[var(--navy)] text-white"
+                  : "text-[var(--text2)] hover:bg-[var(--bg)]",
               )}
             >
               Kanban
@@ -55,10 +56,10 @@ export function OrdersTable({
             <button
               onClick={() => onTableModeChange(true)}
               className={cn(
-                "px-3 py-1.5 rounded-md text-xs font-semibold transition-colors",
+                "px-3 py-[5px] rounded-[7px] text-[12px] font-medium transition-colors",
                 tableMode
-                  ? "bg-[#15689E] text-white"
-                  : "text-gray-500 hover:text-gray-700",
+                  ? "bg-[var(--navy)] text-white"
+                  : "text-[var(--text2)] hover:bg-[var(--bg)]",
               )}
             >
               Table
@@ -92,83 +93,77 @@ export function OrdersTable({
           description="Adjust your filters or wait for orders to come in."
         />
       ) : (
-        <div className="rounded-xl border border-slate-200 overflow-hidden">
+        <div className="rounded-[var(--r)] border border-[var(--border)] overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 border-b border-slate-200">
+            <thead className="bg-[var(--bg)] border-b border-[var(--border)]">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                  Order #
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                  Patient
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide hidden md:table-cell">
-                  Facility
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide hidden lg:table-cell">
-                  Wound
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide hidden lg:table-cell">
-                  DOS
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                  Status
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide hidden xl:table-cell">
-                  Payment
-                </th>
+                {["Order #", "Patient", "Facility", "Wound", "DOS", "Status", "Payment"].map((h, i) => (
+                  <th
+                    key={h}
+                    className={cn(
+                      "px-4 py-[9px] text-left text-[10px] font-semibold text-[var(--text3)] uppercase tracking-[0.6px]",
+                      i === 2 && "hidden md:table-cell",
+                      i === 3 && "hidden lg:table-cell",
+                      i === 4 && "hidden lg:table-cell",
+                      i === 6 && "hidden xl:table-cell",
+                    )}
+                  >
+                    {h}
+                  </th>
+                ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-[var(--border)]">
               {filtered.map((order) => (
                 <tr
                   key={order.id}
-                  className="hover:bg-slate-50 cursor-pointer transition-colors"
+                  className="hover:bg-[var(--bg)] cursor-pointer transition-colors"
                   onClick={() => onOrderClick(order)}
                 >
-                  <td className="px-4 py-3 font-mono font-semibold text-[#15689E] text-xs">
+                  <td
+                    className="px-4 py-[10px] text-[12px] font-medium text-[var(--navy)]"
+                    style={{ fontFamily: "var(--font-dm-mono), monospace" }}
+                  >
                     {order.order_number}
                   </td>
-                  <td className="px-4 py-3 text-slate-700">
+                  <td className="px-4 py-[10px] text-[13px] text-[var(--text)]">
                     {order.patient_full_name ?? "—"}
                   </td>
-                  <td className="px-4 py-3 text-slate-600 hidden md:table-cell">
+                  <td className="px-4 py-[10px] text-[13px] text-[var(--text2)] hidden md:table-cell">
                     {order.facility_name ?? "—"}
                   </td>
-                  <td className="px-4 py-3 text-slate-600 hidden lg:table-cell capitalize">
+                  <td className="px-4 py-[10px] text-[13px] text-[var(--text2)] hidden lg:table-cell capitalize">
                     {order.wound_type?.replace("_", " ") ?? "—"}
                   </td>
-                  <td className="px-4 py-3 text-slate-600 hidden lg:table-cell">
+                  <td className="px-4 py-[10px] text-[13px] text-[var(--text2)] hidden lg:table-cell">
                     {order.date_of_service ?? "—"}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-[10px]">
                     <OrderStatusBadge status={order.order_status} />
                   </td>
-                  <td className="px-4 py-3 hidden xl:table-cell">
+                  <td className="px-4 py-[10px] hidden xl:table-cell">
                     {order.payment_method ? (
                       <div className="flex flex-col gap-1">
-                        <span
-                          className={cn(
-                            "inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full w-fit",
+                        <PillBadge
+                          label={
                             order.payment_status === "paid"
-                              ? "bg-green-100 text-green-700"
+                              ? "Paid"
                               : order.payment_method === "pay_now"
-                                ? "bg-blue-100 text-blue-700"
-                                : "bg-purple-100 text-purple-700",
-                          )}
-                        >
-                          {order.payment_status === "paid" ? (
-                            <><Check className="w-3 h-3" /> Paid</>
-                          ) : order.payment_method === "pay_now" ? (
-                            <><CreditCard className="w-3 h-3" /> Pay Now</>
-                          ) : (
-                            <><FileText className="w-3 h-3" /> Net-30</>
-                          )}
-                        </span>
+                                ? "Pay Now"
+                                : "Net-30"
+                          }
+                          variant={
+                            order.payment_status === "paid"
+                              ? "green"
+                              : order.payment_method === "pay_now"
+                                ? "blue"
+                                : "purple"
+                          }
+                        />
                         {order.payment_method === "net_30" &&
                           order.payment_status !== "paid" &&
                           order.invoice_due_at && (
-                            <span className="text-[10px] text-red-500 font-medium">
+                            <span className="text-[10px] text-[var(--red)] font-medium">
                               Due{" "}
                               {new Date(
                                 order.invoice_due_at,
@@ -180,7 +175,7 @@ export function OrdersTable({
                           )}
                       </div>
                     ) : (
-                      <span className="text-xs text-gray-400">—</span>
+                      <span className="text-[13px] text-[var(--text3)]">—</span>
                     )}
                   </td>
                 </tr>

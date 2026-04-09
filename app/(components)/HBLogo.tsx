@@ -24,9 +24,9 @@ export function HBLogo({
 }: HBLogoProps) {
   const { icon, text, sub } = sizeMap[size];
 
-  const peakColor = variant === "dark" ? "white" : "#15689E";
-  const hbColor = variant === "dark" ? "text-white" : "text-[#15689E]";
-  const medColor = variant === "dark" ? "text-white/60" : "text-[#15689E]/70";
+  const peakColor = variant === "dark" ? "white" : "#0f2d4a";
+  const hbColor = variant === "dark" ? "text-white" : "text-[var(--navy)]";
+  const medColor = variant === "dark" ? "text-white/60" : "text-[var(--navy)]/70";
 
   const content = (
     <span className={`flex items-center gap-2.5 ${className}`}>

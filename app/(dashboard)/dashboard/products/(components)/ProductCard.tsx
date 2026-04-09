@@ -75,11 +75,11 @@ export function ProductCard({ product }: { product: Product }) {
         onConfirm={handleConfirmDelete}
       />
 
-      <div className="p-4 border-b border-[#F1F5F9] last:border-0">
+      <div className="p-4 border-b border-[var(--border)] last:border-0">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-3 flex-1 min-w-0">
             <div className="w-9 h-9 rounded-lg bg-[#EFF6FF] flex items-center justify-center shrink-0 mt-0.5">
-              <Package className="w-4 h-4 text-[#15689E]" />
+              <Package className="w-4 h-4 text-[var(--navy)]" />
             </div>
 
             <div className="flex-1 min-w-0 space-y-1">
@@ -109,10 +109,10 @@ export function ProductCard({ product }: { product: Product }) {
                 </div>
               ) : (
                 <>
-                  <p className="text-sm font-semibold text-[#0F172A] truncate">
+                  <p className="text-sm font-semibold text-[var(--navy)] truncate">
                     {product.name}
                   </p>
-                  <p className="text-xs text-[#94A3B8] truncate">
+                  <p className="text-xs text-[var(--text3)] truncate">
                     {product.sku}
                   </p>
                   <div className="flex items-center gap-2 flex-wrap">
@@ -123,7 +123,7 @@ export function ProductCard({ product }: { product: Product }) {
                       className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${
                         product.is_active
                           ? "bg-emerald-50 text-emerald-700"
-                          : "bg-[#F1F5F9] text-[#64748B]"
+                          : "bg-[var(--border)] text-[var(--text2)]"
                       }`}
                     >
                       {product.is_active ? "Active" : "Inactive"}
@@ -146,7 +146,7 @@ export function ProductCard({ product }: { product: Product }) {
                     setIsEditing(false);
                   }}
                   disabled={isSaving}
-                  className="p-1.5 text-[#94A3B8] hover:text-[#64748B] rounded cursor-pointer"
+                  className="p-1.5 text-[var(--text3)] hover:text-[var(--text2)] rounded cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -159,7 +159,7 @@ export function ProductCard({ product }: { product: Product }) {
                   isPendingMesssage=""
                   variant="ghost"
                   size="icon-xs"
-                  classname="text-[#15689E] hover:bg-transparent cursor-pointer"
+                  classname="text-[var(--navy)] hover:bg-transparent cursor-pointer"
                 />
               </>
             ) : (
@@ -168,7 +168,7 @@ export function ProductCard({ product }: { product: Product }) {
                   type="button"
                   onClick={() => setIsEditing(true)}
                   disabled={isDeleting}
-                  className="p-1.5 text-[#94A3B8] hover:text-[#15689E] rounded cursor-pointer"
+                  className="p-1.5 text-[var(--text3)] hover:text-[var(--navy)] rounded cursor-pointer"
                 >
                   <Pencil className="w-4 h-4" />
                 </button>
@@ -177,7 +177,7 @@ export function ProductCard({ product }: { product: Product }) {
                   type="button"
                   onClick={() => setConfirmOpen(true)}
                   disabled={isDeleting}
-                  className="p-1.5 text-[#94A3B8] hover:text-red-600 rounded cursor-pointer"
+                  className="p-1.5 text-[var(--text3)] hover:text-red-600 rounded cursor-pointer"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>

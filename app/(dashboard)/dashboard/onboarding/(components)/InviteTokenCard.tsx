@@ -56,7 +56,7 @@ export function InviteTokenCard({
     <div
       className={cn(
         "bg-white rounded-xl border p-4 space-y-3 shadow-[0_1px_3px_rgba(0,0,0,0.04)]",
-        isUsed || isExpired ? "border-[#F1F5F9] opacity-60" : "border-[#E2E8F0]",
+        isUsed || isExpired ? "border-[var(--border)] opacity-60" : "border-[var(--border)]",
       )}
     >
       {/* ── Top row: label + badges + actions ── */}
@@ -64,14 +64,14 @@ export function InviteTokenCard({
         <div className="min-w-0 flex-1">
           {/* Primary label */}
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-medium text-[#0F172A]">
+            <span className="text-sm font-medium text-[var(--navy)]">
               {primaryLabel}
             </span>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-[#EFF6FF] text-[#15689E] font-medium">
+            <span className="text-xs px-2 py-0.5 rounded-full bg-[#EFF6FF] text-[var(--navy)] font-medium">
               {ROLE_LABELS[token.role_type]}
             </span>
             {isUsed && (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-[#F1F5F9] text-[#64748B]">
+              <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--border)] text-[var(--text2)]">
                 Used
               </span>
             )}
@@ -84,14 +84,14 @@ export function InviteTokenCard({
 
           {/* Secondary: "by [name]" for used tokens */}
           {isUsed && token.used_by_name && (
-            <p className="text-xs text-[#94A3B8] mt-1">
+            <p className="text-xs text-[var(--text3)] mt-1">
               by {token.used_by_name}
             </p>
           )}
 
           {/* Expiry for active tokens */}
           {isActive && token.expires_at && (
-            <p className="text-xs text-[#94A3B8] mt-1 flex items-center gap-1">
+            <p className="text-xs text-[var(--text3)] mt-1 flex items-center gap-1">
               <Clock className="w-3 h-3" />
               Expires{" "}
               {new Date(token.expires_at).toLocaleDateString("en-US", {
@@ -111,7 +111,7 @@ export function InviteTokenCard({
               type="button"
               onClick={onResendClick}
               disabled={isResending || isDeleting}
-              className="h-7 px-2 inline-flex items-center gap-1.5 rounded-md text-xs text-[#94A3B8] hover:text-[#15689E] hover:bg-[#EFF6FF] transition-colors disabled:opacity-40"
+              className="h-7 px-2 inline-flex items-center gap-1.5 rounded-md text-xs text-[var(--text3)] hover:text-[var(--navy)] hover:bg-[#EFF6FF] transition-colors disabled:opacity-40"
               title="Resend invite email"
             >
               {isResending ? (
@@ -126,7 +126,7 @@ export function InviteTokenCard({
             type="button"
             onClick={onDeleteClick}
             disabled={isDeleting}
-            className="w-7 h-7 flex items-center justify-center rounded-md text-[#94A3B8] hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-40"
+            className="w-7 h-7 flex items-center justify-center rounded-md text-[var(--text3)] hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-40"
             title="Delete token"
           >
             {isDeleting

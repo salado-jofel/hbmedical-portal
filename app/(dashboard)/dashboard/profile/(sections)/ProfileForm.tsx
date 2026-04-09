@@ -13,7 +13,7 @@ import toast from "react-hot-toast";
 function FieldLabel({
   icon: Icon,
   label,
-  color = "text-[#15689E]",
+  color = "text-[var(--navy)]",
 }: {
   icon: React.ElementType;
   label: string;
@@ -60,7 +60,7 @@ export default function ProfileForm() {
   }
 
   return (
-    <div className="bg-white border border-[#E2E8F0] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] p-4 sm:p-6">
+    <div className="bg-white border border-[var(--border)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] p-4 sm:p-6">
       <form onSubmit={handleSubmit} className="space-y-5">
         {/* ── Row: First Name + Last Name ── */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -71,7 +71,7 @@ export default function ProfileForm() {
               defaultValue={profile?.first_name ?? ""}
               placeholder="First name"
               disabled={saving}
-              className="border-[#E2E8F0] focus-visible:ring-[#15689E]/10 focus-visible:border-[#15689E]"
+              className="border-[var(--border)] focus-visible:ring-[var(--navy)]/10 focus-visible:border-[var(--navy)]"
             />
           </div>
           <div>
@@ -81,7 +81,7 @@ export default function ProfileForm() {
               defaultValue={profile?.last_name ?? ""}
               placeholder="Last name"
               disabled={saving}
-              className="border-[#E2E8F0] focus-visible:ring-[#15689E]/10 focus-visible:border-[#15689E]"
+              className="border-[var(--border)] focus-visible:ring-[var(--navy)]/10 focus-visible:border-[var(--navy)]"
             />
           </div>
         </div>
@@ -108,7 +108,7 @@ export default function ProfileForm() {
           }
           variant={null}
           size="default"
-          classname="w-full sm:w-auto bg-[#15689E] hover:bg-[#125d8e] text-white rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
+          classname="w-full sm:w-auto bg-[var(--navy)] hover:bg-[var(--navy)]/80 text-white rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
         />
       </form>
     </div>

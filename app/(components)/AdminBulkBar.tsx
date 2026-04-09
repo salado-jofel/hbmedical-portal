@@ -31,8 +31,8 @@ export function AdminBulkBar({ selectedCount, onClear, onBulkDelete }: AdminBulk
 
   return (
     <>
-      <div className="flex items-center gap-3 rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
-        <span className="text-sm font-medium text-[#0F172A]">
+      <div className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-white px-4 py-3 shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
+        <span className="text-sm font-medium text-[var(--navy)]">
           {selectedCount} {selectedCount === 1 ? "item" : "items"} selected
         </span>
 
@@ -40,7 +40,7 @@ export function AdminBulkBar({ selectedCount, onClear, onBulkDelete }: AdminBulk
           <button
             type="button"
             onClick={onClear}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[#E2E8F0] bg-white px-3 h-9 text-sm font-medium text-[#374151] transition-colors hover:bg-[#F8FAFC]"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-white px-3 h-9 text-sm font-medium text-[#374151] transition-colors hover:bg-[var(--bg)]"
           >
             <X className="h-3.5 w-3.5" />
             Clear

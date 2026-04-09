@@ -15,7 +15,7 @@ export function Contact() {
           viewport={VIEWPORT}
           variants={badgePop}
         >
-          <span className="bg-[#15689E]/10 text-[#15689E] text-xs font-semibold tracking-widest uppercase px-4 py-1.5 rounded-full border border-[#15689E]/20">
+          <span className="bg-[var(--navy)]/10 text-[var(--navy)] text-xs font-semibold tracking-widest uppercase px-4 py-1.5 rounded-full border border-[var(--navy)]/20">
             Ready to Get Started?
           </span>
         </motion.div>
@@ -49,7 +49,7 @@ export function Contact() {
             <h3 className="text-2xl font-bold text-gray-900">
               Scottie Jennings
             </h3>
-            <span className="text-[#15689E] text-xs font-bold tracking-widest uppercase">
+            <span className="text-[var(--navy)] text-xs font-bold tracking-widest uppercase">
               HB Medical — Rep Partnerships
             </span>
           </div>
@@ -63,7 +63,7 @@ export function Contact() {
           <div className="grid sm:grid-cols-2 gap-3 mb-6">
             <motion.a
               href="tel:4042132994"
-              className="flex items-center justify-center gap-2 bg-[#15689E] hover:bg-[#0f4f7a] text-white font-semibold py-3.5 px-5 rounded-xl transition-colors"
+              className="flex items-center justify-center gap-2 bg-[var(--navy)] hover:bg-[#0f4f7a] text-white font-semibold py-3.5 px-5 rounded-xl transition-colors"
               whileHover={{ scale: 1.03 }}
               whileTap={{ scale: 0.97 }}
             >
@@ -90,7 +90,7 @@ export function Contact() {
 
             <motion.a
               href="sms:4042132994"
-              className="flex items-center justify-center gap-2 border border-gray-200 hover:border-[#15689E]/40 text-gray-700 hover:text-[#15689E] font-semibold py-3.5 px-5 rounded-xl transition-colors bg-white"
+              className="flex items-center justify-center gap-2 border border-gray-200 hover:border-[var(--navy)]/40 text-gray-700 hover:text-[var(--navy)] font-semibold py-3.5 px-5 rounded-xl transition-colors bg-white"
               whileHover={{ scale: 1.03 }}
               whileTap={{ scale: 0.97 }}
             >

@@ -225,7 +225,7 @@ export function Form1500DiagnosisSection({
             <button
               type="button"
               onClick={addServiceLine}
-              className="mb-3 px-4 py-2 text-xs font-semibold rounded-xl border border-[#15689E] text-[#15689E] hover:bg-blue-50 transition-colors flex items-center gap-2"
+              className="mb-3 px-4 py-2 text-xs font-semibold rounded-xl border border-[var(--navy)] text-[var(--navy)] hover:bg-blue-50 transition-colors flex items-center gap-2"
             >
               <Plus className="w-3.5 h-3.5" />
               Add Service Line
@@ -276,7 +276,7 @@ export function Form1500DiagnosisSection({
                     onChange={(e) =>
                       updateServiceLine(line.id, "dos_from", e.target.value)
                     }
-                    className="w-full px-2 py-1.5 rounded-lg border border-gray-200 text-xs focus:outline-none focus:border-[#15689E] disabled:opacity-60"
+                    className="w-full px-2 py-1.5 rounded-lg border border-gray-200 text-xs focus:outline-none focus:border-[var(--navy)] disabled:opacity-60"
                   />
                 </div>
                 <div>
@@ -290,7 +290,7 @@ export function Form1500DiagnosisSection({
                     onChange={(e) =>
                       updateServiceLine(line.id, "dos_to", e.target.value)
                     }
-                    className="w-full px-2 py-1.5 rounded-lg border border-gray-200 text-xs focus:outline-none focus:border-[#15689E] disabled:opacity-60"
+                    className="w-full px-2 py-1.5 rounded-lg border border-gray-200 text-xs focus:outline-none focus:border-[var(--navy)] disabled:opacity-60"
                   />
                 </div>
                 <div>
@@ -309,7 +309,7 @@ export function Form1500DiagnosisSection({
                         e.target.value,
                       )
                     }
-                    className="w-full px-2 py-1.5 rounded-lg border border-gray-200 text-xs focus:outline-none focus:border-[#15689E] disabled:opacity-60"
+                    className="w-full px-2 py-1.5 rounded-lg border border-gray-200 text-xs focus:outline-none focus:border-[var(--navy)] disabled:opacity-60"
                   />
                 </div>
                 <div className="flex flex-col">
@@ -342,7 +342,7 @@ export function Form1500DiagnosisSection({
                     onChange={(e) =>
                       updateServiceLine(line.id, "cpt_code", e.target.value)
                     }
-                    className="w-full px-2 py-1.5 rounded-lg border border-gray-200 text-xs focus:outline-none focus:border-[#15689E] disabled:opacity-60"
+                    className="w-full px-2 py-1.5 rounded-lg border border-gray-200 text-xs focus:outline-none focus:border-[var(--navy)] disabled:opacity-60"
                   />
                 </div>
                 {(
@@ -365,7 +365,7 @@ export function Form1500DiagnosisSection({
                       onChange={(e) =>
                         updateServiceLine(line.id, mod, e.target.value)
                       }
-                      className="w-full px-2 py-1.5 rounded-lg border border-gray-200 text-xs focus:outline-none focus:border-[#15689E] disabled:opacity-60"
+                      className="w-full px-2 py-1.5 rounded-lg border border-gray-200 text-xs focus:outline-none focus:border-[var(--navy)] disabled:opacity-60"
                     />
                   </div>
                 ))}
@@ -389,7 +389,7 @@ export function Form1500DiagnosisSection({
                         e.target.value,
                       )
                     }
-                    className="w-full px-2 py-1.5 rounded-lg border border-gray-200 text-xs focus:outline-none focus:border-[#15689E] disabled:opacity-60"
+                    className="w-full px-2 py-1.5 rounded-lg border border-gray-200 text-xs focus:outline-none focus:border-[var(--navy)] disabled:opacity-60"
                   />
                 </div>
                 <div>
@@ -404,7 +404,7 @@ export function Form1500DiagnosisSection({
                     onChange={(e) =>
                       updateServiceLine(line.id, "charges", e.target.value)
                     }
-                    className="w-full px-2 py-1.5 rounded-lg border border-gray-200 text-xs focus:outline-none focus:border-[#15689E] disabled:opacity-60"
+                    className="w-full px-2 py-1.5 rounded-lg border border-gray-200 text-xs focus:outline-none focus:border-[var(--navy)] disabled:opacity-60"
                   />
                 </div>
                 <div>
@@ -418,7 +418,7 @@ export function Form1500DiagnosisSection({
                     onChange={(e) =>
                       updateServiceLine(line.id, "days_units", e.target.value)
                     }
-                    className="w-full px-2 py-1.5 rounded-lg border border-gray-200 text-xs focus:outline-none focus:border-[#15689E] disabled:opacity-60"
+                    className="w-full px-2 py-1.5 rounded-lg border border-gray-200 text-xs focus:outline-none focus:border-[var(--navy)] disabled:opacity-60"
                   />
                 </div>
                 <div>
@@ -436,7 +436,7 @@ export function Form1500DiagnosisSection({
                         e.target.value,
                       )
                     }
-                    className="w-full px-2 py-1.5 rounded-lg border border-gray-200 text-xs focus:outline-none focus:border-[#15689E] disabled:opacity-60"
+                    className="w-full px-2 py-1.5 rounded-lg border border-gray-200 text-xs focus:outline-none focus:border-[var(--navy)] disabled:opacity-60"
                   />
                 </div>
               </div>

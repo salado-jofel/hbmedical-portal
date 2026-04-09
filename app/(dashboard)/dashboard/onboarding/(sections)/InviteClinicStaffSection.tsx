@@ -34,14 +34,14 @@ export function InviteClinicStaffSection({
   if (!showSection) return null;
 
   return (
-    <section className="bg-white rounded-xl border border-[#E2E8F0] p-5 space-y-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+    <section className="bg-white rounded-xl border border-[var(--border)] p-5 space-y-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
       <div className="flex items-center gap-2">
-        <UserPlus className="w-4 h-4 text-[#15689E]" />
-        <h2 className="text-base font-semibold text-[#0F172A]">
+        <UserPlus className="w-4 h-4 text-[var(--navy)]" />
+        <h2 className="text-base font-semibold text-[var(--navy)]">
           Invite Clinic Staff
         </h2>
       </div>
-      <p className="text-sm text-[#64748B]">
+      <p className="text-sm text-[var(--text2)]">
         Send an invite email to a Clinical Staff member to join your facility.
       </p>
       {sentStaffEmail ? (
@@ -52,7 +52,7 @@ export function InviteClinicStaffSection({
           </div>
           <button
             onClick={() => setSentStaffEmail(null)}
-            className="text-sm text-[#64748B] underline underline-offset-2 hover:text-[#0F172A] transition-colors"
+            className="text-sm text-[var(--text2)] underline underline-offset-2 hover:text-[var(--navy)] transition-colors"
           >
             Send another invite
           </button>
@@ -61,7 +61,7 @@ export function InviteClinicStaffSection({
         <form action={clinicInviteAction} className="space-y-4">
           <input type="hidden" name="expires_in_days" value="30" />
           <div className="space-y-1.5">
-            <label htmlFor="staff_invite_email" className="text-xs font-medium text-[#0F172A]">
+            <label htmlFor="staff_invite_email" className="text-xs font-medium text-[var(--navy)]">
               Email <span className="text-red-400">*</span>
             </label>
             <input
@@ -70,7 +70,7 @@ export function InviteClinicStaffSection({
               name="email"
               placeholder="staff@clinic.com"
               required
-              className="w-full h-9 rounded-md border border-[#E2E8F0] bg-white px-3 text-sm text-[#0F172A] placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#15689E]/30 focus:border-[#15689E]"
+              className="w-full h-9 rounded-md border border-[var(--border)] bg-white px-3 text-sm text-[var(--navy)] placeholder:text-[var(--text3)] focus:outline-none focus:ring-2 focus:ring-[var(--navy)]/30 focus:border-[var(--navy)]"
             />
             {clinicInviteState?.fieldErrors?.email && (
               <p className="text-xs text-red-500">{clinicInviteState.fieldErrors.email}</p>
@@ -85,7 +85,7 @@ export function InviteClinicStaffSection({
             type="submit"
             size="sm"
             disabled={isClinicInvitePending}
-            className="h-9 bg-[#15689E] hover:bg-[#125d8e] text-white gap-1.5 rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors"
+            className="h-9 bg-[var(--navy)] hover:bg-[var(--navy)]/80 text-white gap-1.5 rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors"
           >
             {isClinicInvitePending ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin" />

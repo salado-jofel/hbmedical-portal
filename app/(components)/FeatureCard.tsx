@@ -15,9 +15,9 @@ export function FeatureCard({ icon, title, description }: FeatureCardProps) {
     <motion.div
       variants={fadeRight}
       whileHover={{ x: 4, transition: { duration: 0.2 } }}
-      className="flex items-start gap-4 p-5 rounded-xl border border-gray-100 hover:border-[#15689E]/20 hover:shadow-sm bg-white transition-shadow cursor-default"
+      className="flex items-start gap-4 p-5 rounded-xl border border-gray-100 hover:border-[var(--navy)]/20 hover:shadow-sm bg-white transition-shadow cursor-default"
     >
-      <div className="shrink-0 w-10 h-10 rounded-lg bg-[#15689E]/10 text-[#15689E] flex items-center justify-center">
+      <div className="shrink-0 w-10 h-10 rounded-lg bg-[var(--navy)]/10 text-[var(--navy)] flex items-center justify-center">
         {icon}
       </div>
       <div>

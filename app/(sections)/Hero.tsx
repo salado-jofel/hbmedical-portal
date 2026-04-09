@@ -27,7 +27,7 @@ export function Hero() {
       className="relative min-h-screen flex flex-col items-center justify-center text-center px-6 pt-20 overflow-hidden"
       style={{
         background:
-          "radial-gradient(ellipse at top, #1a7ab8 0%, #15689E 35%, #0d4a72 70%, #082d47 100%)",
+          "radial-gradient(ellipse at top, #1a7ab8 0%, var(--navy) 35%, #0d4a72 70%, #082d47 100%)",
       }}
     >
       {/* Dot field */}

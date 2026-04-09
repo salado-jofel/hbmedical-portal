@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import toast from "react-hot-toast";
 import { motion } from "framer-motion";
 import { CheckSquare } from "lucide-react";
@@ -52,6 +52,9 @@ export function TasksBoard({ accounts, salesReps, isAdmin }: {
   const [statusFilter, setStatusFilter] = useState<TaskStatus | "all">("all");
   const [priorityFilter, setPriorityFilter] = useState<TaskPriority | "all">("all");
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -96,6 +99,8 @@ export function TasksBoard({ accounts, salesReps, isAdmin }: {
 
   const totalOpen = tasks.filter((t) => t.status === "open").length;
 
+  if (!mounted) return null;
+
   return (
     <div className="space-y-5">
       {/* ── Toolbar ── */}
@@ -105,7 +110,7 @@ export function TasksBoard({ accounts, salesReps, isAdmin }: {
             value={statusFilter}
             onValueChange={(v) => setStatusFilter(v as TaskStatus | "all")}
           >
-            <SelectTrigger className="h-8 w-36 text-xs shrink-0 border-[#E2E8F0] text-[#0F172A]">
+            <SelectTrigger className="h-8 w-36 text-xs shrink-0 border-[var(--border)] text-[var(--navy)]">
               <SelectValue placeholder="All statuses" />
             </SelectTrigger>
             <SelectContent>
@@ -119,7 +124,7 @@ export function TasksBoard({ accounts, salesReps, isAdmin }: {
             value={priorityFilter}
             onValueChange={(v) => setPriorityFilter(v as TaskPriority | "all")}
           >
-            <SelectTrigger className="h-8 w-36 text-xs shrink-0 border-[#E2E8F0] text-[#0F172A]">
+            <SelectTrigger className="h-8 w-36 text-xs shrink-0 border-[var(--border)] text-[var(--navy)]">
               <SelectValue placeholder="All priorities" />
             </SelectTrigger>
             <SelectContent>
@@ -131,7 +136,7 @@ export function TasksBoard({ accounts, salesReps, isAdmin }: {
           </Select>
 
           {totalOpen > 0 && (
-            <span className="flex items-center text-xs text-[#64748B] self-center shrink-0">
+            <span className="flex items-center text-xs text-[var(--text2)] self-center shrink-0">
               {totalOpen} open task{totalOpen !== 1 ? "s" : ""}
             </span>
           )}
@@ -187,7 +192,7 @@ export function TasksBoard({ accounts, salesReps, isAdmin }: {
                   className="flex flex-col gap-2 p-3 flex-1 overflow-y-auto max-h-[calc(100vh-300px)]"
                 >
                   {groupTasks.length === 0 ? (
-                    <p className="text-xs text-[#94A3B8] text-center py-4">
+                    <p className="text-xs text-[var(--text3)] text-center py-4">
                       {config.emptyLabel}
                     </p>
                   ) : (

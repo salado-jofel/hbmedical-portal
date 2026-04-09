@@ -160,7 +160,7 @@ export function OrderChatTab({
                     className={cn(
                       "px-3 py-2 rounded-2xl text-sm leading-relaxed break-words",
                       isMine
-                        ? "bg-[#15689E] text-white rounded-br-sm"
+                        ? "bg-[var(--navy)] text-white rounded-br-sm"
                         : "bg-gray-100 text-gray-800 rounded-bl-sm",
                     )}
                   >
@@ -199,7 +199,7 @@ export function OrderChatTab({
           size="icon"
           disabled={sendingMsg || !newMessage.trim()}
           onClick={onSend}
-          className="bg-[#15689E] hover:bg-[#125d8e] text-white shrink-0"
+          className="bg-[var(--navy)] hover:bg-[var(--navy)]/80 text-white shrink-0"
         >
           {sendingMsg ? (
             <Loader2 className="w-4 h-4 animate-spin" />

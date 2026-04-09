@@ -63,7 +63,7 @@ export function PaymentBadge({ status }: { status?: string | null }) {
 
   if (status === "canceled") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-[#F1F5F9] px-2 py-0.5 text-xs font-medium text-[#64748B]">
+      <span className="inline-flex items-center gap-1 rounded-full bg-[var(--border)] px-2 py-0.5 text-xs font-medium text-[var(--text2)]">
         <Clock3 className="h-3.5 w-3.5" />
         Canceled
       </span>
@@ -71,7 +71,7 @@ export function PaymentBadge({ status }: { status?: string | null }) {
   }
 
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-[#F1F5F9] px-2 py-0.5 text-xs font-medium text-[#64748B]">
+    <span className="inline-flex items-center gap-1 rounded-full bg-[var(--border)] px-2 py-0.5 text-xs font-medium text-[var(--text2)]">
       <Clock3 className="h-3.5 w-3.5" />
       Unpaid
     </span>

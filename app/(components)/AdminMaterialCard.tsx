@@ -74,10 +74,10 @@ export function AdminMaterialCard({
   return (
     <>
       <div
-        className={`relative overflow-hidden rounded-xl border bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)] transition-all duration-150 hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] ${
+        className={`relative overflow-hidden rounded-[var(--r)] border bg-[var(--surface)] transition-all duration-150 hover:shadow-[0_4px_12px_rgba(0,0,0,0.07)] ${
           selected
-            ? "border-[#15689E] ring-2 ring-[#15689E]/20 hover:border-[#15689E]/20"
-            : "border-[#E2E8F0] hover:border-[#15689E]/20"
+            ? "border-[var(--navy)] ring-2 ring-[var(--navy)]/20 hover:border-[var(--border2)]"
+            : "border-[var(--border)] hover:border-[var(--border2)]"
         } ${!isActive ? "opacity-60" : ""}`}
       >
         {/* Checkbox overlay */}
@@ -92,10 +92,10 @@ export function AdminMaterialCard({
           aria-label={selected ? "Deselect" : "Select"}
         >
           {selected && (
-            <svg viewBox="0 0 10 8" className="h-3 w-3 fill-[#15689E]">
+            <svg viewBox="0 0 10 8" className="h-3 w-3 fill-[var(--navy)]">
               <path
                 d="M1 4l3 3 5-6"
-                stroke="#15689E"
+                stroke="var(--navy)"
                 strokeWidth="1.5"
                 fill="none"
                 strokeLinecap="round"
@@ -117,12 +117,12 @@ export function AdminMaterialCard({
 
         {/* Inactive badge */}
         {!isActive && (
-          <div className="absolute right-12 top-3 z-20 rounded-full bg-slate-500/70 px-2 py-0.5 text-[10px] font-semibold uppercase text-white">
+          <div className="absolute right-12 top-3 z-20 rounded-full bg-[var(--text3)]/70 px-2 py-0.5 text-[10px] font-semibold uppercase text-white">
             Inactive
           </div>
         )}
 
-        <div className="relative min-h-[144px] bg-gradient-to-br from-[#15689E] to-[#125d8e] px-5 pb-5 pt-5">
+        <div className="relative min-h-[144px] bg-gradient-to-br from-[var(--navy)] to-[#125d8e] px-5 pb-5 pt-5">
           <div className="absolute right-0 top-0 h-20 w-20 rounded-bl-[999px] bg-white/8" />
           <div className="absolute right-5 top-5 z-10 flex max-w-[55%] justify-end">
             {(prefix || label) && (
@@ -152,7 +152,7 @@ export function AdminMaterialCard({
 
         <div className="px-5 pb-5 pt-4">
           <p
-            className="min-h-[72px] text-[14px] leading-6 text-slate-600 line-clamp-2"
+            className="min-h-[72px] text-[14px] leading-6 text-[var(--text2)] line-clamp-2"
             title={description || "No description available."}
           >
             {description || "No description available."}
@@ -162,7 +162,7 @@ export function AdminMaterialCard({
             type="button"
             onClick={handleDownloadClick}
             disabled={isDownloading}
-            className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#15689E] px-4 h-9 text-sm font-medium text-white shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors hover:bg-[#125d8e] disabled:cursor-not-allowed disabled:opacity-70"
+            className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-[7px] bg-[var(--teal)] px-4 h-9 text-sm font-medium text-white transition-colors hover:bg-[var(--teal)]/90 disabled:cursor-not-allowed disabled:opacity-70"
           >
             <Download className="h-4 w-4" />
             <span>{isDownloading ? "Preparing..." : "Download"}</span>

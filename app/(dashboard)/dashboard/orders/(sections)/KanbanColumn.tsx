@@ -28,7 +28,7 @@ export function KanbanColumn({
     >
       {orders.length === 0 ? (
         <EmptyState
-          icon={<Package className="w-8 h-8 text-[#E2E8F0]" />}
+          icon={<Package className="w-8 h-8 text-[var(--border)]" />}
           message="No orders"
         />
       ) : (

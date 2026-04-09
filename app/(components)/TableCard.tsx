@@ -19,18 +19,18 @@ export function TableCard({
   footer,
 }: TableCardProps) {
   return (
-    <div className="bg-white rounded-xl border border-[#E2E8F0] overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[#E2E8F0] bg-[#F8FAFC]">
+    <div className="bg-[var(--surface)] rounded-[var(--r)] border border-[var(--border)] overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-[0.8rem] border-b border-[var(--border)] bg-[var(--bg)]">
         <div>
-          <p className="text-sm font-semibold text-[#0F172A]">{title}</p>
+          <p className="text-[13px] font-semibold text-[var(--navy)]">{title}</p>
           {countLabel && (
-            <p className="text-xs text-[#15689E] mt-0.5">{countLabel}</p>
+            <p className="text-[11px] text-[var(--text3)] mt-0.5">{countLabel}</p>
           )}
         </div>
         {onAdd && addLabel && (
           <button
             onClick={onAdd}
-            className="flex items-center gap-1.5 bg-[#15689E] hover:bg-[#125d8e] text-white text-xs font-medium h-9 px-4 rounded-lg transition-colors shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
+            className="flex items-center gap-1.5 bg-[var(--navy)] hover:bg-[var(--navy)]/80 text-white text-[12px] font-medium h-8 px-3 rounded-[7px] transition-colors"
           >
             <Plus className="w-3.5 h-3.5" />
             {addLabel}
@@ -41,7 +41,7 @@ export function TableCard({
       {children}
 
       {footer && (
-        <div className="px-4 py-3 border-t border-[#E2E8F0] text-xs text-[#15689E]">
+        <div className="px-4 py-3 border-t border-[var(--border)] text-[11px] text-[var(--text3)]">
           {footer}
         </div>
       )}

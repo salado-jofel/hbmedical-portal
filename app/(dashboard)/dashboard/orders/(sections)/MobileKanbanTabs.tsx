@@ -23,7 +23,7 @@ export function MobileKanbanTabs({
 
   return (
     <div>
-      <div className="flex bg-[#F1F5F9] rounded-xl p-1 gap-1 mb-4">
+      <div className="flex bg-[var(--border)] rounded-xl p-1 gap-1 mb-4">
         {BOARD_STATUSES.map((status) => {
           const isActive = activeTab === status;
           const cfg = STATUS_CONFIG[status];
@@ -38,8 +38,8 @@ export function MobileKanbanTabs({
                 transition-all duration-200
                 ${
                   isActive
-                    ? "bg-white shadow-sm text-[#0F172A]"
-                    : "text-[#94A3B8] hover:text-[#64748B]"
+                    ? "bg-white shadow-sm text-[var(--navy)]"
+                    : "text-[var(--text3)] hover:text-[var(--text2)]"
                 }
               `}
             >
@@ -51,8 +51,8 @@ export function MobileKanbanTabs({
                   rounded-full text-[10px] font-bold px-1
                   ${
                     isActive
-                      ? "bg-[#15689E] text-white"
-                      : "bg-[#E2E8F0] text-[#64748B]"
+                      ? "bg-[var(--navy)] text-white"
+                      : "bg-[var(--border)] text-[var(--text2)]"
                   }
                 `}
               >
@@ -65,10 +65,10 @@ export function MobileKanbanTabs({
 
       <div className="flex items-center gap-2 mb-3 px-1">
         <div className={`w-2.5 h-2.5 rounded-full ${config.dot}`} />
-        <span className="text-sm font-semibold text-[#0F172A]">
+        <span className="text-sm font-semibold text-[var(--navy)]">
           {activeTab}
         </span>
-        <span className="text-xs text-[#94A3B8]">
+        <span className="text-xs text-[var(--text3)]">
           {grouped[activeTab].length}{" "}
           {grouped[activeTab].length === 1 ? "order" : "orders"}
         </span>
@@ -76,9 +76,9 @@ export function MobileKanbanTabs({
 
       <div className="flex flex-col gap-3">
         {grouped[activeTab].length === 0 ? (
-          <div className="bg-[#F8FAFC] rounded-xl border border-[#E2E8F0] py-14">
+          <div className="bg-[var(--bg)] rounded-xl border border-[var(--border)] py-14">
             <EmptyState
-              icon={<Package className="w-8 h-8 text-[#E2E8F0]" />}
+              icon={<Package className="w-8 h-8 text-[var(--border)]" />}
               message="No orders"
               description={`Nothing in ${activeTab} yet`}
             />

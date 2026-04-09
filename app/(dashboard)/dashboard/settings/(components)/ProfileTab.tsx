@@ -73,16 +73,16 @@ export function ProfileTab({ profile }: ProfileTabProps) {
 
         {/* Email — read only */}
         <div className="space-y-1.5">
-          <Label className="text-xs text-[#64748B]">Email</Label>
-          <p className="text-sm h-9 flex items-center px-3 rounded-md bg-[#F8FAFC] border border-[#E2E8F0] text-[#64748B]">
+          <Label className="text-xs text-[var(--text2)]">Email</Label>
+          <p className="text-sm h-9 flex items-center px-3 rounded-md bg-[var(--bg)] border border-[var(--border)] text-[var(--text2)]">
             {profile.email}
           </p>
         </div>
 
         {/* Role — read only */}
         <div className="space-y-1.5">
-          <Label className="text-xs text-[#64748B]">Role</Label>
-          <p className="text-sm h-9 flex items-center px-3 rounded-md bg-[#F8FAFC] border border-[#E2E8F0] text-[#64748B]">
+          <Label className="text-xs text-[var(--text2)]">Role</Label>
+          <p className="text-sm h-9 flex items-center px-3 rounded-md bg-[var(--bg)] border border-[var(--border)] text-[var(--text2)]">
             {ROLE_LABELS[profile.role] ?? profile.role}
           </p>
         </div>
@@ -111,7 +111,7 @@ export function ProfileTab({ profile }: ProfileTabProps) {
             type="submit"
             size="sm"
             disabled={isProfilePending}
-            className="bg-[#15689E] hover:bg-[#125d8e] text-white gap-1.5 rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
+            className="bg-[var(--navy)] hover:bg-[var(--navy)]/80 text-white gap-1.5 rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
           >
             {isProfilePending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
             Save changes
@@ -120,7 +120,7 @@ export function ProfileTab({ profile }: ProfileTabProps) {
       </form>
 
       {/* ── Divider ── */}
-      <div className="border-t border-[#E2E8F0]" />
+      <div className="border-t border-[var(--border)]" />
 
       {/* ── Change password ── */}
       <ChangePasswordForm />

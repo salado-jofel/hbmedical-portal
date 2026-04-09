@@ -13,12 +13,12 @@ export function OrderInfoRow({
     <div className="flex items-center gap-2">
       <div
         className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
-          primary ? "bg-[#EFF6FF]" : "bg-[#F1F5F9]"
+          primary ? "bg-[#EFF6FF]" : "bg-[var(--border)]"
         }`}
       >
         <Icon
           className={`w-3.5 h-3.5 ${
-            primary ? "text-[#15689E]" : "text-[#94A3B8]"
+            primary ? "text-[var(--navy)]" : "text-[var(--text3)]"
           }`}
         />
       </div>
@@ -26,8 +26,8 @@ export function OrderInfoRow({
       <span
         className={`truncate ${
           primary
-            ? "text-sm font-medium text-[#0F172A]"
-            : "text-xs text-[#64748B]"
+            ? "text-sm font-medium text-[var(--navy)]"
+            : "text-xs text-[var(--text2)]"
         }`}
       >
         {text}

@@ -40,13 +40,16 @@ export function AccountHeader({ accountId, isAdmin, salesReps }: AccountHeaderPr
   const [error, setError] = useState<string | null>(null);
   const [isAssigning, setIsAssigning] = useState(false);
   const [selectedRep, setSelectedRep] = useState(account?.assigned_rep ?? "none");
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
 
   // Sync with Redux after Providers hydrates on first render (hard refresh)
   useEffect(() => {
     setSelectedRep(account?.assigned_rep ?? "none");
   }, [account?.assigned_rep]);
 
-  if (!account) return null;
+  if (!mounted || !account) return null;
 
   function handleStatusChange(value: string) {
     setError(null);
@@ -79,11 +82,11 @@ export function AccountHeader({ accountId, isAdmin, salesReps }: AccountHeaderPr
   }
 
   return (
-    <div className="space-y-4 pb-5 border-b border-[#E2E8F0]">
+    <div className="space-y-4 pb-5 border-b border-[var(--border)]">
       {/* ── Back link ── */}
       <Link
         href="/dashboard/accounts"
-        className="inline-flex items-center gap-1.5 text-sm text-[#64748B] hover:text-[#15689E] transition-colors"
+        className="inline-flex items-center gap-1.5 text-sm text-[var(--text2)] hover:text-[var(--navy)] transition-colors"
       >
         <ArrowLeft className="w-4 h-4" />
         Back to Accounts
@@ -94,13 +97,13 @@ export function AccountHeader({ accountId, isAdmin, salesReps }: AccountHeaderPr
         {/* Name + badge */}
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-10 h-10 rounded-xl bg-[#EFF6FF] flex items-center justify-center shrink-0">
-            <Building2 className="w-5 h-5 text-[#15689E]" />
+            <Building2 className="w-5 h-5 text-[var(--navy)]" />
           </div>
           <div className="min-w-0">
-            <h1 className="text-xl font-semibold text-[#0F172A] truncate">
+            <h1 className="text-xl font-semibold text-[var(--navy)] truncate">
               {account.name}
             </h1>
-            <p className="text-sm text-[#64748B] mt-0.5 truncate">{account.contact}</p>
+            <p className="text-sm text-[var(--text2)] mt-0.5 truncate">{account.contact}</p>
           </div>
           <AccountStatusBadge status={account.status} className="shrink-0" />
         </div>
@@ -108,8 +111,8 @@ export function AccountHeader({ accountId, isAdmin, salesReps }: AccountHeaderPr
         {/* Rep view — assigned rep as plain text */}
         {!isAdmin && account.assigned_rep_profile && (
           <div className="flex items-center gap-2 shrink-0">
-            <span className="text-xs text-[#94A3B8]">Assigned rep:</span>
-            <span className="text-sm font-medium text-[#64748B]">
+            <span className="text-xs text-[var(--text3)]">Assigned rep:</span>
+            <span className="text-sm font-medium text-[var(--text2)]">
               {account.assigned_rep_profile.first_name}{" "}
               {account.assigned_rep_profile.last_name}
             </span>
@@ -126,7 +129,7 @@ export function AccountHeader({ accountId, isAdmin, salesReps }: AccountHeaderPr
             >
               <SelectTrigger
                 className={cn(
-                  "h-9 w-36 text-sm border-[#E2E8F0] bg-white text-[#0F172A] rounded-lg",
+                  "h-9 w-36 text-sm border-[var(--border)] bg-white text-[var(--navy)] rounded-lg",
                   statusPending && "opacity-60 pointer-events-none",
                 )}
               >
@@ -147,7 +150,7 @@ export function AccountHeader({ accountId, isAdmin, salesReps }: AccountHeaderPr
               disabled={isAssigning}
             >
               <SelectTrigger
-                className="h-9 w-44 text-sm border-[#E2E8F0] bg-white text-[#0F172A] rounded-lg"
+                className="h-9 w-44 text-sm border-[var(--border)] bg-white text-[var(--navy)] rounded-lg"
                 disabled={isAssigning}
               >
                 {isAssigning ? (
@@ -183,19 +186,19 @@ export function AccountHeader({ accountId, isAdmin, salesReps }: AccountHeaderPr
 
       {/* ── Stats row ── */}
       <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-3">
-        <div className="flex items-center gap-2 bg-white border border-[#E2E8F0] rounded-lg px-3 py-2 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-          <ShoppingCart className="w-4 h-4 text-[#15689E]" />
-          <span className="text-sm font-semibold text-[#0F172A]">{account.orders_count}</span>
-          <span className="text-xs text-[#94A3B8]">Orders</span>
+        <div className="flex items-center gap-2 bg-white border border-[var(--border)] rounded-lg px-3 py-2 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+          <ShoppingCart className="w-4 h-4 text-[var(--navy)]" />
+          <span className="text-sm font-semibold text-[var(--navy)]">{account.orders_count}</span>
+          <span className="text-xs text-[var(--text3)]">Orders</span>
         </div>
-        <div className="flex items-center gap-2 bg-white border border-[#E2E8F0] rounded-lg px-3 py-2 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-          <Users className="w-4 h-4 text-[#15689E]" />
-          <span className="text-sm font-semibold text-[#0F172A]">{account.contacts_count}</span>
-          <span className="text-xs text-[#94A3B8]">Contacts</span>
+        <div className="flex items-center gap-2 bg-white border border-[var(--border)] rounded-lg px-3 py-2 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+          <Users className="w-4 h-4 text-[var(--navy)]" />
+          <span className="text-sm font-semibold text-[var(--navy)]">{account.contacts_count}</span>
+          <span className="text-xs text-[var(--text3)]">Contacts</span>
         </div>
-        <div className="flex items-center gap-2 bg-white border border-[#E2E8F0] rounded-lg px-3 py-2 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-          <span className="text-xs text-[#94A3B8]">Since</span>
-          <span className="text-sm font-semibold text-[#0F172A]">
+        <div className="flex items-center gap-2 bg-white border border-[var(--border)] rounded-lg px-3 py-2 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+          <span className="text-xs text-[var(--text3)]">Since</span>
+          <span className="text-sm font-semibold text-[var(--navy)]">
             {new Date(account.created_at).toLocaleDateString("en-US", {
               month: "short",
               year: "numeric",

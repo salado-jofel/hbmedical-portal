@@ -15,26 +15,26 @@ export function TeamMemberRow({ member, isDeleting, onDeleteClick }: TeamMemberR
   const name = profile ? `${profile.first_name} ${profile.last_name}` : "Unknown";
 
   return (
-    <div className="flex items-center gap-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-4 py-3">
+    <div className="flex items-center gap-3 bg-[var(--bg)] border border-[var(--border)] rounded-xl px-4 py-3">
       <div className="w-8 h-8 rounded-full bg-[#EFF6FF] flex items-center justify-center shrink-0">
-        <span className="text-xs font-bold text-[#15689E]">
+        <span className="text-xs font-bold text-[var(--navy)]">
           {name.charAt(0).toUpperCase()}
         </span>
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-[#0F172A] truncate">{name}</p>
+        <p className="text-sm font-medium text-[var(--navy)] truncate">{name}</p>
         {profile?.email && (
-          <p className="text-xs text-[#94A3B8] truncate">{profile.email}</p>
+          <p className="text-xs text-[var(--text3)] truncate">{profile.email}</p>
         )}
       </div>
-      <span className="text-xs px-2 py-0.5 rounded-full bg-[#EFF6FF] text-[#15689E] font-medium shrink-0">
+      <span className="text-xs px-2 py-0.5 rounded-full bg-[#EFF6FF] text-[var(--navy)] font-medium shrink-0">
         {ROLE_LABELS[member.role_type as keyof typeof ROLE_LABELS] ?? member.role_type}
       </span>
       <button
         type="button"
         onClick={() => onDeleteClick(member.id)}
         disabled={isDeleting}
-        className="w-7 h-7 flex items-center justify-center rounded-md text-[#94A3B8] hover:text-red-600 hover:bg-red-50 transition-colors shrink-0"
+        className="w-7 h-7 flex items-center justify-center rounded-md text-[var(--text3)] hover:text-red-600 hover:bg-red-50 transition-colors shrink-0"
         title="Remove member"
       >
         {isDeleting ? (

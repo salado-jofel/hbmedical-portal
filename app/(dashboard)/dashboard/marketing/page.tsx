@@ -7,7 +7,7 @@ import { isAdmin, isSalesRep } from "@/utils/helpers/role";
 import { getMarketingMaterials } from "./(services)/actions";
 import Providers from "./(sections)/Providers";
 import MarketingCards from "./(sections)/MarketingCards";
-import { DashboardHeader } from "@/app/(components)/DashboardHeader";
+import { PageHeader } from "@/app/(components)/PageHeader";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -22,14 +22,11 @@ export default async function MarketingPage() {
   const materials = await getMarketingMaterials();
 
   return (
-    <Providers materials={materials}>
-      <div className="p-6 md:p-8 max-w-480 mx-auto space-y-6">
-        <DashboardHeader
-          title="Marketing"
-          description="Your marketing materials & resources"
-        />
+    <>
+      <PageHeader title="Marketing" subtitle="Your marketing materials & resources" />
+      <Providers materials={materials}>
         <MarketingCards />
-      </div>
-    </Providers>
+      </Providers>
+    </>
   );
 }

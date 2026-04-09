@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole } from "@/lib/supabase/auth";
 import { isSalesRep, isClinicalProvider } from "@/utils/helpers/role";
-import { DashboardHeader } from "@/app/(components)/DashboardHeader";
+import { PageHeader } from "@/app/(components)/PageHeader";
 import type { UserRole } from "@/utils/helpers/role";
 
 export const metadata: Metadata = { title: "Settings" };
@@ -42,8 +42,8 @@ export default async function SettingsPage() {
     ]);
 
   return (
-    <div className="p-6 md:p-8 max-w-480 mx-auto space-y-6">
-      <DashboardHeader title="Settings" description="Manage your profile, team, and credentials" />
+    <>
+      <PageHeader title="Settings" subtitle="Manage your profile, team, and credentials" />
       <Providers>
         <SettingsTabs
           profile={profile}
@@ -56,6 +56,6 @@ export default async function SettingsPage() {
           showCredentials={showCredentials}
         />
       </Providers>
-    </div>
+    </>
   );
 }

@@ -96,7 +96,7 @@ export const BOARD_STATUSES = ["New Orders", "Delivered"] as const;
 export type BoardStatus = (typeof BOARD_STATUSES)[number];
 export const STATUS_CONFIG: Record<BoardStatus, { badge: string; dot: string; tab: string }> = {
   "New Orders": { badge: "bg-amber-50 text-amber-700", dot: "bg-[#E8821A]", tab: "text-[#E8821A]" },
-  Delivered: { badge: "bg-[#F1F5F9] text-[#64748B]", dot: "bg-[#94A3B8]", tab: "text-[#64748B]" },
+  Delivered: { badge: "bg-[var(--border)] text-[var(--text2)]", dot: "bg-[var(--text3)]", tab: "text-[var(--text2)]" },
 };
 export function mapOrderToBoardStatus(order: DashboardOrder): BoardStatus {
   return order.board_status ?? "New Orders";

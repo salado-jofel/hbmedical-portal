@@ -40,7 +40,7 @@ export function BenefitCard({
         </div>
       )}
 
-      <div className="w-10 h-10 rounded-lg bg-[#15689E]/30 text-white flex items-center justify-center mb-4">
+      <div className="w-10 h-10 rounded-lg bg-[var(--navy)]/30 text-white flex items-center justify-center mb-4">
         {icon}
       </div>
 

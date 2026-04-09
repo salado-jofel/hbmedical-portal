@@ -33,7 +33,7 @@ export function LiveDemo() {
       className="py-24 overflow-hidden"
       style={{
         background:
-          "radial-gradient(ellipse at bottom left, #1a7ab8 0%, #15689E 45%, #082d47 100%)",
+          "radial-gradient(ellipse at bottom left, #1a7ab8 0%, var(--navy) 45%, #082d47 100%)",
       }}
     >
       <div className="max-w-7xl mx-auto px-6">

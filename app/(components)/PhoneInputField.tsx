@@ -26,7 +26,7 @@ export function PhoneInputField({
   const isLight = theme === "light";
 
   const inputClassName = isLight
-    ? "!w-full !h-9 !bg-white !border-input !text-sm !rounded-r-md focus:!border-[#15689E] !transition-all"
+    ? "!w-full !h-9 !bg-white !border-input !text-sm !rounded-r-md focus:!border-[var(--navy)] !transition-all"
     : "!w-full !h-11 !bg-white/5 !border-white/10 !text-white !rounded-r-lg focus:!border-[#e8821a] !transition-all";
 
   const buttonClassName = isLight

@@ -27,7 +27,7 @@ export default function VerifyEmailForm() {
       <p className="text-sm text-[#64748B] mb-8 leading-relaxed">
         We&apos;ve sent a verification link to your email address. Please click the
         link to activate your{" "}
-        <span className="text-[#15689E] font-medium">HB Medical</span> account.
+        <span className="text-[var(--navy)] font-medium">HB Medical</span> account.
       </p>
 
       <div className="space-y-4">

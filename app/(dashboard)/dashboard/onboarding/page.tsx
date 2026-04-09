@@ -12,6 +12,7 @@ import {
 import type { RepWithFacility } from "@/utils/interfaces/onboarding";
 import { getMySubReps } from "@/app/(dashboard)/dashboard/onboarding/(services)/sub-rep-actions";
 import type { ISubRep } from "@/utils/interfaces/sub-reps";
+import { PageHeader } from "@/app/(components)/PageHeader";
 import Providers from "./(sections)/Providers";
 import { OnboardingDashboard } from "./(sections)/OnboardingDashboard";
 
@@ -46,16 +47,19 @@ export default async function OnboardingPage() {
   const isClinicalProviderUser = isClinicalProvider(role);
 
   return (
-    <Providers tokens={tokens}>
-      <OnboardingDashboard
-        role={role}
-        hasCompletedSetup={hasCompletedSetup}
-        isAdmin={adminUser}
-        isSalesRep={isSalesRepUser}
-        isClinicalProvider={isClinicalProviderUser}
-        repsWithFacilities={repsWithFacilities}
-        subReps={subReps}
-      />
-    </Providers>
+    <>
+      <PageHeader title="Onboarding" subtitle="Invite and manage new users" />
+      <Providers tokens={tokens}>
+        <OnboardingDashboard
+          role={role}
+          hasCompletedSetup={hasCompletedSetup}
+          isAdmin={adminUser}
+          isSalesRep={isSalesRepUser}
+          isClinicalProvider={isClinicalProviderUser}
+          repsWithFacilities={repsWithFacilities}
+          subReps={subReps}
+        />
+      </Providers>
+    </>
   );
 }

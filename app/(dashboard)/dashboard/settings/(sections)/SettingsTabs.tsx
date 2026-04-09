@@ -56,27 +56,27 @@ export function SettingsTabs({
   return (
     <div className="space-y-6">
       {/* Tab bar */}
-      <div className="flex border-b border-[#E2E8F0] gap-0">
+      <div className="flex gap-[3px] overflow-x-auto rounded-[var(--r)] border border-[var(--border)] bg-[var(--surface)] p-1">
         {tabs.map((tab) => (
           <button
             key={tab.key}
             type="button"
             onClick={() => setActive(tab.key)}
             className={cn(
-              "flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors whitespace-nowrap",
+              "flex items-center gap-1.5 whitespace-nowrap rounded-[7px] px-3 py-[6px] text-[12px] font-medium transition-all duration-150",
               active === tab.key
-                ? "text-[#15689E] border-b-2 border-[#15689E]"
-                : "text-[#94A3B8] hover:text-[#64748B]",
+                ? "bg-[var(--navy)] text-white"
+                : "text-[var(--text2)] hover:bg-[var(--bg)]",
             )}
           >
-            <tab.icon className="w-4 h-4" />
+            <tab.icon className="w-3.5 h-3.5" />
             {tab.label}
           </button>
         ))}
       </div>
 
       {/* Tab content */}
-      <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+      <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[var(--r)] p-5">
         {active === "profile" && <ProfileTab profile={profile} />}
         {active === "team" && (
           <TeamTab

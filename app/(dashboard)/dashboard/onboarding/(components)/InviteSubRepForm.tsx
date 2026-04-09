@@ -63,7 +63,7 @@ export function InviteSubRepForm() {
         Send Invite
       </Button>
 
-      <p className="text-xs text-[#94A3B8]">
+      <p className="text-xs text-[var(--text3)]">
         Sub-reps you invite will be linked to your account.
       </p>
     </form>

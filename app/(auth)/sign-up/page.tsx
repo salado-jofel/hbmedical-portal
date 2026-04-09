@@ -33,7 +33,7 @@ export default function Page() {
         {/* Back to Sign In */}
         <Link
           href="/sign-in"
-          className="flex items-center justify-center gap-2 h-9 w-full rounded-lg font-medium transition-colors bg-[#15689E] hover:bg-[#125d8e] text-white shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
+          className="flex items-center justify-center gap-2 h-9 w-full rounded-lg font-medium transition-colors bg-[var(--navy)] hover:bg-[var(--navy)]/80 text-white shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
         >
           <ArrowLeft className="w-4 h-4" />
           Back to Sign In
@@ -43,7 +43,7 @@ export default function Page() {
         <div className="mt-6 text-center">
           <p className="text-xs text-[#94A3B8]">
             Are you a rep?{" "}
-            <span className="text-[#15689E] font-medium">
+            <span className="text-[var(--navy)] font-medium">
               Contact admin@hbmedicalsupplies.io
             </span>
           </p>

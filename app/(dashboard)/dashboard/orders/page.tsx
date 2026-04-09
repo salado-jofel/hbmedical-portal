@@ -16,7 +16,6 @@ import {
 import Providers from "./(sections)/Providers";
 import { OrdersKanban } from "./(sections)/OrdersKanban";
 import { getOrders } from "./(services)/order-read-actions";
-
 export const dynamic = "force-dynamic";
 
 export default async function OrdersPage() {
@@ -46,18 +45,16 @@ export default async function OrdersPage() {
   const supportUser = isSupport(role);
 
   return (
-    <div className="p-4 md:p-8 max-w-[1600px] mx-auto space-y-6">
-      <Providers orders={orders}>
-        <OrdersKanban
-          canCreate={canCreate}
-          canSign={canSign}
-          isAdmin={adminUser}
-          isRep={repUser}
-          isSupport={supportUser}
-          currentUserId={user.id}
-          currentUserName={(profile as { full_name?: string } | null)?.full_name ?? undefined}
-        />
-      </Providers>
-    </div>
+    <Providers orders={orders}>
+      <OrdersKanban
+        canCreate={canCreate}
+        canSign={canSign}
+        isAdmin={adminUser}
+        isRep={repUser}
+        isSupport={supportUser}
+        currentUserId={user.id}
+        currentUserName={(profile as { full_name?: string } | null)?.full_name ?? undefined}
+      />
+    </Providers>
   );
 }

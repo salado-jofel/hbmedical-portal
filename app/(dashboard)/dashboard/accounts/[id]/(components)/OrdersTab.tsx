@@ -58,7 +58,7 @@ export function OrdersTab({ orders, onOrderClick }: OrdersTabProps) {
 
   return (
     <div>
-      <p className="text-sm text-[#64748B] mb-4">
+      <p className="text-sm text-[var(--text2)] mb-4">
         {orders.length} order{orders.length !== 1 ? "s" : ""}
       </p>
 
@@ -80,7 +80,7 @@ export function OrdersTab({ orders, onOrderClick }: OrdersTabProps) {
               {/* Column header */}
               <div className="flex items-center gap-2 mb-3 px-1">
                 <span className={cn("w-2 h-2 rounded-full shrink-0", config.dot)} />
-                <span className="text-xs font-semibold text-[#0F172A]">
+                <span className="text-xs font-semibold text-[var(--navy)]">
                   {config.label}
                 </span>
                 <span
@@ -94,7 +94,7 @@ export function OrdersTab({ orders, onOrderClick }: OrdersTabProps) {
               </div>
 
               {/* Cards */}
-              <div className="flex flex-col gap-2 min-h-[120px] bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-2">
+              <div className="flex flex-col gap-2 min-h-[120px] bg-[var(--bg)] border border-[var(--border)] rounded-xl p-2">
                 {colOrders.length === 0 ? (
                   <div className="flex items-center justify-center py-8">
                     <p className="text-xs text-gray-400">No orders</p>

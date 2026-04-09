@@ -99,7 +99,7 @@ export function TaskModal({
         ) : fab ? (
           <button
             type="button"
-            className="size-14 rounded-full bg-[#15689E] shadow-lg flex items-center justify-center text-white"
+            className="size-14 rounded-full bg-[var(--navy)] shadow-lg flex items-center justify-center text-white"
             aria-label="New task"
           >
             <Plus className="w-6 h-6" />
@@ -107,7 +107,7 @@ export function TaskModal({
         ) : (
           <Button
             size="sm"
-            className="gap-1.5 bg-[#15689E] hover:bg-[#15689E]/90 text-white"
+            className="gap-1.5 bg-[var(--navy)] hover:bg-[var(--navy)]/90 text-white"
           >
             <Plus className="w-4 h-4" />
             New Task
@@ -115,7 +115,7 @@ export function TaskModal({
         )}
       </DialogTrigger>
 
-      <DialogContent className="sm:max-w-lg max-h-[85dvh] overflow-y-auto sm:rounded-2xl border border-[#E2E8F0] shadow-[0_20px_60px_rgba(0,0,0,0.12)]">
+      <DialogContent className="sm:max-w-lg max-h-[85dvh] overflow-y-auto sm:rounded-2xl border border-[var(--border)] shadow-[0_20px_60px_rgba(0,0,0,0.12)]">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit Task" : "New Task"}</DialogTitle>
         </DialogHeader>

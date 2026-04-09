@@ -49,7 +49,7 @@ export default async function InviteLandingPage({ params }: PageProps) {
             </div>
             <Link
               href="/sign-in"
-              className="block w-full text-center rounded-lg bg-[#15689E] hover:bg-[#125d8e] text-white font-medium h-9 flex items-center justify-center text-sm transition-colors shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
+              className="block w-full text-center rounded-lg bg-[var(--navy)] hover:bg-[var(--navy)]/80 text-white font-medium h-9 flex items-center justify-center text-sm transition-colors shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
             >
               Back to Sign In
             </Link>
@@ -78,7 +78,7 @@ export default async function InviteLandingPage({ params }: PageProps) {
           {/* Icon */}
           <div className="flex justify-center">
             <div className="w-16 h-16 rounded-full bg-[#EFF6FF] flex items-center justify-center">
-              <CheckCircle className="w-8 h-8 text-[#15689E]" />
+              <CheckCircle className="w-8 h-8 text-[var(--navy)]" />
             </div>
           </div>
 
@@ -121,14 +121,14 @@ export default async function InviteLandingPage({ params }: PageProps) {
           {/* CTA */}
           <Link
             href={`/invite/${token}/signup`}
-            className="block w-full text-center rounded-lg bg-[#15689E] hover:bg-[#125d8e] text-white font-medium h-9 flex items-center justify-center text-sm transition-colors shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
+            className="block w-full text-center rounded-lg bg-[var(--navy)] hover:bg-[var(--navy)]/80 text-white font-medium h-9 flex items-center justify-center text-sm transition-colors shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
           >
             Accept &amp; Create Account
           </Link>
 
           <p className="text-center text-xs text-[#94A3B8]">
             Already have an account?{" "}
-            <Link href="/sign-in" className="text-[#15689E] hover:text-[#125d8e] font-medium transition-colors">
+            <Link href="/sign-in" className="text-[var(--navy)] hover:text-[#125d8e] font-medium transition-colors">
               Sign in
             </Link>
           </p>

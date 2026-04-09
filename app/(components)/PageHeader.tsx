@@ -17,14 +17,14 @@ export function PageHeader({
   return (
     <div
       className={cn(
-        "flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#E2E8F0]",
+        "flex items-center justify-between border-b border-[var(--border)] pb-5 mb-6",
         className,
       )}
     >
       <div>
-        <h1 className="text-xl font-semibold text-[#0F172A]">{title}</h1>
+        <h1 className="text-[18px] font-bold text-[var(--navy)]">{title}</h1>
         {subtitle && (
-          <p className="text-sm text-[#64748B] mt-0.5">{subtitle}</p>
+          <p className="mt-[2px] text-[13px] text-[var(--text3)]">{subtitle}</p>
         )}
       </div>
       {action && <div className="shrink-0">{action}</div>}
