@@ -52,7 +52,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
         icon: LayoutDashboard,
         label: "Dashboard",
         href: "/dashboard",
-        visible: (role) => !!role && !isAdmin(role),
+        visible: (role) => !!role,
       },
     ],
   },

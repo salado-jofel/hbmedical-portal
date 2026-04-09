@@ -1,90 +1,57 @@
+import type { Metadata } from "next";
+import { createClient } from "@/lib/supabase/server";
+import { getUserRole } from "@/lib/supabase/auth";
+import {
+  isAdmin,
+  isSalesRep,
+  isClinicalProvider,
+  isClinicalStaff,
+  isSupport,
+  type UserRole,
+} from "@/utils/helpers/role";
+import { getAllOrders } from "./orders/(services)/order-read-actions";
+import { getUsers } from "./users/(services)/actions";
+import { getAccounts } from "./accounts/(services)/actions";
+import { getTasks } from "./tasks/(services)/actions";
+import { AdminDashboard } from "./(sections)/AdminDashboard";
+import { ClinicDashboard } from "./(sections)/ClinicDashboard";
+import { RepDashboard } from "./(sections)/RepDashboard";
+import { SupportDashboard } from "./(sections)/SupportDashboard";
+import type { IUser } from "@/utils/interfaces/users";
+import type { IAccount } from "@/utils/interfaces/accounts";
+import type { ITask } from "@/utils/interfaces/tasks";
+
+export const metadata: Metadata = { title: "Dashboard" };
 export const dynamic = "force-dynamic";
 
-import { getAllOrders } from "./orders/(services)/order-read-actions";
-import RecentOrdersTable from "./(sections)/RecentOrdersTable";
-import StatsCards from "./(sections)/StatsCard";
-import { BarChart2 } from "lucide-react";
-import { PageHeader } from "@/app/(components)/PageHeader";
-import { Metadata } from "next";
-
-export const metadata: Metadata = {
-  title: "Dashboard",
-};
-
 export default async function DashboardPage() {
-  const orders = await getAllOrders();
+  const supabase = await createClient();
+  const role = (await getUserRole(supabase)) as UserRole;
 
-  const totalOrders = orders.length;
-  const totalRevenue = orders.reduce((sum, o) => sum + (o.total_amount ?? 0), 0);
-  const activeOrders = orders.filter(
-    (o) => o.order_status !== "canceled" && o.order_status !== "draft",
-  ).length;
-  const draftOrders = orders.filter((o) => o.order_status === "draft").length;
+  const adminUser = isAdmin(role);
+  const repUser = isSalesRep(role);
+
+  const [allOrders, users, accounts, tasks] = await Promise.all([
+    getAllOrders(),
+    adminUser ? getUsers() : Promise.resolve([] as IUser[]),
+    repUser ? getAccounts() : Promise.resolve([] as IAccount[]),
+    repUser ? getTasks() : Promise.resolve([] as ITask[]),
+  ]);
 
   return (
     <div className="select-none">
-      <PageHeader title="Dashboard" subtitle="Overview and recent activity" />
-      {/* KPI grid */}
-      <StatsCards
-        totalOrders={totalOrders}
-        totalRevenue={totalRevenue}
-        activeOrders={activeOrders}
-        draftOrders={draftOrders}
-      />
-
-      {/* Charts row: 1.6fr 1fr */}
-      <div className="mb-5 grid grid-cols-1 gap-4 lg:grid-cols-[1.6fr_1fr]">
-        {/* Recent orders */}
-        <RecentOrdersTable initialOrders={orders} />
-
-        {/* Order status breakdown — chart placeholder */}
-        <div className="overflow-hidden rounded-[var(--r)] border border-[var(--border)] bg-[var(--surface)]">
-          <div className="border-b border-[var(--border)] px-4 py-[0.8rem]">
-            <p className="text-[13px] font-semibold text-[var(--navy)]">
-              Order Status Breakdown
-            </p>
-            <p className="mt-[1px] text-[11px] text-[var(--text3)]">
-              Distribution by status
-            </p>
-          </div>
-          <div className="flex flex-col items-center justify-center gap-2 px-4 py-12 text-[var(--text3)]">
-            <BarChart2 className="h-8 w-8 opacity-30" strokeWidth={1.5} />
-            <p className="text-[13px]">Coming soon</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Bottom card — recent activity summary */}
-      <div className="overflow-hidden rounded-[var(--r)] border border-[var(--border)] bg-[var(--surface)]">
-        <div className="border-b border-[var(--border)] px-4 py-[0.8rem]">
-          <p className="text-[13px] font-semibold text-[var(--navy)]">
-            Order Activity
-          </p>
-          <p className="mt-[1px] text-[11px] text-[var(--text3)]">
-            All orders across all statuses
-          </p>
-        </div>
-        <div className="grid grid-cols-2 gap-px bg-[var(--border)] sm:grid-cols-4">
-          {[
-            { label: "Draft",      value: draftOrders,                                     color: "var(--text3)" },
-            { label: "Active",     value: activeOrders,                                    color: "var(--teal-mid)" },
-            { label: "Delivered",  value: orders.filter((o) => o.order_status === "delivered").length,  color: "var(--green)" },
-            { label: "Cancelled",  value: orders.filter((o) => o.order_status === "canceled").length,   color: "var(--red)" },
-          ].map(({ label, value, color }) => (
-            <div key={label} className="bg-[var(--surface)] px-4 py-4">
-              <p className="text-[10px] font-medium uppercase tracking-[0.6px] text-[var(--text3)]">
-                {label}
-              </p>
-              <p
-                className="mt-1 text-[22px] font-semibold leading-none"
-                style={{ color }}
-              >
-                {value}
-              </p>
-            </div>
-          ))}
-        </div>
-      </div>
+      {adminUser && (
+        <AdminDashboard orders={allOrders} users={users} />
+      )}
+      {(isClinicalProvider(role) || isClinicalStaff(role)) && (
+        <ClinicDashboard orders={allOrders} />
+      )}
+      {repUser && (
+        <RepDashboard orders={allOrders} tasks={tasks} accounts={accounts} />
+      )}
+      {isSupport(role) && (
+        <SupportDashboard orders={allOrders} />
+      )}
     </div>
   );
 }
