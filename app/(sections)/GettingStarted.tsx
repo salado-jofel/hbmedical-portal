@@ -103,7 +103,7 @@ export function GettingStarted() {
           viewport={VIEWPORT}
           variants={badgePop}
         >
-          <span className="bg-[#15689E]/10 text-[#15689E] text-xs font-semibold tracking-widest uppercase px-4 py-1.5 rounded-full border border-[#15689E]/20">
+          <span className="bg-[var(--navy)]/10 text-[var(--navy)] text-xs font-semibold tracking-widest uppercase px-4 py-1.5 rounded-full border border-[var(--navy)]/20">
             Getting Started
           </span>
         </motion.div>

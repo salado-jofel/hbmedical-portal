@@ -94,7 +94,7 @@ export default function ResetPasswordForm() {
         <div className="mb-2 flex items-center justify-center">
           <HBLogo variant="light" size="lg" />
         </div>
-        <Loader2 className="w-8 h-8 animate-spin text-[#15689E]" />
+        <Loader2 className="w-8 h-8 animate-spin text-[var(--navy)]" />
         <p className="text-sm text-[#64748B]">Loading...</p>
       </div>
     );
@@ -190,7 +190,7 @@ export default function ResetPasswordForm() {
 
         <div className="space-y-3 pt-1">
           <SubmitButton
-            classname="h-9 w-full font-medium bg-[#15689E] hover:bg-[#125d8e] text-white rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            classname="h-9 w-full font-medium bg-[var(--navy)] hover:bg-[var(--navy)]/80 text-white rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             isPending={isSubmitting}
             disabled={!isFormValid}
             type="submit"
@@ -206,7 +206,7 @@ export default function ResetPasswordForm() {
       <div className="mt-8 text-center">
         <Link
           href="/sign-in"
-          className="inline-flex items-center gap-2 text-sm font-medium text-[#64748B] hover:text-[#15689E] transition-colors"
+          className="inline-flex items-center gap-2 text-sm font-medium text-[#64748B] hover:text-[var(--navy)] transition-colors"
         >
           <ArrowLeft className="w-4 h-4" /> Back to Sign In
         </Link>

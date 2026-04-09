@@ -50,7 +50,7 @@ const STATUS_CONFIG: Record<
     label: "Pending",
   },
   inactive: {
-    bg: "bg-[#F1F5F9]",
+    bg: "bg-[var(--border)]",
     text: "text-gray-500",
     dot: "bg-gray-400",
     label: "Inactive",
@@ -193,7 +193,7 @@ export function OnboardingDashboard({
         return (
           <div className="min-w-0">
             <p
-              className={`text-sm font-medium truncate ${rep.status === "inactive" ? "text-[#94A3B8]" : "text-[#0F172A]"}`}
+              className={`text-sm font-medium truncate ${rep.status === "inactive" ? "text-[var(--text3)]" : "text-[var(--navy)]"}`}
             >
               {displayName}
             </p>
@@ -212,7 +212,7 @@ export function OnboardingDashboard({
       headerClassName: "hidden sm:table-cell",
       cellClassName: "hidden sm:table-cell",
       render: (rep) => (
-        <span className="text-sm text-[#64748B]">{rep.email}</span>
+        <span className="text-sm text-[var(--text2)]">{rep.email}</span>
       ),
     },
     {
@@ -250,7 +250,7 @@ export function OnboardingDashboard({
                   handleResendSubRep(rep);
                 }}
                 disabled={isResending || isDeleting}
-                className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded-lg text-xs font-medium text-[#94A3B8] hover:text-[#15689E] hover:bg-[#EFF6FF] transition-all disabled:opacity-40"
+                className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded-lg text-xs font-medium text-[var(--text3)] hover:text-[var(--navy)] hover:bg-[#EFF6FF] transition-all disabled:opacity-40"
                 title="Resend invite"
               >
                 {isResending ? (
@@ -268,7 +268,7 @@ export function OnboardingDashboard({
                   setDeleteSubRepConfirmOpen(true);
                 }}
                 disabled={isResending || isDeleting}
-                className="h-7 w-7 inline-flex items-center justify-center rounded-lg text-[#94A3B8] hover:text-red-500 hover:bg-red-50 transition-all disabled:opacity-40"
+                className="h-7 w-7 inline-flex items-center justify-center rounded-lg text-[var(--text3)] hover:text-red-500 hover:bg-red-50 transition-all disabled:opacity-40"
                 title="Delete sub-rep"
               >
                 {isDeleting ? (
@@ -291,7 +291,7 @@ export function OnboardingDashboard({
                 setDisableConfirmId(rep.id);
               }}
               disabled={isActing}
-              className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded-lg text-xs font-medium text-[#94A3B8] hover:text-red-500 hover:bg-red-50 transition-all disabled:opacity-40 opacity-0 group-hover:opacity-100"
+              className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded-lg text-xs font-medium text-[var(--text3)] hover:text-red-500 hover:bg-red-50 transition-all disabled:opacity-40 opacity-0 group-hover:opacity-100"
               title="Deactivate sub-rep"
             >
               {isActing ? (
@@ -350,10 +350,10 @@ export function OnboardingDashboard({
   return (
     <div className="p-6 md:p-8 max-w-480 mx-auto space-y-6">
       {/* ── Header ── */}
-      <div className="flex items-start justify-between gap-4 pb-5 mb-6 border-b border-[#E2E8F0]">
+      <div className="flex items-start justify-between gap-4 pb-5 mb-6 border-b border-[var(--border)]">
         <div>
-          <h1 className="text-xl font-semibold text-[#0F172A]">Onboarding</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">
+          <h1 className="text-xl font-semibold text-[var(--navy)]">Onboarding</h1>
+          <p className="text-sm text-[var(--text2)] mt-0.5">
             Invite clinic users and manage rep access
           </p>
         </div>
@@ -361,9 +361,9 @@ export function OnboardingDashboard({
       <div className="max-w-3xl mx-auto space-y-6">
         {/* ── Admin note ── */}
         {isAdmin && (
-          <div className="flex items-start gap-2.5 bg-[#EFF6FF] border border-[#15689E]/20 rounded-xl px-4 py-3">
-            <Info className="w-4 h-4 text-[#15689E] mt-0.5 shrink-0" />
-            <p className="text-sm text-[#15689E]">
+          <div className="flex items-start gap-2.5 bg-[#EFF6FF] border border-[var(--navy)]/20 rounded-xl px-4 py-3">
+            <Info className="w-4 h-4 text-[var(--navy)] mt-0.5 shrink-0" />
+            <p className="text-sm text-[var(--navy)]">
               Admin, Sales Rep, and Support Staff accounts are managed from the{" "}
               <a
                 href="/dashboard/users"
@@ -394,11 +394,11 @@ export function OnboardingDashboard({
         {/* {showSubRepSection && (
         <section className="space-y-3">
           <div className="flex items-center gap-2">
-            <Users className="w-4 h-4 text-[#64748B]" />
-            <h2 className="text-base font-semibold text-[#0F172A]">
+            <Users className="w-4 h-4 text-[var(--text2)]" />
+            <h2 className="text-base font-semibold text-[var(--navy)]">
               My Sub-Reps
               {subReps.length > 0 && (
-                <span className="ml-2 text-xs px-1.5 py-0.5 rounded-full font-medium bg-[#F1F5F9] text-[#64748B]">
+                <span className="ml-2 text-xs px-1.5 py-0.5 rounded-full font-medium bg-[var(--border)] text-[var(--text2)]">
                   {subReps.length}
                 </span>
               )}

@@ -9,17 +9,17 @@ export const ROLE_COLORS: Record<
   NonNullable<UserRole>,
   { bg: string; text: string; dot: string }
 > = {
-  admin:                { bg: "bg-[#EFF6FF]",    text: "text-[#15689E]",  dot: "bg-[#15689E]"  },
-  sales_representative: { bg: "bg-orange-50",    text: "text-orange-600", dot: "bg-orange-400" },
-  support_staff:        { bg: "bg-purple-50",    text: "text-purple-700", dot: "bg-purple-400" },
-  clinical_provider:    { bg: "bg-teal-50",      text: "text-teal-700",   dot: "bg-teal-400"   },
-  clinical_staff:       { bg: "bg-[#F1F5F9]",   text: "text-[#64748B]",  dot: "bg-[#94A3B8]"  },
+  admin:                { bg: "bg-[var(--blue-lt)]",   text: "text-[var(--navy)]",  dot: "bg-[var(--navy)]"  },
+  sales_representative: { bg: "bg-[var(--teal-lt)]",  text: "text-[var(--teal)]",  dot: "bg-[var(--teal)]"  },
+  support_staff:        { bg: "bg-[var(--purple-lt)]",text: "text-[var(--purple)]",dot: "bg-[var(--purple)]" },
+  clinical_provider:    { bg: "bg-[var(--blue-lt)]",  text: "text-[var(--blue)]",  dot: "bg-[var(--blue)]"  },
+  clinical_staff:       { bg: "bg-[var(--gold-lt)]",  text: "text-[var(--gold)]",  dot: "bg-[var(--gold)]"  },
 };
 
 export const STATUS_CONFIG: Record<UserStatus, { bg: string; text: string; dot: string; label: string }> = {
-  active:   { bg: "bg-emerald-50",  text: "text-emerald-600", dot: "bg-emerald-500", label: "Active"   },
-  pending:  { bg: "bg-amber-50",    text: "text-amber-600",   dot: "bg-amber-500",   label: "Pending"  },
-  inactive: { bg: "bg-[#F1F5F9]",   text: "text-gray-500",    dot: "bg-gray-400",    label: "Inactive" },
+  active:   { bg: "bg-[var(--green-lt)]", text: "text-[var(--green)]", dot: "bg-[var(--green)]", label: "Active"   },
+  pending:  { bg: "bg-[var(--gold-lt)]",  text: "text-[var(--gold)]",  dot: "bg-[var(--gold)]",  label: "Pending"  },
+  inactive: { bg: "bg-[var(--border)]",   text: "text-[var(--text2)]", dot: "bg-[var(--text3)]", label: "Inactive" },
 };
 
 interface UserRowActionsProps {
@@ -51,7 +51,7 @@ export function UserRowActions({
           type="button"
           onClick={(e) => { e.stopPropagation(); onResendInvite(user); }}
           disabled={isResending || isActing}
-          className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded-lg text-xs font-medium text-[#15689E] hover:bg-[#EFF6FF] transition-all disabled:opacity-40 opacity-0 group-hover:opacity-100"
+          className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded-lg text-xs font-medium text-[var(--navy)] hover:bg-[#EFF6FF] transition-all disabled:opacity-40 opacity-0 group-hover:opacity-100"
           title="Resend invite"
         >
           {isResending
@@ -79,7 +79,7 @@ export function UserRowActions({
         type="button"
         onClick={(e) => { e.stopPropagation(); onDeactivate(user.id); }}
         disabled={isActing}
-        className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded-lg text-xs font-medium text-[#94A3B8] hover:text-red-500 hover:bg-red-50 transition-all disabled:opacity-40 opacity-0 group-hover:opacity-100"
+        className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded-lg text-xs font-medium text-[var(--text3)] hover:text-red-500 hover:bg-red-50 transition-all disabled:opacity-40 opacity-0 group-hover:opacity-100"
         title="Deactivate user"
       >
         <UserX className="w-3.5 h-3.5" />
@@ -94,7 +94,7 @@ export function UserRowActions({
         type="button"
         onClick={(e) => { e.stopPropagation(); onReactivate(user.id); }}
         disabled={isActing}
-        className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded-lg text-xs font-medium text-[#94A3B8] hover:text-emerald-600 hover:bg-emerald-50 transition-all disabled:opacity-40 opacity-0 group-hover:opacity-100"
+        className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded-lg text-xs font-medium text-[var(--text3)] hover:text-[var(--green)] hover:bg-[var(--green-lt)] transition-all disabled:opacity-40 opacity-0 group-hover:opacity-100"
         title="Reactivate user"
       >
         <UserCheck className="w-3.5 h-3.5" />

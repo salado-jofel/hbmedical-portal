@@ -7,8 +7,8 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-roboto);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-dm-sans);
+  --font-mono: var(--font-dm-mono);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -72,6 +72,34 @@
   --chart-4: oklch(0.488 0.243 264.376);
   --chart-5: oklch(0.424 0.199 265.638);
   --radius: 0.625rem;
+
+  /* ── HB Design Tokens ── */
+  --navy: #0f2d4a;
+  --teal: #0d7a6b;
+  --teal-lt: #e0f5f2;
+  --teal-mid: #1d9e75;
+  --accent: #00b4a2;
+  --accent-soft: #e1f5ee;
+  --gold: #c47d0a;
+  --gold-lt: #fef8ec;
+  --gold-border: #f6d47a;
+  --red: #dc2626;
+  --red-lt: #fef2f2;
+  --blue: #1565c0;
+  --blue-lt: #e8f1fd;
+  --green: #15803d;
+  --green-lt: #f0fdf4;
+  --purple: #6d28d9;
+  --purple-lt: #f5f3ff;
+  --bg: #f0f4f8;
+  --surface: #ffffff;
+  --border: #e2e8f0;
+  --border2: #cbd5e1;
+  --text: #0f172a;
+  --text2: #475569;
+  --text3: #94a3b8;
+  --r: 10px;
+
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
@@ -131,8 +159,8 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: var(--font-roboto), sans-serif;
-    background-color: #F8FAFC;
+    font-family: var(--font-dm-sans), sans-serif;
+    background-color: #f0f4f8;
   }
   html {
     @apply font-sans;

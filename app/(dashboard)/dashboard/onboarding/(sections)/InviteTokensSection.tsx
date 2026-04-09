@@ -43,26 +43,26 @@ export function InviteTokensSection({
 
   return (
     <section className="space-y-3">
-      <h2 className="text-sm font-semibold text-[#0F172A]">
+      <h2 className="text-sm font-semibold text-[var(--navy)]">
         {isAdmin
           ? `All invite links (${tokens.length})`
           : `Your invite links (${tokens.length})`}
       </h2>
       {isAdmin ? (
-        <div className="bg-white rounded-xl border border-[#E2E8F0] overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
+        <div className="bg-white rounded-xl border border-[var(--border)] overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
           <table className="w-full text-sm text-left">
             <thead>
-              <tr className="bg-[#F8FAFC] border-b border-[#E2E8F0]">
-                <th className="px-4 py-3 text-[10px] uppercase tracking-wider font-semibold text-[#94A3B8]">
+              <tr className="bg-[var(--bg)] border-b border-[var(--border)]">
+                <th className="px-4 py-3 text-[10px] uppercase tracking-wider font-semibold text-[var(--text3)]">
                   Created By
                 </th>
-                <th className="px-4 py-3 text-[10px] uppercase tracking-wider font-semibold text-[#94A3B8] hidden sm:table-cell">
+                <th className="px-4 py-3 text-[10px] uppercase tracking-wider font-semibold text-[var(--text3)] hidden sm:table-cell">
                   Role Type
                 </th>
-                <th className="px-4 py-3 text-[10px] uppercase tracking-wider font-semibold text-[#94A3B8] hidden md:table-cell">
+                <th className="px-4 py-3 text-[10px] uppercase tracking-wider font-semibold text-[var(--text3)] hidden md:table-cell">
                   Expires
                 </th>
-                <th className="px-4 py-3 text-[10px] uppercase tracking-wider font-semibold text-[#94A3B8] text-right">
+                <th className="px-4 py-3 text-[10px] uppercase tracking-wider font-semibold text-[var(--text3)] text-right">
                   Status
                 </th>
               </tr>
@@ -80,18 +80,18 @@ export function InviteTokensSection({
                     ? "Expired"
                     : "Active";
                 const statusStyle = isUsed
-                  ? "bg-[#F1F5F9] text-[#64748B]"
+                  ? "bg-[var(--border)] text-[var(--text2)]"
                   : isExpired
                     ? "bg-red-50 text-red-600"
                     : "bg-emerald-50 text-emerald-700";
                 const dotStyle = isUsed
-                  ? "bg-[#94A3B8]"
+                  ? "bg-[var(--text3)]"
                   : isExpired
                     ? "bg-red-400"
                     : "bg-emerald-500";
                 const roleColors: Record<string, string> = {
                   clinical_provider: "bg-teal-50 text-teal-700",
-                  clinical_staff: "bg-[#F1F5F9] text-[#64748B]",
+                  clinical_staff: "bg-[var(--border)] text-[var(--text2)]",
                   sales_representative: "bg-orange-50 text-orange-600",
                   support_staff: "bg-purple-50 text-purple-700",
                 };
@@ -107,22 +107,22 @@ export function InviteTokensSection({
                 return (
                   <tr
                     key={token.id}
-                    className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#FAFBFC] transition-colors"
+                    className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--bg)] transition-colors"
                   >
                     <td className="px-4 py-3.5">
-                      <span className="text-sm text-[#0F172A] font-medium">
+                      <span className="text-sm text-[var(--navy)] font-medium">
                         {createdBy}
                       </span>
                     </td>
                     <td className="px-4 py-3.5 hidden sm:table-cell">
                       <span
-                        className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${roleColors[token.role_type] ?? "bg-[#F1F5F9] text-[#64748B]"}`}
+                        className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${roleColors[token.role_type] ?? "bg-[var(--border)] text-[var(--text2)]"}`}
                       >
                         {roleLabels[token.role_type] ?? token.role_type}
                       </span>
                     </td>
                     <td className="px-4 py-3.5 hidden md:table-cell">
-                      <span className="text-xs text-[#64748B]">
+                      <span className="text-xs text-[var(--text2)]">
                         {token.expires_at
                           ? new Date(token.expires_at).toLocaleDateString()
                           : "—"}

@@ -51,7 +51,7 @@ export default async function InviteSignUpPage({ params }: PageProps) {
             </div>
             <Link
               href="/sign-in"
-              className="block w-full text-center rounded-lg bg-[#15689E] hover:bg-[#125d8e] text-white font-medium h-9 flex items-center justify-center text-sm transition-colors shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
+              className="block w-full text-center rounded-lg bg-[var(--navy)] hover:bg-[var(--navy)]/80 text-white font-medium h-9 flex items-center justify-center text-sm transition-colors shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
             >
               Back to Sign In
             </Link>
@@ -86,7 +86,7 @@ export default async function InviteSignUpPage({ params }: PageProps) {
             </div>
             <Link
               href="/sign-in"
-              className="block w-full text-center rounded-lg bg-[#15689E] hover:bg-[#125d8e] text-white font-medium h-9 flex items-center justify-center text-sm transition-colors shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
+              className="block w-full text-center rounded-lg bg-[var(--navy)] hover:bg-[var(--navy)]/80 text-white font-medium h-9 flex items-center justify-center text-sm transition-colors shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
             >
               Back to Sign In
             </Link>

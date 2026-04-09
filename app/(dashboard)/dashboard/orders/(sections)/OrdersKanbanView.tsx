@@ -60,7 +60,7 @@ export function OrdersKanbanView({
                   className={cn(
                     "px-3 py-1.5 rounded-md text-xs font-semibold transition-colors",
                     !tableMode
-                      ? "bg-[#15689E] text-white"
+                      ? "bg-[var(--navy)] text-white"
                       : "text-gray-500 hover:text-gray-700",
                   )}
                 >
@@ -71,7 +71,7 @@ export function OrdersKanbanView({
                   className={cn(
                     "px-3 py-1.5 rounded-md text-xs font-semibold transition-colors",
                     tableMode
-                      ? "bg-[#15689E] text-white"
+                      ? "bg-[var(--navy)] text-white"
                       : "text-gray-500 hover:text-gray-700",
                   )}
                 >
@@ -117,7 +117,7 @@ export function OrdersKanbanView({
                     className={cn(
                       "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0 transition-all",
                       isActive
-                        ? "bg-[#15689E] text-white"
+                        ? "bg-[var(--navy)] text-white"
                         : "bg-slate-100 text-slate-600 hover:bg-slate-200",
                     )}
                   >
@@ -152,9 +152,9 @@ export function OrdersKanbanView({
                     : (KANBAN_STATUS_CONFIG[mobileTab as OrderStatus]?.label ??
                       mobileTab);
                 return colOrders.length === 0 ? (
-                  <div className="bg-[#F8FAFC] rounded-xl border border-[#E2E8F0] py-14">
+                  <div className="bg-[var(--bg)] rounded-xl border border-[var(--border)] py-14">
                     <EmptyState
-                      icon={<Package className="w-8 h-8 text-[#E2E8F0]" />}
+                      icon={<Package className="w-8 h-8 text-[var(--border)]" />}
                       message={`No ${label} orders`}
                     />
                   </div>
@@ -203,7 +203,7 @@ export function OrdersKanbanView({
                 >
                   {columnOrders.length === 0 ? (
                     <EmptyState
-                      icon={<Package className="w-7 h-7 text-[#E2E8F0]" />}
+                      icon={<Package className="w-7 h-7 text-[var(--border)]" />}
                       message="No orders"
                       className="py-8"
                     />

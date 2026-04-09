@@ -33,25 +33,25 @@ export function NavItem({
           ? "justify-center w-10 h-10 mx-auto"
           : "gap-2.5 px-3 py-[7px]",
         isActive
-          ? "bg-[#EBF4FF] text-[#15689E] font-medium"
-          : "text-[#475569] hover:bg-[#F5F8FB] hover:text-[#0F172A]",
+          ? "bg-[#EBF4FF] text-[var(--navy)] font-medium"
+          : "text-[#475569] hover:bg-[#F5F8FB] hover:text-[var(--navy)]",
       )}
     >
       {/* Left accent bar — expanded active only */}
       {isActive && !collapsed && (
-        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-[18px] rounded-r-full bg-[#15689E]" />
+        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-[18px] rounded-r-full bg-[var(--navy)]" />
       )}
 
       {/* Active dot — collapsed only */}
       {isActive && collapsed && (
-        <span className="absolute right-0.5 top-1/2 -translate-y-1/2 w-1 h-1 rounded-full bg-[#15689E]" />
+        <span className="absolute right-0.5 top-1/2 -translate-y-1/2 w-1 h-1 rounded-full bg-[var(--navy)]" />
       )}
 
       <Icon
         className={cn(
           "shrink-0 transition-colors duration-150",
           collapsed ? "w-[17px] h-[17px]" : "w-[15px] h-[15px]",
-          isActive ? "text-[#15689E]" : "text-[#94A3B8]",
+          isActive ? "text-[var(--navy)]" : "text-[var(--text3)]",
         )}
         strokeWidth={isActive ? 2.2 : 1.8}
       />

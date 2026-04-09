@@ -48,7 +48,7 @@ export function Testimonials() {
           viewport={VIEWPORT}
           variants={badgePop}
         >
-          <span className="bg-[#15689E]/10 text-[#15689E] text-xs font-semibold tracking-widest uppercase px-4 py-1.5 rounded-full border border-[#15689E]/20">
+          <span className="bg-[var(--navy)]/10 text-[var(--navy)] text-xs font-semibold tracking-widest uppercase px-4 py-1.5 rounded-full border border-[var(--navy)]/20">
             Rep Stories
           </span>
         </motion.div>
@@ -93,7 +93,7 @@ export function Testimonials() {
               }}
               whileHover={{ y: -6, transition: { duration: 0.25 } }}
               className={`p-7 rounded-2xl flex flex-col justify-between cursor-default ${t.highlight
-                ? "bg-[#15689E] text-white shadow-xl shadow-[#15689E]/30"
+                ? "bg-[var(--navy)] text-white shadow-xl /30"
                 : "bg-white border border-gray-100 shadow-sm"
                 }`}
             >
@@ -112,7 +112,7 @@ export function Testimonials() {
                 <div
                   className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold ${t.highlight
                     ? "bg-[#f5a255] text-white"
-                    : "bg-[#15689E]/10 text-[#15689E]"
+                    : "bg-[var(--navy)]/10 text-[var(--navy)]"
                     }`}
                 >
                   {t.initials}

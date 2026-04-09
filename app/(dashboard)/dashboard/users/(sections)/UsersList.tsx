@@ -146,10 +146,10 @@ export function UsersList() {
               <span className={`text-xs font-semibold ${colors.text}`}>{initials}</span>
             </div>
             <div className="min-w-0">
-              <p className={`text-sm font-medium truncate ${user.is_active ? "text-[#0F172A]" : "text-[#94A3B8]"}`}>
+              <p className={`text-sm font-medium truncate ${user.is_active ? "text-[var(--navy)]" : "text-[var(--text3)]"}`}>
                 {displayName}
               </p>
-              <p className="text-xs text-[#94A3B8] truncate">
+              <p className="text-xs text-[var(--text3)] truncate">
                 {user.facility?.name ?? <span className="italic">No facility</span>}
               </p>
             </div>
@@ -163,7 +163,7 @@ export function UsersList() {
       headerClassName: "hidden sm:table-cell",
       cellClassName: "hidden sm:table-cell",
       render: (user) => (
-        <span className="text-sm text-[#64748B]">{user.email}</span>
+        <span className="text-sm text-[var(--text2)]">{user.email}</span>
       ),
     },
     {
@@ -224,7 +224,7 @@ export function UsersList() {
         action={
           <Button
             size="sm"
-            className="h-9 bg-[#15689E] hover:bg-[#125d8e] text-white gap-1.5 shrink-0 rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors"
+            className="h-9 bg-[var(--navy)] hover:bg-[var(--navy)]/80 text-white gap-1.5 shrink-0 rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors"
             onClick={() => setShowCreate(true)}
           >
             <UserPlus className="w-3.5 h-3.5" />
@@ -244,17 +244,19 @@ export function UsersList() {
       />
 
       {/* ── Table ── */}
-      <DataTable
-        columns={columns}
-        data={filtered}
-        keyExtractor={(u) => u.id}
-        emptyMessage="No users found"
-        emptyIcon={<User className="w-10 h-10 stroke-1" />}
-        rowNumbered
-        rowClassName="group"
-      />
+      <div className="overflow-hidden rounded-[var(--r)] border border-[var(--border)] bg-[var(--surface)]">
+        <DataTable
+          columns={columns}
+          data={filtered}
+          keyExtractor={(u) => u.id}
+          emptyMessage="No users found"
+          emptyIcon={<User className="w-10 h-10 stroke-1" />}
+          rowNumbered
+          rowClassName="group"
+        />
+      </div>
 
-      <p className="text-xs text-[#94A3B8] text-right">
+      <p className="text-xs text-[var(--text3)] text-right">
         {filtered.length} of {users.length} user{users.length !== 1 ? "s" : ""}
       </p>
 

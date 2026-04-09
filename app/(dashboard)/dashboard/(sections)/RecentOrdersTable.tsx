@@ -2,7 +2,6 @@
 
 import { useMemo } from "react";
 import { StatusBadge } from "@/app/(components)/StatusBadge";
-import { TableCard } from "@/app/(components)/TableCard";
 import { DataTable } from "@/app/(components)/DataTable";
 import { OrderMobileCard } from "@/app/(components)/OrderMobileCard";
 import { formatAmount, formatDate } from "@/utils/helpers/formatter";
@@ -14,7 +13,7 @@ const columns: TableColumn<DashboardOrder>[] = [
     key: "order_number",
     label: "Order ID",
     render: (order) => (
-      <span className="font-medium text-[#0F172A]">
+      <span className="font-medium text-[var(--navy)]">
         {order.order_number ?? "—"}
       </span>
     ),
@@ -29,7 +28,11 @@ const columns: TableColumn<DashboardOrder>[] = [
   {
     key: "total_amount",
     label: "Amount",
-    render: (order) => <span>{formatAmount(order.total_amount ?? 0)}</span>,
+    render: (order) => (
+      <span style={{ fontFamily: "var(--font-dm-mono), monospace" }}>
+        {formatAmount(order.total_amount ?? 0)}
+      </span>
+    ),
   },
   {
     key: "order_status",
@@ -58,26 +61,42 @@ export default function RecentOrdersTable({
   );
 
   return (
-    <TableCard title={`Recent Orders (${recent.length})`}>
-      <div className="divide-y divide-[#F1F5F9] md:hidden">
+    <div
+      className="overflow-hidden rounded-[var(--r)] border border-[var(--border)] bg-[var(--surface)]"
+    >
+      {/* Card header */}
+      <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-[0.8rem]">
+        <div>
+          <p className="text-[13px] font-semibold text-[var(--navy)]">
+            Recent Orders
+          </p>
+          <p className="mt-[1px] text-[11px] text-[var(--text3)]">
+            Last {recent.length} orders
+          </p>
+        </div>
+      </div>
+
+      {/* Mobile list */}
+      <div className="divide-y divide-[var(--border)] md:hidden">
         {recent.length > 0 ? (
           recent.map((order) => (
             <OrderMobileCard key={order.id} order={order} />
           ))
         ) : (
-          <div className="p-4 text-sm text-[#94A3B8]">No Orders Yet</div>
+          <p className="p-4 text-[13px] text-[var(--text3)]">No orders yet.</p>
         )}
       </div>
 
+      {/* Desktop table */}
       <div className="hidden md:block">
         <DataTable
           columns={columns}
           data={recent}
           keyExtractor={(row) => String(row.id ?? "")}
-          emptyMessage="No Orders Yet"
+          emptyMessage="No orders yet."
           headerVariant="minimal"
         />
       </div>
-    </TableCard>
+    </div>
   );
 }

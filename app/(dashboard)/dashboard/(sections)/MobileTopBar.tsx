@@ -10,13 +10,13 @@ export function MobileTopBar() {
   const isOpen = useAppSelector((state) => state.dashboard.isSidebarOpen);
 
   return (
-    <header className="md:hidden fixed top-0 left-0 right-0 z-50 h-16 bg-white border-b border-[#E2E8F0] flex items-center justify-between px-4 shadow-sm">
+    <header className="md:hidden fixed top-0 left-0 right-0 z-50 h-16 bg-white border-b border-[var(--border)] flex items-center justify-between px-4 shadow-sm">
 
       <HBLogo variant="light" size="md" />
 
       <button
         onClick={() => dispatch(toggleSidebar())}
-        className="p-2 rounded-lg text-[#64748B] hover:bg-[#F8FAFC] hover:text-[#0F172A] transition-colors"
+        className="p-2 rounded-lg text-[var(--text2)] hover:bg-[var(--bg)] hover:text-[var(--navy)] transition-colors"
         aria-label="Toggle sidebar"
       >
         {isOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}

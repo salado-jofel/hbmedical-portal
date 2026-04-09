@@ -22,7 +22,7 @@ export function DemoSessionRow({ day, time, status }: DemoSessionRowProps) {
       </div>
 
       {status === "open" ? (
-        <span className="bg-[#15689E] text-white text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full">
+        <span className="bg-[var(--navy)] text-white text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full">
           Spots Open
         </span>
       ) : (

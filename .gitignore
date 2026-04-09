@@ -42,4 +42,8 @@ next-env.d.ts
 
 .claude
 .codebase_patterns
+.CODEBASE_PATTERNS
 .CODEBASE_PATTERNS.md
+AUDIT-REPORT.md
+CLAUDE.md
+design-reference.html

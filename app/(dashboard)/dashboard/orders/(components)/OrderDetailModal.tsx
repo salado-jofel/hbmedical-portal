@@ -90,6 +90,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import type { IOrderIVR, OrderStatus } from "@/utils/interfaces/orders";
 import { OrderStatusBadge } from "./OrderStatusBadge";
+import { PillBadge } from "@/app/(components)/PillBadge";
 import { OrderCompletionGuide } from "./OrderCompletionGuide";
 import { SignOrderModal } from "./SignOrderModal";
 import { ApproveOrderModal } from "./ApproveOrderModal";
@@ -1264,24 +1265,27 @@ export function OrderDetailModal({
               Order {order.order_number}
             </DialogTitle>
 
-            <div className="bg-white w-[95vw] max-w-[1200px] h-[90vh] rounded-3xl shadow-2xl border border-gray-100 overflow-hidden flex flex-col">
+            <div className="bg-[var(--surface)] w-[95vw] max-w-[1200px] h-[90vh] rounded-[14px] shadow-xl border border-[var(--border)] overflow-hidden flex flex-col">
               {/* ════════ FULL-WIDTH HEADER ════════ */}
-              <div className="flex-shrink-0 px-8 py-5 border-b border-gray-100 flex items-center justify-between bg-white">
+              <div className="flex-shrink-0 px-6 py-4 border-b border-[var(--border)] flex items-center justify-between bg-[var(--surface)]">
                 <div className="min-w-0">
-                  <h2 className="text-2xl font-extrabold tracking-tight text-gray-900 truncate">
+                  <h2 className="text-[16px] font-semibold text-[var(--navy)] truncate">
                     {patientName ?? "No Patient"}
                   </h2>
-                  <p className="text-gray-400 text-sm mt-0.5">
-                    Order #{order.order_number}
+                  <p
+                    className="text-[12px] text-[var(--text3)] mt-0.5"
+                    style={{ fontFamily: "var(--font-dm-mono), monospace" }}
+                  >
+                    {order.order_number}
                   </p>
                 </div>
                 <div className="flex items-center gap-3 shrink-0 ml-4">
                   <OrderStatusBadge status={displayStatus} />
                   <button
                     onClick={handleClose}
-                    className="w-9 h-9 rounded-full hover:bg-gray-100 transition-colors flex items-center justify-center"
+                    className="w-8 h-8 rounded-[7px] hover:bg-[var(--bg)] transition-colors flex items-center justify-center"
                   >
-                    <X className="w-4 h-4 text-gray-500" />
+                    <X className="w-4 h-4 text-[var(--text2)]" />
                   </button>
                 </div>
               </div>
@@ -1289,10 +1293,13 @@ export function OrderDetailModal({
               {/* ════════ TWO-COLUMN BODY ════════ */}
               <div className="flex flex-1 overflow-hidden">
                 {/* ──── LEFT COLUMN: Tabs ──── */}
-                <div className="flex-1 flex flex-col border-r border-gray-100 overflow-hidden min-w-0 ">
+                <div className="flex-1 flex flex-col border-r border-[var(--border)] overflow-hidden min-w-0">
                   {/* Tab bar */}
-                  <div className="flex-shrink-0 border-b border-gray-100 px-6">
-                    <div className="flex overflow-x-auto">
+                  <div className="flex-shrink-0 border-b border-[var(--border)] px-3 py-2">
+                    <div
+                      className="flex gap-[3px] overflow-x-auto rounded-[var(--r)] border border-[var(--border)] bg-[var(--surface)] p-1"
+                      style={{ scrollbarWidth: "none" }}
+                    >
                       {TABS.map((t) => {
                         const isChat = t.value === "conversation";
                         const badge =
@@ -1303,25 +1310,18 @@ export function OrderDetailModal({
                             key={t.value}
                             onClick={() => handleTabChange(t.value)}
                             className={cn(
-                              "px-5 py-3.5 text-sm font-semibold border-b-2 whitespace-nowrap transition-colors shrink-0 flex items-center gap-1.5",
+                              "flex items-center gap-1.5 whitespace-nowrap rounded-[7px] px-3 py-[6px] text-[12px] font-medium transition-all duration-150 shrink-0",
                               tab === t.value
-                                ? "border-[#15689E] text-[#15689E]"
-                                : "border-transparent text-gray-500 hover:text-gray-800",
+                                ? "bg-[var(--navy)] text-white"
+                                : "text-[var(--text2)] hover:bg-[var(--bg)]",
                             )}
                           >
                             {t.label}
                             {isDirtyTab && (
-                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />
+                              <span className="w-1.5 h-1.5 rounded-full bg-[var(--gold)] inline-block" />
                             )}
                             {badge > 0 && (
-                              <span
-                                className={cn(
-                                  "text-[10px] px-1.5 py-0.5 rounded-full font-bold",
-                                  isChat && unreadCount > 0
-                                    ? "bg-red-500 text-white"
-                                    : "bg-[#15689E] text-white",
-                                )}
-                              >
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-[var(--red)] text-white">
                                 {badge}
                               </span>
                             )}
@@ -1424,14 +1424,13 @@ export function OrderDetailModal({
                   {/* end tab content */}
 
                   {/* ── Footer: action buttons ── */}
-                  <div className="flex-shrink-0 px-6 py-4 border-t border-gray-100 flex items-center justify-end bg-white">
-                    {/* Action buttons */}
-                    <div className="flex items-center gap-3">
+                  <div className="flex-shrink-0 px-5 py-3 border-t border-[var(--border)] flex items-center justify-end bg-[var(--surface)]">
+                    <div className="flex items-center gap-2">
                       {/* Delete Order — draft, clinic only */}
                       {isClinical && status === "draft" && (
                         <button
                           onClick={() => setDeleteOpen(true)}
-                          className="px-5 py-2.5 text-red-500 font-semibold text-sm hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors"
+                          className="px-4 py-[7px] text-[var(--red)] font-medium text-[13px] hover:bg-[var(--red-lt)] rounded-[7px] transition-colors"
                         >
                           Delete Order
                         </button>
@@ -1454,16 +1453,16 @@ export function OrderDetailModal({
                                 : undefined
                           }
                           className={cn(
-                            "px-8 py-2.5 font-bold rounded-xl text-sm flex items-center gap-2 transition-all",
+                            "px-5 py-[7px] font-medium rounded-[7px] text-[13px] flex items-center gap-2 transition-all",
                             submitting ||
                               draftItems.length === 0 ||
                               hasAnyUnsavedChanges
-                              ? "bg-gray-200 text-gray-400 cursor-not-allowed"
-                              : "bg-[#15689E] text-white shadow-lg shadow-[#15689E]/20 hover:bg-[#15689E]/90 active:scale-[0.98]",
+                              ? "bg-[var(--border)] text-[var(--text3)] cursor-not-allowed"
+                              : "bg-[var(--navy)] text-white hover:bg-[var(--navy)]/90 active:scale-[0.98]",
                           )}
                         >
                           {submitting && (
-                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
                           )}
                           Submit Order
                         </button>
@@ -1479,7 +1478,7 @@ export function OrderDetailModal({
                             )
                           }
                           disabled={isActing}
-                          className="px-5 py-2.5 text-gray-500 font-semibold text-sm hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors disabled:opacity-60"
+                          className="px-4 py-[7px] text-[var(--text2)] font-medium text-[13px] hover:text-[var(--text)] hover:bg-[var(--bg)] rounded-[7px] transition-colors disabled:opacity-60"
                         >
                           Recall to Draft
                         </button>
@@ -1489,7 +1488,7 @@ export function OrderDetailModal({
                       {canSign && status === "pending_signature" && (
                         <button
                           onClick={() => setSignOpen(true)}
-                          className="px-8 py-2.5 bg-[#15689E] text-white font-bold rounded-xl shadow-lg shadow-[#15689E]/20 hover:bg-[#15689E]/90 active:scale-[0.98] transition-all text-sm"
+                          className="px-5 py-[7px] bg-[var(--navy)] text-white font-medium rounded-[7px] hover:bg-[var(--navy)]/90 active:scale-[0.98] transition-all text-[13px]"
                         >
                           Sign Order
                         </button>
@@ -1505,7 +1504,7 @@ export function OrderDetailModal({
                             )
                           }
                           disabled={isActing}
-                          className="px-8 py-2.5 bg-purple-600 text-white font-bold rounded-xl shadow-lg shadow-purple-600/20 hover:bg-purple-700 active:scale-[0.98] transition-all text-sm disabled:opacity-60"
+                          className="px-5 py-[7px] bg-[var(--navy)] text-white font-medium rounded-[7px] hover:bg-[var(--navy)]/90 active:scale-[0.98] transition-all text-[13px] disabled:opacity-60"
                         >
                           Resubmit for Review
                         </button>
@@ -1520,13 +1519,13 @@ export function OrderDetailModal({
                               setRequestInfoOpen(true);
                             }}
                             disabled={isActing}
-                            className="px-5 py-2.5 text-gray-500 font-semibold text-sm hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors disabled:opacity-60"
+                            className="px-4 py-[7px] text-[var(--text2)] font-medium text-[13px] hover:text-[var(--text)] hover:bg-[var(--bg)] rounded-[7px] transition-colors disabled:opacity-60 border border-[var(--border2)]"
                           >
                             Request Info
                           </button>
                           <button
                             onClick={() => setApproveOpen(true)}
-                            className="px-8 py-2.5 bg-green-600 text-white font-bold rounded-xl shadow-lg shadow-green-600/20 hover:bg-green-700 active:scale-[0.98] transition-all text-sm"
+                            className="px-5 py-[7px] bg-[var(--teal)] text-white font-medium rounded-[7px] hover:bg-[var(--teal)]/90 active:scale-[0.98] transition-all text-[13px]"
                           >
                             Approve Order
                           </button>
@@ -1537,7 +1536,7 @@ export function OrderDetailModal({
                       {(isAdmin || isSupport) && status === "approved" && (
                         <button
                           onClick={() => setShipOpen(true)}
-                          className="px-8 py-2.5 bg-[#15689E] text-white font-bold rounded-xl hover:bg-[#15689E]/90 active:scale-[0.98] transition-all text-sm"
+                          className="px-5 py-[7px] bg-[var(--navy)] text-white font-medium rounded-[7px] hover:bg-[var(--navy)]/90 active:scale-[0.98] transition-all text-[13px]"
                         >
                           Add Shipping Info
                         </button>
@@ -1548,14 +1547,12 @@ export function OrderDetailModal({
                         <button
                           onClick={handleMarkDelivered}
                           disabled={markingDelivered}
-                          className="px-8 py-2.5 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 active:scale-[0.98] transition-all text-sm disabled:opacity-60 flex items-center gap-2"
+                          className="px-5 py-[7px] bg-[var(--teal)] text-white font-medium rounded-[7px] hover:bg-[var(--teal)]/90 active:scale-[0.98] transition-all text-[13px] disabled:opacity-60 flex items-center gap-2"
                         >
                           {markingDelivered ? (
-                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                           ) : null}
-                          {markingDelivered
-                            ? "Marking..."
-                            : "Mark as Delivered"}
+                          {markingDelivered ? "Marking..." : "Mark as Delivered"}
                         </button>
                       )}
                     </div>
@@ -1564,31 +1561,26 @@ export function OrderDetailModal({
                 {/* end left column */}
 
                 {/* ──── RIGHT COLUMN: Summary panel ──── */}
-                <div className="w-[380px] flex-shrink-0 flex flex-col bg-gray-50/50 overflow-hidden">
+                <div className="w-[360px] flex-shrink-0 flex flex-col bg-[var(--bg)] overflow-hidden">
                   {/* Right header */}
-                  <div className="flex-shrink-0 p-6 border-b border-gray-100">
-                    <p className="text-xs text-gray-400 font-mono mb-1">
-                      {order.order_number}
-                    </p>
+                  <div className="flex-shrink-0 p-5 border-b border-[var(--border)]">
                     <div className="flex items-center gap-2 mb-3 flex-wrap">
-                      <span className="text-sm text-gray-500 border border-gray-200 rounded-full px-3 py-0.5 text-xs font-medium capitalize">
-                        {displayStatus.replace(/_/g, " ")}
-                      </span>
+                      <OrderStatusBadge status={displayStatus} />
                     </div>
                     <div className="flex gap-5">
                       <div>
-                        <p className="text-[10px] text-gray-400 mb-0.5 flex items-center gap-1">
+                        <p className="text-[10px] text-[var(--text3)] mb-[3px] flex items-center gap-1">
                           <Calendar className="w-3 h-3" /> Date of Service
                         </p>
-                        <p className="text-xs font-semibold text-gray-700">
+                        <p className="text-[12px] font-semibold text-[var(--text)]">
                           {order.date_of_service ?? "—"}
                         </p>
                       </div>
                       <div>
-                        <p className="text-[10px] text-gray-400 mb-0.5 flex items-center gap-1">
+                        <p className="text-[10px] text-[var(--text3)] mb-[3px] flex items-center gap-1">
                           <Building2 className="w-3 h-3" /> Clinic
                         </p>
-                        <p className="text-xs font-semibold text-gray-700 truncate max-w-[140px]">
+                        <p className="text-[12px] font-semibold text-[var(--text)] truncate max-w-[140px]">
                           {order.facility_name || "—"}
                         </p>
                       </div>
@@ -1596,10 +1588,10 @@ export function OrderDetailModal({
                   </div>
 
                   {/* Right scrollable body */}
-                  <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                  <div className="flex-1 overflow-y-auto p-5 space-y-5">
                     {/* Document status buttons */}
                     <div>
-                      <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">
+                      <h3 className="text-[10px] font-semibold uppercase tracking-[0.6px] text-[var(--text3)] mb-3">
                         Documents
                       </h3>
                       {loadingDocs ? (
@@ -1607,7 +1599,7 @@ export function OrderDetailModal({
                           {REQUIRED_DOC_TYPES.map((d) => (
                             <div
                               key={d.type}
-                              className="h-11 rounded-xl bg-gray-100 animate-pulse"
+                              className="h-10 rounded-[9px] bg-[var(--border)] animate-pulse"
                             />
                           ))}
                         </div>
@@ -1656,23 +1648,23 @@ export function OrderDetailModal({
                                     handleViewDocument(doc.type)
                                   }
                                   className={cn(
-                                    "flex items-center gap-2 px-3 py-3 rounded-xl border text-xs font-bold text-left w-full transition-colors",
+                                    "flex items-center gap-2 px-2.5 py-2.5 rounded-[9px] border text-[11px] font-medium text-left w-full transition-colors",
                                     isPdfGenerating || isAiGenerating
-                                      ? "bg-blue-50 border-blue-200 text-blue-700 cursor-wait"
+                                      ? "bg-[var(--blue-lt)] border-[var(--blue-lt)] text-[var(--blue)] cursor-wait"
                                       : uploaded
-                                        ? "bg-green-50 border-green-200 text-green-800 hover:bg-green-100 cursor-pointer"
-                                        : "bg-amber-50 border-amber-200 text-amber-800 cursor-default",
+                                        ? "bg-[var(--green-lt)] border-[var(--green-border)] text-[var(--green)] hover:opacity-80 cursor-pointer"
+                                        : "bg-[var(--gold-lt)] border-[var(--gold-border)] text-[var(--gold)] cursor-default",
                                     isViewLoading && "opacity-60",
                                   )}
                                 >
                                   {isPdfGenerating || isAiGenerating ? (
-                                    <Loader2 className="w-3.5 h-3.5 text-blue-500 animate-spin shrink-0" />
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
                                   ) : isViewLoading ? (
-                                    <div className="w-3.5 h-3.5 border-2 border-green-500 border-t-transparent rounded-full animate-spin shrink-0" />
+                                    <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin shrink-0" />
                                   ) : uploaded ? (
-                                    <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0" />
+                                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
                                   ) : (
-                                    <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                                   )}
                                   <span className="truncate">
                                     {isPdfGenerating || isAiGenerating
@@ -1689,10 +1681,10 @@ export function OrderDetailModal({
                                       onClick={() =>
                                         handleRegeneratePdf(doc.type)
                                       }
-                                      className="absolute top-1.5 right-2 p-0.5 rounded hover:bg-amber-200 transition-colors"
+                                      className="absolute top-1.5 right-2 p-0.5 rounded hover:bg-[var(--gold-border)] transition-colors"
                                       title="Regenerate PDF"
                                     >
-                                      <RefreshCw className="w-3 h-3 text-amber-600" />
+                                      <RefreshCw className="w-3 h-3 text-[var(--gold)]" />
                                     </button>
                                   )}
                               </div>
@@ -1704,11 +1696,11 @@ export function OrderDetailModal({
 
                     {/* Additional documentation */}
                     <div>
-                      <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">
+                      <h3 className="text-[10px] font-semibold uppercase tracking-[0.6px] text-[var(--text3)] mb-2">
                         Additional Documentation
                       </h3>
                       {additionalDocs.length === 0 ? (
-                        <p className="text-xs text-gray-400">
+                        <p className="text-[12px] text-[var(--text3)]">
                           No additional documentation uploaded
                         </p>
                       ) : (
@@ -1718,7 +1710,7 @@ export function OrderDetailModal({
                               key={doc.id}
                               type="button"
                               onClick={() => handleViewDoc(doc)}
-                              className="text-xs text-[#15689E] hover:underline block truncate max-w-full text-left font-medium"
+                              className="text-[12px] text-[var(--navy)] hover:underline block truncate max-w-full text-left font-medium"
                             >
                               {doc.fileName}
                             </button>
@@ -1726,7 +1718,7 @@ export function OrderDetailModal({
                         </div>
                       )}
                       {(canEdit || isAdmin) && (
-                        <label className="mt-2 flex items-center gap-2 w-full px-4 py-2.5 rounded-xl bg-[#15689E] text-white text-xs font-bold hover:bg-[#15689E]/90 transition-colors cursor-pointer">
+                        <label className="mt-2 flex items-center gap-2 w-full px-3 py-2 rounded-[7px] bg-[var(--navy)] text-white text-[12px] font-medium hover:bg-[var(--navy)]/90 transition-colors cursor-pointer">
                           <Paperclip className="w-3.5 h-3.5" />
                           Attach Additional Documentation
                           <input
@@ -1745,8 +1737,8 @@ export function OrderDetailModal({
 
                     {/* ── Payment Section ── */}
                     {status === "approved" && (
-                      <div className="border-t border-gray-100 pt-4 space-y-3">
-                        <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">
+                      <div className="border-t border-[var(--border)] pt-4 space-y-3">
+                        <h3 className="text-[10px] font-semibold uppercase tracking-[0.6px] text-[var(--text3)]">
                           Payment
                         </h3>
 
@@ -1759,14 +1751,14 @@ export function OrderDetailModal({
                                 type="button"
                                 disabled={initiatingPayment !== false}
                                 onClick={() => handleInitiatePayment("pay_now")}
-                                className="flex flex-col items-center gap-1.5 px-3 py-3 rounded-xl border-2 border-blue-200 bg-blue-50 hover:bg-blue-100 hover:border-blue-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="flex flex-col items-center gap-1.5 px-3 py-3 rounded-[9px] border-[1.5px] border-[var(--blue-lt)] bg-[var(--blue-lt)] hover:opacity-80 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                               >
                                 {initiatingPayment === "pay_now" ? (
-                                  <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                                  <div className="w-5 h-5 border-2 border-[var(--blue)] border-t-transparent rounded-full animate-spin" />
                                 ) : (
-                                  <CreditCard className="w-5 h-5 text-blue-600" />
+                                  <CreditCard className="w-5 h-5 text-[var(--blue)]" />
                                 )}
-                                <span className="text-xs font-bold text-blue-700 text-center leading-tight">
+                                <span className="text-[11px] font-semibold text-[var(--blue)] text-center leading-tight">
                                   {initiatingPayment === "pay_now"
                                     ? "Processing..."
                                     : "Pay Now"}
@@ -1778,14 +1770,14 @@ export function OrderDetailModal({
                                 type="button"
                                 disabled={initiatingPayment !== false}
                                 onClick={() => handleInitiatePayment("net_30")}
-                                className="flex flex-col items-center gap-1.5 px-3 py-3 rounded-xl border-2 border-purple-200 bg-purple-50 hover:bg-purple-100 hover:border-purple-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="flex flex-col items-center gap-1.5 px-3 py-3 rounded-[9px] border-[1.5px] border-[var(--purple-lt)] bg-[var(--purple-lt)] hover:opacity-80 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                               >
                                 {initiatingPayment === "net_30" ? (
-                                  <div className="w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                                  <div className="w-5 h-5 border-2 border-[var(--purple)] border-t-transparent rounded-full animate-spin" />
                                 ) : (
-                                  <FileText className="w-5 h-5 text-purple-600" />
+                                  <FileText className="w-5 h-5 text-[var(--purple)]" />
                                 )}
-                                <span className="text-xs font-bold text-purple-700 text-center leading-tight whitespace-pre-line">
+                                <span className="text-[11px] font-semibold text-[var(--purple)] text-center leading-tight whitespace-pre-line">
                                   {initiatingPayment === "net_30"
                                     ? "Processing..."
                                     : "Pay Later\nNet-30"}
@@ -1797,52 +1789,39 @@ export function OrderDetailModal({
                         {/* Payment info — show after payment initiated or paid */}
                         {(paymentData ||
                           liveOrder.payment_status === "paid") && (
-                          <div className="bg-gray-50 rounded-xl px-3 py-3 space-y-2">
+                          <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[9px] px-3 py-3 space-y-2">
                             {/* Method */}
                             <div className="flex items-center justify-between">
-                              <span className="text-xs text-gray-500">
+                              <span className="text-[12px] text-[var(--text2)]">
                                 Method
                               </span>
-                              <span
-                                className={cn(
-                                  "text-[10px] font-bold px-2 py-0.5 rounded-full",
-                                  liveOrder.payment_method === "pay_now"
-                                    ? "bg-blue-100 text-blue-700"
-                                    : "bg-purple-100 text-purple-700",
-                                )}
-                              >
-                                {liveOrder.payment_method === "pay_now"
-                                  ? "Pay Now"
-                                  : " Net-30"}
-                              </span>
+                              <PillBadge
+                                label={liveOrder.payment_method === "pay_now" ? "Pay Now" : "Net-30"}
+                                variant={liveOrder.payment_method === "pay_now" ? "blue" : "purple"}
+                              />
                             </div>
 
                             {/* Status */}
                             <div className="flex items-center justify-between">
-                              <span className="text-xs text-gray-500">
+                              <span className="text-[12px] text-[var(--text2)]">
                                 Status
                               </span>
-                              <span
-                                className={cn(
-                                  "text-[10px] font-bold px-2 py-0.5 rounded-full",
-                                  liveOrder.payment_status === "paid"
-                                    ? "bg-green-100 text-green-700"
-                                    : "bg-amber-100 text-amber-700",
-                                )}
-                              >
-                                {liveOrder.payment_status === "paid"
-                                  ? "Paid"
-                                  : "Pending"}
-                              </span>
+                              <PillBadge
+                                label={liveOrder.payment_status === "paid" ? "Paid" : "Pending"}
+                                variant={liveOrder.payment_status === "paid" ? "green" : "gold"}
+                              />
                             </div>
 
                             {/* Amount */}
                             {paymentData && (
                               <div className="flex items-center justify-between">
-                                <span className="text-xs text-gray-500">
+                                <span className="text-[12px] text-[var(--text2)]">
                                   Amount
                                 </span>
-                                <span className="text-xs font-bold text-gray-800">
+                                <span
+                                  className="text-[12px] font-semibold text-[var(--text)]"
+                                  style={{ fontFamily: "var(--font-dm-mono), monospace" }}
+                                >
                                   ${paymentData.amount.toFixed(2)}
                                 </span>
                               </div>
@@ -1852,15 +1831,15 @@ export function OrderDetailModal({
                             {liveOrder.payment_method === "net_30" &&
                               invoiceData?.dueAt && (
                                 <div className="flex items-center justify-between">
-                                  <span className="text-xs text-gray-500">
+                                  <span className="text-[12px] text-[var(--text2)]">
                                     Due Date
                                   </span>
                                   <span
                                     className={cn(
-                                      "text-xs font-semibold",
+                                      "text-[12px] font-semibold",
                                       liveOrder.payment_status !== "paid"
-                                        ? "text-red-600"
-                                        : "text-gray-500 line-through",
+                                        ? "text-[var(--red)]"
+                                        : "text-[var(--text3)] line-through",
                                     )}
                                   >
                                     {new Date(
@@ -1877,10 +1856,10 @@ export function OrderDetailModal({
                             {/* Invoice number */}
                             {invoiceData?.invoiceNumber && (
                               <div className="flex items-center justify-between">
-                                <span className="text-xs text-gray-500">
+                                <span className="text-[12px] text-[var(--text2)]">
                                   Invoice
                                 </span>
-                                <span className="text-xs font-medium text-gray-700">
+                                <span className="text-[12px] font-medium text-[var(--text)]">
                                   {invoiceData.invoiceNumber}
                                 </span>
                               </div>
@@ -1888,10 +1867,10 @@ export function OrderDetailModal({
                             {/* Paid At */}
                             {liveOrder.paid_at && (
                               <div className="flex items-center justify-between">
-                                <span className="text-xs text-gray-500">
+                                <span className="text-[12px] text-[var(--text2)]">
                                   Paid On
                                 </span>
-                                <span className="text-xs font-medium text-gray-700">
+                                <span className="text-[12px] font-medium text-[var(--text)]">
                                   {new Date(
                                     liveOrder.paid_at,
                                   ).toLocaleDateString("en-US", {
@@ -1909,7 +1888,7 @@ export function OrderDetailModal({
                                   href={invoiceData.hostedInvoiceUrl}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="flex items-center justify-center gap-2 w-full mt-2 px-4 py-2 rounded-xl border border-purple-200 bg-purple-50 text-purple-700 text-xs font-semibold hover:bg-purple-100 transition-colors"
+                                  className="flex items-center justify-center gap-2 w-full mt-2 px-3 py-2 rounded-[7px] border border-[var(--purple-lt)] bg-[var(--purple-lt)] text-[var(--purple)] text-[11px] font-semibold hover:opacity-80 transition-colors"
                                 >
                                   <ExternalLink className="w-3.5 h-3.5" />
                                   View Invoice
@@ -1923,7 +1902,7 @@ export function OrderDetailModal({
                                   href={paymentData.receiptUrl}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="flex items-center justify-center gap-2 w-full mt-2 px-4 py-2 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100 transition-colors"
+                                  className="flex items-center justify-center gap-2 w-full mt-2 px-3 py-2 rounded-[7px] border border-[var(--blue-lt)] bg-[var(--blue-lt)] text-[var(--blue)] text-[11px] font-semibold hover:opacity-80 transition-colors"
                                 >
                                   <ExternalLink className="w-3.5 h-3.5" />
                                   View Receipt
@@ -1936,11 +1915,11 @@ export function OrderDetailModal({
 
                     {/* Wound photos */}
                     <div>
-                      <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">
+                      <h3 className="text-[10px] font-semibold uppercase tracking-[0.6px] text-[var(--text3)] mb-2">
                         Wound Photos
                       </h3>
                       {woundPhotos.length === 0 ? (
-                        <p className="text-xs text-gray-400">
+                        <p className="text-[12px] text-[var(--text3)]">
                           No wound photos uploaded
                         </p>
                       ) : (
@@ -1962,13 +1941,13 @@ export function OrderDetailModal({
                                 <img
                                   src={woundPhotoUrls[photo.id]}
                                   alt={photo.fileName}
-                                  className="w-full aspect-square object-cover rounded-xl border border-gray-100"
+                                  className="w-full aspect-square object-cover rounded-[var(--r)] border border-[var(--border)]"
                                 />
                               </button>
                             ) : (
                               <div
                                 key={photo.id}
-                                className="w-full aspect-square rounded-xl border border-gray-100 bg-gray-100 animate-pulse"
+                                className="w-full aspect-square rounded-[var(--r)] border border-[var(--border)] bg-[var(--bg)] animate-pulse"
                               />
                             ),
                           )}
@@ -1978,11 +1957,11 @@ export function OrderDetailModal({
                   </div>
 
                   {/* Right footer */}
-                  <div className="flex-shrink-0 px-6 py-4 border-t border-gray-100">
+                  <div className="flex-shrink-0 px-5 py-3 border-t border-[var(--border)]">
                     <button
                       type="button"
                       onClick={() => toast("ZIP download coming soon.")}
-                      className="flex items-center gap-2 text-xs text-gray-400 hover:text-gray-600 transition-colors font-medium"
+                      className="flex items-center gap-2 text-[12px] text-[var(--text3)] hover:text-[var(--text2)] transition-colors font-medium"
                     >
                       <Download className="w-3.5 h-3.5" />
                       Download ZIP
@@ -2010,14 +1989,14 @@ export function OrderDetailModal({
             aria-describedby={undefined}
             className="fixed inset-0 z-[60] flex items-center justify-center p-4 outline-none"
           >
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 mx-4">
+            <div className="bg-[var(--surface)] rounded-[14px] border border-[var(--border)] shadow-xl w-full max-w-md p-5 mx-4">
               {/* Header */}
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <RadixDialog.Title className="text-base font-bold text-gray-900">
+                  <RadixDialog.Title className="text-[15px] font-semibold text-[var(--navy)]">
                     Request Additional Info
                   </RadixDialog.Title>
-                  <p className="text-xs text-gray-500 mt-0.5">
+                  <p className="text-[12px] text-[var(--text3)] mt-0.5">
                     Describe what information is needed from the provider.
                   </p>
                 </div>
@@ -2025,9 +2004,9 @@ export function OrderDetailModal({
                   type="button"
                   onClick={() => setRequestInfoOpen(false)}
                   disabled={requestingInfo}
-                  className="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center disabled:opacity-50"
+                  className="w-8 h-8 rounded-[7px] hover:bg-[var(--bg)] flex items-center justify-center disabled:opacity-50"
                 >
-                  <X className="w-4 h-4 text-gray-500" />
+                  <X className="w-4 h-4 text-[var(--text2)]" />
                 </button>
               </div>
 
@@ -2041,19 +2020,19 @@ export function OrderDetailModal({
                 maxLength={500}
                 rows={4}
                 placeholder="e.g. Missing wound measurements, incomplete patient history..."
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400 placeholder:text-gray-400"
+                className="w-full border border-[var(--border2)] rounded-[7px] px-4 py-3 text-[13px] resize-none focus:outline-none focus:border-[var(--accent)] placeholder:text-[var(--text3)]"
               />
-              <p className="text-xs text-gray-400 text-right mt-1">
+              <p className="text-[11px] text-[var(--text3)] text-right mt-1">
                 {requestInfoReason.length}/500
               </p>
 
               {/* Actions */}
-              <div className="flex gap-3 mt-4">
+              <div className="flex gap-2 mt-4">
                 <button
                   type="button"
                   onClick={() => setRequestInfoOpen(false)}
                   disabled={requestingInfo}
-                  className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                  className="flex-1 px-4 py-[7px] rounded-[7px] border border-[var(--border2)] text-[13px] font-medium text-[var(--text2)] hover:bg-[var(--bg)] transition-colors disabled:opacity-50"
                 >
                   Cancel
                 </button>
@@ -2076,10 +2055,10 @@ export function OrderDetailModal({
                       setRequestingInfo(false);
                     }
                   }}
-                  className="flex-1 px-4 py-2.5 rounded-xl bg-amber-500 text-white text-sm font-semibold hover:bg-amber-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="flex-1 px-4 py-[7px] rounded-[7px] bg-[var(--gold)] text-white text-[13px] font-medium hover:bg-[var(--gold)]/80 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   {requestingInfo && (
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   )}
                   Send Request
                 </button>

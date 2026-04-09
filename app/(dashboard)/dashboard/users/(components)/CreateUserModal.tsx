@@ -59,10 +59,10 @@ export function CreateUserModal({ open, onClose }: CreateUserModalProps) {
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="sm:max-w-md sm:rounded-2xl border border-[#E2E8F0] shadow-[0_20px_60px_rgba(0,0,0,0.12)]">
-        <DialogHeader className="flex items-center gap-2 pb-4 border-b border-[#F1F5F9] mb-4">
-          <DialogTitle className="flex items-center gap-2 text-base font-semibold text-[#0F172A]">
-            <UserPlus className="w-4 h-4 text-[#15689E]" />
+      <DialogContent className="sm:max-w-md sm:rounded-2xl border border-[var(--border)] shadow-[0_20px_60px_rgba(0,0,0,0.12)]">
+        <DialogHeader className="flex items-center gap-2 pb-4 border-b border-[var(--border)] mb-4">
+          <DialogTitle className="flex items-center gap-2 text-base font-semibold text-[var(--navy)]">
+            <UserPlus className="w-4 h-4 text-[var(--navy)]" />
             Create User
           </DialogTitle>
         </DialogHeader>
@@ -79,7 +79,7 @@ export function CreateUserModal({ open, onClose }: CreateUserModalProps) {
                 id="first_name"
                 name="first_name"
                 placeholder="John"
-                className="h-9 text-sm border-[#E2E8F0] bg-white text-[#0F172A] placeholder:text-[#94A3B8] focus:border-[#15689E] focus:ring-2 focus:ring-[#15689E]/10 rounded-lg transition-colors"
+                className="h-9 text-sm border-[var(--border)] bg-white text-[var(--navy)] placeholder:text-[var(--text3)] focus:border-[var(--navy)] focus:ring-2 focus:ring-[var(--navy)]/10 rounded-lg transition-colors"
                 required
               />
               {state?.fieldErrors?.first_name && (
@@ -95,7 +95,7 @@ export function CreateUserModal({ open, onClose }: CreateUserModalProps) {
                 id="last_name"
                 name="last_name"
                 placeholder="Doe"
-                className="h-9 text-sm border-[#E2E8F0] bg-white text-[#0F172A] placeholder:text-[#94A3B8] focus:border-[#15689E] focus:ring-2 focus:ring-[#15689E]/10 rounded-lg transition-colors"
+                className="h-9 text-sm border-[var(--border)] bg-white text-[var(--navy)] placeholder:text-[var(--text3)] focus:border-[var(--navy)] focus:ring-2 focus:ring-[var(--navy)]/10 rounded-lg transition-colors"
                 required
               />
               {state?.fieldErrors?.last_name && (
@@ -113,7 +113,7 @@ export function CreateUserModal({ open, onClose }: CreateUserModalProps) {
               name="email"
               type="email"
               placeholder="john@example.com"
-              className="h-9 text-sm border-[#E2E8F0] bg-white text-[#0F172A] placeholder:text-[#94A3B8] focus:border-[#15689E] focus:ring-2 focus:ring-[#15689E]/10 rounded-lg transition-colors"
+              className="h-9 text-sm border-[var(--border)] bg-white text-[var(--navy)] placeholder:text-[var(--text3)] focus:border-[var(--navy)] focus:ring-2 focus:ring-[var(--navy)]/10 rounded-lg transition-colors"
               required
             />
             {state?.fieldErrors?.email && (
@@ -126,7 +126,7 @@ export function CreateUserModal({ open, onClose }: CreateUserModalProps) {
               Role <span className="text-red-500">*</span>
             </Label>
             <Select value={roleValue} onValueChange={setRoleValue}>
-              <SelectTrigger className="h-9 text-sm border-[#E2E8F0] bg-white text-[#0F172A] rounded-lg">
+              <SelectTrigger className="h-9 text-sm border-[var(--border)] bg-white text-[var(--navy)] rounded-lg">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -142,15 +142,15 @@ export function CreateUserModal({ open, onClose }: CreateUserModalProps) {
             )}
           </div>
 
-          <p className="text-xs text-[#64748B] bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg px-3 py-2">
+          <p className="text-xs text-[var(--text2)] bg-[var(--bg)] border border-[var(--border)] rounded-lg px-3 py-2">
             An invitation email will be sent to the user to set their password.
           </p>
 
-          <div className="flex gap-2 pt-4 border-t border-[#F1F5F9] mt-2">
+          <div className="flex gap-2 pt-4 border-t border-[var(--border)] mt-2">
             <Button
               type="button"
               variant="outline"
-              className="flex-1 h-9 border-[#E2E8F0] text-[#374151] hover:bg-[#F8FAFC] rounded-lg transition-colors"
+              className="flex-1 h-9 border-[var(--border)] text-[#374151] hover:bg-[var(--bg)] rounded-lg transition-colors"
               onClick={onClose}
               disabled={isPending}
             >
@@ -159,7 +159,7 @@ export function CreateUserModal({ open, onClose }: CreateUserModalProps) {
             <Button
               type="submit"
               disabled={isPending}
-              className="flex-1 h-9 bg-[#15689E] hover:bg-[#125d8e] text-white rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors"
+              className="flex-1 h-9 bg-[var(--navy)] hover:bg-[var(--navy)]/80 text-white rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors"
             >
               {isPending ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />

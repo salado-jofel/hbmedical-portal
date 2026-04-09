@@ -179,7 +179,7 @@ export function OrderIVRForm({
             className={cn(
               "flex-1 py-1.5 text-xs font-medium rounded-lg border-2 transition-all",
               val === v
-                ? "border-[#15689E] bg-blue-50 text-[#15689E]"
+                ? "border-[var(--navy)] bg-blue-50 text-[var(--navy)]"
                 : "border-slate-200 text-slate-500 hover:border-slate-300",
               !canEdit && "opacity-60 cursor-not-allowed",
             )}
@@ -199,7 +199,7 @@ export function OrderIVRForm({
       <select
         value={(draftData?.[field] as string) ?? ""}
         disabled={!canEdit}
-        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#15689E]/20 focus:border-[#15689E] bg-white disabled:opacity-60"
+        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--navy)]/20 focus:border-[var(--navy)] bg-white disabled:opacity-60"
         onChange={(e) => handleChange(field, e.target.value || null)}
       >
         <option value="">Select...</option>
@@ -253,8 +253,8 @@ export function OrderIVRForm({
               disabled={!isDirty || isSaving}
               className={cn(
                 "px-4 py-1.5 text-sm font-semibold rounded-lg",
-                "bg-[#15689E] text-white",
-                "hover:bg-[#15689E]/90 transition-colors",
+                "bg-[var(--navy)] text-white",
+                "hover:bg-[var(--navy)]/90 transition-colors",
                 "disabled:opacity-40 disabled:cursor-not-allowed",
                 "flex items-center gap-2",
               )}

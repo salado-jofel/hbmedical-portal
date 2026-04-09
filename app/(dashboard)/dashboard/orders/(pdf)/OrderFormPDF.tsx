@@ -6,7 +6,7 @@ import {
   StyleSheet,
 } from "@react-pdf/renderer";
 
-const BLUE  = "#15689E";
+const BLUE  = "#0f2d4a";
 const GRAY  = "#6B7280";
 const LGRAY = "#F3F4F6";
 const BLACK = "#111827";

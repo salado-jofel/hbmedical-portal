@@ -143,7 +143,7 @@ export default function ProductsTable() {
             disabled={saving}
           />
         ) : (
-          <span className="text-sm font-medium text-[#0F172A]">
+          <span className="text-sm font-medium text-[var(--navy)]">
             {product.sku}
           </span>
         );
@@ -166,14 +166,14 @@ export default function ProductsTable() {
         ) : (
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-[#EFF6FF] flex items-center justify-center shrink-0">
-              <Package className="w-4 h-4 text-[#15689E]" />
+              <Package className="w-4 h-4 text-[var(--navy)]" />
             </div>
             <div className="min-w-0">
-              <span className="text-[#0F172A] font-medium text-sm block">
+              <span className="text-[var(--navy)] font-medium text-sm block">
                 {product.name}
               </span>
               {product.description ? (
-                <span className="text-xs text-[#94A3B8] block truncate max-w-[260px]">
+                <span className="text-[11px] text-[var(--text3)] block truncate max-w-[260px]">
                   {product.description}
                 </span>
               ) : null}
@@ -199,7 +199,7 @@ export default function ProductsTable() {
             disabled={saving}
           />
         ) : (
-          <span className="text-sm text-[#64748B]">
+          <span className="text-sm text-[var(--text2)]">
             {product.category || "—"}
           </span>
         );
@@ -225,7 +225,7 @@ export default function ProductsTable() {
             disabled={saving}
           />
         ) : (
-          <span className="text-[#0F172A] font-medium text-sm">
+          <span className="text-[var(--navy)] font-medium text-sm">
             ${Number(product.unit_price).toFixed(2)}
           </span>
         );
@@ -239,7 +239,7 @@ export default function ProductsTable() {
         const saving = savingId === product.id;
 
         return edit ? (
-          <label className="flex items-center gap-2 text-sm text-[#374151]">
+          <label className="flex items-center gap-2 text-sm text-[var(--text)]">
             <input
               type="checkbox"
               checked={edit.is_active}
@@ -255,8 +255,8 @@ export default function ProductsTable() {
           <span
             className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${
               product.is_active
-                ? "bg-emerald-50 text-emerald-700"
-                : "bg-[#F1F5F9] text-[#64748B]"
+                ? "bg-[var(--green-lt)] text-[var(--green)]"
+                : "bg-[var(--border)] text-[var(--text2)]"
             }`}
           >
             {product.is_active ? "Active" : "Inactive"}
@@ -298,19 +298,19 @@ export default function ProductsTable() {
         onConfirm={handleDelete}
       />
 
-      <div className="bg-white border border-[#E2E8F0] rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.05)] flex flex-col h-[calc(100vh-172px)] md:h-[calc(100vh-219px)]">
-        <div className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-6 py-4 border-b border-[#E2E8F0] bg-[#F8FAFC] shrink-0">
+      <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[var(--r)] flex flex-col h-[calc(100vh-172px)] md:h-[calc(100vh-219px)]">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-6 py-4 border-b border-[var(--border)] bg-[var(--bg)] shrink-0">
           <div className="space-y-0.5">
-            <h2 className="text-sm font-semibold text-[#0F172A]">
+            <h2 className="text-[13px] font-semibold text-[var(--navy)]">
               All Products
             </h2>
-            <p className="text-xs text-[#94A3B8]">
+            <p className="text-[11px] text-[var(--text3)]">
               Showing{" "}
-              <span className="font-medium text-[#64748B]">
+              <span className="font-medium text-[var(--text2)]">
                 {filtered.length}
               </span>{" "}
               of{" "}
-              <span className="font-medium text-[#64748B]">{items.length}</span>{" "}
+              <span className="font-medium text-[var(--text2)]">{items.length}</span>{" "}
               products
             </p>
           </div>
@@ -321,7 +321,7 @@ export default function ProductsTable() {
           searchValue={search}
           onSearchChange={(value) => dispatch(setSearch(value))}
           searchPlaceholder="Search by SKU, name, or category..."
-          className="p-4 border-b border-[#E2E8F0]"
+          className="p-4 border-b border-[var(--border)]"
         />
 
         <div className="overflow-auto flex-1">
@@ -329,13 +329,13 @@ export default function ProductsTable() {
             {filtered.length === 0 ? (
               <EmptyState
                 icon={
-                  <Package className="w-10 h-10 mb-3 text-[#E2E8F0]" />
+                  <Package className="w-10 h-10 mb-3 text-[var(--border)]" />
                 }
                 message="No Products Found"
                 description="Try adjusting your search or filter"
               />
             ) : (
-              <div className="divide-y divide-[#F1F5F9]">
+              <div className="divide-y divide-[var(--border)]">
                 {filtered.map((product) => (
                   <ProductCard key={product.id} product={product} />
                 ))}
@@ -354,14 +354,14 @@ export default function ProductsTable() {
           </div>
         </div>
 
-        <div className="px-4 py-2.5 border-t border-[#E2E8F0] bg-[#F8FAFC] shrink-0">
-          <p className="text-xs text-[#94A3B8]">
+        <div className="px-4 py-2.5 border-t border-[var(--border)] bg-[var(--bg)] shrink-0">
+          <p className="text-[11px] text-[var(--text3)]">
             Showing{" "}
-            <span className="font-medium text-[#64748B]">
+            <span className="font-medium text-[var(--text2)]">
               {filtered.length}
             </span>{" "}
             of{" "}
-            <span className="font-medium text-[#64748B]">{items.length}</span>{" "}
+            <span className="font-medium text-[var(--text2)]">{items.length}</span>{" "}
             products
           </p>
         </div>

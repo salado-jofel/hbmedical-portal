@@ -65,7 +65,7 @@ export function OrderCompletionGuide({
         if (!v) onClose();
       }}
     >
-      <DialogContent className="max-w-sm w-[calc(100%-2rem)] rounded-2xl p-0 border-[#E2E8F0] shadow-2xl">
+      <DialogContent className="max-w-sm w-[calc(100%-2rem)] rounded-2xl p-0 border-[var(--border)] shadow-2xl">
         <div className="p-6 space-y-4">
           <div>
             <h3 className="font-semibold text-sm text-slate-800">
@@ -129,7 +129,7 @@ export function OrderCompletionGuide({
               variant="outline"
               size="sm"
               onClick={onClose}
-              className="flex-1 border-[#E2E8F0]"
+              className="flex-1 border-[var(--border)]"
             >
               Close
             </Button>
@@ -137,7 +137,7 @@ export function OrderCompletionGuide({
               <Button
                 size="sm"
                 onClick={handleNextIncomplete}
-                className="flex-1 bg-[#15689E] hover:bg-[#125d8e] text-white"
+                className="flex-1 bg-[var(--navy)] hover:bg-[var(--navy)]/80 text-white"
               >
                 Next Incomplete
               </Button>

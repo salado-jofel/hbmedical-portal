@@ -15,6 +15,9 @@ import {
   Settings,
   Users,
   ChevronLeft,
+  DollarSign,
+  Receipt,
+  TrendingUp,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -39,12 +42,12 @@ import {
 
 const STORAGE_KEY = "hb-sidebar-collapsed";
 
-interface NavGroupDef {
+export interface NavGroupDef {
   label: string;
   items: NavItemDef[];
 }
 
-const NAV_GROUPS: NavGroupDef[] = [
+export const NAV_GROUPS: NavGroupDef[] = [
   {
     label: "Overview",
     items: [
@@ -129,6 +132,29 @@ const NAV_GROUPS: NavGroupDef[] = [
         label: "Users",
         href: "/dashboard/users",
         visible: isAdmin,
+      },
+    ],
+  },
+  {
+    label: "Sales",
+    items: [
+      {
+        icon: DollarSign,
+        label: "Commissions",
+        href: "/dashboard/commissions",
+        visible: isAdmin,
+      },
+      {
+        icon: Receipt,
+        label: "Sales",
+        href: "/dashboard/sales-log",
+        visible: (role) => isAdmin(role) || isSalesRep(role),
+      },
+      {
+        icon: TrendingUp,
+        label: "My Performance",
+        href: "/dashboard/rep-performance",
+        visible: isSalesRep,
       },
     ],
   },
@@ -241,7 +267,7 @@ export function Sidebar() {
               "absolute -right-3 top-1/2 -translate-y-1/2 z-10",
               "w-6 h-6 rounded-full bg-white border border-[#E8EFF5] shadow-sm",
               "flex items-center justify-center",
-              "text-[#94A3B8] hover:text-[#15689E] hover:border-[#c7dff0]",
+              "text-[var(--text3)] hover:text-[var(--navy)] hover:border-[#c7dff0]",
               "transition-colors duration-150",
             )}
           >
@@ -271,7 +297,7 @@ export function Sidebar() {
             <div key={group.label} className={cn(gi > 0 && "mt-4")}>
               {/* Category label — hidden when collapsed */}
               {!collapsed && (
-                <p className="px-4 mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#94A3B8] select-none">
+                <p className="px-4 mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text3)] select-none">
                   {group.label}
                 </p>
               )}
@@ -323,7 +349,7 @@ export function Sidebar() {
               onClick={() => signOut()}
               classname={cn(
                 "flex items-center gap-2 w-full rounded-lg transition-colors duration-150",
-                "text-[#94A3B8] hover:text-red-500 hover:bg-red-50/60",
+                "text-[var(--text3)] hover:text-red-500 hover:bg-red-50/60",
                 collapsed
                   ? "justify-center px-0 py-2 w-10 mx-auto"
                   : "px-3 py-2",

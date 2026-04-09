@@ -1,6 +1,5 @@
-import { Sidebar } from "./(sections)/Sidebar";
-import { MobileTopBar } from "./(sections)/MobileTopBar";
-import { BottomNav } from "./(sections)/BottomNav";
+import { TopBar } from "./(sections)/TopBar";
+import { TabNav } from "./(sections)/TabNav";
 import NextTopLoader from "nextjs-toploader";
 import { getUserData } from "./(services)/actions";
 import Providers from "./(sections)/Providers";
@@ -17,22 +16,29 @@ export default async function DashboardLayout({
   return (
     <Providers userData={userData}>
       <NextTopLoader
-        color="#15689E"
-        shadow="0 0 10px #15689E, 0 0 5px #15689E"
+        color="#0f2d4a"
+        shadow="0 0 10px #0f2d4a, 0 0 5px #0f2d4a"
         height={2}
         showSpinner={false}
       />
 
-      <div className="flex min-h-screen bg-[#F8FAFC]">
-        <Sidebar />
-        <div className="flex flex-col flex-1 min-w-0">
-          <MobileTopBar />
-          <main className="flex-1 pt-16 md:pt-0 pb-16 md:pb-0 overflow-y-auto">
-            {children}
-          </main>
-        </div>
+      <div className="min-h-screen" style={{ background: "var(--bg)" }}>
+        {/* ── Sticky header: TopBar + TabNav ── */}
+        <header
+          className="sticky top-0 z-50 px-4 pt-5"
+          style={{ background: "var(--bg)" }}
+        >
+          <div className="mx-auto max-w-[1120px]">
+            <TopBar />
+            <TabNav />
+          </div>
+        </header>
+
+        {/* ── Page content ── */}
+        <main className="mx-auto max-w-[1120px] px-4 pb-12">
+          {children}
+        </main>
       </div>
-      <BottomNav />
     </Providers>
   );
 }

@@ -217,7 +217,7 @@ export default function InviteSignUpForm({
                 i < step
                   ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                   : i === step
-                    ? "bg-[#EFF6FF] text-[#15689E] border border-[#15689E]/30"
+                    ? "bg-[#EFF6FF] text-[var(--navy)] border border-[var(--navy)]/30"
                     : "bg-[#F8FAFC] text-[#94A3B8] border border-[#E2E8F0]"
               }`}
             >
@@ -521,7 +521,7 @@ export default function InviteSignUpForm({
                           href={baaUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="block text-xs text-[#15689E] underline"
+                          className="block text-xs text-[var(--navy)] underline"
                         >
                           Open in new tab ↗
                         </a>
@@ -533,7 +533,7 @@ export default function InviteSignUpForm({
                           checked={baaAgreed}
                           onChange={(e) => setBaaAgreed(e.target.checked)}
                           disabled={!baaUrl}
-                          className="mt-0.5 h-4 w-4 rounded border-[#E2E8F0] accent-[#15689E] disabled:opacity-40 cursor-pointer"
+                          className="mt-0.5 h-4 w-4 rounded border-[#E2E8F0] accent-[var(--navy)] disabled:opacity-40 cursor-pointer"
                         />
                         <span className="text-sm text-[#64748B]">
                           I have read and agree to the <strong>Business Associates Agreement</strong>
@@ -568,7 +568,7 @@ export default function InviteSignUpForm({
                           href={productServicesUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="block text-xs text-[#15689E] underline"
+                          className="block text-xs text-[var(--navy)] underline"
                         >
                           Open in new tab ↗
                         </a>
@@ -580,7 +580,7 @@ export default function InviteSignUpForm({
                           checked={termsAgreed}
                           onChange={(e) => setTermsAgreed(e.target.checked)}
                           disabled={!productServicesUrl}
-                          className="mt-0.5 h-4 w-4 rounded border-[#E2E8F0] accent-[#15689E] disabled:opacity-40 cursor-pointer"
+                          className="mt-0.5 h-4 w-4 rounded border-[#E2E8F0] accent-[var(--navy)] disabled:opacity-40 cursor-pointer"
                         />
                         <span className="text-sm text-[#64748B]">
                           I have read and agree to the <strong>Product &amp; Services Agreement</strong>
@@ -602,7 +602,7 @@ export default function InviteSignUpForm({
                           type="checkbox"
                           checked={agreed}
                           onChange={(e) => setAgreed(e.target.checked)}
-                          className="w-4 h-4 accent-[#15689E] cursor-pointer"
+                          className="w-4 h-4 accent-[var(--navy)] cursor-pointer"
                         />
                       </div>
                       <span className="text-sm text-[#64748B] group-hover:text-[#0F172A] transition-colors">
@@ -661,7 +661,7 @@ export default function InviteSignUpForm({
               isPending ||
               (role === "clinical_provider" ? !baaAgreed || !termsAgreed : !agreed)
             }
-            className="w-full rounded-lg bg-[#15689E] hover:bg-[#125d8e] disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium h-9 text-sm transition-colors flex items-center justify-center gap-2 shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
+            className="w-full rounded-lg bg-[var(--navy)] hover:bg-[var(--navy)]/80 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium h-9 text-sm transition-colors flex items-center justify-center gap-2 shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
           >
             {isPending && <Loader2 className="w-4 h-4 animate-spin" />}
             Create Account
@@ -688,7 +688,7 @@ export default function InviteSignUpForm({
           <button
             type="button"
             onClick={goNext}
-            className="flex items-center gap-1.5 rounded-lg bg-[#15689E] hover:bg-[#125d8e] text-white font-medium px-5 h-9 text-sm transition-colors ml-auto shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
+            className="flex items-center gap-1.5 rounded-lg bg-[var(--navy)] hover:bg-[var(--navy)]/80 text-white font-medium px-5 h-9 text-sm transition-colors ml-auto shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
           >
             {step === securityStepIndex ? "Review" : "Next"}
             <ChevronRight className="w-4 h-4" />

@@ -53,14 +53,14 @@ export function InviteMemberModal({ baseUrl }: { baseUrl: string }) {
       <DialogTrigger asChild>
         <Button
           size="sm"
-          className="gap-1.5 bg-[#15689E] hover:bg-[#125d8e] text-white rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
+          className="gap-1.5 bg-[var(--navy)] hover:bg-[var(--navy)]/80 text-white rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
         >
           <UserPlus className="w-4 h-4" />
           Invite Member
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="sm:max-w-md sm:rounded-2xl border border-[#E2E8F0] shadow-[0_20px_60px_rgba(0,0,0,0.12)]">
+      <DialogContent className="sm:max-w-md sm:rounded-2xl border border-[var(--border)] shadow-[0_20px_60px_rgba(0,0,0,0.12)]">
         <DialogHeader>
           <DialogTitle>Invite Team Member</DialogTitle>
         </DialogHeader>
@@ -111,7 +111,7 @@ export function InviteMemberModal({ baseUrl }: { baseUrl: string }) {
               type="submit"
               size="sm"
               disabled={isPending}
-              className="w-full bg-[#15689E] hover:bg-[#125d8e] text-white gap-1.5 rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
+              className="w-full bg-[var(--navy)] hover:bg-[var(--navy)]/80 text-white gap-1.5 rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
             >
               {isPending ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -123,7 +123,7 @@ export function InviteMemberModal({ baseUrl }: { baseUrl: string }) {
 
           {generatedUrl && (
             <div className="space-y-2">
-              <p className="text-xs text-[#64748B] font-medium">Invite link ready:</p>
+              <p className="text-xs text-[var(--text2)] font-medium">Invite link ready:</p>
               <div
                 className="flex items-center gap-2 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2 cursor-pointer group"
                 onClick={handleCopy}
@@ -152,7 +152,7 @@ export function InviteMemberModal({ baseUrl }: { baseUrl: string }) {
               type="button"
               variant="outline"
               size="sm"
-              className="border-[#E2E8F0] text-[#374151] hover:bg-[#F8FAFC]"
+              className="border-[var(--border)] text-[#374151] hover:bg-[var(--bg)]"
               onClick={() => setOpen(false)}
             >
               Close

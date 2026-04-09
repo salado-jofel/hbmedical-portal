@@ -233,8 +233,8 @@ export function Form1500Tab({
               disabled={!isDirty || isSaving}
               className={cn(
                 "px-4 py-1.5 text-sm font-semibold rounded-lg",
-                "bg-[#15689E] text-white",
-                "hover:bg-[#15689E]/90 transition-colors",
+                "bg-[var(--navy)] text-white",
+                "hover:bg-[var(--navy)]/90 transition-colors",
                 "disabled:opacity-40 disabled:cursor-not-allowed",
                 "flex items-center gap-2",
               )}

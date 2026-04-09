@@ -220,8 +220,8 @@ export default function HospitalOnboardingCards() {
         <EmptyState
           className="py-24"
           icon={
-            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#F1F5F9]">
-              <Building2 className="h-8 w-8 text-[#E2E8F0]" />
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--border)]">
+              <Building2 className="h-8 w-8 text-[var(--border)]" />
             </div>
           }
           message="No hospital onboarding materials available"
@@ -242,7 +242,7 @@ export default function HospitalOnboardingCards() {
                 ? dispatch(clearHospitalOnboardingSelection())
                 : dispatch(selectAllHospitalOnboardingItems())
             }
-            className="inline-flex items-center gap-2 rounded-lg border border-[#E2E8F0] px-3 py-1.5 text-sm font-medium text-[#64748B] transition hover:bg-[#F8FAFC]"
+            className="inline-flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-1.5 text-sm font-medium text-[var(--text2)] transition hover:bg-[var(--bg)]"
           >
             <CheckSquare className="h-4 w-4" />
             {selectedIds.length === items.length

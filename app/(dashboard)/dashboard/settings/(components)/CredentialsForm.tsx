@@ -88,7 +88,7 @@ export function CredentialsForm({ credentials, onDeleteClick }: CredentialsFormP
           type="submit"
           size="sm"
           disabled={isPending}
-          className="ml-auto bg-[#15689E] hover:bg-[#125d8e] text-white gap-1.5 rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
+          className="ml-auto bg-[var(--navy)] hover:bg-[var(--navy)]/80 text-white gap-1.5 rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
         >
           {isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
           Save credentials

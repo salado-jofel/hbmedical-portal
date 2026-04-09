@@ -35,13 +35,13 @@ export function TableToolbar({
   return (
     <div className={cn("flex items-center gap-3", className)}>
       <div className="relative flex-1">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8]" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text3)]" />
         <input
           type="text"
           value={searchValue}
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder={searchPlaceholder}
-          className="w-full pl-9 pr-4 h-9 text-sm rounded-lg border border-[#E2E8F0] bg-white placeholder:text-[#94A3B8] text-[#0F172A] focus:outline-none focus:border-[#15689E] focus:ring-2 focus:ring-[#15689E]/10 transition-colors"
+          className="w-full pl-9 pr-4 h-9 text-sm rounded-lg border border-[var(--border)] bg-white placeholder:text-[var(--text3)] text-[var(--navy)] focus:outline-none focus:border-[var(--navy)] focus:ring-2 focus:ring-[var(--navy)]/10 transition-colors"
         />
       </div>
 
@@ -49,7 +49,7 @@ export function TableToolbar({
         <Select key={i} value={filter.value} onValueChange={filter.onChange}>
           <SelectTrigger
             className={cn(
-              "h-9 text-sm bg-white border-[#E2E8F0] text-[#0F172A] rounded-lg shrink-0",
+              "h-9 text-sm bg-white border-[var(--border)] text-[var(--navy)] rounded-lg shrink-0",
               filter.className,
             )}
           >

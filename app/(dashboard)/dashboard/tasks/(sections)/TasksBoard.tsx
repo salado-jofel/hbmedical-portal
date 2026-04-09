@@ -105,7 +105,7 @@ export function TasksBoard({ accounts, salesReps, isAdmin }: {
             value={statusFilter}
             onValueChange={(v) => setStatusFilter(v as TaskStatus | "all")}
           >
-            <SelectTrigger className="h-8 w-36 text-xs shrink-0 border-[#E2E8F0] text-[#0F172A]">
+            <SelectTrigger className="h-8 w-36 text-xs shrink-0 border-[var(--border)] text-[var(--navy)]">
               <SelectValue placeholder="All statuses" />
             </SelectTrigger>
             <SelectContent>
@@ -119,7 +119,7 @@ export function TasksBoard({ accounts, salesReps, isAdmin }: {
             value={priorityFilter}
             onValueChange={(v) => setPriorityFilter(v as TaskPriority | "all")}
           >
-            <SelectTrigger className="h-8 w-36 text-xs shrink-0 border-[#E2E8F0] text-[#0F172A]">
+            <SelectTrigger className="h-8 w-36 text-xs shrink-0 border-[var(--border)] text-[var(--navy)]">
               <SelectValue placeholder="All priorities" />
             </SelectTrigger>
             <SelectContent>
@@ -131,7 +131,7 @@ export function TasksBoard({ accounts, salesReps, isAdmin }: {
           </Select>
 
           {totalOpen > 0 && (
-            <span className="flex items-center text-xs text-[#64748B] self-center shrink-0">
+            <span className="flex items-center text-xs text-[var(--text2)] self-center shrink-0">
               {totalOpen} open task{totalOpen !== 1 ? "s" : ""}
             </span>
           )}
@@ -187,7 +187,7 @@ export function TasksBoard({ accounts, salesReps, isAdmin }: {
                   className="flex flex-col gap-2 p-3 flex-1 overflow-y-auto max-h-[calc(100vh-300px)]"
                 >
                   {groupTasks.length === 0 ? (
-                    <p className="text-xs text-[#94A3B8] text-center py-4">
+                    <p className="text-xs text-[var(--text3)] text-center py-4">
                       {config.emptyLabel}
                     </p>
                   ) : (

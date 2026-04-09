@@ -132,7 +132,7 @@ export default function RepSetupForm() {
 
         <div className="pt-2">
           <SubmitButton
-            classname="h-9 w-full font-medium bg-[#15689E] hover:bg-[#125d8e] text-white rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors"
+            classname="h-9 w-full font-medium bg-[var(--navy)] hover:bg-[var(--navy)]/80 text-white rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors"
             isPending={isPending}
             type="submit"
             cta="Save & Continue"

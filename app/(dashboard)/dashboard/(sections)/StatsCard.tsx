@@ -1,29 +1,46 @@
 "use client";
 
-import { StatCard } from "@/app/(components)/StatCard";
-import { Building2, ShoppingCart, DollarSign, RefreshCw } from "lucide-react";
+import { KpiCard } from "@/app/(components)/KpiCard";
 
 interface StatsCardsProps {
   totalOrders: number;
   totalRevenue: number;
   activeOrders: number;
+  draftOrders: number;
 }
 
 export default function StatsCards({
   totalOrders,
   totalRevenue,
   activeOrders,
+  draftOrders,
 }: StatsCardsProps) {
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+  const revenueFormatted = `$${totalRevenue.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+  })}`;
 
-      <StatCard label="Total Orders" value={totalOrders} icon={ShoppingCart} />
-      <StatCard
-        label="Total Revenue"
-        value={`$${totalRevenue.toLocaleString("en-US", { minimumFractionDigits: 2 })}`}
-        icon={DollarSign}
+  return (
+    <div className="mb-5 grid grid-cols-2 gap-[10px] lg:grid-cols-4">
+      <KpiCard
+        label="Total Orders"
+        value={String(totalOrders)}
+        accentColor="teal"
       />
-      <StatCard label="Active Orders" value={activeOrders} icon={RefreshCw} />
+      <KpiCard
+        label="Total Revenue"
+        value={revenueFormatted}
+        accentColor="gold"
+      />
+      <KpiCard
+        label="Active Orders"
+        value={String(activeOrders)}
+        accentColor="blue"
+      />
+      <KpiCard
+        label="Draft Orders"
+        value={String(draftOrders)}
+        accentColor="purple"
+      />
     </div>
   );
 }

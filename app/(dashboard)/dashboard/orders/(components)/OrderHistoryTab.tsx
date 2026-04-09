@@ -67,7 +67,7 @@ export function OrderHistoryTab({ isActive, isReady, history }: OrderHistoryTabP
                             ? "bg-purple-500"
                             : h.action.includes("recalled")
                               ? "bg-amber-500"
-                              : "bg-[#15689E]",
+                              : "bg-[var(--navy)]",
                 )}
               />
               <p className="text-sm font-semibold text-gray-800">{h.action}</p>

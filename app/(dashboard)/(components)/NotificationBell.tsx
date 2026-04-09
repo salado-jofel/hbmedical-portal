@@ -147,15 +147,15 @@ export function NotificationBell({
             ? "justify-center w-10 h-10 mx-auto"
             : "gap-2.5 px-3 py-[7px]",
           open
-            ? "bg-[#EBF4FF] text-[#15689E] font-medium"
-            : "text-[#475569] hover:bg-[#F5F8FB] hover:text-[#0F172A]",
+            ? "bg-[#EBF4FF] text-[var(--navy)] font-medium"
+            : "text-[#475569] hover:bg-[#F5F8FB] hover:text-[var(--navy)]",
         )}
       >
         <Bell
           className={cn(
             "shrink-0 transition-colors duration-150",
             collapsed ? "w-[17px] h-[17px]" : "w-[15px] h-[15px]",
-            open ? "text-[#15689E]" : "text-[#94A3B8]",
+            open ? "text-[var(--navy)]" : "text-[var(--text3)]",
           )}
           strokeWidth={open ? 2.2 : 1.8}
         />
@@ -201,7 +201,7 @@ export function NotificationBell({
             {unreadCount > 0 && (
               <button
                 onClick={handleMarkAllRead}
-                className="text-xs text-[#15689E] font-semibold hover:underline"
+                className="text-xs text-[var(--navy)] font-semibold hover:underline"
               >
                 Mark all read
               </button>
@@ -212,7 +212,7 @@ export function NotificationBell({
           <div className="flex-1 overflow-y-auto">
             {loading ? (
               <div className="flex justify-center py-8">
-                <div className="w-5 h-5 border-2 border-gray-200 border-t-[#15689E] rounded-full animate-spin" />
+                <div className="w-5 h-5 border-2 border-gray-200 border-t-[var(--navy)] rounded-full animate-spin" />
               </div>
             ) : notifications.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -281,7 +281,7 @@ export function NotificationBell({
 
                   {/* Unread dot */}
                   {!notif.isRead && (
-                    <div className="w-2 h-2 rounded-full bg-[#15689E] shrink-0 mt-1.5" />
+                    <div className="w-2 h-2 rounded-full bg-[var(--navy)] shrink-0 mt-1.5" />
                   )}
                 </div>
               ))

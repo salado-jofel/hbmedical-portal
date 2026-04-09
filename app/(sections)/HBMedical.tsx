@@ -56,7 +56,7 @@ const benefits = [
 
 export function HBMedical() {
   return (
-    <section className="py-24 bg-linear-to-br from-[#0b1f2e] to-[#15689E] text-white">
+    <section className="py-24 bg-linear-to-br from-[#0b1f2e] to-[var(--navy)] text-white">
       <div className="container mx-auto px-4">
         {/* Header Section */}
         <div className="text-center max-w-3xl mx-auto mb-20 space-y-4">
@@ -92,7 +92,7 @@ export function HBMedical() {
                   }`}
               >
                 <CardContent className="p-8 flex flex-col h-full">
-                  <div className="mb-6 h-12 w-12 rounded-lg bg-[#15689E]/30 flex items-center justify-center">
+                  <div className="mb-6 h-12 w-12 rounded-lg bg-[var(--navy)]/30 flex items-center justify-center">
                     <b.icon className="h-6 w-6 text-white" />
                   </div>
 

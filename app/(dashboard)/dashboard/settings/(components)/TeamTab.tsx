@@ -22,7 +22,7 @@ interface TeamTabProps {
 function StatusBadge({ status }: { status: string }) {
   const cfg: Record<string, { bg: string; text: string; label: string }> = {
     active:   { bg: "bg-emerald-50", text: "text-emerald-600", label: "Active"   },
-    inactive: { bg: "bg-[#F1F5F9]",  text: "text-[#64748B]",  label: "Inactive" },
+    inactive: { bg: "bg-[var(--border)]",  text: "text-[var(--text2)]",  label: "Inactive" },
     prospect: { bg: "bg-amber-50",   text: "text-amber-600",  label: "Prospect" },
     pending:  { bg: "bg-amber-50",   text: "text-amber-600",  label: "Pending"  },
   };
@@ -38,8 +38,8 @@ function StatusBadge({ status }: { status: string }) {
 function SectionHeading({ title, count }: { title: string; count: number }) {
   return (
     <div className="flex items-center justify-between mb-3">
-      <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">{title}</p>
-      <span className="text-xs px-2 py-0.5 rounded-full bg-[#F1F5F9] text-[#64748B] font-medium">
+      <p className="text-xs font-semibold text-[var(--text2)] uppercase tracking-wide">{title}</p>
+      <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--border)] text-[var(--text2)] font-medium">
         {count}
       </span>
     </div>
@@ -71,19 +71,19 @@ function RepTeamTab({
             {myClinicAccounts.map((clinic) => (
               <div
                 key={clinic.id}
-                className="flex items-center gap-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-4 py-3"
+                className="flex items-center gap-3 bg-[var(--bg)] border border-[var(--border)] rounded-xl px-4 py-3"
               >
                 <div className="w-8 h-8 rounded-full bg-[#EFF6FF] flex items-center justify-center shrink-0">
-                  <span className="text-xs font-bold text-[#15689E]">
+                  <span className="text-xs font-bold text-[var(--navy)]">
                     {clinic.name.charAt(0).toUpperCase()}
                   </span>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-[#0F172A] truncate">{clinic.name}</p>
-                  <p className="text-xs text-[#94A3B8] truncate">{clinic.primaryDoctor}</p>
+                  <p className="text-sm font-medium text-[var(--navy)] truncate">{clinic.name}</p>
+                  <p className="text-xs text-[var(--text3)] truncate">{clinic.primaryDoctor}</p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-[#F1F5F9] text-[#64748B] font-medium">
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--border)] text-[var(--text2)] font-medium">
                     {clinic.memberCount} member{clinic.memberCount !== 1 ? "s" : ""}
                   </span>
                   <StatusBadge status={clinic.status} />
@@ -109,7 +109,7 @@ function RepTeamTab({
             {mySubReps.map((rep) => (
               <div
                 key={rep.id}
-                className="flex items-center gap-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-4 py-3"
+                className="flex items-center gap-3 bg-[var(--bg)] border border-[var(--border)] rounded-xl px-4 py-3"
               >
                 <div className="w-8 h-8 rounded-full bg-orange-50 flex items-center justify-center shrink-0">
                   <span className="text-xs font-bold text-orange-600">
@@ -117,10 +117,10 @@ function RepTeamTab({
                   </span>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-[#0F172A] truncate">
+                  <p className="text-sm font-medium text-[var(--navy)] truncate">
                     {rep.first_name} {rep.last_name}
                   </p>
-                  <p className="text-xs text-[#94A3B8] truncate">{rep.email}</p>
+                  <p className="text-xs text-[var(--text3)] truncate">{rep.email}</p>
                 </div>
                 <StatusBadge status={rep.status} />
               </div>

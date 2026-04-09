@@ -45,7 +45,7 @@ export function ProductRowActions({
             type="button"
             onClick={() => onCancelEditing(product.id)}
             disabled={saving}
-            className="p-1.5 text-[#94A3B8] hover:text-[#64748B] transition-colors rounded disabled:opacity-40 cursor-pointer"
+            className="p-1.5 text-[var(--text3)] hover:text-[var(--text2)] transition-colors rounded disabled:opacity-40 cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -59,7 +59,7 @@ export function ProductRowActions({
             isPendingMesssage=""
             variant="ghost"
             size="icon-xs"
-            classname="text-[#15689E] hover:text-[#125d8e] hover:bg-transparent cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            classname="text-[var(--navy)] hover:text-[#125d8e] hover:bg-transparent cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
           />
         </>
       ) : (
@@ -68,7 +68,7 @@ export function ProductRowActions({
             type="button"
             onClick={() => onStartEditing(product)}
             disabled={deleting}
-            className="p-1.5 text-[#94A3B8] hover:text-[#15689E] transition-colors rounded disabled:opacity-40 cursor-pointer"
+            className="p-1.5 text-[var(--text3)] hover:text-[var(--navy)] transition-colors rounded disabled:opacity-40 cursor-pointer"
           >
             <Pencil className="w-4 h-4" />
           </button>
@@ -77,7 +77,7 @@ export function ProductRowActions({
             type="button"
             onClick={() => onDeleteClick(product.id)}
             disabled={deleting}
-            className="p-1.5 text-[#94A3B8] hover:text-red-600 transition-colors rounded disabled:opacity-40 cursor-pointer"
+            className="p-1.5 text-[var(--text3)] hover:text-red-600 transition-colors rounded disabled:opacity-40 cursor-pointer"
           >
             <Trash2 className="w-4 h-4" />
           </button>
