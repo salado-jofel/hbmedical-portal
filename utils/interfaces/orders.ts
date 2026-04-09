@@ -256,6 +256,16 @@ export interface IOrderIVR {
   secondaryPlanType: string | null;
   secondaryGroupNumber: string | null;
   secondarySubscriberRelationship: string | null;
+  // Override / display fields (user-editable, cached from source tables)
+  facilityName: string | null;
+  facilityAddress: string | null;
+  facilityPhone: string | null;
+  facilityContact: string | null;
+  physicianName: string | null;
+  physicianPhone: string | null;
+  physicianNpi: string | null;
+  patientName: string | null;
+  patientDob: string | null;
   // CPT / global period
   applicationCpts: string | null;
   surgicalGlobalPeriod: boolean | null;

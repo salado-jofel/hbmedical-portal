@@ -57,20 +57,18 @@ export function OrderIVRForm({
 }: OrderIVRFormProps) {
 
   function buildSnapshot(): Record<string, unknown> {
-    const resolvedPhysician = physicianName ?? order.assigned_provider_name ?? order.created_by_name ?? "";
     return {
-      // IVR DB fields
+      // IVR DB fields (includes facilityName, physicianName, patientName with fallbacks applied server-side)
       ...((initialData ?? {}) as Record<string, unknown>),
-      // Display-only order fields (prefixed _ so they're excluded from the save payload)
-      _facilityName:   order.facility_name ?? "",
-      _physicianName:  resolvedPhysician,
-      _patientName:    order.patient_full_name ?? "",
-      _woundType:      order.wound_type
+      // Ensure physician name falls back to prop if not yet in DB
+      physicianName: initialData?.physicianName ?? physicianName ?? order.assigned_provider_name ?? order.created_by_name ?? "",
+      // Display-only fields (prefixed _ so they're excluded from the save payload)
+      _woundType:     order.wound_type
         ? order.wound_type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
         : "",
-      _dateOfService:  order.date_of_service ?? "",
-      _icd10Code:      order.icd10_code ?? "",
-      _patientAtSnf:   order.is_patient_at_snf ? "Yes" : "No",
+      _dateOfService: order.date_of_service ?? "",
+      _icd10Code:     order.icd10_code ?? "",
+      _patientAtSnf:  order.is_patient_at_snf ? "Yes" : "No",
     };
   }
 
@@ -78,11 +76,28 @@ export function OrderIVRForm({
   const [baseline, setBaseline] = useState<Record<string, unknown>>(buildSnapshot);
   const [isSaving, setIsSaving] = useState(false);
 
-  /* Reset both states when server data (or physician name) changes */
+  /* Reset both states when server data (or physician name) changes.
+     For _ display fields: only auto-fill when the field is currently empty so that
+     user-saved edits are not overwritten when initialData changes after a save. */
   useEffect(() => {
-    const snap = buildSnapshot();
-    setFormData(snap);
-    setBaseline(snap);
+    setFormData((prev) => {
+      const snap = buildSnapshot();
+      for (const k of Object.keys(snap)) {
+        if (k.startsWith("_") && String(prev[k] ?? "") !== "") {
+          snap[k] = prev[k];
+        }
+      }
+      return snap;
+    });
+    setBaseline((prev) => {
+      const snap = buildSnapshot();
+      for (const k of Object.keys(snap)) {
+        if (k.startsWith("_") && String(prev[k] ?? "") !== "") {
+          snap[k] = prev[k];
+        }
+      }
+      return snap;
+    });
   }, [initialData, physicianName]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* HCFA pre-populate — only updates formData (not baseline), so it appears dirty */
@@ -326,10 +341,10 @@ export function OrderIVRForm({
           </Field>
           <Field label="Facility Name">
             <Input
-              value={(formData._facilityName as string) ?? ""}
+              value={(formData.facilityName as string) ?? ""}
               disabled={!canEdit}
               className="h-9 text-sm"
-              onChange={(e) => handleChange("_facilityName", e.target.value)}
+              onChange={(e) => handleChange("facilityName", e.target.value || null)}
             />
           </Field>
           <Field label="Medicare Admin Contractor">
@@ -353,10 +368,10 @@ export function OrderIVRForm({
         <FormCard title="Physician Information">
           <Field label="Physician Name">
             <Input
-              value={(formData._physicianName as string) ?? ""}
+              value={(formData.physicianName as string) ?? ""}
               disabled={!canEdit}
               className="h-9 text-sm"
-              onChange={(e) => handleChange("_physicianName", e.target.value)}
+              onChange={(e) => handleChange("physicianName", e.target.value || null)}
             />
           </Field>
           <Field label="Physician TIN">
@@ -374,10 +389,10 @@ export function OrderIVRForm({
         <FormCard title="Patient Information">
           <Field label="Patient Name">
             <Input
-              value={(formData._patientName as string) ?? ""}
+              value={(formData.patientName as string) ?? ""}
               disabled={!canEdit}
               className="h-9 text-sm"
-              onChange={(e) => handleChange("_patientName", e.target.value)}
+              onChange={(e) => handleChange("patientName", e.target.value || null)}
             />
           </Field>
           <Field label="Patient Phone">
