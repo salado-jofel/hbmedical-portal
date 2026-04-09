@@ -19,6 +19,7 @@ export async function POST(req: NextRequest) {
         .from("orders")
         .select(`
           id, order_number, wound_type, date_of_service,
+          created_by, assigned_provider_id,
           facility:facilities!orders_facility_id_fkey(name),
           patient:patients!orders_patient_id_fkey(
             first_name, last_name, date_of_birth
@@ -40,6 +41,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
     }
 
+    // Resolve physician name for IVR PDF (assigned_provider_id → created_by fallback)
+    let pdfPhysicianName: string | null = null;
+    if (formType === "ivr") {
+      const providerId = order.assigned_provider_id || order.created_by;
+      if (providerId) {
+        const { data: profile } = await adminClient
+          .from("profiles")
+          .select("first_name, last_name")
+          .eq("id", providerId)
+          .maybeSingle();
+        if (profile) {
+          pdfPhysicianName = `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() || null;
+        }
+      }
+    }
+
     let pdfBuffer: Buffer;
     let fileName: string;
     let documentType: string;
@@ -53,7 +70,7 @@ export async function POST(req: NextRequest) {
 
     } else if (formType === "ivr") {
       pdfBuffer = await renderToBuffer(
-        <IVRFormPDF order={order} ivr={ivr} hcfa={hcfa} />
+        <IVRFormPDF order={order} ivr={ivr} form={form} physicianName={pdfPhysicianName} />
       );
       fileName     = `ivr-form-${order.order_number}.pdf`;
       documentType = "additional_ivr";

@@ -16,15 +16,80 @@ import {
 /* getOrderIVR                                                                 */
 /* -------------------------------------------------------------------------- */
 
+function mapIvrRow(data: Record<string, unknown>): IOrderIVR {
+  return {
+    id:                          data.id as string,
+    orderId:                     data.order_id as string,
+    insuranceProvider:           data.insurance_provider as string | null,
+    insurancePhone:              data.insurance_phone as string | null,
+    memberId:                    data.member_id as string | null,
+    groupNumber:                 data.group_number as string | null,
+    planName:                    data.plan_name as string | null,
+    planType:                    data.plan_type as string | null,
+    subscriberName:              data.subscriber_name as string | null,
+    subscriberDob:               data.subscriber_dob as string | null,
+    subscriberRelationship:      data.subscriber_relationship as string | null,
+    coverageStartDate:           data.coverage_start_date as string | null,
+    coverageEndDate:             data.coverage_end_date as string | null,
+    deductibleAmount:            data.deductible_amount != null ? Number(data.deductible_amount) : null,
+    deductibleMet:               data.deductible_met != null ? Number(data.deductible_met) : null,
+    outOfPocketMax:              data.out_of_pocket_max != null ? Number(data.out_of_pocket_max) : null,
+    outOfPocketMet:              data.out_of_pocket_met != null ? Number(data.out_of_pocket_met) : null,
+    copayAmount:                 data.copay_amount != null ? Number(data.copay_amount) : null,
+    coinsurancePercent:          data.coinsurance_percent != null ? Number(data.coinsurance_percent) : null,
+    dmeCovered:                  (data.dme_covered as boolean) ?? false,
+    woundCareCovered:            (data.wound_care_covered as boolean) ?? false,
+    priorAuthRequired:           (data.prior_auth_required as boolean) ?? false,
+    priorAuthNumber:             data.prior_auth_number as string | null,
+    priorAuthStartDate:          data.prior_auth_start_date as string | null,
+    priorAuthEndDate:            data.prior_auth_end_date as string | null,
+    unitsAuthorized:             data.units_authorized as number | null,
+    placeOfService:              data.place_of_service as string | null,
+    medicareAdminContractor:     data.medicare_admin_contractor as string | null,
+    facilityNpi:                 data.facility_npi as string | null,
+    facilityTin:                 data.facility_tin as string | null,
+    facilityPtan:                data.facility_ptan as string | null,
+    facilityFax:                 data.facility_fax as string | null,
+    physicianTin:                data.physician_tin as string | null,
+    physicianFax:                data.physician_fax as string | null,
+    physicianAddress:            data.physician_address as string | null,
+    patientPhone:                data.patient_phone as string | null,
+    patientAddress:              data.patient_address as string | null,
+    okToContactPatient:          data.ok_to_contact_patient as boolean | null,
+    providerParticipatesPrimary: data.provider_participates_primary as string | null,
+    providerParticipatesSecondary: data.provider_participates_secondary as string | null,
+    priorAuthPermission:         data.prior_auth_permission as boolean | null,
+    specialtySiteName:           data.specialty_site_name as string | null,
+    secondaryInsuranceProvider:  data.secondary_insurance_provider as string | null,
+    secondaryInsurancePhone:     data.secondary_insurance_phone as string | null,
+    secondarySubscriberName:     data.secondary_subscriber_name as string | null,
+    secondaryPolicyNumber:       data.secondary_policy_number as string | null,
+    secondarySubscriberDob:      data.secondary_subscriber_dob as string | null,
+    secondaryPlanType:           data.secondary_plan_type as string | null,
+    secondaryGroupNumber:        data.secondary_group_number as string | null,
+    secondarySubscriberRelationship: data.secondary_subscriber_relationship as string | null,
+    applicationCpts:             data.application_cpts as string | null,
+    surgicalGlobalPeriod:        data.surgical_global_period as boolean | null,
+    globalPeriodCpt:             data.global_period_cpt as string | null,
+    verifiedBy:                  data.verified_by as string | null,
+    verifiedDate:                data.verified_date as string | null,
+    verificationReference:       data.verification_reference as string | null,
+    notes:                       data.notes as string | null,
+    aiExtracted:                 (data.ai_extracted as boolean) ?? false,
+    createdAt:                   data.created_at as string,
+    updatedAt:                   data.updated_at as string,
+  };
+}
+
 export async function getOrderIVR(
   orderId: string,
-): Promise<IOrderIVR | null> {
+): Promise<{ ivr: IOrderIVR | null; physicianName: string | null }> {
   try {
     const supabase = await createClient();
     await getCurrentUserOrThrow(supabase);
 
     const adminClient = createAdminClient();
-    const { data, error } = await adminClient
+    let { data, error } = await adminClient
       .from("order_ivr")
       .select("*")
       .eq("order_id", orderId)
@@ -32,48 +97,75 @@ export async function getOrderIVR(
 
     if (error) {
       console.error("[getOrderIVR]", JSON.stringify(error));
-      return null;
+      return { ivr: null, physicianName: null };
     }
-    if (!data) return null;
 
-    return {
-      id: data.id,
-      orderId: data.order_id,
-      insuranceProvider: data.insurance_provider,
-      insurancePhone: data.insurance_phone,
-      memberId: data.member_id,
-      groupNumber: data.group_number,
-      planName: data.plan_name,
-      planType: data.plan_type,
-      subscriberName: data.subscriber_name,
-      subscriberDob: data.subscriber_dob,
-      subscriberRelationship: data.subscriber_relationship,
-      coverageStartDate: data.coverage_start_date,
-      coverageEndDate: data.coverage_end_date,
-      deductibleAmount: data.deductible_amount != null ? Number(data.deductible_amount) : null,
-      deductibleMet: data.deductible_met != null ? Number(data.deductible_met) : null,
-      outOfPocketMax: data.out_of_pocket_max != null ? Number(data.out_of_pocket_max) : null,
-      outOfPocketMet: data.out_of_pocket_met != null ? Number(data.out_of_pocket_met) : null,
-      copayAmount: data.copay_amount != null ? Number(data.copay_amount) : null,
-      coinsurancePercent: data.coinsurance_percent != null ? Number(data.coinsurance_percent) : null,
-      dmeCovered: data.dme_covered ?? false,
-      woundCareCovered: data.wound_care_covered ?? false,
-      priorAuthRequired: data.prior_auth_required ?? false,
-      priorAuthNumber: data.prior_auth_number,
-      priorAuthStartDate: data.prior_auth_start_date,
-      priorAuthEndDate: data.prior_auth_end_date,
-      unitsAuthorized: data.units_authorized,
-      verifiedBy: data.verified_by,
-      verifiedDate: data.verified_date,
-      verificationReference: data.verification_reference,
-      notes: data.notes,
-      aiExtracted: data.ai_extracted ?? false,
-      createdAt: data.created_at,
-      updatedAt: data.updated_at,
-    };
+    // Auto-initialize a new IVR record with sensible defaults
+    if (!data) {
+      // Fetch patient name from the order (for subscriber_name default)
+      const { data: orderRow } = await adminClient
+        .from("orders")
+        .select("patient_id, patients(first_name, last_name)")
+        .eq("id", orderId)
+        .single();
+
+      const patientRow = orderRow?.patients as unknown;
+      const patient = (
+        Array.isArray(patientRow) ? patientRow[0] : patientRow
+      ) as { first_name: string; last_name: string } | null | undefined;
+      const patientName = patient?.first_name
+        ? `${patient.first_name} ${patient.last_name ?? ""}`.trim()
+        : null;
+
+      await adminClient
+        .from("order_ivr")
+        .upsert(
+          {
+            order_id:        orderId,
+            place_of_service: "office",
+            subscriber_name:  patientName,
+          },
+          { onConflict: "order_id" },
+        );
+
+      const { data: created } = await adminClient
+        .from("order_ivr")
+        .select("*")
+        .eq("order_id", orderId)
+        .single();
+
+      data = created;
+    }
+
+    if (!data) return { ivr: null, physicianName: null };
+
+    // Resolve physician name: assigned_provider_id → created_by fallback
+    let physicianName: string | null = null;
+    try {
+      const { data: orderCtx } = await adminClient
+        .from("orders")
+        .select("assigned_provider_id, created_by")
+        .eq("id", orderId)
+        .single();
+      const providerId = orderCtx?.assigned_provider_id || orderCtx?.created_by;
+      if (providerId) {
+        const { data: profile } = await adminClient
+          .from("profiles")
+          .select("first_name, last_name")
+          .eq("id", providerId)
+          .maybeSingle();
+        if (profile) {
+          physicianName = `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() || null;
+        }
+      }
+    } catch {
+      // Non-fatal — physician name stays null
+    }
+
+    return { ivr: mapIvrRow(data as Record<string, unknown>), physicianName };
   } catch (err) {
     console.error("[getOrderIVR] unexpected:", err);
-    return null;
+    return { ivr: null, physicianName: null };
   }
 }
 
@@ -90,6 +182,7 @@ export async function upsertOrderIVR(
     const adminClient = createAdminClient();
 
     const payload: Record<string, unknown> = { order_id: orderId };
+    // Primary insurance
     if (data.insuranceProvider !== undefined) payload.insurance_provider = data.insuranceProvider;
     if (data.insurancePhone !== undefined) payload.insurance_phone = data.insurancePhone;
     if (data.memberId !== undefined) payload.member_id = data.memberId;
@@ -114,6 +207,38 @@ export async function upsertOrderIVR(
     if (data.priorAuthStartDate !== undefined) payload.prior_auth_start_date = data.priorAuthStartDate;
     if (data.priorAuthEndDate !== undefined) payload.prior_auth_end_date = data.priorAuthEndDate;
     if (data.unitsAuthorized !== undefined) payload.units_authorized = data.unitsAuthorized;
+    // Facility / physician / patient context
+    if (data.placeOfService !== undefined) payload.place_of_service = data.placeOfService;
+    if (data.medicareAdminContractor !== undefined) payload.medicare_admin_contractor = data.medicareAdminContractor;
+    if (data.facilityNpi !== undefined) payload.facility_npi = data.facilityNpi;
+    if (data.facilityTin !== undefined) payload.facility_tin = data.facilityTin;
+    if (data.facilityPtan !== undefined) payload.facility_ptan = data.facilityPtan;
+    if (data.facilityFax !== undefined) payload.facility_fax = data.facilityFax;
+    if (data.physicianTin !== undefined) payload.physician_tin = data.physicianTin;
+    if (data.physicianFax !== undefined) payload.physician_fax = data.physicianFax;
+    if (data.physicianAddress !== undefined) payload.physician_address = data.physicianAddress;
+    if (data.patientPhone !== undefined) payload.patient_phone = data.patientPhone;
+    if (data.patientAddress !== undefined) payload.patient_address = data.patientAddress;
+    if (data.okToContactPatient !== undefined) payload.ok_to_contact_patient = data.okToContactPatient;
+    // Network / auth
+    if (data.providerParticipatesPrimary !== undefined) payload.provider_participates_primary = data.providerParticipatesPrimary;
+    if (data.providerParticipatesSecondary !== undefined) payload.provider_participates_secondary = data.providerParticipatesSecondary;
+    if (data.priorAuthPermission !== undefined) payload.prior_auth_permission = data.priorAuthPermission;
+    if (data.specialtySiteName !== undefined) payload.specialty_site_name = data.specialtySiteName;
+    // Secondary insurance
+    if (data.secondaryInsuranceProvider !== undefined) payload.secondary_insurance_provider = data.secondaryInsuranceProvider;
+    if (data.secondaryInsurancePhone !== undefined) payload.secondary_insurance_phone = data.secondaryInsurancePhone;
+    if (data.secondarySubscriberName !== undefined) payload.secondary_subscriber_name = data.secondarySubscriberName;
+    if (data.secondaryPolicyNumber !== undefined) payload.secondary_policy_number = data.secondaryPolicyNumber;
+    if (data.secondarySubscriberDob !== undefined) payload.secondary_subscriber_dob = data.secondarySubscriberDob;
+    if (data.secondaryPlanType !== undefined) payload.secondary_plan_type = data.secondaryPlanType;
+    if (data.secondaryGroupNumber !== undefined) payload.secondary_group_number = data.secondaryGroupNumber;
+    if (data.secondarySubscriberRelationship !== undefined) payload.secondary_subscriber_relationship = data.secondarySubscriberRelationship;
+    // CPT / global period
+    if (data.applicationCpts !== undefined) payload.application_cpts = data.applicationCpts;
+    if (data.surgicalGlobalPeriod !== undefined) payload.surgical_global_period = data.surgicalGlobalPeriod;
+    if (data.globalPeriodCpt !== undefined) payload.global_period_cpt = data.globalPeriodCpt;
+    // Verification
     if (data.verifiedBy !== undefined) payload.verified_by = data.verifiedBy;
     if (data.verifiedDate !== undefined) payload.verified_date = data.verifiedDate;
     if (data.verificationReference !== undefined) payload.verification_reference = data.verificationReference;
