@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentUserOrThrow, requireAdminOrThrow } from "@/lib/supabase/auth";
+import { getCurrentUserOrThrow, requireAdminOrThrow, getUserRole } from "@/lib/supabase/auth";
+import { isAdmin, isSalesRep } from "@/utils/helpers/role";
 import { TASKS_TABLE, TASK_SELECT, TASKS_PATH } from "@/utils/constants/activities";
 import {
   createTaskSchema,
@@ -34,13 +35,23 @@ export async function getTasks(filters?: {
   facility_id?: string;
 }): Promise<ITask[]> {
   const supabase = await createClient();
-  await requireAdminOrThrow(supabase);
+  const user = await getCurrentUserOrThrow(supabase);
+  const role = await getUserRole(supabase);
+
+  if (!isAdmin(role) && !isSalesRep(role)) {
+    throw new Error("Unauthorized.");
+  }
 
   let query = supabase
     .from(TASKS_TABLE)
     .select(TASK_SELECT)
     .order("due_date", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: false });
+
+  // Sales reps only see tasks assigned to them
+  if (!isAdmin(role)) {
+    query = query.eq("assigned_to", user.id);
+  }
 
   if (filters?.status && filters.status !== "all") {
     query = query.eq("status", filters.status);

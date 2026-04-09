@@ -13,6 +13,7 @@ import { getAllOrders } from "./orders/(services)/order-read-actions";
 import { getUsers } from "./users/(services)/actions";
 import { getAccounts } from "./accounts/(services)/actions";
 import { getTasks } from "./tasks/(services)/actions";
+import { getRepCommissionSummary } from "./commissions/(services)/actions";
 import { AdminDashboard } from "./(sections)/AdminDashboard";
 import { ClinicDashboard } from "./(sections)/ClinicDashboard";
 import { RepDashboard } from "./(sections)/RepDashboard";
@@ -20,6 +21,7 @@ import { SupportDashboard } from "./(sections)/SupportDashboard";
 import type { IUser } from "@/utils/interfaces/users";
 import type { IAccount } from "@/utils/interfaces/accounts";
 import type { ITask } from "@/utils/interfaces/tasks";
+import type { ICommissionSummary } from "@/utils/interfaces/commissions";
 
 export const metadata: Metadata = { title: "Dashboard" };
 export const dynamic = "force-dynamic";
@@ -31,11 +33,12 @@ export default async function DashboardPage() {
   const adminUser = isAdmin(role);
   const repUser = isSalesRep(role);
 
-  const [allOrders, users, accounts, tasks] = await Promise.all([
+  const [allOrders, users, accounts, tasks, commissionSummary] = await Promise.all([
     getAllOrders(),
     adminUser ? getUsers() : Promise.resolve([] as IUser[]),
     repUser ? getAccounts() : Promise.resolve([] as IAccount[]),
     repUser ? getTasks() : Promise.resolve([] as ITask[]),
+    repUser ? getRepCommissionSummary().catch(() => null) : Promise.resolve(null as ICommissionSummary | null),
   ]);
 
   return (
@@ -47,7 +50,7 @@ export default async function DashboardPage() {
         <ClinicDashboard orders={allOrders} />
       )}
       {repUser && (
-        <RepDashboard orders={allOrders} tasks={tasks} accounts={accounts} />
+        <RepDashboard orders={allOrders} tasks={tasks} accounts={accounts} commissionSummary={commissionSummary} />
       )}
       {isSupport(role) && (
         <SupportDashboard orders={allOrders} />

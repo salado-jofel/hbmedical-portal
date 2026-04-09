@@ -13,14 +13,13 @@ import { formatDate } from "@/utils/helpers/formatter";
 import { isAdmin } from "@/utils/helpers/role";
 import type { UserRole } from "@/utils/helpers/role";
 import type { ICommissionRateFormState } from "@/utils/interfaces/commissions";
-import type { IRepProfile } from "@/utils/interfaces/accounts";
 import {
   Dialog,
   DialogContent,
   DialogTitle,
 } from "@/components/ui/dialog";
 
-export default function RateManagement({ reps }: { reps: IRepProfile[] }) {
+export default function RateManagement({ reps }: { reps: Array<{ id: string; name: string }> }) {
   const rates = useAppSelector((s) => s.commissions.rates);
   const role = useAppSelector((s) => s.dashboard.role) as UserRole;
   const admin = isAdmin(role);
@@ -64,15 +63,17 @@ export default function RateManagement({ reps }: { reps: IRepProfile[] }) {
             <p className="text-[13px] font-semibold text-[var(--navy)]">Commission Rates</p>
             <p className="mt-[1px] text-[11px] text-[var(--text3)]">Active rates per rep</p>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5 text-[12px]"
-            onClick={() => setOpen(true)}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Set Rate
-          </Button>
+          {(admin || reps.length > 0) && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-[12px]"
+              onClick={() => setOpen(true)}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Set Rate
+            </Button>
+          )}
         </div>
 
         {rates.length === 0 ? (
@@ -133,7 +134,7 @@ export default function RateManagement({ reps }: { reps: IRepProfile[] }) {
                   <option value="">Select a rep…</option>
                   {reps.map((rep) => (
                     <option key={rep.id} value={rep.id}>
-                      {rep.first_name} {rep.last_name}
+                      {rep.name}
                     </option>
                   ))}
                 </select>

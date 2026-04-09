@@ -425,10 +425,15 @@ async function runEmailHookSafely(
 
 async function calculateCommissionSafely(orderId: string) {
   try {
-    await calculateOrderCommission(orderId);
+    console.log("[invoices.calculateCommissionSafely] About to calculate commission for order:", orderId);
+    const result = await calculateOrderCommission(orderId);
+    console.log("[invoices.calculateCommissionSafely] Commission calculation result:", result, "orderId:", orderId);
+    if (!result.success) {
+      console.warn("[invoices.calculateCommissionSafely] Commission not created for order:", orderId, "| reason:", result.error);
+    }
   } catch (error) {
     console.error(
-      "[invoices.calculateCommissionSafely] Commission calculation failed for order:",
+      "[invoices.calculateCommissionSafely] Commission calculation threw for order:",
       orderId,
       error,
     );

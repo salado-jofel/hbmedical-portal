@@ -7,7 +7,7 @@ import { useAppSelector } from "@/store/hooks";
 import { HBLogo } from "@/app/(components)/HBLogo";
 import { NotificationBell } from "@/app/(dashboard)/(components)/NotificationBell";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ROLE_LABELS, type UserRole, isSalesRep, isAdmin } from "@/utils/helpers/role";
+import { ROLE_LABELS, type UserRole, isSalesRep, isAdmin, isClinicalProvider } from "@/utils/helpers/role";
 import { signOut } from "../(services)/actions";
 
 export function TopBar() {
@@ -137,7 +137,7 @@ export function TopBar() {
               <div className="h-px bg-[var(--border)]" />
 
               {/* Role-gated nav items */}
-              {(isSalesRep(role) || isAdmin(role)) && (
+              {(isSalesRep(role) || isAdmin(role) || isClinicalProvider(role)) && (
                 <div className="p-1">
                   {isSalesRep(role) && (
                     <button

@@ -2,7 +2,6 @@
 
 import { redirect } from "next/navigation";
 import type { InviteSignUpState } from "@/utils/interfaces/invite";
-import bcrypt from "bcryptjs";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -141,7 +140,12 @@ export async function inviteSignUp(
           await supabaseAdmin.auth.admin.deleteUser(createdUserId);
           return { error: "NPI must be exactly 10 digits." };
         }
-        const pinHash = await bcrypt.hash(pin, 10);
+        const { data: hashResult, error: hashError } = await supabaseAdmin.rpc("hash_pin", { input_pin: pin });
+        if (hashError || !hashResult) {
+          await supabaseAdmin.auth.admin.deleteUser(createdUserId);
+          return { error: "Failed to hash PIN." };
+        }
+        const pinHash = hashResult as string;
         const now = new Date().toISOString();
         const { error: credError } = await supabaseAdmin
           .from("provider_credentials")

@@ -239,6 +239,7 @@ export async function getCommissions(period?: string): Promise<ICommission[]> {
 
 export async function calculateOrderCommission(orderId: string): Promise<{ success: boolean; error?: string }> {
   try {
+    console.log("[calculateOrderCommission] Called with orderId:", orderId);
     const adminClient = createAdminClient();
 
     // Fetch order with facility → assigned sales rep (NOT user_id which is the clinic owner)
@@ -255,6 +256,7 @@ export async function calculateOrderCommission(orderId: string): Promise<{ succe
 
     const facility = Array.isArray(order.facilities) ? order.facilities[0] : order.facilities;
     const repId: string | null = facility?.assigned_rep ?? null;
+    console.log("[calculateOrderCommission] orderId:", orderId, "| facility:", facility, "| repId:", repId);
     if (!repId) return { success: false, error: "No rep assigned to this order." };
 
     // Fetch order total from order_items
@@ -287,6 +289,7 @@ export async function calculateOrderCommission(orderId: string): Promise<{ succe
       console.error("[calculateOrderCommission] Rate fetch error:", JSON.stringify(rateError));
       return { success: false, error: "Failed to fetch commission rate." };
     }
+    console.log("[calculateOrderCommission] orderId:", orderId, "| repId:", repId, "| rate:", rate, "| orderAmount:", orderAmount);
     if (!rate) return { success: false, error: "No active commission rate for this rep." };
 
     const ratePercent = Number(rate.rate_percent);
@@ -706,4 +709,40 @@ export async function getRepCommissionSummary(repId?: string): Promise<ICommissi
     totalPaid,
     currentRate: rateData ? Number(rateData.rate_percent) : null,
   };
+}
+
+/* -------------------------------------------------------------------------- */
+/* 11. getSubRepsForRateDropdown                                              */
+/* -------------------------------------------------------------------------- */
+
+export async function getSubRepsForRateDropdown(): Promise<Array<{ id: string; name: string }>> {
+  const supabase = await createClient();
+  const user = await getCurrentUserOrThrow(supabase);
+  const role = await getUserRole(supabase);
+  const adminClient = createAdminClient();
+
+  if (isAdmin(role)) {
+    const { data } = await adminClient
+      .from("profiles")
+      .select("id, first_name, last_name")
+      .eq("role", "sales_representative")
+      .order("first_name");
+    return (data ?? []).map((p: any) => ({ id: p.id, name: `${p.first_name} ${p.last_name}`.trim() }));
+  }
+
+  if (isSalesRep(role)) {
+    const { data } = await adminClient
+      .from("rep_hierarchy")
+      .select("child:profiles!rep_hierarchy_child_rep_id_fkey(id, first_name, last_name)")
+      .eq("parent_rep_id", user.id);
+    return (data ?? [])
+      .map((r: any) => {
+        const child = Array.isArray(r.child) ? r.child[0] : r.child;
+        if (!child?.id) return null;
+        return { id: child.id, name: `${child.first_name} ${child.last_name}`.trim() };
+      })
+      .filter(Boolean) as Array<{ id: string; name: string }>;
+  }
+
+  return [];
 }

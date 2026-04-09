@@ -7,11 +7,12 @@ import { KpiCard } from "@/app/(components)/KpiCard";
 import { PillBadge } from "@/app/(components)/PillBadge";
 import { DataTable } from "@/app/(components)/DataTable";
 import { PageHeader } from "@/app/(components)/PageHeader";
-import { formatDate } from "@/utils/helpers/formatter";
+import { formatDate, formatAmount } from "@/utils/helpers/formatter";
 import type { TableColumn } from "@/utils/interfaces/table-column";
 import type { DashboardOrder } from "@/utils/interfaces/orders";
 import type { ITask } from "@/utils/interfaces/tasks";
 import type { IAccount } from "@/utils/interfaces/accounts";
+import type { ICommissionSummary } from "@/utils/interfaces/commissions";
 
 type PriorityVariant = "red" | "gold" | "blue";
 
@@ -39,10 +40,12 @@ export function RepDashboard({
   orders,
   tasks,
   accounts,
+  commissionSummary,
 }: {
   orders: DashboardOrder[];
   tasks: ITask[];
   accounts: IAccount[];
+  commissionSummary: ICommissionSummary | null;
 }) {
   const router = useRouter();
 
@@ -66,6 +69,13 @@ export function RepDashboard({
         <KpiCard label="My Orders"     value={String(orders.length)}     accentColor="blue"   />
         <KpiCard label="Active Orders" value={String(activeOrders)}      accentColor="purple" />
       </div>
+
+      {commissionSummary && (
+        <div className="mb-5 grid grid-cols-2 gap-[10px]">
+          <KpiCard label="Commission Earned" value={formatAmount(commissionSummary.totalEarned)}   accentColor="teal" />
+          <KpiCard label="Pending Payout"    value={formatAmount(commissionSummary.totalPending)}  accentColor="gold" />
+        </div>
+      )}
 
       <div className="mb-5 grid grid-cols-1 gap-5 lg:grid-cols-[1fr_240px]">
         <div className="overflow-hidden rounded-[var(--r)] border border-[var(--border)] bg-[var(--surface)]">

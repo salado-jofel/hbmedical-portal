@@ -6,7 +6,6 @@ import { isAdmin, isSalesRep } from "@/utils/helpers/role";
 import { PageHeader } from "@/app/(components)/PageHeader";
 import { KpiCard } from "@/app/(components)/KpiCard";
 import { formatAmount } from "@/utils/helpers/formatter";
-import { getSalesReps } from "@/app/(dashboard)/dashboard/accounts/(services)/actions";
 import Providers from "./(sections)/Providers";
 import CommissionCalculator from "./(sections)/CommissionCalculator";
 import PayoutTable from "./(sections)/PayoutTable";
@@ -18,6 +17,7 @@ import {
   getCommissions,
   getPayouts,
   getRepCommissionSummary,
+  getSubRepsForRateDropdown,
 } from "./(services)/actions";
 
 export const metadata: Metadata = { title: "Commissions" };
@@ -39,7 +39,8 @@ export default async function CommissionsPage() {
     getCommissions().catch((e)     => { console.error("[commissions/page] getCommissions:", e);     return []; }),
     getPayouts().catch((e)         => { console.error("[commissions/page] getPayouts:", e);         return []; }),
     getRepCommissionSummary().catch((e) => { console.error("[commissions/page] getSummary:", e);   return EMPTY_SUMMARY; }),
-    getSalesReps().catch((e)       => { console.error("[commissions/page] getSalesReps:", e);       return []; }),
+    // Role-scoped: admin gets all sales reps, sales_rep gets only their sub-reps
+    getSubRepsForRateDropdown().catch((e) => { console.error("[commissions/page] getSubRepsForRateDropdown:", e); return []; }),
   ]);
 
   return (

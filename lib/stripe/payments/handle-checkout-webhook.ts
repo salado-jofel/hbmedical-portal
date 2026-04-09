@@ -463,10 +463,15 @@ async function syncToShipStationSafely(orderId: string) {
 
 async function calculateCommissionSafely(orderId: string) {
   try {
-    await calculateOrderCommission(orderId);
+    console.log("[payments.calculateCommissionSafely] About to calculate commission for order:", orderId);
+    const result = await calculateOrderCommission(orderId);
+    console.log("[payments.calculateCommissionSafely] Commission calculation result:", result, "orderId:", orderId);
+    if (!result.success) {
+      console.warn("[payments.calculateCommissionSafely] Commission not created for order:", orderId, "| reason:", result.error);
+    }
   } catch (error) {
     console.error(
-      "[payments.calculateCommissionSafely] Commission calculation failed for order:",
+      "[payments.calculateCommissionSafely] Commission calculation threw for order:",
       orderId,
       error,
     );
