@@ -18,17 +18,24 @@ export async function sendInviteEmail({
   roleType,
   inviterName,
 }: SendInviteEmailParams): Promise<{ error: string | null }> {
+  console.log("[sendInviteEmail] Sending to:", to, "role:", roleType);
+  console.log("[resend] API key present:", !!process.env.RESEND_API_KEY);
   try {
     const { subject, body } = buildContent(roleType, inviterName);
-    await resend.emails.send({
+    const { data, error } = await resend.emails.send({
       from: ACCOUNTS_FROM_EMAIL,
       to,
       subject,
       html: buildHtml({ body, inviteUrl }),
     });
+    if (error) {
+      console.error("[sendInviteEmail] Resend error:", error);
+      return { error: "Failed to send invite email." };
+    }
+    console.log("[sendInviteEmail] Sent successfully, id:", data?.id);
     return { error: null };
   } catch (err) {
-    console.error("[sendInviteEmail] Error:", err);
+    console.error("[sendInviteEmail] Unexpected error:", err);
     return { error: "Failed to send invite email." };
   }
 }

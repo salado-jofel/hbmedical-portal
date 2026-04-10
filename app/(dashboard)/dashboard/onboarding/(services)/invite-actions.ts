@@ -186,13 +186,17 @@ export async function generateInviteToken(
       return { error: error.message ?? error.code ?? "Failed to generate invite token.", success: false };
     }
 
+    console.log("[generateInviteToken] Token created:", inserted.id, "for:", parsed.data.email);
+
     const inviteUrl = `${getBaseUrl()}/invite/${inserted.token}`;
+    console.log("[generateInviteToken] Sending invite email to:", parsed.data.email);
     const { error: emailError } = await sendInviteEmail({
       to: parsed.data.email,
       inviteUrl,
       roleType: parsed.data.role_type,
       inviterName,
     });
+    console.log("[generateInviteToken] Email send result:", { error: emailError });
 
     if (emailError) {
       // Rollback: delete the token we just created
