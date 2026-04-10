@@ -19,11 +19,12 @@ export async function POST(req: NextRequest) {
         .from("orders")
         .select(`
           id, order_number, wound_type, date_of_service,
-          created_by, assigned_provider_id,
+          created_by, assigned_provider_id, signed_by, signed_at,
           facility:facilities!orders_facility_id_fkey(name),
           patient:patients!orders_patient_id_fkey(
             first_name, last_name, date_of_birth
-          )
+          ),
+          order_items(id, product_sku, product_name, quantity, unit_price)
         `)
         .eq("id", orderId)
         .single(),

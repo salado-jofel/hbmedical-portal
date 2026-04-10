@@ -22,6 +22,7 @@ import {
   generateOrderNumber,
   requireClinicRole,
   requireIVREditRole,
+  generateOrderPDFs,
   insertOrderHistory,
 } from "./_shared";
 
@@ -284,6 +285,80 @@ export async function updateOrderClinicalFields(
     return { success: true };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* saveOrderForm                                                               */
+/* -------------------------------------------------------------------------- */
+
+export async function saveOrderForm(
+  orderId: string,
+  data: {
+    wound_visit_number?: number | null;
+    chief_complaint?: string | null;
+    has_vasculitis_or_burns?: boolean;
+    is_receiving_home_health?: boolean;
+    is_patient_at_snf?: boolean;
+    icd10_code?: string | null;
+    followup_days?: number | null;
+    wound_site?: string | null;
+    wound_stage?: string | null;
+    wound_length_cm?: number | null;
+    wound_width_cm?: number | null;
+    wound_depth_cm?: number | null;
+    subjective_symptoms?: string[];
+    clinical_notes?: string | null;
+    condition_decreased_mobility?: boolean;
+    condition_diabetes?: boolean;
+    condition_infection?: boolean;
+    condition_cvd?: boolean;
+    condition_copd?: boolean;
+    condition_chf?: boolean;
+    condition_anemia?: boolean;
+    use_blood_thinners?: boolean;
+    blood_thinner_details?: string | null;
+    wound_location_side?: string | null;
+    granulation_tissue_pct?: number | null;
+    exudate_amount?: string | null;
+    third_degree_burns?: boolean;
+    active_vasculitis?: boolean;
+    active_charcot?: boolean;
+    skin_condition?: string | null;
+    wound2_length_cm?: number | null;
+    wound2_width_cm?: number | null;
+    wound2_depth_cm?: number | null;
+    drainage_description?: string | null;
+    treatment_plan?: string | null;
+    patient_name?: string | null;
+    patient_date?: string | null;
+    physician_signature?: string | null;
+    physician_signature_date?: string | null;
+  },
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    await requireIVREditRole();
+    const adminClient = createAdminClient();
+
+    const { error } = await adminClient
+      .from("order_form")
+      .upsert({ order_id: orderId, ...data }, { onConflict: "order_id" });
+
+    if (error) {
+      console.error("[saveOrderForm]", JSON.stringify(error));
+      return { success: false, error: error.message ?? "Failed to save." };
+    }
+
+    revalidatePath(ORDERS_PATH);
+    generateOrderPDFs(orderId, ["order_form"]).catch((err) =>
+      console.error("[OrderForm PDF]", err),
+    );
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Unexpected error.",
+    };
   }
 }
 

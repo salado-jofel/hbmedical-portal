@@ -82,7 +82,6 @@ import {
 } from "../(services)/order-messaging-actions";
 import { getOrderIVR, getOrderAiStatus } from "../(services)/order-ivr-actions";
 import {
-  getProducts,
   addOrderItems,
   updateOrderItemQuantity,
   deleteOrderItem,
@@ -213,11 +212,7 @@ export function OrderDetailModal({
   /* -- History (lazy-loaded) -- */
   const [history, setHistory] = useState<IOrderHistory[]>([]);
 
-  /* -- Product picker -- */
-  const [showProductPicker, setShowProductPicker] = useState(false);
-  const [products, setProducts] = useState<ProductRecord[]>([]);
-  const [quantities, setQuantities] = useState<Record<string, number>>({});
-  const [loadingProducts, setLoadingProducts] = useState(false);
+  /* -- Product picker -- (state lives in OrderOverviewTab now) -- */
 
   /* -- Order items + notes (draft/saved) -- */
   const [savedItems, setSavedItems] = useState<DraftOrderItem[]>(
@@ -351,9 +346,6 @@ export function OrderDetailModal({
     // Mark immediately-ready tabs; others load on first visit
     setLoadedTabs(new Set(["overview", "order-form"]));
     setTab((initialTab as TabValue) ?? "overview");
-    setShowProductPicker(false);
-    setQuantities({});
-
     // Load right-panel data in background (non-blocking)
     setLoadingDocs(true);
     Promise.all([
@@ -432,16 +424,6 @@ export function OrderDetailModal({
       }
     };
   }, [open, order.id, order.ai_extracted]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  /* ── Load products when picker opens ── */
-  useEffect(() => {
-    if (!showProductPicker) return;
-    setLoadingProducts(true);
-    getProducts().then((p) => {
-      setProducts(p);
-      setLoadingProducts(false);
-    });
-  }, [showProductPicker]);
 
   /* ── AI-generating window: show spinner for 30 s after ai_extracted_at ── */
   useEffect(() => {
@@ -859,28 +841,32 @@ export function OrderDetailModal({
     }
   }
 
-  function handleAddProductsToDraft() {
-    const newItems: DraftOrderItem[] = Object.entries(quantities)
-      .filter(([, qty]) => qty > 0)
-      .map(([productId, quantity]) => {
-        const prod = products.find((p) => p.id === productId)!;
-        const unitPrice = Number(prod.unit_price);
-        return {
-          id: `draft-${productId}-${Date.now()}`,
+  function handleAddProductToDraft(prod: ProductRecord) {
+    const unitPrice = Number(prod.unit_price);
+    setDraftItems((prev) => {
+      const existing = prev.find((i) => i.productId === prod.id);
+      if (existing) {
+        return prev.map((i) =>
+          i.productId === prod.id
+            ? { ...i, quantity: i.quantity + 1, subtotal: i.unitPrice * (i.quantity + 1), totalAmount: i.unitPrice * (i.quantity + 1) }
+            : i,
+        );
+      }
+      return [
+        ...prev,
+        {
+          id: `draft-${prod.id}-${Date.now()}`,
           productId: prod.id,
           productName: prod.name,
           productSku: prod.sku,
           unitPrice,
-          quantity,
-          subtotal: unitPrice * quantity,
-          totalAmount: unitPrice * quantity,
+          quantity: 1,
+          subtotal: unitPrice,
+          totalAmount: unitPrice,
           isNew: true,
-        };
-      });
-    if (newItems.length === 0) return;
-    setDraftItems((prev) => [...prev, ...newItems]);
-    setShowProductPicker(false);
-    setQuantities({});
+        },
+      ];
+    });
   }
 
   async function handleSubmitOrder() {
@@ -961,8 +947,6 @@ export function OrderDetailModal({
   function handleDiscardOverview() {
     setDraftItems(savedItems);
     setDraftNotes(savedNotes);
-    setShowProductPicker(false);
-    setQuantities({});
   }
 
   async function handleSaveOverview() {
@@ -1347,24 +1331,22 @@ export function OrderDetailModal({
                       draftNotes={draftNotes}
                       isOverviewDirty={isOverviewDirty}
                       isSavingOverview={isSavingOverview}
-                      showProductPicker={showProductPicker}
-                      products={products}
-                      loadingProducts={loadingProducts}
-                      quantities={quantities}
                       orderTotal={orderTotal}
                       setDraftNotes={setDraftNotes}
-                      setShowProductPicker={setShowProductPicker}
-                      setQuantities={setQuantities}
                       setItemToDelete={setItemToDelete}
                       draftQtyChange={draftQtyChange}
                       handleDiscardOverview={handleDiscardOverview}
                       handleSaveOverview={handleSaveOverview}
-                      handleAddProductsToDraft={handleAddProductsToDraft}
+                      handleAddProductToDraft={handleAddProductToDraft}
                     />
                     <OrderFormTab
                       isActive={tab === "order-form"}
                       aiStatus={aiStatus}
                       orderForm={orderForm}
+                      order={liveOrder}
+                      canEdit={canEdit}
+                      patientName={patientName}
+                      onSaved={(updated) => setOrderForm(updated)}
                     />
                     <IVRTab
                       isActive={tab === "ivr"}

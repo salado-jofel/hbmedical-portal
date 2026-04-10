@@ -1,8 +1,9 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { Loader2, Plus, Minus, X, AlertTriangle, Shield } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import type { DashboardOrder, ProductRecord } from "@/utils/interfaces/orders";
+import { getProducts } from "../(services)/order-misc-actions";
 import { cn } from "@/utils/utils";
 
 export type DraftOrderItem = {
@@ -28,21 +29,13 @@ interface OrderOverviewTabProps {
   draftNotes: string;
   isOverviewDirty: boolean;
   isSavingOverview: boolean;
-  showProductPicker: boolean;
-  products: ProductRecord[];
-  loadingProducts: boolean;
-  quantities: Record<string, number>;
   orderTotal: number;
   setDraftNotes: (v: string) => void;
-  setShowProductPicker: (v: boolean) => void;
-  setQuantities: (
-    fn: (prev: Record<string, number>) => Record<string, number>,
-  ) => void;
   setItemToDelete: (v: { id: string; name: string } | null) => void;
   draftQtyChange: (itemId: string, newQty: number) => void;
   handleDiscardOverview: () => void;
   handleSaveOverview: () => void;
-  handleAddProductsToDraft: () => void;
+  handleAddProductToDraft: (product: ProductRecord) => void;
 }
 
 export function OrderOverviewTab({
@@ -56,20 +49,34 @@ export function OrderOverviewTab({
   draftNotes,
   isOverviewDirty,
   isSavingOverview,
-  showProductPicker,
-  products,
-  loadingProducts,
-  quantities,
   orderTotal,
   setDraftNotes,
-  setShowProductPicker,
-  setQuantities,
   setItemToDelete,
   draftQtyChange,
   handleDiscardOverview,
   handleSaveOverview,
-  handleAddProductsToDraft,
+  handleAddProductToDraft,
 }: OrderOverviewTabProps) {
+  const [products, setProducts] = useState<ProductRecord[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(true);
+  const [productSearch, setProductSearch] = useState("");
+
+  useEffect(() => {
+    getProducts().then((p) => {
+      setProducts(p);
+      setLoadingProducts(false);
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const filteredProducts = products.filter((p) => {
+    if (!productSearch.trim()) return true;
+    const q = productSearch.toLowerCase();
+    return (
+      p.name.toLowerCase().includes(q) ||
+      p.sku.toLowerCase().includes(q) ||
+      (p.category ?? "").toLowerCase().includes(q)
+    );
+  });
   return (
     <div
       className={cn(
@@ -279,121 +286,102 @@ export function OrderOverviewTab({
           </div>
         )}
 
-        {/* Add product — draft only */}
-        {canEdit && status === "draft" && !showProductPicker && (
-          <button
-            type="button"
-            onClick={() => setShowProductPicker(true)}
-            className="text-sm text-[var(--navy)] font-medium hover:underline flex items-center gap-1"
-          >
-            <Plus className="w-3.5 h-3.5" /> Add Product
-          </button>
-        )}
+        {/* ── Available Products (always visible) ── */}
+        <div className="border-t border-[var(--border)] mt-4 pt-4">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h4 className="text-sm font-semibold text-[var(--navy)]">
+                Available Products
+              </h4>
+              <p className="text-xs text-[#94a3b8]">
+                {canEdit && status === "draft"
+                  ? "Click + to add a product to this order"
+                  : "Products available in catalog"}
+              </p>
+            </div>
+            <input
+              type="text"
+              placeholder="Search by name or SKU..."
+              value={productSearch}
+              onChange={(e) => setProductSearch(e.target.value)}
+              className="text-xs border border-[var(--border)] rounded-lg px-3 py-1.5 w-56 focus:outline-none focus:ring-1 focus:ring-[var(--teal)] transition-shadow"
+            />
+          </div>
 
-        {/* Product picker */}
-        {canEdit &&
-          status === "draft" &&
-          showProductPicker &&
-          (() => {
-            const addedProductIds = new Set(
-              draftItems.map((i) => i.productId).filter(Boolean),
-            );
-            const availableProducts = products.filter(
-              (p) => !addedProductIds.has(p.id),
-            );
-            const hasCartItems = Object.values(quantities).some((q) => q > 0);
-            return (
-              <div className="rounded-xl border border-gray-100 p-3 space-y-3">
-                {loadingProducts ? (
-                  <div className="flex items-center gap-2 text-xs text-gray-400 py-2">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading
-                    products...
-                  </div>
-                ) : availableProducts.length === 0 ? (
-                  <div className="py-6 text-center">
-                    <p className="text-sm text-gray-400">
-                      All available products have been added to this order.
-                    </p>
-                  </div>
-                ) : (
-                  availableProducts.map((prod) => {
-                    const qty = quantities[prod.id] ?? 0;
-                    return (
-                      <div
-                        key={prod.id}
-                        className={cn(
-                          "flex items-center justify-between py-2.5 border-b border-gray-50 last:border-0",
-                        )}
-                      >
-                        <div className="flex-1 min-w-0 pr-4">
-                          <p className="text-sm font-medium text-gray-900 truncate">
-                            {prod.name}
-                          </p>
-                          <p className="text-xs text-gray-400">
-                            {prod.sku} · ${Number(prod.unit_price).toFixed(2)}
-                            /unit
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <button
-                            type="button"
-                            disabled={qty === 0}
-                            onClick={() =>
-                              setQuantities((p) => {
-                                const n = { ...p };
-                                if (qty <= 1) delete n[prod.id];
-                                else n[prod.id] = qty - 1;
-                                return n;
-                              })
-                            }
-                            className="w-7 h-7 rounded-lg border border-gray-200 flex items-center justify-center text-sm text-gray-500 hover:bg-gray-50 disabled:opacity-30 transition-colors"
-                          >
-                            <Minus className="w-3 h-3" />
-                          </button>
-                          <span className="w-8 text-center text-sm font-medium tabular-nums">
-                            {qty}
+          {loadingProducts ? (
+            <div className="flex items-center gap-2 text-xs text-gray-400 py-4 justify-center">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading products...
+            </div>
+          ) : filteredProducts.length === 0 ? (
+            <p className="text-xs text-[#94a3b8] text-center py-4">
+              {productSearch ? "No products match your search" : "No products available"}
+            </p>
+          ) : (
+            <div className="space-y-1 max-h-64 overflow-y-auto pr-0.5">
+              {filteredProducts.map((product) => {
+                const existingDraftItem = draftItems.find(
+                  (i) => i.productId === product.id,
+                );
+                return (
+                  <div
+                    key={product.id}
+                    className={cn(
+                      "flex items-center gap-3 py-2 px-3 rounded-lg text-sm transition-colors",
+                      existingDraftItem
+                        ? "bg-[#f0fdf4] border border-[#bbf7d0]"
+                        : "hover:bg-[#f8fafc]",
+                    )}
+                  >
+                    <div className="w-20 font-mono text-xs text-[#666] shrink-0">
+                      {product.sku}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <span className="font-medium text-[var(--navy)] truncate block">
+                        {product.name}
+                      </span>
+                      {product.category && (
+                        <span className="text-[10px] text-[#94a3b8] bg-[#f1f5f9] rounded px-1.5 py-0.5">
+                          {product.category}
+                        </span>
+                      )}
+                    </div>
+                    <div className="w-20 text-right font-mono text-sm shrink-0 text-gray-700">
+                      ${Number(product.unit_price).toFixed(2)}
+                    </div>
+                    {canEdit && status === "draft" ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleAddProductToDraft(product)}
+                          className={cn(
+                            "w-7 h-7 rounded-md flex items-center justify-center transition-colors shrink-0",
+                            existingDraftItem
+                              ? "bg-[var(--teal)] text-white hover:bg-[var(--teal)]/80"
+                              : "bg-[var(--navy)] text-white hover:bg-[var(--navy)]/80",
+                          )}
+                          title={existingDraftItem ? "Add another" : "Add to order"}
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                        </button>
+                        {existingDraftItem && (
+                          <span className="text-[10px] text-[#0d7a6b] font-medium w-10 shrink-0">
+                            ×{existingDraftItem.quantity}
                           </span>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setQuantities((p) => ({
-                                ...p,
-                                [prod.id]: qty + 1,
-                              }))
-                            }
-                            className="w-7 h-7 rounded-lg border border-gray-200 flex items-center justify-center text-sm text-gray-500 hover:bg-gray-50 transition-colors"
-                          >
-                            <Plus className="w-3 h-3" />
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-                <div className="flex gap-2 pt-1">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1 text-xs"
-                    onClick={() => {
-                      setShowProductPicker(false);
-                      setQuantities(() => ({}));
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="flex-1 text-xs bg-[var(--navy)] text-white"
-                    disabled={!hasCartItems}
-                    onClick={handleAddProductsToDraft}
-                  >
-                    Add to Order
-                  </Button>
-                </div>
-              </div>
-            );
-          })()}
+                        )}
+                      </>
+                    ) : (
+                      existingDraftItem && (
+                        <span className="text-[10px] text-[#0d7a6b] font-medium w-10 shrink-0">
+                          ×{existingDraftItem.quantity}
+                        </span>
+                      )
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ── Admin Notes (info request reason) ── */}
