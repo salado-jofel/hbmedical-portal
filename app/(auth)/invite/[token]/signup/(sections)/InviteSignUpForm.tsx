@@ -259,57 +259,61 @@ export default function InviteSignUpForm({
   const inlinePasswordError = step === securityStepIndex;
   const error = (inlinePasswordError ? null : clientError) || state?.error;
 
+  function handleEnrollSubmit(e: React.FormEvent<HTMLFormElement>) {
+    if (isPending) {
+      e.preventDefault();
+      return;
+    }
+    setClientError("");
+    const missing: string[] = [];
+
+    if (!facilityEin.trim()) missing.push("EIN");
+    if (!facilityNpi.trim()) missing.push("Facility NPI");
+    if (!facilityTin.trim()) missing.push("TIN");
+    if (!facilityPtan.trim()) missing.push("PTAN");
+    if (!apContactName.trim()) missing.push("AP Contact Name");
+    if (!apContactEmail.trim()) missing.push("AP Contact Email");
+    if (!billingFax.trim()) missing.push("Billing Fax");
+    if (!dpaContact.trim()) missing.push("DPA Contact");
+    if (!dpaContactEmail.trim()) missing.push("DPA Contact Email");
+    if (!additionalProvider1Name.trim()) missing.push("Additional Provider 1 Name");
+    if (!additionalProvider1Npi.trim()) missing.push("Additional Provider 1 NPI");
+    if (!additionalProvider2Name.trim()) missing.push("Additional Provider 2 Name");
+    if (!additionalProvider2Npi.trim()) missing.push("Additional Provider 2 NPI");
+    if (!shippingFacilityName.trim()) missing.push("Shipping Facility Name");
+    if (!shippingFacilityNpi.trim()) missing.push("Shipping Facility NPI");
+    if (!shippingFacilityTin.trim()) missing.push("Shipping TIN");
+    if (!shippingFacilityPtan.trim()) missing.push("Shipping PTAN");
+    if (!shippingContactName.trim()) missing.push("Shipping Contact Name");
+    if (!shippingContactEmail.trim()) missing.push("Shipping Contact Email");
+    if (!shippingAddress.trim()) missing.push("Shipping Address");
+    if (!shippingDaysTimes.trim()) missing.push("Shipping Days/Times");
+    if (!shippingPhone.trim()) missing.push("Shipping Phone");
+    if (!shippingFax.trim()) missing.push("Shipping Fax");
+    if (!shipping2FacilityName.trim()) missing.push("Shipping 2 Facility Name");
+    if (!shipping2FacilityNpi.trim()) missing.push("Shipping 2 Facility NPI");
+    if (!shipping2FacilityTin.trim()) missing.push("Shipping 2 TIN");
+    if (!shipping2FacilityPtan.trim()) missing.push("Shipping 2 PTAN");
+    if (!shipping2ContactName.trim()) missing.push("Shipping 2 Contact Name");
+    if (!shipping2ContactEmail.trim()) missing.push("Shipping 2 Contact Email");
+    if (!shipping2Address.trim()) missing.push("Shipping 2 Address");
+    if (!shipping2DaysTimes.trim()) missing.push("Shipping 2 Days/Times");
+    if (!shipping2Phone.trim()) missing.push("Shipping 2 Phone");
+    if (!shipping2Fax.trim()) missing.push("Shipping 2 Fax");
+    if (!claimsContactName.trim()) missing.push("Claims Contact Name");
+    if (!claimsContactPhone.trim()) missing.push("Claims Contact Phone");
+    if (!claimsContactEmail.trim()) missing.push("Claims Contact Email");
+    if (!claimsThirdParty.trim()) missing.push("Third Party Administrator");
+
+    if (missing.length > 0) {
+      e.preventDefault();
+      setClientError(`Please complete all required fields: ${missing.join(", ")}.`);
+    }
+    // If valid, don't preventDefault — form submits naturally to formAction
+  }
+
   // Enrollment step — full-page layout, renders BEFORE the AuthCard return
   if (enrollStepIndex !== null && step === enrollStepIndex) {
-    function handleEnrollSubmit(e: React.FormEvent<HTMLFormElement>) {
-      setClientError("");
-      const missing: string[] = [];
-
-      if (!facilityEin.trim()) missing.push("EIN");
-      if (!facilityNpi.trim()) missing.push("Facility NPI");
-      if (!facilityTin.trim()) missing.push("TIN");
-      if (!facilityPtan.trim()) missing.push("PTAN");
-      if (!apContactName.trim()) missing.push("AP Contact Name");
-      if (!apContactEmail.trim()) missing.push("AP Contact Email");
-      if (!billingFax.trim()) missing.push("Billing Fax");
-      if (!dpaContact.trim()) missing.push("DPA Contact");
-      if (!dpaContactEmail.trim()) missing.push("DPA Contact Email");
-      if (!additionalProvider1Name.trim()) missing.push("Additional Provider 1 Name");
-      if (!additionalProvider1Npi.trim()) missing.push("Additional Provider 1 NPI");
-      if (!additionalProvider2Name.trim()) missing.push("Additional Provider 2 Name");
-      if (!additionalProvider2Npi.trim()) missing.push("Additional Provider 2 NPI");
-      if (!shippingFacilityName.trim()) missing.push("Shipping Facility Name");
-      if (!shippingFacilityNpi.trim()) missing.push("Shipping Facility NPI");
-      if (!shippingFacilityTin.trim()) missing.push("Shipping TIN");
-      if (!shippingFacilityPtan.trim()) missing.push("Shipping PTAN");
-      if (!shippingContactName.trim()) missing.push("Shipping Contact Name");
-      if (!shippingContactEmail.trim()) missing.push("Shipping Contact Email");
-      if (!shippingAddress.trim()) missing.push("Shipping Address");
-      if (!shippingDaysTimes.trim()) missing.push("Shipping Days/Times");
-      if (!shippingPhone.trim()) missing.push("Shipping Phone");
-      if (!shippingFax.trim()) missing.push("Shipping Fax");
-      if (!shipping2FacilityName.trim()) missing.push("Shipping 2 Facility Name");
-      if (!shipping2FacilityNpi.trim()) missing.push("Shipping 2 Facility NPI");
-      if (!shipping2FacilityTin.trim()) missing.push("Shipping 2 TIN");
-      if (!shipping2FacilityPtan.trim()) missing.push("Shipping 2 PTAN");
-      if (!shipping2ContactName.trim()) missing.push("Shipping 2 Contact Name");
-      if (!shipping2ContactEmail.trim()) missing.push("Shipping 2 Contact Email");
-      if (!shipping2Address.trim()) missing.push("Shipping 2 Address");
-      if (!shipping2DaysTimes.trim()) missing.push("Shipping 2 Days/Times");
-      if (!shipping2Phone.trim()) missing.push("Shipping 2 Phone");
-      if (!shipping2Fax.trim()) missing.push("Shipping 2 Fax");
-      if (!claimsContactName.trim()) missing.push("Claims Contact Name");
-      if (!claimsContactPhone.trim()) missing.push("Claims Contact Phone");
-      if (!claimsContactEmail.trim()) missing.push("Claims Contact Email");
-      if (!claimsThirdParty.trim()) missing.push("Third Party Administrator");
-
-      if (missing.length > 0) {
-        e.preventDefault();
-        setClientError(`Please complete all required fields: ${missing.join(", ")}.`);
-      }
-      // If valid, don't preventDefault — form submits naturally to formAction
-    }
-
     return (
       <div className="min-h-screen bg-[#F8FAFC] py-6 px-4">
         {/* Top bar: step indicator + Back button */}
@@ -944,7 +948,14 @@ export default function InviteSignUpForm({
           <button
             type="button"
             onClick={goNext}
-            className="flex items-center gap-1.5 rounded-lg bg-[var(--navy)] hover:bg-[var(--navy)]/80 text-white font-medium px-5 h-9 text-sm transition-colors ml-auto shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
+            disabled={
+              step === agreeStepIndex
+                ? role === "clinical_provider"
+                  ? !baaAgreed || !termsAgreed
+                  : !agreed
+                : false
+            }
+            className="flex items-center gap-1.5 rounded-lg bg-[var(--navy)] hover:bg-[var(--navy)]/80 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium px-5 h-9 text-sm transition-colors ml-auto shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
           >
             {step === securityStepIndex ? "Review" : "Next"}
             <ChevronRight className="w-4 h-4" />
