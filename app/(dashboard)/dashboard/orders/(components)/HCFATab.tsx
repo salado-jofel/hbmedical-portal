@@ -1,6 +1,6 @@
 "use client";
 
-import { Form1500Tab } from "./Form1500Tab";
+import { HCFA1500Document } from "./HCFA1500Document";
 import { cn } from "@/utils/utils";
 
 function FormSkeleton() {
@@ -55,12 +55,11 @@ export function HCFATab({
       {!isReady ? (
         <FormSkeleton />
       ) : (
-        <Form1500Tab
+        <HCFA1500Document
           key={resetHcfaKey}
           orderId={orderId}
           canEdit={canEdit}
           initialData={hcfaData}
-          isReady={true}
           onDirtyChange={onDirtyChange}
           onSave={onSave}
         />
