@@ -1,18 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import { User, Users, ShieldCheck } from "lucide-react";
+import { User, Users, ShieldCheck, ClipboardList } from "lucide-react";
 import { cn } from "@/utils/utils";
 import { ProfileTab } from "../(components)/ProfileTab";
 import { TeamTab } from "../(components)/TeamTab";
 import { CredentialsTab } from "../(components)/CredentialsTab";
+import { EnrollmentTab } from "../(components)/EnrollmentTab";
 import type { Profile } from "@/utils/interfaces/profiles";
 import type { IFacilityMember } from "@/utils/interfaces/facility-members";
 import type { IProviderCredentials } from "@/utils/interfaces/provider-credentials";
 import type { ISubRep } from "@/utils/interfaces/sub-reps";
 import type { IClinicAccount } from "@/utils/interfaces/settings";
+import type { FacilityEnrollmentData } from "@/app/(dashboard)/dashboard/settings/(services)/actions";
 
-type TabKey = "profile" | "team" | "credentials";
+type TabKey = "profile" | "team" | "credentials" | "enrollment";
 
 interface Tab {
   key: TabKey;
@@ -29,6 +31,16 @@ interface SettingsTabsProps {
   credentials: IProviderCredentials | null;
   showTeamTab: boolean;
   showCredentials: boolean;
+  showEnrollment: boolean;
+  enrollmentData: FacilityEnrollmentData | null;
+  facilityName: string;
+  providerName: string;
+  providerNpi: string;
+  billingAddressPrefill: string;
+  billingCityPrefill: string;
+  billingStatePrefill: string;
+  billingZipPrefill: string;
+  billingPhonePrefill: string;
 }
 
 export function SettingsTabs({
@@ -40,6 +52,16 @@ export function SettingsTabs({
   credentials,
   showTeamTab,
   showCredentials,
+  showEnrollment,
+  enrollmentData,
+  facilityName,
+  providerName,
+  providerNpi,
+  billingAddressPrefill,
+  billingCityPrefill,
+  billingStatePrefill,
+  billingZipPrefill,
+  billingPhonePrefill,
 }: SettingsTabsProps) {
   const tabs: Tab[] = [
     { key: "profile", label: "Profile", icon: User },
@@ -48,6 +70,9 @@ export function SettingsTabs({
       : []),
     ...(showCredentials
       ? [{ key: "credentials" as TabKey, label: "Credentials", icon: ShieldCheck }]
+      : []),
+    ...(showEnrollment
+      ? [{ key: "enrollment" as TabKey, label: "Enrollment", icon: ClipboardList }]
       : []),
   ];
 
@@ -88,6 +113,19 @@ export function SettingsTabs({
         )}
         {active === "credentials" && showCredentials && (
           <CredentialsTab credentials={credentials} />
+        )}
+        {active === "enrollment" && showEnrollment && (
+          <EnrollmentTab
+            enrollmentData={enrollmentData}
+            facilityName={facilityName}
+            providerName={providerName}
+            providerNpi={providerNpi}
+            billingAddressPrefill={billingAddressPrefill}
+            billingCityPrefill={billingCityPrefill}
+            billingStatePrefill={billingStatePrefill}
+            billingZipPrefill={billingZipPrefill}
+            billingPhonePrefill={billingPhonePrefill}
+          />
         )}
       </div>
     </div>

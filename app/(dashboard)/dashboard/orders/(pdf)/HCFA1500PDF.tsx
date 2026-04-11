@@ -1,3 +1,4 @@
+/** @jsxImportSource react */
 import React from "react";
 import {
   Document,
@@ -6,19 +7,18 @@ import {
   View,
   StyleSheet,
 } from "@react-pdf/renderer";
+import { CB, CBVal } from "./PDFComponents";
 import type { IServiceLine } from "@/utils/interfaces/orders";
 
 /* ── Constants ── */
-const BLACK  = "#000000";
-const RED    = "#CC0000";
-const LGRAY  = "#F5F5F5";
-const GRAY   = "#666666";
+const RED   = "#cc0000";
+const BLACK = "#000000";
+const LGRAY = "#fff5f5";
+const GRAY  = "#666666";
 
-/* ── Helper ── */
+/* ── Helpers ── */
 const f = (v: unknown, fallback = "") =>
   v != null && v !== "" ? String(v) : fallback;
-
-const check = (active: boolean) => (active ? "(X)" : "( )");
 
 function fmtDate(v: unknown): string {
   if (!v) return "";
@@ -42,112 +42,82 @@ const s = StyleSheet.create({
     backgroundColor: "#fff",
   },
 
-  /* Red top bar */
-  redBar: {
-    borderTop: `3px solid ${RED}`,
-    marginBottom: 3,
-  },
-
-  /* Form title row */
-  titleRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 3,
-  },
-  titleLeft: {
-    fontSize: 6,
-    color: GRAY,
-    flex: 1,
-  },
-  titleCenter: {
-    fontSize: 9,
-    fontFamily: "Helvetica-Bold",
-    textAlign: "center",
-    flex: 2,
-  },
-  titleRight: {
-    fontSize: 6,
-    color: GRAY,
-    flex: 1,
-    textAlign: "right",
-  },
-
-  /* Generic outer border */
+  /* Outer form border — red */
   formBorder: {
-    border: `0.75px solid ${BLACK}`,
+    border: `0.75px solid ${RED}`,
   },
 
-  /* Horizontal band (full width) */
+  /* Horizontal band (full-width row) */
   band: {
     flexDirection: "row",
-    borderBottom: `0.5px solid ${BLACK}`,
+    borderBottom: `0.5px solid ${RED}`,
   },
 
-  /* A single cell inside a band */
+  /* A cell inside a band — right border only */
   cell: {
-    borderRight: `0.5px solid ${BLACK}`,
+    borderRight: `0.5px solid ${RED}`,
     padding: "2 3",
   },
   cellLast: {
     padding: "2 3",
   },
 
-  /* Box label (number + caption) */
+  /* Box number + caption */
   boxLabel: {
     fontSize: 5.5,
-    color: GRAY,
+    color: RED,
     marginBottom: 1,
     textTransform: "uppercase",
-    letterSpacing: 0.2,
+    letterSpacing: 0.3,
   },
 
-  /* Value text */
+  /* Field value text */
   val: {
     fontSize: 8,
     color: BLACK,
   },
 
-  /* Section header inside form */
+  /* Section divider bar */
   sectionBar: {
     backgroundColor: LGRAY,
-    borderBottom: `0.5px solid ${BLACK}`,
+    borderBottom: `0.5px solid ${RED}`,
     padding: "2 4",
     fontSize: 6,
     fontFamily: "Helvetica-Bold",
     letterSpacing: 0.5,
     textAlign: "center",
+    color: RED,
   },
 
-  /* Service-line table header */
+  /* Box 24 service lines table header */
   tableHeader: {
     flexDirection: "row",
     backgroundColor: LGRAY,
-    borderBottom: `0.5px solid ${BLACK}`,
+    borderBottom: `0.5px solid ${RED}`,
   },
   thCell: {
     padding: "2 3",
-    borderRight: `0.5px solid ${BLACK}`,
+    borderRight: `0.5px solid ${RED}`,
     fontSize: 5.5,
     fontFamily: "Helvetica-Bold",
     textAlign: "center",
-    color: GRAY,
+    color: RED,
   },
   tableRow: {
     flexDirection: "row",
-    borderBottom: `0.5px solid ${BLACK}`,
+    borderBottom: `0.5px solid ${RED}`,
     minHeight: 14,
   },
   tdCell: {
     padding: "2 3",
-    borderRight: `0.5px solid ${BLACK}`,
+    borderRight: `0.5px solid ${RED}`,
     fontSize: 7,
   },
 
   /* Signature area */
   sigArea: {
     flexDirection: "row",
-    minHeight: 20,
+    minHeight: 24,
   },
 
   footer: {
@@ -159,14 +129,13 @@ const s = StyleSheet.create({
     justifyContent: "space-between",
     fontSize: 6,
     color: GRAY,
-    borderTop: `0.5px solid ${BLACK}`,
+    borderTop: `0.5px solid ${GRAY}`,
     paddingTop: 3,
   },
 });
 
-/* ── Sub-components ── */
-
-function BoxLabel({ num, label }: { num: string; label: string }) {
+/* ── BoxLabel sub-component ── */
+function BL({ num, label }: { num: string; label: string }) {
   return (
     <Text style={s.boxLabel}>
       {num}. {label}
@@ -174,116 +143,106 @@ function BoxLabel({ num, label }: { num: string; label: string }) {
   );
 }
 
-/* ── Main Component ── */
+/* ── YesNo pair ── */
+function YN({ checked }: { checked: boolean }) {
+  return (
+    <View style={{ flexDirection: "row" }}>
+      <CB checked={checked} label="YES" />
+      <CB checked={!checked} label="NO" />
+    </View>
+  );
+}
 
+/* ── Main PDF Component ── */
 export function HCFA1500PDF({
   order,
   hcfa,
 }: {
-  order: Record<string, any>;
-  hcfa: Record<string, any> | null;
+  order: Record<string, unknown>;
+  hcfa: Record<string, unknown> | null;
 }) {
   const h = hcfa ?? {};
-  const insType = f(h.insurance_type, "").toLowerCase();
 
   const patientName = h.patient_last_name
     ? `${f(h.patient_last_name)}, ${f(h.patient_first_name)} ${f(h.patient_middle_initial)}`
-    : order.patient
-      ? `${order.patient.last_name ?? ""}, ${order.patient.first_name ?? ""}`
+    : (order.patient as Record<string, unknown>)
+      ? `${(order.patient as Record<string, unknown>).last_name ?? ""}, ${(order.patient as Record<string, unknown>).first_name ?? ""}`
       : "";
 
   const insuredName = h.insured_last_name
     ? `${f(h.insured_last_name)}, ${f(h.insured_first_name)} ${f(h.insured_middle_initial)}`
     : "";
 
-  const patientDob = h.patient_dob ?? order.patient?.date_of_birth ?? "";
-  const dos = order.date_of_service ?? "";
+  const patientDob = h.patient_dob
+    ?? (order.patient as Record<string, unknown>)?.date_of_birth
+    ?? "";
+
+  const lines: Partial<IServiceLine>[] = Array.isArray(h.service_lines)
+    ? (h.service_lines as Partial<IServiceLine>[])
+    : [];
+
+  const RL = `0.75px solid ${RED}`;
 
   return (
     <Document>
       <Page size="LETTER" style={s.page}>
 
-        {/* Red top bar */}
-        <View style={s.redBar} />
-
-        {/* Form title */}
-        <View style={s.titleRow}>
-          <Text style={s.titleLeft}>
-            APPROVED BY NATIONAL UNIFORM CLAIM COMMITTEE (NUCC) 02/12
+        {/* ── CMS-1500 standard header ── */}
+        <View style={{ borderBottom: `1pt solid ${RED}`, paddingBottom: 3, marginBottom: 4, alignItems: "center" }}>
+          <Text style={{ fontSize: 9, color: RED, fontFamily: "Helvetica-Bold", letterSpacing: 0.5 }}>
+            HEALTH INSURANCE CLAIM FORM
           </Text>
-          <Text style={s.titleCenter}>HEALTH INSURANCE CLAIM FORM</Text>
-          <Text style={s.titleRight}>OMB APPROVAL PENDING</Text>
-        </View>
-
-        {/* ── CARRIER block placeholder ── */}
-        <View
-          style={{
-            border: `0.5px solid ${BLACK}`,
-            padding: "3 4",
-            marginBottom: 0,
-            minHeight: 30,
-            flexDirection: "row",
-            justifyContent: "flex-end",
-          }}
-        >
-          <Text style={{ fontSize: 6, color: GRAY }}>CARRIER</Text>
+          <Text style={{ fontSize: 6, color: GRAY, marginTop: 1 }}>
+            APPROVED BY NATIONAL UNIFORM CLAIM COMMITTEE (NUCC) 02/12{"   "}PICA | PICA
+          </Text>
         </View>
 
         {/* ── ROW 1: Box 1 (insurance type) + Box 1a ── */}
         <View style={[s.band, s.formBorder, { borderBottom: "none" }]}>
-          {/* Box 1 */}
           <View style={[s.cell, { flex: 3 }]}>
-            <BoxLabel num="1" label="Medicare  Medicaid  Tricare  CHAMPVA  Group Health Plan  FECA  Other" />
-            <View style={{ flexDirection: "row", gap: 6, marginTop: 2 }}>
-              {(["medicare","medicaid","tricare","champva","group_health_plan","feca","other"] as const).map(t => (
-                <Text key={t} style={{ fontSize: 7 }}>
-                  {check(insType === t)}{" "}
-                  <Text style={{ fontSize: 6, color: GRAY }}>
-                    {t === "group_health_plan" ? "Group" : t === "feca" ? "FECA" : t.charAt(0).toUpperCase() + t.slice(1)}
-                  </Text>
-                </Text>
-              ))}
+            <BL num="1" label="Medicare  Medicaid  TRICARE  CHAMPVA  Group Health Plan  FECA/Blk Lung  Other" />
+            <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 2 }}>
+              <CBVal current={h.insurance_type} value="medicare"          label="MEDICARE"   />
+              <CBVal current={h.insurance_type} value="medicaid"          label="MEDICAID"   />
+              <CBVal current={h.insurance_type} value="tricare"           label="TRICARE"    />
+              <CBVal current={h.insurance_type} value="champva"           label="CHAMPVA"    />
+              <CBVal current={h.insurance_type} value="group_health_plan" label="GRP HEALTH" />
+              <CBVal current={h.insurance_type} value="feca_blk_lung"     label="FECA"       />
+              <CBVal current={h.insurance_type} value="other"             label="OTHER"      />
             </View>
           </View>
-          {/* Box 1a */}
           <View style={[s.cellLast, { flex: 2 }]}>
-            <BoxLabel num="1a" label="Insured's ID Number" />
+            <BL num="1a" label="Insured's I.D. Number" />
             <Text style={s.val}>{f(h.insured_id_number)}</Text>
           </View>
         </View>
 
         {/* ── ROW 2: Box 2 + Box 3 + Box 4 ── */}
-        <View style={[s.band, { borderLeft: `0.75px solid ${BLACK}`, borderRight: `0.75px solid ${BLACK}` }]}>
-          {/* Box 2 */}
+        <View style={[s.band, { borderLeft: RL, borderRight: RL }]}>
           <View style={[s.cell, { flex: 3 }]}>
-            <BoxLabel num="2" label="Patient's Name (Last, First, Middle Initial)" />
+            <BL num="2" label="Patient's Name (Last, First, Middle Initial)" />
             <Text style={s.val}>{patientName}</Text>
           </View>
-          {/* Box 3 */}
           <View style={[s.cell, { flex: 2 }]}>
-            <BoxLabel num="3" label="Patient's Birth Date / Sex" />
-            <View style={{ flexDirection: "row", gap: 8 }}>
-              <Text style={s.val}>{fmtDate(patientDob)}</Text>
-              <Text style={{ fontSize: 7 }}>
-                {check(f(h.patient_sex) === "male")} M{" "}
-                {check(f(h.patient_sex) === "female")} F
-              </Text>
+            <BL num="3" label="Patient's Birth Date / Sex" />
+            <Text style={[s.val, { marginBottom: 2 }]}>{fmtDate(patientDob)}</Text>
+            <View style={{ flexDirection: "row" }}>
+              <CBVal current={h.patient_sex} value="male"   label="M" />
+              <CBVal current={h.patient_sex} value="female" label="F" />
             </View>
           </View>
-          {/* Box 4 */}
-          <View style={[s.cellLast, { flex: 3 }]}>
-            <BoxLabel num="4" label="Insured's Name (Last, First, Middle Initial)" />
+          <View style={[s.cellLast, { flex: 4 }]}>
+            <BL num="4" label="Insured's Name (Last, First, Middle Initial)" />
             <Text style={s.val}>{insuredName}</Text>
           </View>
         </View>
 
-        {/* ── ROW 3: Box 5 + Box 6 + Box 7 ── */}
-        <View style={[s.band, { borderLeft: `0.75px solid ${BLACK}`, borderRight: `0.75px solid ${BLACK}` }]}>
-          {/* Box 5 */}
+        {/* ── ROW 3a: Box 5 address + Box 6 relationship + Box 7 address ── */}
+        <View style={[s.band, { borderLeft: RL, borderRight: RL }]}>
           <View style={[s.cell, { flex: 3 }]}>
-            <BoxLabel num="5" label="Patient's Address (No., Street)" />
+            <BL num="5" label="Patient's Address (No., Street)" />
             <Text style={s.val}>{f(h.patient_address)}</Text>
-            <View style={{ flexDirection: "row", marginTop: 2, gap: 6 }}>
+            <View style={{ flexDirection: "row", marginTop: 3, gap: 4 }}>
               <View style={{ flex: 2 }}>
                 <Text style={s.boxLabel}>City</Text>
                 <Text style={s.val}>{f(h.patient_city)}</Text>
@@ -293,9 +252,9 @@ export function HCFA1500PDF({
                 <Text style={s.val}>{f(h.patient_state)}</Text>
               </View>
             </View>
-            <View style={{ flexDirection: "row", marginTop: 2, gap: 6 }}>
+            <View style={{ flexDirection: "row", marginTop: 3, gap: 4 }}>
               <View style={{ flex: 1 }}>
-                <Text style={s.boxLabel}>Zip Code</Text>
+                <Text style={s.boxLabel}>ZIP</Text>
                 <Text style={s.val}>{f(h.patient_zip)}</Text>
               </View>
               <View style={{ flex: 1 }}>
@@ -304,25 +263,20 @@ export function HCFA1500PDF({
               </View>
             </View>
           </View>
-          {/* Box 6 */}
           <View style={[s.cell, { flex: 2 }]}>
-            <BoxLabel num="6" label="Patient Relationship to Insured" />
-            <View style={{ flexDirection: "row", gap: 4, flexWrap: "wrap", marginTop: 2 }}>
-              {(["self","spouse","child","other"] as const).map(r => (
-                <Text key={r} style={{ fontSize: 7 }}>
-                  {check(f(h.patient_relationship) === r)}{" "}
-                  <Text style={{ fontSize: 6, color: GRAY }}>
-                    {r.charAt(0).toUpperCase() + r.slice(1)}
-                  </Text>
-                </Text>
-              ))}
+            <BL num="6" label="Patient Relationship to Insured" />
+            <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 2 }}>
+              <CBVal current={h.patient_relationship} value="self"   label="SELF"   />
+              <CBVal current={h.patient_relationship} value="spouse" label="SPOUSE" />
+              <CBVal current={h.patient_relationship} value="child"  label="CHILD"  />
+              <CBVal current={h.patient_relationship} value="other"  label="OTHER"  />
             </View>
+            <BL num="8" label="Reserved for NUCC Use" />
           </View>
-          {/* Box 7 */}
-          <View style={[s.cellLast, { flex: 3 }]}>
-            <BoxLabel num="7" label="Insured's Address (No., Street)" />
+          <View style={[s.cellLast, { flex: 4 }]}>
+            <BL num="7" label="Insured's Address (No., Street)" />
             <Text style={s.val}>{f(h.insured_address)}</Text>
-            <View style={{ flexDirection: "row", marginTop: 2, gap: 6 }}>
+            <View style={{ flexDirection: "row", marginTop: 3, gap: 4 }}>
               <View style={{ flex: 2 }}>
                 <Text style={s.boxLabel}>City</Text>
                 <Text style={s.val}>{f(h.insured_city)}</Text>
@@ -332,9 +286,9 @@ export function HCFA1500PDF({
                 <Text style={s.val}>{f(h.insured_state)}</Text>
               </View>
             </View>
-            <View style={{ flexDirection: "row", marginTop: 2, gap: 6 }}>
+            <View style={{ flexDirection: "row", marginTop: 3, gap: 4 }}>
               <View style={{ flex: 1 }}>
-                <Text style={s.boxLabel}>Zip Code</Text>
+                <Text style={s.boxLabel}>ZIP</Text>
                 <Text style={s.val}>{f(h.insured_zip)}</Text>
               </View>
               <View style={{ flex: 1 }}>
@@ -345,77 +299,69 @@ export function HCFA1500PDF({
           </View>
         </View>
 
-        {/* ── ROW 4: Box 8 (reserved) + Box 9 + Box 9a ── */}
-        <View style={[s.band, { borderLeft: `0.75px solid ${BLACK}`, borderRight: `0.75px solid ${BLACK}` }]}>
-          <View style={[s.cell, { flex: 2 }]}>
-            <BoxLabel num="8" label="Reserved for NUCC Use" />
-            <Text style={s.val}> </Text>
-          </View>
+        {/* ── ROW 4: Box 9 / 9a + Box 10 conditions + Box 11 policy ── */}
+        <View style={[s.band, { borderLeft: RL, borderRight: RL }]}>
+          {/* Left: 9 / 9a-9d */}
           <View style={[s.cell, { flex: 3 }]}>
-            <BoxLabel num="9" label="Other Insured's Name" />
+            <BL num="9" label="Other Insured's Name (Last, First, MI)" />
             <Text style={s.val}>{f(h.other_insured_name)}</Text>
-          </View>
-          <View style={[s.cellLast, { flex: 3 }]}>
-            <BoxLabel num="9a" label="Other Insured's Policy or Group Number" />
+            <Text style={[s.boxLabel, { marginTop: 3 }]}>9a. Other Insured's Policy or Group Number</Text>
             <Text style={s.val}>{f(h.other_insured_policy)}</Text>
+            <Text style={[s.boxLabel, { marginTop: 3 }]}>9d. Insurance Plan Name or Program Name</Text>
+            <Text style={s.val}>{f(h.other_insured_plan)}</Text>
           </View>
-        </View>
-
-        {/* ── ROW 5: Box 10 (conditions) + Box 11 (insured policy) ── */}
-        <View style={[s.band, { borderLeft: `0.75px solid ${BLACK}`, borderRight: `0.75px solid ${BLACK}` }]}>
-          <View style={[s.cell, { flex: 3 }]}>
-            <BoxLabel num="10" label="Is Patient's Condition Related To:" />
-            <View style={{ flexDirection: "row", gap: 8, marginTop: 2 }}>
-              <Text style={{ fontSize: 7 }}>{check(h.condition_employment === true)} Employment</Text>
-              <Text style={{ fontSize: 7 }}>
-                {check(h.condition_auto_accident === true)} Auto Accident
-                {h.condition_auto_accident === true && h.condition_auto_state
-                  ? ` (${String(h.condition_auto_state)})`
-                  : ""}
-              </Text>
-              <Text style={{ fontSize: 7 }}>{check(h.condition_other_accident === true)} Other Accident</Text>
+          {/* Middle: Box 10 */}
+          <View style={[s.cell, { flex: 2 }]}>
+            <BL num="10" label="Is Patient's Condition Related To:" />
+            <Text style={s.boxLabel}>10a. Employment?</Text>
+            <YN checked={h.condition_employment === true} />
+            <Text style={[s.boxLabel, { marginTop: 3 }]}>10b. Auto Accident?</Text>
+            <View style={{ flexDirection: "row" }}>
+              <CB checked={h.condition_auto_accident === true}  label="YES" />
+              <CB checked={h.condition_auto_accident !== true}  label="NO"  />
+              {h.condition_auto_accident === true && h.condition_auto_state
+                ? <Text style={[s.val, { marginLeft: 4 }]}>{f(h.condition_auto_state)}</Text>
+                : null}
             </View>
+            <Text style={[s.boxLabel, { marginTop: 3 }]}>10c. Other Accident?</Text>
+            <YN checked={h.condition_other_accident === true} />
           </View>
-          <View style={[s.cellLast, { flex: 5 }]}>
-            <BoxLabel num="11" label="Insured's Policy Group or FECA Number" />
+          {/* Right: Box 11 group + 11a-11d */}
+          <View style={[s.cellLast, { flex: 4 }]}>
+            <BL num="11" label="Insured's Policy Group or FECA Number" />
             <Text style={s.val}>{f(h.insured_policy_group)}</Text>
-            <View style={{ flexDirection: "row", marginTop: 3, gap: 6 }}>
+            <View style={{ flexDirection: "row", marginTop: 3, gap: 4 }}>
               <View style={{ flex: 1 }}>
                 <Text style={s.boxLabel}>11a. Insured's DOB / Sex</Text>
-                <View style={{ flexDirection: "row", gap: 8 }}>
-                  <Text style={s.val}>{fmtDate(h.insured_dob)}</Text>
-                  <Text style={{ fontSize: 7 }}>
-                    {check(f(h.insured_sex) === "male")} M{" "}
-                    {check(f(h.insured_sex) === "female")} F
-                  </Text>
+                <Text style={[s.val, { marginBottom: 1 }]}>{fmtDate(h.insured_dob)}</Text>
+                <View style={{ flexDirection: "row" }}>
+                  <CBVal current={h.insured_sex} value="male"   label="M" />
+                  <CBVal current={h.insured_sex} value="female" label="F" />
                 </View>
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={s.boxLabel}>11b. Employer's Name or School Name</Text>
+                <Text style={s.boxLabel}>11b. Employer / School Name</Text>
                 <Text style={s.val}>{f(h.insured_employer)}</Text>
               </View>
             </View>
-            <View style={{ flexDirection: "row", marginTop: 3, gap: 6 }}>
+            <View style={{ flexDirection: "row", marginTop: 3, gap: 4 }}>
               <View style={{ flex: 1 }}>
                 <Text style={s.boxLabel}>11c. Insurance Plan Name</Text>
                 <Text style={s.val}>{f(h.insured_plan_name)}</Text>
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={s.boxLabel}>11d. Another Health Benefit Plan?</Text>
-                <Text style={{ fontSize: 7 }}>
-                  {check(h.another_health_benefit === true)} Yes{" "}
-                  {check(h.another_health_benefit !== true)} No
-                </Text>
+                <YN checked={h.another_health_benefit === true} />
               </View>
             </View>
           </View>
         </View>
 
-        {/* ── ROW 6: Box 12 + Box 13 ── */}
-        <View style={[s.band, { borderLeft: `0.75px solid ${BLACK}`, borderRight: `0.75px solid ${BLACK}` }]}>
+        {/* ── ROW 5: Box 12 + Box 13 ── */}
+        <View style={[s.band, { borderLeft: RL, borderRight: RL }]}>
           <View style={[s.cell, { flex: 1 }]}>
-            <BoxLabel num="12" label="Patient's or Authorized Person's Signature" />
-            <Text style={{ fontSize: 7, marginTop: 2 }}>
+            <BL num="12" label="Patient's or Authorized Person's Signature / Date" />
+            <Text style={{ fontSize: 6.5, color: GRAY, marginTop: 1 }}>
               I authorize the release of any medical or other information necessary to process this claim.
             </Text>
             <Text style={{ fontSize: 7, marginTop: 4 }}>
@@ -424,8 +370,8 @@ export function HCFA1500PDF({
             </Text>
           </View>
           <View style={[s.cellLast, { flex: 1 }]}>
-            <BoxLabel num="13" label="Insured's or Authorized Person's Signature" />
-            <Text style={{ fontSize: 7, marginTop: 2 }}>
+            <BL num="13" label="Insured's or Authorized Person's Signature" />
+            <Text style={{ fontSize: 6.5, color: GRAY, marginTop: 1 }}>
               I authorize payment of medical benefits to the undersigned physician or supplier.
             </Text>
             <Text style={{ fontSize: 7, marginTop: 4 }}>
@@ -435,39 +381,32 @@ export function HCFA1500PDF({
         </View>
 
         {/* ── Section divider ── */}
-        <View
-          style={[
-            s.sectionBar,
-            { borderLeft: `0.75px solid ${BLACK}`, borderRight: `0.75px solid ${BLACK}` },
-          ]}
-        >
-          <Text>
-            DATE OF CURRENT ILLNESS/INJURY/PREGNANCY  |  REFERRING PROVIDER  |  HOSPITALIZATION DATES
-          </Text>
+        <View style={[s.sectionBar, { borderLeft: RL, borderRight: RL }]}>
+          <Text>DATE OF ILLNESS / INJURY — REFERRING PROVIDER — HOSPITALIZATION DATES</Text>
         </View>
 
-        {/* ── ROW 7: Box 14 + Box 15 + Box 16 ── */}
-        <View style={[s.band, { borderLeft: `0.75px solid ${BLACK}`, borderRight: `0.75px solid ${BLACK}` }]}>
+        {/* ── ROW 6: Box 14 + Box 15 + Box 16 ── */}
+        <View style={[s.band, { borderLeft: RL, borderRight: RL }]}>
           <View style={[s.cell, { flex: 2 }]}>
-            <BoxLabel num="14" label="Date of Current Illness / Injury / Pregnancy" />
+            <BL num="14" label="Date of Current Illness / Injury / Pregnancy" />
             <View style={{ flexDirection: "row", gap: 4 }}>
-              {h.illness_qualifier ? (
-                <Text style={[s.val, { fontSize: 6, color: GRAY }]}>{f(h.illness_qualifier)}</Text>
-              ) : null}
-              <Text style={s.val}>{fmtDate(h.illness_date || dos)}</Text>
+              {h.illness_qualifier
+                ? <Text style={[s.boxLabel, { marginTop: 1 }]}>{f(h.illness_qualifier)}</Text>
+                : null}
+              <Text style={s.val}>{fmtDate(h.illness_date)}</Text>
             </View>
           </View>
           <View style={[s.cell, { flex: 2 }]}>
-            <BoxLabel num="15" label="Other Date" />
+            <BL num="15" label="Other Date" />
             <View style={{ flexDirection: "row", gap: 4 }}>
-              {h.other_date_qualifier ? (
-                <Text style={[s.val, { fontSize: 6, color: GRAY }]}>{f(h.other_date_qualifier)}</Text>
-              ) : null}
+              {h.other_date_qualifier
+                ? <Text style={[s.boxLabel, { marginTop: 1 }]}>{f(h.other_date_qualifier)}</Text>
+                : null}
               <Text style={s.val}>{h.other_date ? fmtDate(h.other_date) : " "}</Text>
             </View>
           </View>
           <View style={[s.cellLast, { flex: 4 }]}>
-            <BoxLabel num="16" label="Dates Patient Unable to Work in Current Occupation" />
+            <BL num="16" label="Dates Patient Unable to Work in Current Occupation" />
             <View style={{ flexDirection: "row", gap: 8 }}>
               <View>
                 <Text style={s.boxLabel}>From</Text>
@@ -481,10 +420,10 @@ export function HCFA1500PDF({
           </View>
         </View>
 
-        {/* ── ROW 8: Box 17 + Box 18 + Box 19 ── */}
-        <View style={[s.band, { borderLeft: `0.75px solid ${BLACK}`, borderRight: `0.75px solid ${BLACK}` }]}>
+        {/* ── ROW 7: Box 17 + Box 18 + Box 19 ── */}
+        <View style={[s.band, { borderLeft: RL, borderRight: RL }]}>
           <View style={[s.cell, { flex: 3 }]}>
-            <BoxLabel num="17" label="Name of Referring Provider or Other Source" />
+            <BL num="17" label="Name of Referring Provider or Other Source" />
             <Text style={s.val}>{f(h.referring_provider_name)}</Text>
             <View style={{ flexDirection: "row", gap: 6, marginTop: 2 }}>
               <View style={{ flex: 1 }}>
@@ -498,7 +437,7 @@ export function HCFA1500PDF({
             </View>
           </View>
           <View style={[s.cell, { flex: 2 }]}>
-            <BoxLabel num="18" label="Hospitalization Dates Related to Current Services" />
+            <BL num="18" label="Hospitalization Dates Related to Current Services" />
             <View style={{ flexDirection: "row", gap: 8 }}>
               <View>
                 <Text style={s.boxLabel}>From</Text>
@@ -511,148 +450,127 @@ export function HCFA1500PDF({
             </View>
           </View>
           <View style={[s.cellLast, { flex: 3 }]}>
-            <BoxLabel num="19" label="Additional Claim Information" />
+            <BL num="19" label="Additional Claim Information" />
             <Text style={s.val}>{f(h.additional_claim_info)}</Text>
           </View>
         </View>
 
-        {/* ── ROW 9: Box 20 + Box 21 + Box 22 + Box 23 ── */}
-        <View style={[s.band, { borderLeft: `0.75px solid ${BLACK}`, borderRight: `0.75px solid ${BLACK}` }]}>
+        {/* ── ROW 8: Box 20 + Box 21 + Box 22 + Box 23 ── */}
+        <View style={[s.band, { borderLeft: RL, borderRight: RL }]}>
           <View style={[s.cell, { flex: 1.5 }]}>
-            <BoxLabel num="20" label="Outside Lab?" />
-            <Text style={{ fontSize: 7 }}>
-              {check(h.outside_lab === true)} Yes{"  "}
-              {check(h.outside_lab !== true)} No
-            </Text>
-            {h.outside_lab === true && h.outside_lab_charges != null ? (
-              <Text style={[s.val, { marginTop: 1 }]}>${String(h.outside_lab_charges)}</Text>
-            ) : null}
+            <BL num="20" label="Outside Lab? $ Charges" />
+            <YN checked={h.outside_lab === true} />
+            {h.outside_lab === true && h.outside_lab_charges != null
+              ? <Text style={[s.val, { marginTop: 1 }]}>${String(h.outside_lab_charges)}</Text>
+              : null}
           </View>
           <View style={[s.cell, { flex: 4 }]}>
-            <BoxLabel num="21" label="Diagnosis or Nature of Illness or Injury (ICD-10)" />
-            <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
+            <BL num="21" label="Diagnosis or Nature of Illness or Injury — ICD-10" />
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4 }}>
               {(["a","b","c","d","e","f","g","h","i","j","k","l"] as const).map((ltr) => (
-                <View key={ltr} style={{ flexDirection: "row", gap: 2, marginBottom: 2 }}>
-                  <Text style={{ fontSize: 6, color: GRAY }}>{ltr.toUpperCase()}.</Text>
-                  <Text style={s.val}>{f(h[`diagnosis_${ltr}`] ?? "")}</Text>
+                <View key={ltr} style={{ flexDirection: "row", gap: 1, width: "23%" }}>
+                  <Text style={[s.boxLabel, { marginTop: 1, marginRight: 2 }]}>{ltr.toUpperCase()}.</Text>
+                  <Text style={s.val}>{f((h as Record<string, unknown>)[`diagnosis_${ltr}`])}</Text>
                 </View>
               ))}
             </View>
           </View>
           <View style={[s.cell, { flex: 1.5 }]}>
-            <BoxLabel num="22" label="Resubmission Code" />
+            <BL num="22" label="Resubmission Code / Original Ref. No." />
             <Text style={s.val}>{f(h.resubmission_code)}</Text>
-            {h.original_ref_number ? (
-              <Text style={[s.val, { marginTop: 1 }]}>{f(h.original_ref_number)}</Text>
-            ) : null}
+            {h.original_ref_number
+              ? <Text style={[s.val, { marginTop: 1 }]}>{f(h.original_ref_number)}</Text>
+              : null}
           </View>
           <View style={[s.cellLast, { flex: 2 }]}>
-            <BoxLabel num="23" label="Prior Authorization Number" />
+            <BL num="23" label="Prior Authorization Number" />
             <Text style={s.val}>{f(h.prior_auth_number)}</Text>
           </View>
         </View>
 
         {/* ── Box 24: Service Lines Table ── */}
-        <View style={[s.band, { borderLeft: `0.75px solid ${BLACK}`, borderRight: `0.75px solid ${BLACK}`, flexDirection: "column" }]}>
-          {/* Section label */}
+        <View style={[{ borderLeft: RL, borderRight: RL, borderBottom: `0.75px solid ${RED}`, flexDirection: "column" }]}>
           <View style={s.sectionBar}>
             <Text>24. SERVICE LINES</Text>
           </View>
-          {/* Table header */}
+          {/* Header */}
           <View style={s.tableHeader}>
             <Text style={[s.thCell, { flex: 2 }]}>A. Date of Service{"\n"}From / To</Text>
-            <Text style={[s.thCell, { flex: 0.8 }]}>B. POS</Text>
-            <Text style={[s.thCell, { flex: 0.8 }]}>C. EMG</Text>
-            <Text style={[s.thCell, { flex: 2 }]}>D. CPT/HCPCS{"\n"}Modifier</Text>
-            <Text style={[s.thCell, { flex: 1.5 }]}>E. Diagnosis{"\n"}Pointer</Text>
-            <Text style={[s.thCell, { flex: 1.5 }]}>F. $ Charges</Text>
-            <Text style={[s.thCell, { flex: 1 }]}>G. Days/Units</Text>
-            <Text style={[s.thCell, { flex: 1 }]}>H. EPSDT</Text>
-            <Text style={[s.thCell, { flex: 1 }]}>I. ID Qual</Text>
+            <Text style={[s.thCell, { flex: 0.8 }]}>B.{"\n"}POS</Text>
+            <Text style={[s.thCell, { flex: 0.6 }]}>C.{"\n"}EMG</Text>
+            <Text style={[s.thCell, { flex: 2.5 }]}>D. CPT/HCPCS / Modifier</Text>
+            <Text style={[s.thCell, { flex: 1 }]}>E. Diag{"\n"}Ptr</Text>
+            <Text style={[s.thCell, { flex: 1.5 }]}>F. ${"\n"}Charges</Text>
+            <Text style={[s.thCell, { flex: 0.8 }]}>G.{"\n"}Units</Text>
+            <Text style={[s.thCell, { flex: 0.8 }]}>H.{"\n"}EPSDT</Text>
+            <Text style={[s.thCell, { flex: 0.8 }]}>I.{"\n"}ID Qual</Text>
             <Text style={[s.thCell, { flex: 2, borderRight: "none" }]}>J. Rendering{"\n"}Provider NPI</Text>
           </View>
-          {/* Service lines — up to 6, padded with blanks */}
-          {((): React.ReactElement[] => {
-            const rawLines = (h.service_lines as IServiceLine[] | null) ?? [];
-            const padded: (Partial<IServiceLine> | null)[] = [
-              ...rawLines,
-              ...Array(Math.max(0, 6 - rawLines.length)).fill(null),
-            ].slice(0, 6);
-            return padded.map((line, n) => (
-              <View key={n} style={s.tableRow}>
+          {/* 6 service line rows */}
+          {[0,1,2,3,4,5].map((i) => {
+            const line = lines[i] ?? {};
+            return (
+              <View key={i} style={s.tableRow}>
                 <Text style={[s.tdCell, { flex: 2 }]}>
-                  {line?.dos_from ? fmtDate(line.dos_from) : " "}
-                  {line?.dos_to ? ` – ${fmtDate(line.dos_to)}` : ""}
+                  {line.dos_from ? fmtDate(line.dos_from) : " "}
+                  {line.dos_to ? ` – ${fmtDate(line.dos_to)}` : ""}
                 </Text>
-                <Text style={[s.tdCell, { flex: 0.8 }]}>{f(line?.place_of_service)}</Text>
-                <Text style={[s.tdCell, { flex: 0.8 }]}>{line?.emg ? "Y" : " "}</Text>
-                <Text style={[s.tdCell, { flex: 2 }]}>
-                  {f(line?.cpt_code)}
-                  {line?.modifier_1 ? ` ${line.modifier_1}` : ""}
-                  {line?.modifier_2 ? ` ${line.modifier_2}` : ""}
-                  {line?.modifier_3 ? ` ${line.modifier_3}` : ""}
-                  {line?.modifier_4 ? ` ${line.modifier_4}` : ""}
+                <Text style={[s.tdCell, { flex: 0.8 }]}>{f(line.place_of_service)}</Text>
+                <Text style={[s.tdCell, { flex: 0.6 }]}>{line.emg ? "Y" : " "}</Text>
+                <Text style={[s.tdCell, { flex: 2.5 }]}>
+                  {f(line.cpt_code)}
+                  {line.modifier_1 ? ` ${line.modifier_1}` : ""}
+                  {line.modifier_2 ? ` ${line.modifier_2}` : ""}
+                  {line.modifier_3 ? ` ${line.modifier_3}` : ""}
+                  {line.modifier_4 ? ` ${line.modifier_4}` : ""}
                 </Text>
-                <Text style={[s.tdCell, { flex: 1.5 }]}>{f(line?.diagnosis_pointer)}</Text>
-                <Text style={[s.tdCell, { flex: 1.5 }]}>{f(line?.charges)}</Text>
-                <Text style={[s.tdCell, { flex: 1 }]}>{f(line?.days_units)}</Text>
-                <Text style={[s.tdCell, { flex: 1 }]}>{f(line?.epsdt)}</Text>
-                <Text style={[s.tdCell, { flex: 1 }]}>{f(line?.id_qualifier)}</Text>
-                <Text style={[s.tdCell, { flex: 2, borderRight: "none" }]}>{f(line?.rendering_npi)}</Text>
+                <Text style={[s.tdCell, { flex: 1 }]}>{f(line.diagnosis_pointer)}</Text>
+                <Text style={[s.tdCell, { flex: 1.5 }]}>{f(line.charges)}</Text>
+                <Text style={[s.tdCell, { flex: 0.8 }]}>{f(line.days_units)}</Text>
+                <Text style={[s.tdCell, { flex: 0.8 }]}>{f(line.epsdt)}</Text>
+                <Text style={[s.tdCell, { flex: 0.8 }]}>{f(line.id_qualifier)}</Text>
+                <Text style={[s.tdCell, { flex: 2, borderRight: "none" }]}>{f(line.rendering_npi)}</Text>
               </View>
-            ));
-          })()}
+            );
+          })}
         </View>
 
-        {/* ── ROW 10: Box 25 + Box 26 + Box 27 + Box 28 + Box 29 + Box 30 ── */}
-        <View style={[s.band, { borderLeft: `0.75px solid ${BLACK}`, borderRight: `0.75px solid ${BLACK}` }]}>
+        {/* ── ROW 9: Box 25 + 26 + 27 + 28 + 29 + 30 ── */}
+        <View style={[s.band, { borderLeft: RL, borderRight: RL }]}>
           <View style={[s.cell, { flex: 2 }]}>
-            <BoxLabel num="25" label="Federal Tax ID Number  SSN / EIN" />
-            <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
-              <Text style={s.val}>{f(h.federal_tax_id)}</Text>
-              <Text style={{ fontSize: 6 }}>
-                {check(h.tax_id_ssn === true)} SSN{" "}
-                {check(h.tax_id_ssn !== true)} EIN
-              </Text>
+            <BL num="25" label="Federal Tax I.D. Number  SSN / EIN" />
+            <Text style={[s.val, { marginBottom: 1 }]}>{f(h.federal_tax_id)}</Text>
+            <View style={{ flexDirection: "row" }}>
+              <CB checked={h.tax_id_ssn === true}  label="SSN" />
+              <CB checked={h.tax_id_ssn !== true}  label="EIN" />
             </View>
           </View>
           <View style={[s.cell, { flex: 2 }]}>
-            <BoxLabel num="26" label="Patient's Account No." />
+            <BL num="26" label="Patient's Account No." />
             <Text style={s.val}>{f(h.patient_account_number)}</Text>
           </View>
           <View style={[s.cell, { flex: 1.5 }]}>
-            <BoxLabel num="27" label="Accept Assignment?" />
-            <Text style={{ fontSize: 7 }}>
-              {check(h.accept_assignment === true)} Yes{" "}
-              {check(h.accept_assignment !== true)} No
-            </Text>
+            <BL num="27" label="Accept Assignment?" />
+            <YN checked={h.accept_assignment === true} />
           </View>
           <View style={[s.cell, { flex: 1.5 }]}>
-            <BoxLabel num="28" label="Total Charge" />
+            <BL num="28" label="Total Charge" />
             <Text style={s.val}>{h.total_charge != null ? `$${String(h.total_charge)}` : " "}</Text>
           </View>
           <View style={[s.cell, { flex: 1.5 }]}>
-            <BoxLabel num="29" label="Amount Paid" />
+            <BL num="29" label="Amount Paid" />
             <Text style={s.val}>{h.amount_paid != null ? `$${String(h.amount_paid)}` : " "}</Text>
           </View>
           <View style={[s.cellLast, { flex: 1.5 }]}>
-            <BoxLabel num="30" label="Reserved for NUCC Use" />
+            <BL num="30" label="Reserved for NUCC Use" />
             <Text style={s.val}>{f(h.rsvd_nucc)}</Text>
           </View>
         </View>
 
-        {/* ── ROW 11: Box 31 + Box 32 + Box 33 ── */}
-        <View
-          style={[
-            s.sigArea,
-            {
-              border: `0.75px solid ${BLACK}`,
-              borderTop: "none",
-            },
-          ]}
-        >
+        {/* ── ROW 10: Box 31 + Box 32 + Box 33 ── */}
+        <View style={[s.sigArea, { border: `0.75px solid ${RED}`, borderTop: "none" }]}>
           <View style={[s.cell, { flex: 2 }]}>
-            <BoxLabel num="31" label="Signature of Physician or Supplier" />
+            <BL num="31" label="Signature of Physician or Supplier / Date" />
             <Text style={{ fontSize: 6, color: GRAY, marginTop: 1 }}>
               I certify that the statements on the reverse apply to this bill and are made a part hereof.
             </Text>
@@ -666,10 +584,10 @@ export function HCFA1500PDF({
             </Text>
           </View>
           <View style={[s.cell, { flex: 3 }]}>
-            <BoxLabel num="32" label="Service Facility Location Information" />
+            <BL num="32" label="Service Facility Location Information" />
             <Text style={s.val}>{f(h.service_facility_name)}</Text>
             <Text style={s.val}>{f(h.service_facility_address)}</Text>
-            <View style={{ flexDirection: "row", marginTop: 2, gap: 6 }}>
+            <View style={{ flexDirection: "row", marginTop: 3, gap: 6 }}>
               <View style={{ flex: 1 }}>
                 <Text style={s.boxLabel}>32a. NPI</Text>
                 <Text style={s.val}>{f(h.service_facility_npi)}</Text>
@@ -681,11 +599,11 @@ export function HCFA1500PDF({
             </View>
           </View>
           <View style={[s.cellLast, { flex: 3 }]}>
-            <BoxLabel num="33" label="Billing Provider Info & Ph #" />
+            <BL num="33" label="Billing Provider Info & Ph #" />
             <Text style={s.val}>{f(h.billing_provider_name)}</Text>
             <Text style={s.val}>{f(h.billing_provider_address)}</Text>
             <Text style={s.val}>{f(h.billing_provider_phone)}</Text>
-            <View style={{ flexDirection: "row", marginTop: 2, gap: 6 }}>
+            <View style={{ flexDirection: "row", marginTop: 3, gap: 6 }}>
               <View style={{ flex: 1 }}>
                 <Text style={s.boxLabel}>33a. NPI</Text>
                 <Text style={s.val}>{f(h.billing_provider_npi)}</Text>
@@ -698,15 +616,11 @@ export function HCFA1500PDF({
           </View>
         </View>
 
-        {/* Footer */}
+        {/* ── Footer ── */}
         <View style={s.footer} fixed>
-          <Text>NUCC Instruction Manual at www.nucc.org  |  HB Medical Portal</Text>
+          <Text>NUCC Instruction Manual available at www.nucc.org</Text>
           <Text>Order #{f(order.order_number)}</Text>
-          <Text
-            render={({ pageNumber, totalPages }) =>
-              `Page ${pageNumber} of ${totalPages}`
-            }
-          />
+          <Text render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`} />
         </View>
 
       </Page>

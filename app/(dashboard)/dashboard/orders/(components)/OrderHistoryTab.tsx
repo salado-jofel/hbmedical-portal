@@ -31,14 +31,14 @@ export function OrderHistoryTab({ isActive, isReady, history }: OrderHistoryTabP
   return (
     <div
       className={cn(
-        "absolute inset-0 overflow-y-auto px-6 py-6",
+        "absolute inset-0 overflow-y-auto",
         !isActive && "hidden",
       )}
     >
       {!isReady ? (
         <HistorySkeleton />
       ) : history.length === 0 ? (
-        <div className="flex flex-col items-center py-12 text-center">
+        <div className="flex flex-col items-center px-6 py-12 text-center">
           <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mb-3">
             <Clock className="w-5 h-5 text-gray-300" />
           </div>
@@ -48,6 +48,7 @@ export function OrderHistoryTab({ isActive, isReady, history }: OrderHistoryTabP
           </p>
         </div>
       ) : (
+        <div className="px-6 py-6">
         <div className="relative pl-5">
           <div className="absolute left-2 top-0 bottom-0 w-0.5 bg-gray-100" />
           {history.map((h) => (
@@ -100,6 +101,7 @@ export function OrderHistoryTab({ isActive, isReady, history }: OrderHistoryTabP
               )}
             </div>
           ))}
+        </div>
         </div>
       )}
     </div>

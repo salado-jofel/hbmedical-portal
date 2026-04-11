@@ -85,6 +85,15 @@ function mapIvrRow(data: Record<string, unknown>): IOrderIVR {
     verifiedDate:                data.verified_date as string | null,
     verificationReference:       data.verification_reference as string | null,
     notes:                       data.notes as string | null,
+    salesRepName:                data.sales_rep_name as string | null,
+    woundType:                   data.wound_type as string | null,
+    woundSizes:                  data.wound_sizes as string | null,
+    dateOfProcedure:             data.date_of_procedure as string | null,
+    icd10Codes:                  data.icd10_codes as string | null,
+    productInformation:          data.product_information as string | null,
+    isPatientAtSnf:              data.is_patient_at_snf as boolean | null,
+    physicianSignature:          data.physician_signature as string | null,
+    physicianSignatureDate:      data.physician_signature_date as string | null,
     aiExtracted:                 (data.ai_extracted as boolean) ?? false,
     createdAt:                   data.created_at as string,
     updatedAt:                   data.updated_at as string,
@@ -93,110 +102,30 @@ function mapIvrRow(data: Record<string, unknown>): IOrderIVR {
 
 export async function getOrderIVR(
   orderId: string,
-): Promise<{ ivr: IOrderIVR | null; physicianName: string | null }> {
+): Promise<{ ivr: IOrderIVR | null }> {
   try {
     const supabase = await createClient();
     await getCurrentUserOrThrow(supabase);
 
     const adminClient = createAdminClient();
 
-    // Fetch IVR record and order context in parallel
-    const [ivrRes, orderCtxRes] = await Promise.all([
-      adminClient.from("order_ivr").select("*").eq("order_id", orderId).maybeSingle(),
-      adminClient
-        .from("orders")
-        .select(`
-          assigned_provider_id, created_by,
-          facilities!orders_facility_id_fkey(name, address_line_1, phone, contact),
-          patients!orders_patient_id_fkey(first_name, last_name, date_of_birth)
-        `)
-        .eq("id", orderId)
-        .single(),
-    ]);
+    const { data, error } = await adminClient
+      .from("order_ivr")
+      .select("*")
+      .eq("order_id", orderId)
+      .maybeSingle();
 
-    if (ivrRes.error) {
-      console.error("[getOrderIVR]", JSON.stringify(ivrRes.error));
-      return { ivr: null, physicianName: null };
+    if (error) {
+      console.error("[getOrderIVR]", JSON.stringify(error));
+      return { ivr: null };
     }
 
-    const orderCtx = orderCtxRes.data;
+    if (!data) return { ivr: null };
 
-    // Resolve facility from join
-    const facilityRaw = orderCtx?.facilities as unknown;
-    const facility = (Array.isArray(facilityRaw) ? facilityRaw[0] : facilityRaw) as
-      | { name: string; address_line_1: string | null; phone: string | null; contact: string | null }
-      | null | undefined;
-
-    // Resolve patient from join
-    const patientRaw = orderCtx?.patients as unknown;
-    const patient = (Array.isArray(patientRaw) ? patientRaw[0] : patientRaw) as
-      | { first_name: string; last_name: string; date_of_birth: string | null }
-      | null | undefined;
-    const resolvedPatientName = patient?.first_name
-      ? `${patient.first_name} ${patient.last_name ?? ""}`.trim()
-      : null;
-
-    // Resolve physician name: assigned_provider_id → created_by fallback
-    let physicianName: string | null = null;
-    try {
-      const providerId = orderCtx?.assigned_provider_id || orderCtx?.created_by;
-      if (providerId) {
-        const { data: profile } = await adminClient
-          .from("profiles")
-          .select("first_name, last_name")
-          .eq("id", providerId)
-          .maybeSingle();
-        if (profile) {
-          physicianName = `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() || null;
-        }
-      }
-    } catch {
-      // Non-fatal
-    }
-
-    let data = ivrRes.data;
-
-    // Auto-initialize a new IVR record pre-populated from source tables (Fix 5)
-    if (!data) {
-      await adminClient.from("order_ivr").upsert(
-        {
-          order_id:         orderId,
-          place_of_service: "office",
-          subscriber_name:  resolvedPatientName,
-          // Override columns pre-populated from source tables
-          facility_name:    facility?.name ?? null,
-          facility_address: facility?.address_line_1 ?? null,
-          facility_phone:   facility?.phone ?? null,
-          facility_contact: facility?.contact ?? null,
-          physician_name:   physicianName,
-          patient_name:     resolvedPatientName,
-          patient_dob:      patient?.date_of_birth ?? null,
-        },
-        { onConflict: "order_id" },
-      );
-
-      const { data: created } = await adminClient
-        .from("order_ivr").select("*").eq("order_id", orderId).single();
-      data = created;
-    }
-
-    if (!data) return { ivr: null, physicianName };
-
-    const ivrData = mapIvrRow(data as Record<string, unknown>);
-
-    // Fix 2: Apply source table fallback for null override fields
-    if (!ivrData.facilityName)    ivrData.facilityName    = facility?.name    ?? null;
-    if (!ivrData.facilityAddress) ivrData.facilityAddress = facility?.address_line_1 ?? null;
-    if (!ivrData.facilityPhone)   ivrData.facilityPhone   = facility?.phone   ?? null;
-    if (!ivrData.facilityContact) ivrData.facilityContact = facility?.contact  ?? null;
-    if (!ivrData.physicianName)   ivrData.physicianName   = physicianName;
-    if (!ivrData.patientName)     ivrData.patientName     = resolvedPatientName;
-    if (!ivrData.patientDob)      ivrData.patientDob      = patient?.date_of_birth ?? null;
-
-    return { ivr: ivrData, physicianName };
+    return { ivr: mapIvrRow(data as Record<string, unknown>) };
   } catch (err) {
     console.error("[getOrderIVR] unexpected:", err);
-    return { ivr: null, physicianName: null };
+    return { ivr: null };
   }
 }
 
@@ -284,6 +213,16 @@ export async function upsertOrderIVR(
     if (data.verifiedDate !== undefined) payload.verified_date = data.verifiedDate;
     if (data.verificationReference !== undefined) payload.verification_reference = data.verificationReference;
     if (data.notes !== undefined) payload.notes = data.notes;
+    // New document fields
+    if (data.salesRepName !== undefined)         payload.sales_rep_name         = data.salesRepName;
+    if (data.woundType !== undefined)            payload.wound_type             = data.woundType;
+    if (data.woundSizes !== undefined)           payload.wound_sizes            = data.woundSizes;
+    if (data.dateOfProcedure !== undefined)      payload.date_of_procedure      = data.dateOfProcedure;
+    if (data.icd10Codes !== undefined)           payload.icd10_codes            = data.icd10Codes;
+    if (data.productInformation !== undefined)   payload.product_information    = data.productInformation;
+    if (data.isPatientAtSnf !== undefined)       payload.is_patient_at_snf      = data.isPatientAtSnf;
+    if (data.physicianSignature !== undefined)   payload.physician_signature    = data.physicianSignature;
+    if (data.physicianSignatureDate !== undefined) payload.physician_signature_date = data.physicianSignatureDate;
 
     const { error } = await adminClient
       .from("order_ivr")
@@ -340,27 +279,55 @@ export async function getOrderAiStatus(
   return {
     aiExtracted: true,
     orderForm: {
-      id:                    form.id,
-      orderId:               form.order_id,
-      woundVisitNumber:      form.wound_visit_number ?? null,
-      chiefComplaint:        form.chief_complaint ?? null,
-      hasVasculitisOrBurns:  form.has_vasculitis_or_burns ?? false,
-      isReceivingHomeHealth: form.is_receiving_home_health ?? false,
-      isPatientAtSnf:        form.is_patient_at_snf ?? false,
-      icd10Code:             form.icd10_code ?? null,
-      followupDays:          form.followup_days ?? null,
-      woundSite:             form.wound_site ?? null,
-      woundStage:            form.wound_stage ?? null,
-      woundLengthCm:         form.wound_length_cm ?? null,
-      woundWidthCm:          form.wound_width_cm ?? null,
-      woundDepthCm:          form.wound_depth_cm ?? null,
-      subjectiveSymptoms:    form.subjective_symptoms ?? [],
-      clinicalNotes:         form.clinical_notes ?? null,
-      aiExtracted:           form.ai_extracted ?? false,
-      aiExtractedAt:         form.ai_extracted_at ?? null,
-      isLocked:              form.is_locked ?? false,
-      lockedAt:              form.locked_at ?? null,
-      lockedBy:              form.locked_by ?? null,
+      id:                          form.id,
+      orderId:                     form.order_id,
+      woundVisitNumber:            form.wound_visit_number ?? null,
+      chiefComplaint:              form.chief_complaint ?? null,
+      hasVasculitisOrBurns:        form.has_vasculitis_or_burns ?? false,
+      isReceivingHomeHealth:       form.is_receiving_home_health ?? false,
+      isPatientAtSnf:              form.is_patient_at_snf ?? false,
+      icd10Code:                   form.icd10_code ?? null,
+      followupDays:                form.followup_days ?? null,
+      woundSite:                   form.wound_site ?? null,
+      woundStage:                  form.wound_stage ?? null,
+      woundLengthCm:               form.wound_length_cm ?? null,
+      woundWidthCm:                form.wound_width_cm ?? null,
+      woundDepthCm:                form.wound_depth_cm ?? null,
+      subjectiveSymptoms:          form.subjective_symptoms ?? [],
+      clinicalNotes:               form.clinical_notes ?? null,
+      conditionDecreasedMobility:  form.condition_decreased_mobility ?? false,
+      conditionDiabetes:           form.condition_diabetes ?? false,
+      conditionInfection:          form.condition_infection ?? false,
+      conditionCvd:                form.condition_cvd ?? false,
+      conditionCopd:               form.condition_copd ?? false,
+      conditionChf:                form.condition_chf ?? false,
+      conditionAnemia:             form.condition_anemia ?? false,
+      useBloodThinners:            form.use_blood_thinners ?? false,
+      bloodThinnerDetails:         form.blood_thinner_details ?? null,
+      woundLocationSide:           (form.wound_location_side as "RT" | "LT" | "bilateral" | null) ?? null,
+      granulationTissuePct:        form.granulation_tissue_pct ?? null,
+      exudateAmount:               (form.exudate_amount as "none" | "minimal" | "moderate" | "heavy" | null) ?? null,
+      thirdDegreeBurns:            form.third_degree_burns ?? false,
+      activeVasculitis:            form.active_vasculitis ?? false,
+      activeCharcot:               form.active_charcot ?? false,
+      skinCondition:               (form.skin_condition as "normal" | "thin" | "atrophic" | "stasis" | "ischemic" | null) ?? null,
+      wound2LengthCm:              form.wound2_length_cm ?? null,
+      wound2WidthCm:               form.wound2_width_cm ?? null,
+      wound2DepthCm:               form.wound2_depth_cm ?? null,
+      surgicalDressingType:        form.surgical_dressing_type ?? null,
+      anticipatedLengthDays:       form.anticipated_length_days ?? null,
+      followupWeeks:               form.followup_weeks ?? null,
+      drainageDescription:         form.drainage_description ?? null,
+      treatmentPlan:               form.treatment_plan ?? null,
+      patientName:                 form.patient_name ?? null,
+      patientDate:                 form.patient_date ?? null,
+      physicianSignature:          form.physician_signature ?? null,
+      physicianSignatureDate:      form.physician_signature_date ?? null,
+      aiExtracted:                 form.ai_extracted ?? false,
+      aiExtractedAt:               form.ai_extracted_at ?? null,
+      isLocked:                    form.is_locked ?? false,
+      lockedAt:                    form.locked_at ?? null,
+      lockedBy:                    form.locked_by ?? null,
     },
   };
 }

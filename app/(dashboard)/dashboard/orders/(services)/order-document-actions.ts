@@ -209,10 +209,101 @@ export async function upsertForm1500(
 
 export async function getForm1500(orderId: string) {
   const supabase = await createClient();
-  const { data } = await supabase
-    .from("order_form_1500")
-    .select("*")
-    .eq("order_id", orderId)
-    .maybeSingle();
-  return data ?? null;
+  await getCurrentUserOrThrow(supabase);
+  const adminClient = createAdminClient();
+
+  // Fetch form row and order context (facility + enrollment) in parallel
+  const [formRes, orderCtxRes] = await Promise.all([
+    adminClient
+      .from("order_form_1500")
+      .select("*")
+      .eq("order_id", orderId)
+      .maybeSingle(),
+    adminClient
+      .from("orders")
+      .select(`
+        facilities!orders_facility_id_fkey(
+          name, phone, address_line_1,
+          facility_enrollment(
+            facility_npi, facility_tin, facility_ein,
+            billing_address, billing_city, billing_state, billing_zip,
+            billing_phone, billing_fax
+          )
+        )
+      `)
+      .eq("id", orderId)
+      .maybeSingle(),
+  ]);
+
+  // Resolve facility and enrollment from join
+  const facilityRaw = orderCtxRes.data?.facilities as unknown;
+  const facility = (Array.isArray(facilityRaw) ? facilityRaw[0] : facilityRaw) as {
+    name: string;
+    phone: string | null;
+    address_line_1: string | null;
+    facility_enrollment?: unknown[] | null;
+  } | null | undefined;
+
+  const enrollmentRaw = facility?.facility_enrollment;
+  const enrollment = (Array.isArray(enrollmentRaw) ? enrollmentRaw[0] : enrollmentRaw) as {
+    facility_npi:    string | null;
+    facility_tin:    string | null;
+    facility_ein:    string | null;
+    billing_address: string | null;
+    billing_city:    string | null;
+    billing_state:   string | null;
+    billing_zip:     string | null;
+    billing_phone:   string | null;
+    billing_fax:     string | null;
+  } | null | undefined;
+
+  // Build a formatted billing address string
+  const billingAddress = enrollment
+    ? [
+        enrollment.billing_address,
+        [enrollment.billing_city, enrollment.billing_state].filter(Boolean).join(", "),
+        enrollment.billing_zip,
+      ].filter(Boolean).join(" ") || null
+    : null;
+
+  // Auto-initialize when no row exists yet
+  let row = formRes.data as Record<string, unknown> | null;
+  if (!row && (facility || enrollment)) {
+    const initPayload: Record<string, unknown> = {
+      order_id: orderId,
+      // Box 25 — Federal Tax ID
+      federal_tax_id:          enrollment?.facility_tin ?? enrollment?.facility_ein ?? null,
+      // Box 32 — Service Facility
+      service_facility_name:   facility?.name ?? null,
+      service_facility_address: billingAddress,
+      service_facility_npi:    enrollment?.facility_npi ?? null,
+      // Box 33 — Billing Provider
+      billing_provider_name:   facility?.name ?? null,
+      billing_provider_address: billingAddress,
+      billing_provider_phone:  enrollment?.billing_phone ?? facility?.phone ?? null,
+      billing_provider_npi:    enrollment?.facility_npi ?? null,
+      billing_provider_tax_id: enrollment?.facility_tin ?? null,
+    };
+    const { data: created } = await adminClient
+      .from("order_form_1500")
+      .upsert(initPayload, { onConflict: "order_id" })
+      .select("*")
+      .single();
+    row = created as Record<string, unknown> | null;
+  }
+
+  if (!row) return null;
+
+  // Apply enrollment fallbacks for null billing/facility fields on existing rows
+  if (!row.federal_tax_id)           row.federal_tax_id           = enrollment?.facility_tin ?? enrollment?.facility_ein ?? null;
+  if (!row.service_facility_name)    row.service_facility_name    = facility?.name ?? null;
+  if (!row.service_facility_address) row.service_facility_address = billingAddress;
+  if (!row.service_facility_npi)     row.service_facility_npi     = enrollment?.facility_npi ?? null;
+  if (!row.billing_provider_name)    row.billing_provider_name    = facility?.name ?? null;
+  if (!row.billing_provider_address) row.billing_provider_address = billingAddress;
+  if (!row.billing_provider_phone)   row.billing_provider_phone   = enrollment?.billing_phone ?? facility?.phone ?? null;
+  if (!row.billing_provider_npi)     row.billing_provider_npi     = enrollment?.facility_npi ?? null;
+  if (!row.billing_provider_tax_id)  row.billing_provider_tax_id  = enrollment?.facility_tin ?? null;
+
+  return row;
 }
