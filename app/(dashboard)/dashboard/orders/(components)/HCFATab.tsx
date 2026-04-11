@@ -1,6 +1,6 @@
 "use client";
 
-import { Form1500Tab } from "./Form1500Tab";
+import { HCFA1500Document } from "./HCFA1500Document";
 import { cn } from "@/utils/utils";
 
 function FormSkeleton() {
@@ -31,6 +31,7 @@ interface HCFATabProps {
   hcfaData: Record<string, unknown> | null;
   resetHcfaKey: number;
   isReady: boolean;
+  isExtracting?: boolean;
   onDirtyChange: (dirty: boolean) => void;
   onSave: (saved: Record<string, unknown>) => void | Promise<void>;
 }
@@ -42,25 +43,25 @@ export function HCFATab({
   hcfaData,
   resetHcfaKey,
   isReady,
+  isExtracting = false,
   onDirtyChange,
   onSave,
 }: HCFATabProps) {
   return (
     <div
       className={cn(
-        "absolute inset-0 overflow-y-auto px-6",
+        "absolute inset-0 overflow-y-auto px-3",
         !isActive && "hidden",
       )}
     >
-      {!isReady ? (
+      {!isReady || isExtracting ? (
         <FormSkeleton />
       ) : (
-        <Form1500Tab
+        <HCFA1500Document
           key={resetHcfaKey}
           orderId={orderId}
           canEdit={canEdit}
           initialData={hcfaData}
-          isReady={true}
           onDirtyChange={onDirtyChange}
           onSave={onSave}
         />

@@ -275,6 +275,16 @@ export interface IOrderIVR {
   verifiedDate: string | null;
   verificationReference: string | null;
   notes: string | null;
+  // New document fields
+  salesRepName: string | null;
+  woundType: string | null;
+  woundSizes: string | null;
+  dateOfProcedure: string | null;
+  icd10Codes: string | null;
+  productInformation: string | null;
+  isPatientAtSnf: boolean | null;
+  physicianSignature: string | null;
+  physicianSignatureDate: string | null;
   aiExtracted: boolean;
   createdAt: string;
   updatedAt: string;
@@ -410,6 +420,43 @@ export interface IOrderForm {
   woundDepthCm: number | null;
   subjectiveSymptoms: string[];
   clinicalNotes: string | null;
+  // Medical conditions
+  conditionDecreasedMobility: boolean;
+  conditionDiabetes: boolean;
+  conditionInfection: boolean;
+  conditionCvd: boolean;
+  conditionCopd: boolean;
+  conditionChf: boolean;
+  conditionAnemia: boolean;
+  // Blood thinners
+  useBloodThinners: boolean;
+  bloodThinnerDetails: string | null;
+  // Wound details
+  woundLocationSide: "RT" | "LT" | "bilateral" | null;
+  granulationTissuePct: number | null;
+  exudateAmount: "none" | "minimal" | "moderate" | "heavy" | null;
+  thirdDegreeBurns: boolean;
+  activeVasculitis: boolean;
+  activeCharcot: boolean;
+  skinCondition: "normal" | "thin" | "atrophic" | "stasis" | "ischemic" | null;
+  // Second wound
+  wound2LengthCm: number | null;
+  wound2WidthCm: number | null;
+  wound2DepthCm: number | null;
+  // Surgical dressing
+  surgicalDressingType: string | null;
+  // Anticipated length & follow-up
+  anticipatedLengthDays: number | null;
+  followupWeeks: number | null;
+  // Treatment
+  drainageDescription: string | null;
+  treatmentPlan: string | null;
+  // Signature section
+  patientName: string | null;
+  patientDate: string | null;
+  physicianSignature: string | null;
+  physicianSignatureDate: string | null;
+  // Meta
   aiExtracted: boolean;
   aiExtractedAt: string | null;
   isLocked: boolean;

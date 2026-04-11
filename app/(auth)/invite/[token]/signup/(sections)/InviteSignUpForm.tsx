@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronRight, ChevronLeft, UserCheck, User, Lock, FileCheck, Building2, Loader2, AlertCircle, Check } from "lucide-react";
+import { ChevronRight, ChevronLeft, UserCheck, User, Lock, FileCheck, Building2, Loader2, AlertCircle, Check, ClipboardList } from "lucide-react";
 import { HBLogo } from "@/app/(components)/HBLogo";
 import { AuthField } from "@/app/(components)/AuthField";
 import { AuthCard } from "@/app/(components)/AuthCard";
@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { inviteSignUp, getContractSignedUrls } from "../(services)/actions";
+import { EnrollmentFormDocument } from "../(components)/EnrollmentFormDocument";
 import type { InviteSignUpState } from "@/utils/interfaces/invite";
 import { CREDENTIAL_OPTIONS } from "@/utils/constants/auth";
 import type { InviteTokenRole } from "@/utils/interfaces/invite-tokens";
@@ -96,6 +97,46 @@ export default function InviteSignUpForm({
   const [isRetrying, setIsRetrying] = useState(false);
   const [clientError, setClientError] = useState("");
 
+  // Enrollment state — clinical_provider only
+  const [facilityEin, setFacilityEin] = useState("");
+  const [facilityNpi, setFacilityNpi] = useState("");
+  const [facilityTin, setFacilityTin] = useState("");
+  const [facilityPtan, setFacilityPtan] = useState("");
+  const [apContactName, setApContactName] = useState("");
+  const [apContactEmail, setApContactEmail] = useState("");
+  const [billingFax, setBillingFax] = useState("");
+  const [dpaContact, setDpaContact] = useState("");
+  const [dpaContactEmail, setDpaContactEmail] = useState("");
+  const [additionalProvider1Name, setAdditionalProvider1Name] = useState("");
+  const [additionalProvider1Npi, setAdditionalProvider1Npi] = useState("");
+  const [additionalProvider2Name, setAdditionalProvider2Name] = useState("");
+  const [additionalProvider2Npi, setAdditionalProvider2Npi] = useState("");
+  const [shippingFacilityName, setShippingFacilityName] = useState("");
+  const [shippingFacilityNpi, setShippingFacilityNpi] = useState("");
+  const [shippingFacilityTin, setShippingFacilityTin] = useState("");
+  const [shippingFacilityPtan, setShippingFacilityPtan] = useState("");
+  const [shippingContactName, setShippingContactName] = useState("");
+  const [shippingContactEmail, setShippingContactEmail] = useState("");
+  const [shippingAddress, setShippingAddress] = useState("");
+  const [shippingDaysTimes, setShippingDaysTimes] = useState("");
+  const [shippingPhone, setShippingPhone] = useState("");
+  const [shippingFax, setShippingFax] = useState("");
+  const [shipping2FacilityName, setShipping2FacilityName] = useState("");
+  const [shipping2FacilityNpi, setShipping2FacilityNpi] = useState("");
+  const [shipping2FacilityTin, setShipping2FacilityTin] = useState("");
+  const [shipping2FacilityPtan, setShipping2FacilityPtan] = useState("");
+  const [shipping2ContactName, setShipping2ContactName] = useState("");
+  const [shipping2ContactEmail, setShipping2ContactEmail] = useState("");
+  const [shipping2Address, setShipping2Address] = useState("");
+  const [shipping2DaysTimes, setShipping2DaysTimes] = useState("");
+  const [shipping2Phone, setShipping2Phone] = useState("");
+  const [shipping2Fax, setShipping2Fax] = useState("");
+  const [claimsContactName, setClaimsContactName] = useState("");
+  const [claimsContactPhone, setClaimsContactPhone] = useState("");
+  const [claimsContactEmail, setClaimsContactEmail] = useState("");
+  const [claimsThirdParty, setClaimsThirdParty] = useState("");
+  const [missingEnrollFields, setMissingEnrollFields] = useState<Set<string>>(new Set());
+
   // Office step only for clinical_provider WITHOUT a pre-assigned facility
   // (sales_rep and clinical_staff never get an office step here)
   const needsOfficeStep = role === "clinical_provider" && !facilityId;
@@ -107,17 +148,20 @@ export default function InviteSignUpForm({
         { label: "Office", icon: Building2 },
         { label: "Security", icon: Lock },
         { label: "Agree", icon: FileCheck },
+        ...(role === "clinical_provider" ? [{ label: "Enroll", icon: ClipboardList }] : []),
       ]
     : [
         { label: "Role", icon: UserCheck },
         { label: "Info", icon: User },
         { label: "Security", icon: Lock },
         { label: "Agree", icon: FileCheck },
+        ...(role === "clinical_provider" ? [{ label: "Enroll", icon: ClipboardList }] : []),
       ];
 
   const officeStepIndex = needsOfficeStep ? 2 : null;
   const securityStepIndex = needsOfficeStep ? 3 : 2;
   const agreeStepIndex = needsOfficeStep ? 4 : 3;
+  const enrollStepIndex = role === "clinical_provider" ? agreeStepIndex + 1 : null;
 
   async function handleRetry(e: React.MouseEvent) {
     e.preventDefault();
@@ -187,6 +231,21 @@ export default function InviteSignUpForm({
       setAgreed(false);
     }
 
+    // Validate agree step before advancing to enroll
+    if (step === agreeStepIndex) {
+      if (role === "clinical_provider") {
+        if (!baaAgreed || !termsAgreed) {
+          setClientError("You must agree to both the BAA and Product & Services Agreement.");
+          return;
+        }
+      } else {
+        if (!agreed) {
+          setClientError("You must agree to the Terms of Service.");
+          return;
+        }
+      }
+    }
+
     setDir(1);
     setStep((s) => s + 1);
   }
@@ -200,6 +259,243 @@ export default function InviteSignUpForm({
   // On the security step, password errors render inline below the confirm field.
   const inlinePasswordError = step === securityStepIndex;
   const error = (inlinePasswordError ? null : clientError) || state?.error;
+
+  function handleEnrollSubmit(e: React.FormEvent<HTMLFormElement>) {
+    if (isPending) {
+      e.preventDefault();
+      return;
+    }
+    setClientError("");
+
+    const checks: [string, string][] = [
+      ["facilityEin", facilityEin],
+      ["facilityNpi", facilityNpi],
+      ["facilityTin", facilityTin],
+      ["facilityPtan", facilityPtan],
+      ["apContactName", apContactName],
+      ["apContactEmail", apContactEmail],
+      ["billingFax", billingFax],
+      ["dpaContact", dpaContact],
+      ["dpaContactEmail", dpaContactEmail],
+      ["additionalProvider1Name", additionalProvider1Name],
+      ["additionalProvider1Npi", additionalProvider1Npi],
+      ["additionalProvider2Name", additionalProvider2Name],
+      ["additionalProvider2Npi", additionalProvider2Npi],
+      ["shippingFacilityName", shippingFacilityName],
+      ["shippingFacilityNpi", shippingFacilityNpi],
+      ["shippingFacilityTin", shippingFacilityTin],
+      ["shippingFacilityPtan", shippingFacilityPtan],
+      ["shippingContactName", shippingContactName],
+      ["shippingContactEmail", shippingContactEmail],
+      ["shippingAddress", shippingAddress],
+      ["shippingDaysTimes", shippingDaysTimes],
+      ["shippingPhone", shippingPhone],
+      ["shippingFax", shippingFax],
+      ["shipping2FacilityName", shipping2FacilityName],
+      ["shipping2FacilityNpi", shipping2FacilityNpi],
+      ["shipping2FacilityTin", shipping2FacilityTin],
+      ["shipping2FacilityPtan", shipping2FacilityPtan],
+      ["shipping2ContactName", shipping2ContactName],
+      ["shipping2ContactEmail", shipping2ContactEmail],
+      ["shipping2Address", shipping2Address],
+      ["shipping2DaysTimes", shipping2DaysTimes],
+      ["shipping2Phone", shipping2Phone],
+      ["shipping2Fax", shipping2Fax],
+      ["claimsContactName", claimsContactName],
+      ["claimsContactPhone", claimsContactPhone],
+      ["claimsContactEmail", claimsContactEmail],
+      ["claimsThirdParty", claimsThirdParty],
+    ];
+
+    const emptyFields = new Set(
+      checks.filter(([, v]) => !v.trim()).map(([k]) => k),
+    );
+
+    if (emptyFields.size > 0) {
+      e.preventDefault();
+      setMissingEnrollFields(emptyFields);
+      setClientError("Please complete all highlighted fields before submitting.");
+      return;
+    }
+
+    setMissingEnrollFields(new Set());
+    // All valid — form submits naturally to formAction
+  }
+
+  // Enrollment step — full-page layout, renders BEFORE the AuthCard return
+  if (enrollStepIndex !== null && step === enrollStepIndex) {
+    return (
+      <div className="min-h-screen bg-[#F8FAFC] py-6 px-4">
+        {/* Top bar: step indicator + Back button */}
+        <div className="max-w-[900px] mx-auto mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {STEPS.map((s, i) => (
+              <div key={s.label} className="flex items-center gap-2">
+                <div
+                  className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
+                    i < step
+                      ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                      : i === step
+                        ? "bg-[#EFF6FF] text-[var(--navy)] border border-[var(--navy)]/30"
+                        : "bg-[#F8FAFC] text-[#94A3B8] border border-[#E2E8F0]"
+                  }`}
+                >
+                  {i < step ? <Check className="w-3.5 h-3.5" /> : i + 1}
+                </div>
+                {i < STEPS.length - 1 && (
+                  <div className={`w-6 h-px ${i < step ? "bg-emerald-200" : "bg-[#E2E8F0]"}`} />
+                )}
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={goBack}
+            className="flex items-center gap-1 text-sm text-[#64748B] hover:text-[#0F172A] transition-colors"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Back
+          </button>
+        </div>
+
+        {/* Enrollment document */}
+        <EnrollmentFormDocument
+          canEdit
+          facilityName={officeName || facilityName || ""}
+          providerName={`${firstName} ${lastName}`.trim()}
+          providerNpi={npiNumber}
+          billingAddress={officeAddress}
+          billingCity={officeCity}
+          billingState={officeState}
+          billingZip={officePostalCode}
+          billingPhone={officePhone}
+          facilityEin={facilityEin} onFacilityEinChange={setFacilityEin}
+          facilityNpi={facilityNpi} onFacilityNpiChange={setFacilityNpi}
+          facilityTin={facilityTin} onFacilityTinChange={setFacilityTin}
+          facilityPtan={facilityPtan} onFacilityPtanChange={setFacilityPtan}
+          apContactName={apContactName} onApContactNameChange={setApContactName}
+          apContactEmail={apContactEmail} onApContactEmailChange={setApContactEmail}
+          billingFax={billingFax} onBillingFaxChange={setBillingFax}
+          dpaContact={dpaContact} onDpaContactChange={setDpaContact}
+          dpaContactEmail={dpaContactEmail} onDpaContactEmailChange={setDpaContactEmail}
+          additionalProvider1Name={additionalProvider1Name} onAdditionalProvider1NameChange={setAdditionalProvider1Name}
+          additionalProvider1Npi={additionalProvider1Npi} onAdditionalProvider1NpiChange={setAdditionalProvider1Npi}
+          additionalProvider2Name={additionalProvider2Name} onAdditionalProvider2NameChange={setAdditionalProvider2Name}
+          additionalProvider2Npi={additionalProvider2Npi} onAdditionalProvider2NpiChange={setAdditionalProvider2Npi}
+          shippingFacilityName={shippingFacilityName} onShippingFacilityNameChange={setShippingFacilityName}
+          shippingFacilityNpi={shippingFacilityNpi} onShippingFacilityNpiChange={setShippingFacilityNpi}
+          shippingFacilityTin={shippingFacilityTin} onShippingFacilityTinChange={setShippingFacilityTin}
+          shippingFacilityPtan={shippingFacilityPtan} onShippingFacilityPtanChange={setShippingFacilityPtan}
+          shippingContactName={shippingContactName} onShippingContactNameChange={setShippingContactName}
+          shippingContactEmail={shippingContactEmail} onShippingContactEmailChange={setShippingContactEmail}
+          shippingAddress={shippingAddress} onShippingAddressChange={setShippingAddress}
+          shippingDaysTimes={shippingDaysTimes} onShippingDaysTimesChange={setShippingDaysTimes}
+          shippingPhone={shippingPhone} onShippingPhoneChange={setShippingPhone}
+          shippingFax={shippingFax} onShippingFaxChange={setShippingFax}
+          shipping2FacilityName={shipping2FacilityName} onShipping2FacilityNameChange={setShipping2FacilityName}
+          shipping2FacilityNpi={shipping2FacilityNpi} onShipping2FacilityNpiChange={setShipping2FacilityNpi}
+          shipping2FacilityTin={shipping2FacilityTin} onShipping2FacilityTinChange={setShipping2FacilityTin}
+          shipping2FacilityPtan={shipping2FacilityPtan} onShipping2FacilityPtanChange={setShipping2FacilityPtan}
+          shipping2ContactName={shipping2ContactName} onShipping2ContactNameChange={setShipping2ContactName}
+          shipping2ContactEmail={shipping2ContactEmail} onShipping2ContactEmailChange={setShipping2ContactEmail}
+          shipping2Address={shipping2Address} onShipping2AddressChange={setShipping2Address}
+          shipping2DaysTimes={shipping2DaysTimes} onShipping2DaysTimesChange={setShipping2DaysTimes}
+          shipping2Phone={shipping2Phone} onShipping2PhoneChange={setShipping2Phone}
+          shipping2Fax={shipping2Fax} onShipping2FaxChange={setShipping2Fax}
+          claimsContactName={claimsContactName} onClaimsContactNameChange={setClaimsContactName}
+          claimsContactPhone={claimsContactPhone} onClaimsContactPhoneChange={setClaimsContactPhone}
+          claimsContactEmail={claimsContactEmail} onClaimsContactEmailChange={setClaimsContactEmail}
+          claimsThirdParty={claimsThirdParty} onClaimsThirdPartyChange={setClaimsThirdParty}
+          missingFields={missingEnrollFields}
+          onClearMissing={(name) => setMissingEnrollFields((prev) => { const next = new Set(prev); next.delete(name); return next; })}
+        />
+
+        {/* Bottom: error + submit form */}
+        <div className="max-w-[800px] mx-auto mt-6 space-y-3">
+          {(clientError || state?.error) && (
+            <div className="bg-red-50 border border-red-100 rounded-lg px-4 py-3">
+              <p className="text-xs text-red-600">{clientError || state?.error}</p>
+            </div>
+          )}
+
+          <form action={formAction} onSubmit={handleEnrollSubmit}>
+            {/* All prior-step hidden inputs */}
+            <input type="hidden" name="first_name" value={firstName} />
+            <input type="hidden" name="last_name" value={lastName} />
+            <input type="hidden" name="email" value={email} />
+            <input type="hidden" name="phone" value={phone} />
+            <input type="hidden" name="password" value={password} />
+            <input type="hidden" name="agreed" value="true" />
+            {needsPin && <input type="hidden" name="pin" value={pin} />}
+            {needsPin && <input type="hidden" name="npi_number" value={npiNumber} />}
+            {needsPin && <input type="hidden" name="credential" value={credential} />}
+            {needsOfficeStep && (
+              <>
+                <input type="hidden" name="office_name" value={officeName} />
+                <input type="hidden" name="office_phone" value={officePhone} />
+                <input type="hidden" name="office_address" value={officeAddress} />
+                <input type="hidden" name="office_city" value={officeCity} />
+                <input type="hidden" name="office_state" value={officeState} />
+                <input type="hidden" name="office_postal_code" value={officePostalCode} />
+              </>
+            )}
+            {/* Enrollment hidden inputs — names must match server action's formData.get() calls */}
+            <input type="hidden" name="facility_ein" value={facilityEin} />
+            <input type="hidden" name="facility_npi" value={facilityNpi} />
+            <input type="hidden" name="facility_tin" value={facilityTin} />
+            <input type="hidden" name="facility_ptan" value={facilityPtan} />
+            <input type="hidden" name="ap_contact_name" value={apContactName} />
+            <input type="hidden" name="ap_contact_email" value={apContactEmail} />
+            <input type="hidden" name="billing_address" value={officeAddress} />
+            <input type="hidden" name="billing_city" value={officeCity} />
+            <input type="hidden" name="billing_state" value={officeState} />
+            <input type="hidden" name="billing_zip" value={officePostalCode} />
+            <input type="hidden" name="billing_phone" value={officePhone} />
+            <input type="hidden" name="billing_fax" value={billingFax} />
+            <input type="hidden" name="dpa_contact" value={dpaContact} />
+            <input type="hidden" name="dpa_contact_email" value={dpaContactEmail} />
+            <input type="hidden" name="additional_provider_1_name" value={additionalProvider1Name} />
+            <input type="hidden" name="additional_provider_1_npi" value={additionalProvider1Npi} />
+            <input type="hidden" name="additional_provider_2_name" value={additionalProvider2Name} />
+            <input type="hidden" name="additional_provider_2_npi" value={additionalProvider2Npi} />
+            <input type="hidden" name="shipping_facility_name" value={shippingFacilityName} />
+            <input type="hidden" name="shipping_facility_npi" value={shippingFacilityNpi} />
+            <input type="hidden" name="shipping_facility_tin" value={shippingFacilityTin} />
+            <input type="hidden" name="shipping_facility_ptan" value={shippingFacilityPtan} />
+            <input type="hidden" name="shipping_contact_name" value={shippingContactName} />
+            <input type="hidden" name="shipping_contact_email" value={shippingContactEmail} />
+            <input type="hidden" name="shipping_address" value={shippingAddress} />
+            <input type="hidden" name="shipping_days_times" value={shippingDaysTimes} />
+            <input type="hidden" name="shipping_phone" value={shippingPhone} />
+            <input type="hidden" name="shipping_fax" value={shippingFax} />
+            <input type="hidden" name="shipping2_facility_name" value={shipping2FacilityName} />
+            <input type="hidden" name="shipping2_facility_npi" value={shipping2FacilityNpi} />
+            <input type="hidden" name="shipping2_facility_tin" value={shipping2FacilityTin} />
+            <input type="hidden" name="shipping2_facility_ptan" value={shipping2FacilityPtan} />
+            <input type="hidden" name="shipping2_contact_name" value={shipping2ContactName} />
+            <input type="hidden" name="shipping2_contact_email" value={shipping2ContactEmail} />
+            <input type="hidden" name="shipping2_address" value={shipping2Address} />
+            <input type="hidden" name="shipping2_days_times" value={shipping2DaysTimes} />
+            <input type="hidden" name="shipping2_phone" value={shipping2Phone} />
+            <input type="hidden" name="shipping2_fax" value={shipping2Fax} />
+            <input type="hidden" name="claims_contact_name" value={claimsContactName} />
+            <input type="hidden" name="claims_contact_phone" value={claimsContactPhone} />
+            <input type="hidden" name="claims_contact_email" value={claimsContactEmail} />
+            <input type="hidden" name="claims_third_party" value={claimsThirdParty} />
+
+            <button
+              type="submit"
+              disabled={isPending}
+              className="w-full rounded-lg bg-[var(--navy)] hover:bg-[var(--navy)]/80 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium h-9 text-sm transition-colors flex items-center justify-center gap-2 shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
+            >
+              {isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+              Complete Enrollment
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <AuthCard className="space-y-6">
@@ -624,43 +920,19 @@ export default function InviteSignUpForm({
         </div>
       )}
 
-      {/* Form (hidden fields for final submission) */}
-      {step === agreeStepIndex && (
+      {/* Submit form — non-clinical_provider only (clinical_provider submits from enrollment step) */}
+      {step === agreeStepIndex && enrollStepIndex === null && (
         <form action={formAction}>
           <input type="hidden" name="first_name" value={firstName} />
           <input type="hidden" name="last_name" value={lastName} />
           <input type="hidden" name="email" value={email} />
           <input type="hidden" name="phone" value={phone} />
           <input type="hidden" name="password" value={password} />
-          <input
-            type="hidden"
-            name="agreed"
-            value={
-              role === "clinical_provider"
-                ? baaAgreed && termsAgreed ? "true" : "false"
-                : agreed ? "true" : "false"
-            }
-          />
-          {needsPin && <input type="hidden" name="pin" value={pin} />}
-          {needsPin && <input type="hidden" name="npi_number" value={npiNumber} />}
-          {needsPin && <input type="hidden" name="credential" value={credential} />}
-          {needsOfficeStep && (
-            <>
-              <input type="hidden" name="office_name" value={officeName} />
-              <input type="hidden" name="office_phone" value={officePhone} />
-              <input type="hidden" name="office_address" value={officeAddress} />
-              <input type="hidden" name="office_city" value={officeCity} />
-              <input type="hidden" name="office_state" value={officeState} />
-              <input type="hidden" name="office_postal_code" value={officePostalCode} />
-            </>
-          )}
+          <input type="hidden" name="agreed" value={agreed ? "true" : "false"} />
 
           <button
             type="submit"
-            disabled={
-              isPending ||
-              (role === "clinical_provider" ? !baaAgreed || !termsAgreed : !agreed)
-            }
+            disabled={isPending || !agreed}
             className="w-full rounded-lg bg-[var(--navy)] hover:bg-[var(--navy)]/80 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium h-9 text-sm transition-colors flex items-center justify-center gap-2 shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
           >
             {isPending && <Loader2 className="w-4 h-4 animate-spin" />}
@@ -684,11 +956,18 @@ export default function InviteSignUpForm({
           <div />
         )}
 
-        {step < agreeStepIndex && (
+        {step < (enrollStepIndex ?? agreeStepIndex) && (
           <button
             type="button"
             onClick={goNext}
-            className="flex items-center gap-1.5 rounded-lg bg-[var(--navy)] hover:bg-[var(--navy)]/80 text-white font-medium px-5 h-9 text-sm transition-colors ml-auto shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
+            disabled={
+              step === agreeStepIndex
+                ? role === "clinical_provider"
+                  ? !baaAgreed || !termsAgreed
+                  : !agreed
+                : false
+            }
+            className="flex items-center gap-1.5 rounded-lg bg-[var(--navy)] hover:bg-[var(--navy)]/80 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium px-5 h-9 text-sm transition-colors ml-auto shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
           >
             {step === securityStepIndex ? "Review" : "Next"}
             <ChevronRight className="w-4 h-4" />

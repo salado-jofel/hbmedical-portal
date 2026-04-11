@@ -51,6 +51,7 @@ function UploadZone({
   onRemove,
   error,
 }: UploadZoneProps) {
+  const [isDragging, setIsDragging] = useState(false);
   const typeFiles = files.filter((f) => f.type === docType);
 
   // Map local index within this docType back to global index in `files`
@@ -65,6 +66,33 @@ function UploadZone({
     return -1;
   }
 
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const droppedFiles = Array.from(e.dataTransfer.files);
+    const valid = droppedFiles.filter((f) => {
+      if (f.size > MAX_FILE_SIZE) {
+        toast.error(`${f.name} exceeds 10 MB.`);
+        return false;
+      }
+      return true;
+    });
+    if (valid.length) onAdd(valid, docType);
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  }
+
   return (
     <div className="flex-1 min-w-0">
       <div className="flex items-center gap-1 mb-1.5">
@@ -75,11 +103,16 @@ function UploadZone({
 
       {typeFiles.length === 0 ? (
         <label
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
           className={cn(
             "flex flex-col items-center justify-center border-2 border-dashed rounded-xl px-3 py-4 cursor-pointer transition-all text-center",
-            error
-              ? "border-red-300 bg-red-50"
-              : "border-slate-200 bg-slate-50 hover:border-[var(--navy)]/50 hover:bg-blue-50/30",
+            isDragging
+              ? "border-[var(--navy)] bg-blue-50/50 scale-[1.02]"
+              : error
+                ? "border-red-300 bg-red-50"
+                : "border-slate-200 bg-slate-50 hover:border-[var(--navy)]/50 hover:bg-blue-50/30",
           )}
         >
           <Upload className="w-5 h-5 text-slate-300 mb-1.5" />
@@ -110,7 +143,12 @@ function UploadZone({
           />
         </label>
       ) : (
-        <div className="space-y-1">
+        <div
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          className={cn("space-y-1", isDragging && "ring-2 ring-[var(--navy)] rounded-lg")}
+        >
           {typeFiles.map((df, localIdx) => (
             <div
               key={localIdx}
