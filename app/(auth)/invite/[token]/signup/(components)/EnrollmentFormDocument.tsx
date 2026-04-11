@@ -3,6 +3,9 @@
 import type { InputHTMLAttributes } from "react";
 import { cn } from "@/utils/utils";
 
+const SUPPORT_EMAIL = "Support@MeridianSurgical.com";
+const COMPANY_ADDRESS = "Meridian Surgical Partners · 123 Commerce Drive · Suite 100 · Nashville, TN 37201";
+
 /* ── Primitives ── */
 
 function FormInput({
@@ -35,8 +38,7 @@ function FormInput({
 function SectionHeader({ children }: { children: React.ReactNode }) {
   return (
     <div
-      className="px-2 py-[4px] text-[11px] font-bold uppercase tracking-wide text-black w-full"
-      style={{ backgroundColor: "#f59e0b" }}
+      className="px-2 py-[4px] text-[11px] font-bold uppercase tracking-wide text-black w-full bg-amber-500"
     >
       {children}
     </div>
@@ -57,6 +59,7 @@ function Field({
   onChange,
   readOnly,
   placeholder,
+  type,
   className,
 }: {
   label: string;
@@ -64,6 +67,7 @@ function Field({
   onChange?: (v: string) => void;
   readOnly?: boolean;
   placeholder?: string;
+  type?: string;
   className?: string;
 }) {
   return (
@@ -74,6 +78,7 @@ function Field({
         onChange={onChange}
         readOnly={readOnly}
         placeholder={placeholder}
+        type={type}
       />
     </div>
   );
@@ -190,86 +195,85 @@ export function EnrollmentFormDocument({
   billingZip: string;
   billingPhone: string;
   facilityEin: string;
-  onFacilityEinChange: (v: string) => void;
+  onFacilityEinChange?: (v: string) => void;
   facilityNpi: string;
-  onFacilityNpiChange: (v: string) => void;
+  onFacilityNpiChange?: (v: string) => void;
   facilityTin: string;
-  onFacilityTinChange: (v: string) => void;
+  onFacilityTinChange?: (v: string) => void;
   facilityPtan: string;
-  onFacilityPtanChange: (v: string) => void;
+  onFacilityPtanChange?: (v: string) => void;
   apContactName: string;
-  onApContactNameChange: (v: string) => void;
+  onApContactNameChange?: (v: string) => void;
   apContactEmail: string;
-  onApContactEmailChange: (v: string) => void;
+  onApContactEmailChange?: (v: string) => void;
   billingFax: string;
-  onBillingFaxChange: (v: string) => void;
+  onBillingFaxChange?: (v: string) => void;
   dpaContact: string;
-  onDpaContactChange: (v: string) => void;
+  onDpaContactChange?: (v: string) => void;
   dpaContactEmail: string;
-  onDpaContactEmailChange: (v: string) => void;
+  onDpaContactEmailChange?: (v: string) => void;
   additionalProvider1Name: string;
-  onAdditionalProvider1NameChange: (v: string) => void;
+  onAdditionalProvider1NameChange?: (v: string) => void;
   additionalProvider1Npi: string;
-  onAdditionalProvider1NpiChange: (v: string) => void;
+  onAdditionalProvider1NpiChange?: (v: string) => void;
   additionalProvider2Name: string;
-  onAdditionalProvider2NameChange: (v: string) => void;
+  onAdditionalProvider2NameChange?: (v: string) => void;
   additionalProvider2Npi: string;
-  onAdditionalProvider2NpiChange: (v: string) => void;
+  onAdditionalProvider2NpiChange?: (v: string) => void;
   shippingFacilityName: string;
-  onShippingFacilityNameChange: (v: string) => void;
+  onShippingFacilityNameChange?: (v: string) => void;
   shippingFacilityNpi: string;
-  onShippingFacilityNpiChange: (v: string) => void;
+  onShippingFacilityNpiChange?: (v: string) => void;
   shippingFacilityTin: string;
-  onShippingFacilityTinChange: (v: string) => void;
+  onShippingFacilityTinChange?: (v: string) => void;
   shippingFacilityPtan: string;
-  onShippingFacilityPtanChange: (v: string) => void;
+  onShippingFacilityPtanChange?: (v: string) => void;
   shippingContactName: string;
-  onShippingContactNameChange: (v: string) => void;
+  onShippingContactNameChange?: (v: string) => void;
   shippingContactEmail: string;
-  onShippingContactEmailChange: (v: string) => void;
+  onShippingContactEmailChange?: (v: string) => void;
   shippingAddress: string;
-  onShippingAddressChange: (v: string) => void;
+  onShippingAddressChange?: (v: string) => void;
   shippingDaysTimes: string;
-  onShippingDaysTimesChange: (v: string) => void;
+  onShippingDaysTimesChange?: (v: string) => void;
   shippingPhone: string;
-  onShippingPhoneChange: (v: string) => void;
+  onShippingPhoneChange?: (v: string) => void;
   shippingFax: string;
-  onShippingFaxChange: (v: string) => void;
+  onShippingFaxChange?: (v: string) => void;
   shipping2FacilityName: string;
-  onShipping2FacilityNameChange: (v: string) => void;
+  onShipping2FacilityNameChange?: (v: string) => void;
   shipping2FacilityNpi: string;
-  onShipping2FacilityNpiChange: (v: string) => void;
+  onShipping2FacilityNpiChange?: (v: string) => void;
   shipping2FacilityTin: string;
-  onShipping2FacilityTinChange: (v: string) => void;
+  onShipping2FacilityTinChange?: (v: string) => void;
   shipping2FacilityPtan: string;
-  onShipping2FacilityPtanChange: (v: string) => void;
+  onShipping2FacilityPtanChange?: (v: string) => void;
   shipping2ContactName: string;
-  onShipping2ContactNameChange: (v: string) => void;
+  onShipping2ContactNameChange?: (v: string) => void;
   shipping2ContactEmail: string;
-  onShipping2ContactEmailChange: (v: string) => void;
+  onShipping2ContactEmailChange?: (v: string) => void;
   shipping2Address: string;
-  onShipping2AddressChange: (v: string) => void;
+  onShipping2AddressChange?: (v: string) => void;
   shipping2DaysTimes: string;
-  onShipping2DaysTimesChange: (v: string) => void;
+  onShipping2DaysTimesChange?: (v: string) => void;
   shipping2Phone: string;
-  onShipping2PhoneChange: (v: string) => void;
+  onShipping2PhoneChange?: (v: string) => void;
   shipping2Fax: string;
-  onShipping2FaxChange: (v: string) => void;
+  onShipping2FaxChange?: (v: string) => void;
   claimsContactName: string;
-  onClaimsContactNameChange: (v: string) => void;
+  onClaimsContactNameChange?: (v: string) => void;
   claimsContactPhone: string;
-  onClaimsContactPhoneChange: (v: string) => void;
+  onClaimsContactPhoneChange?: (v: string) => void;
   claimsContactEmail: string;
-  onClaimsContactEmailChange: (v: string) => void;
+  onClaimsContactEmailChange?: (v: string) => void;
   claimsThirdParty: string;
-  onClaimsThirdPartyChange: (v: string) => void;
+  onClaimsThirdPartyChange?: (v: string) => void;
 }) {
   const ro = !canEdit;
 
   return (
     <div
-      className="mx-auto border border-[#ddd] shadow-sm"
-      style={{ maxWidth: 800, padding: "28px 32px" }}
+      className="mx-auto border border-[#ddd] shadow-sm max-w-[800px] px-8 py-7"
     >
       {/* Header */}
       <div className="flex items-start justify-between mb-4">
@@ -441,10 +445,10 @@ export function EnrollmentFormDocument({
       <div className="mt-6 pt-3 border-t border-[#ddd] text-center space-y-0.5">
         <p className="text-[11px] text-[#555]">
           Email completed form to{" "}
-          <span className="font-semibold">Support@MeridianSurgical.com</span>
+          <span className="font-semibold">{SUPPORT_EMAIL}</span>
         </p>
         <p className="text-[11px] text-[#555]">
-          Meridian Surgical Partners · 123 Commerce Drive · Suite 100 · Nashville, TN 37201
+          {COMPANY_ADDRESS}
         </p>
         <p className="text-[10px] text-[#999] mt-1">REV2.0</p>
       </div>
