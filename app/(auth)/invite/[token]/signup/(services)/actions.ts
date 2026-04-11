@@ -242,6 +242,62 @@ export async function inviteSignUp(
           invitedBy: inviteToken.created_by,
         });
 
+        // Insert facility_enrollment — fatal; roll back auth user on failure
+        const { error: enrollError } = await supabaseAdmin
+          .from("facility_enrollment")
+          .insert({
+            facility_id: clinicId,
+            facility_npi:               (formData.get("facility_npi") as string)?.trim() || null,
+            facility_ein:               (formData.get("facility_ein") as string)?.trim() || null,
+            facility_tin:               (formData.get("facility_tin") as string)?.trim() || null,
+            facility_ptan:              (formData.get("facility_ptan") as string)?.trim() || null,
+            ap_contact_name:            (formData.get("ap_contact_name") as string)?.trim() || null,
+            ap_contact_email:           (formData.get("ap_contact_email") as string)?.trim() || null,
+            billing_address:            (formData.get("billing_address") as string)?.trim() || null,
+            billing_city:               (formData.get("billing_city") as string)?.trim() || null,
+            billing_state:              (formData.get("billing_state") as string)?.trim() || null,
+            billing_zip:                (formData.get("billing_zip") as string)?.trim() || null,
+            billing_phone:              (formData.get("billing_phone") as string)?.trim() || null,
+            billing_fax:                (formData.get("billing_fax") as string)?.trim() || null,
+            dpa_contact:                (formData.get("dpa_contact") as string)?.trim() || null,
+            dpa_contact_email:          (formData.get("dpa_contact_email") as string)?.trim() || null,
+            additional_provider_1_name: (formData.get("additional_provider_1_name") as string)?.trim() || null,
+            additional_provider_1_npi:  (formData.get("additional_provider_1_npi") as string)?.trim() || null,
+            additional_provider_2_name: (formData.get("additional_provider_2_name") as string)?.trim() || null,
+            additional_provider_2_npi:  (formData.get("additional_provider_2_npi") as string)?.trim() || null,
+            shipping_facility_name:     (formData.get("shipping_facility_name") as string)?.trim() || null,
+            shipping_facility_npi:      (formData.get("shipping_facility_npi") as string)?.trim() || null,
+            shipping_facility_tin:      (formData.get("shipping_facility_tin") as string)?.trim() || null,
+            shipping_facility_ptan:     (formData.get("shipping_facility_ptan") as string)?.trim() || null,
+            shipping_contact_name:      (formData.get("shipping_contact_name") as string)?.trim() || null,
+            shipping_contact_email:     (formData.get("shipping_contact_email") as string)?.trim() || null,
+            shipping_address:           (formData.get("shipping_address") as string)?.trim() || null,
+            shipping_days_times:        (formData.get("shipping_days_times") as string)?.trim() || null,
+            shipping_phone:             (formData.get("shipping_phone") as string)?.trim() || null,
+            shipping_fax:               (formData.get("shipping_fax") as string)?.trim() || null,
+            shipping2_facility_name:    (formData.get("shipping2_facility_name") as string)?.trim() || null,
+            shipping2_facility_npi:     (formData.get("shipping2_facility_npi") as string)?.trim() || null,
+            shipping2_facility_tin:     (formData.get("shipping2_facility_tin") as string)?.trim() || null,
+            shipping2_facility_ptan:    (formData.get("shipping2_facility_ptan") as string)?.trim() || null,
+            shipping2_contact_name:     (formData.get("shipping2_contact_name") as string)?.trim() || null,
+            shipping2_contact_email:    (formData.get("shipping2_contact_email") as string)?.trim() || null,
+            shipping2_address:          (formData.get("shipping2_address") as string)?.trim() || null,
+            shipping2_days_times:       (formData.get("shipping2_days_times") as string)?.trim() || null,
+            shipping2_phone:            (formData.get("shipping2_phone") as string)?.trim() || null,
+            shipping2_fax:              (formData.get("shipping2_fax") as string)?.trim() || null,
+            claims_contact_name:        (formData.get("claims_contact_name") as string)?.trim() || null,
+            claims_contact_phone:       (formData.get("claims_contact_phone") as string)?.trim() || null,
+            claims_contact_email:       (formData.get("claims_contact_email") as string)?.trim() || null,
+            claims_third_party:         (formData.get("claims_third_party") as string)?.trim() || null,
+            completed_at:               new Date().toISOString(),
+          });
+
+        if (enrollError) {
+          console.error("[inviteSignUp] facility_enrollment error:", JSON.stringify(enrollError));
+          await supabaseAdmin.auth.admin.deleteUser(createdUserId);
+          return { error: "Failed to save enrollment data. Please try again." };
+        }
+
         await supabaseAdmin
           .from("profiles")
           .update({ has_completed_setup: true })
