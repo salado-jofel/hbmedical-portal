@@ -196,8 +196,6 @@ export function EnrollmentFormDocument({
   onClearMissing,
 }: {
   canEdit: boolean;
-  missingFields?: Set<string>;
-  onClearMissing?: (name: string) => void;
   facilityName: string;
   providerName: string;
   providerNpi: string;

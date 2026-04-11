@@ -12,6 +12,7 @@ import {
   getMyClinicAccounts,
   getMySubReps,
   getMyClinicMembers,
+  getMyEnrollment,
 } from "@/app/(dashboard)/dashboard/settings/(services)/actions";
 import { notFound } from "next/navigation";
 import Providers from "./(sections)/Providers";
@@ -33,13 +34,27 @@ export default async function SettingsPage() {
   // Admin manages all users via the Users page — no Team tab in Settings.
   // Support staff and clinical staff have no team management responsibilities.
 
-  const [myClinicAccounts, mySubReps, myClinicMembers, credentials] =
+  const [myClinicAccounts, mySubReps, myClinicMembers, credentials, enrollmentData, facility] =
     await Promise.all([
       repUser ? getMyClinicAccounts() : Promise.resolve([]),
       repUser ? getMySubReps() : Promise.resolve([]),
       providerUser ? getMyClinicMembers() : Promise.resolve([]),
       showCredentials ? getMyCredentials() : Promise.resolve(null),
+      providerUser ? getMyEnrollment() : Promise.resolve(null),
+      providerUser
+        ? supabase
+            .from("facilities")
+            .select("name, address_line_1, city, state, postal_code, phone")
+            .eq("user_id", profile.id)
+            .maybeSingle()
+            .then((r) => r.data)
+        : Promise.resolve(null),
     ]);
+
+  const showEnrollment = providerUser;
+  const facilityName = facility?.name ?? "";
+  const providerName = `${profile.first_name} ${profile.last_name}`.trim();
+  const providerNpi = credentials?.npi_number ?? "";
 
   return (
     <>
@@ -54,6 +69,16 @@ export default async function SettingsPage() {
           credentials={credentials}
           showTeamTab={showTeamTab}
           showCredentials={showCredentials}
+          showEnrollment={showEnrollment}
+          enrollmentData={enrollmentData}
+          facilityName={facilityName}
+          providerName={providerName}
+          providerNpi={providerNpi}
+          billingAddressPrefill={facility?.address_line_1 ?? ""}
+          billingCityPrefill={facility?.city ?? ""}
+          billingStatePrefill={facility?.state ?? ""}
+          billingZipPrefill={facility?.postal_code ?? ""}
+          billingPhonePrefill={facility?.phone ?? ""}
         />
       </Providers>
     </>

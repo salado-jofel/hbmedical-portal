@@ -340,3 +340,119 @@ export async function getMyClinicMembers(): Promise<IFacilityMember[]> {
     return [];
   }
 }
+
+/* -------------------------------------------------------------------------- */
+/* Enrollment                                                                  */
+/* -------------------------------------------------------------------------- */
+
+export type FacilityEnrollmentData = {
+  facility_id: string;
+  facility_ein: string | null;
+  facility_npi: string | null;
+  facility_tin: string | null;
+  facility_ptan: string | null;
+  ap_contact_name: string | null;
+  ap_contact_email: string | null;
+  billing_address: string | null;
+  billing_city: string | null;
+  billing_state: string | null;
+  billing_zip: string | null;
+  billing_phone: string | null;
+  billing_fax: string | null;
+  dpa_contact: string | null;
+  dpa_contact_email: string | null;
+  additional_provider_1_name: string | null;
+  additional_provider_1_npi: string | null;
+  additional_provider_2_name: string | null;
+  additional_provider_2_npi: string | null;
+  shipping_facility_name: string | null;
+  shipping_facility_npi: string | null;
+  shipping_facility_tin: string | null;
+  shipping_facility_ptan: string | null;
+  shipping_contact_name: string | null;
+  shipping_contact_email: string | null;
+  shipping_address: string | null;
+  shipping_days_times: string | null;
+  shipping_phone: string | null;
+  shipping_fax: string | null;
+  shipping2_facility_name: string | null;
+  shipping2_facility_npi: string | null;
+  shipping2_facility_tin: string | null;
+  shipping2_facility_ptan: string | null;
+  shipping2_contact_name: string | null;
+  shipping2_contact_email: string | null;
+  shipping2_address: string | null;
+  shipping2_days_times: string | null;
+  shipping2_phone: string | null;
+  shipping2_fax: string | null;
+  claims_contact_name: string | null;
+  claims_contact_phone: string | null;
+  claims_contact_email: string | null;
+  claims_third_party: string | null;
+};
+
+export async function getMyEnrollment(): Promise<FacilityEnrollmentData | null> {
+  try {
+    const supabase = await createClient();
+    const user = await getCurrentUserOrThrow(supabase);
+
+    const { data: facility } = await supabase
+      .from("facilities")
+      .select("id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (!facility) return null;
+
+    const { data, error } = await supabase
+      .from("facility_enrollment")
+      .select("*")
+      .eq("facility_id", facility.id)
+      .maybeSingle();
+
+    if (error) {
+      console.error("[getMyEnrollment]", JSON.stringify(error));
+      return null;
+    }
+
+    return data as FacilityEnrollmentData | null;
+  } catch (err) {
+    console.error("[getMyEnrollment] Unexpected:", err);
+    return null;
+  }
+}
+
+export async function saveEnrollmentData(
+  payload: Omit<FacilityEnrollmentData, "facility_id">,
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const supabase = await createClient();
+    const adminClient = createAdminClient();
+    const user = await getCurrentUserOrThrow(supabase);
+
+    const { data: facility } = await supabase
+      .from("facilities")
+      .select("id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (!facility) return { success: false, error: "Facility not found." };
+
+    const { error } = await adminClient
+      .from("facility_enrollment")
+      .upsert(
+        { facility_id: facility.id, ...payload, completed_at: new Date().toISOString() },
+        { onConflict: "facility_id" },
+      );
+
+    if (error) {
+      console.error("[saveEnrollmentData]", JSON.stringify(error));
+      return { success: false, error: "Failed to save enrollment data." };
+    }
+
+    return { success: true, error: null };
+  } catch (err) {
+    console.error("[saveEnrollmentData] Unexpected:", err);
+    return { success: false, error: "An unexpected error occurred." };
+  }
+}
