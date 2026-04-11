@@ -26,7 +26,7 @@ function FormInput({
       className={cn(
         "border-0 border-b border-[#333] text-[13px] outline-none bg-transparent",
         "focus:border-amber-500 transition-colors px-1 py-0.5 leading-tight text-[#222]",
-        "placeholder:text-[#bbb]",
+        "placeholder:text-[#bbb] w-full",
         readOnly && "cursor-default select-text border-[#aaa] text-[#555]",
         className,
       )}
