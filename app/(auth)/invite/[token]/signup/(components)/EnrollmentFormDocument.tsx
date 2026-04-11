@@ -12,11 +12,13 @@ function FormInput({
   value,
   onChange,
   readOnly,
+  error,
   className,
   ...props
 }: Omit<InputHTMLAttributes<HTMLInputElement>, "onChange"> & {
   value: string;
   onChange?: (v: string) => void;
+  error?: boolean;
 }) {
   return (
     <input
@@ -24,9 +26,10 @@ function FormInput({
       readOnly={readOnly}
       onChange={readOnly || !onChange ? undefined : (e) => onChange(e.target.value)}
       className={cn(
-        "border-0 border-b border-[#333] text-[13px] outline-none bg-transparent",
-        "focus:border-[var(--navy)] transition-colors px-1 py-0.5 leading-tight text-[#222]",
+        "border-0 border-b text-[13px] outline-none bg-transparent",
+        "transition-colors px-1 py-0.5 leading-tight text-[#222]",
         "placeholder:text-[#bbb] w-full",
+        error ? "border-red-500 border-b-2" : "border-[#333] focus:border-[var(--navy)]",
         readOnly && "cursor-default select-text border-[#aaa] text-[#555]",
         className,
       )}
@@ -45,9 +48,9 @@ function SectionHeader({ children }: { children: React.ReactNode }) {
   );
 }
 
-function FL({ children }: { children: React.ReactNode }) {
+function FL({ children, error }: { children: React.ReactNode; error?: boolean }) {
   return (
-    <span className="text-[11px] font-bold uppercase tracking-wide text-[#333] shrink-0">
+    <span className={cn("text-[11px] font-bold uppercase tracking-wide shrink-0", error ? "text-red-500" : "text-[#333]")}>
       {children}
     </span>
   );
@@ -60,6 +63,8 @@ function Field({
   readOnly,
   placeholder,
   type,
+  error,
+  onClearMissing,
   className,
 }: {
   label: string;
@@ -68,17 +73,20 @@ function Field({
   readOnly?: boolean;
   placeholder?: string;
   type?: string;
+  error?: boolean;
+  onClearMissing?: () => void;
   className?: string;
 }) {
   return (
     <div className={cn("flex flex-col gap-0.5", className)}>
-      <FL>{label}</FL>
+      <FL error={error}>{label}</FL>
       <FormInput
         value={value}
-        onChange={onChange}
+        onChange={onChange ? (v) => { onChange(v); onClearMissing?.(); } : undefined}
         readOnly={readOnly}
         placeholder={placeholder}
         type={type}
+        error={error}
       />
     </div>
   );
@@ -184,8 +192,12 @@ export function EnrollmentFormDocument({
   onClaimsContactEmailChange,
   claimsThirdParty,
   onClaimsThirdPartyChange,
+  missingFields,
+  onClearMissing,
 }: {
   canEdit: boolean;
+  missingFields?: Set<string>;
+  onClearMissing?: (name: string) => void;
   facilityName: string;
   providerName: string;
   providerNpi: string;
@@ -268,8 +280,12 @@ export function EnrollmentFormDocument({
   onClaimsContactEmailChange?: (v: string) => void;
   claimsThirdParty: string;
   onClaimsThirdPartyChange?: (v: string) => void;
+  missingFields?: Set<string>;
+  onClearMissing?: (name: string) => void;
 }) {
   const ro = !canEdit;
+  const mf = (name: string) => missingFields?.has(name) ?? false;
+  const clr = (name: string) => () => onClearMissing?.(name);
 
   return (
     <div
@@ -308,14 +324,14 @@ export function EnrollmentFormDocument({
 
         {/* EIN + NPI */}
         <div className="grid grid-cols-2 gap-4">
-          <Field label="Facility EIN" value={facilityEin} onChange={ro ? undefined : onFacilityEinChange} readOnly={ro} />
-          <Field label="Facility NPI" value={facilityNpi} onChange={ro ? undefined : onFacilityNpiChange} readOnly={ro} />
+          <Field label="Facility EIN" value={facilityEin} onChange={ro ? undefined : onFacilityEinChange} readOnly={ro} error={mf("facilityEin")} onClearMissing={clr("facilityEin")} />
+          <Field label="Facility NPI" value={facilityNpi} onChange={ro ? undefined : onFacilityNpiChange} readOnly={ro} error={mf("facilityNpi")} onClearMissing={clr("facilityNpi")} />
         </div>
 
         {/* TIN + PTAN */}
         <div className="grid grid-cols-2 gap-4">
-          <Field label="Facility TIN" value={facilityTin} onChange={ro ? undefined : onFacilityTinChange} readOnly={ro} />
-          <Field label="Facility PTAN" value={facilityPtan} onChange={ro ? undefined : onFacilityPtanChange} readOnly={ro} />
+          <Field label="Facility TIN" value={facilityTin} onChange={ro ? undefined : onFacilityTinChange} readOnly={ro} error={mf("facilityTin")} onClearMissing={clr("facilityTin")} />
+          <Field label="Facility PTAN" value={facilityPtan} onChange={ro ? undefined : onFacilityPtanChange} readOnly={ro} error={mf("facilityPtan")} onClearMissing={clr("facilityPtan")} />
         </div>
 
         {/* Billing Address (read-only, full width) */}
@@ -336,19 +352,19 @@ export function EnrollmentFormDocument({
         {/* Phone + Fax */}
         <div className="grid grid-cols-2 gap-4">
           <Field label="Billing Phone" value={billingPhone} readOnly />
-          <Field label="Billing Fax" value={billingFax} onChange={ro ? undefined : onBillingFaxChange} readOnly={ro} />
+          <Field label="Billing Fax" value={billingFax} onChange={ro ? undefined : onBillingFaxChange} readOnly={ro} error={mf("billingFax")} onClearMissing={clr("billingFax")} />
         </div>
 
         {/* AP Contact Name + Email */}
         <div className="grid grid-cols-2 gap-4">
-          <Field label="AP Contact Name" value={apContactName} onChange={ro ? undefined : onApContactNameChange} readOnly={ro} />
-          <Field label="AP Contact Email" value={apContactEmail} onChange={ro ? undefined : onApContactEmailChange} readOnly={ro} />
+          <Field label="AP Contact Name" value={apContactName} onChange={ro ? undefined : onApContactNameChange} readOnly={ro} error={mf("apContactName")} onClearMissing={clr("apContactName")} />
+          <Field label="AP Contact Email" value={apContactEmail} onChange={ro ? undefined : onApContactEmailChange} readOnly={ro} error={mf("apContactEmail")} onClearMissing={clr("apContactEmail")} />
         </div>
 
         {/* DPA Contact + Email */}
         <div className="grid grid-cols-2 gap-4">
-          <Field label="DPA Contact" value={dpaContact} onChange={ro ? undefined : onDpaContactChange} readOnly={ro} />
-          <Field label="DPA Contact Email" value={dpaContactEmail} onChange={ro ? undefined : onDpaContactEmailChange} readOnly={ro} />
+          <Field label="DPA Contact" value={dpaContact} onChange={ro ? undefined : onDpaContactChange} readOnly={ro} error={mf("dpaContact")} onClearMissing={clr("dpaContact")} />
+          <Field label="DPA Contact Email" value={dpaContactEmail} onChange={ro ? undefined : onDpaContactEmailChange} readOnly={ro} error={mf("dpaContactEmail")} onClearMissing={clr("dpaContactEmail")} />
         </div>
       </SectionBody>
 
@@ -364,14 +380,14 @@ export function EnrollmentFormDocument({
 
           {/* Additional Provider 1 */}
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Additional Provider 1 Name" value={additionalProvider1Name} onChange={ro ? undefined : onAdditionalProvider1NameChange} readOnly={ro} />
-            <Field label="Additional Provider 1 NPI" value={additionalProvider1Npi} onChange={ro ? undefined : onAdditionalProvider1NpiChange} readOnly={ro} />
+            <Field label="Additional Provider 1 Name" value={additionalProvider1Name} onChange={ro ? undefined : onAdditionalProvider1NameChange} readOnly={ro} error={mf("additionalProvider1Name")} onClearMissing={clr("additionalProvider1Name")} />
+            <Field label="Additional Provider 1 NPI" value={additionalProvider1Npi} onChange={ro ? undefined : onAdditionalProvider1NpiChange} readOnly={ro} error={mf("additionalProvider1Npi")} onClearMissing={clr("additionalProvider1Npi")} />
           </div>
 
           {/* Additional Provider 2 */}
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Additional Provider 2 Name" value={additionalProvider2Name} onChange={ro ? undefined : onAdditionalProvider2NameChange} readOnly={ro} />
-            <Field label="Additional Provider 2 NPI" value={additionalProvider2Npi} onChange={ro ? undefined : onAdditionalProvider2NpiChange} readOnly={ro} />
+            <Field label="Additional Provider 2 Name" value={additionalProvider2Name} onChange={ro ? undefined : onAdditionalProvider2NameChange} readOnly={ro} error={mf("additionalProvider2Name")} onClearMissing={clr("additionalProvider2Name")} />
+            <Field label="Additional Provider 2 NPI" value={additionalProvider2Npi} onChange={ro ? undefined : onAdditionalProvider2NpiChange} readOnly={ro} error={mf("additionalProvider2Npi")} onClearMissing={clr("additionalProvider2Npi")} />
           </div>
         </SectionBody>
       </div>
@@ -381,22 +397,22 @@ export function EnrollmentFormDocument({
         <SectionHeader>Account Shipping Information</SectionHeader>
         <SectionBody>
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Facility Name" value={shippingFacilityName} onChange={ro ? undefined : onShippingFacilityNameChange} readOnly={ro} />
-            <Field label="Facility NPI" value={shippingFacilityNpi} onChange={ro ? undefined : onShippingFacilityNpiChange} readOnly={ro} />
+            <Field label="Facility Name" value={shippingFacilityName} onChange={ro ? undefined : onShippingFacilityNameChange} readOnly={ro} error={mf("shippingFacilityName")} onClearMissing={clr("shippingFacilityName")} />
+            <Field label="Facility NPI" value={shippingFacilityNpi} onChange={ro ? undefined : onShippingFacilityNpiChange} readOnly={ro} error={mf("shippingFacilityNpi")} onClearMissing={clr("shippingFacilityNpi")} />
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Facility TIN" value={shippingFacilityTin} onChange={ro ? undefined : onShippingFacilityTinChange} readOnly={ro} />
-            <Field label="Facility PTAN" value={shippingFacilityPtan} onChange={ro ? undefined : onShippingFacilityPtanChange} readOnly={ro} />
+            <Field label="Facility TIN" value={shippingFacilityTin} onChange={ro ? undefined : onShippingFacilityTinChange} readOnly={ro} error={mf("shippingFacilityTin")} onClearMissing={clr("shippingFacilityTin")} />
+            <Field label="Facility PTAN" value={shippingFacilityPtan} onChange={ro ? undefined : onShippingFacilityPtanChange} readOnly={ro} error={mf("shippingFacilityPtan")} onClearMissing={clr("shippingFacilityPtan")} />
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Contact Name" value={shippingContactName} onChange={ro ? undefined : onShippingContactNameChange} readOnly={ro} />
-            <Field label="Contact Email" value={shippingContactEmail} onChange={ro ? undefined : onShippingContactEmailChange} readOnly={ro} />
+            <Field label="Contact Name" value={shippingContactName} onChange={ro ? undefined : onShippingContactNameChange} readOnly={ro} error={mf("shippingContactName")} onClearMissing={clr("shippingContactName")} />
+            <Field label="Contact Email" value={shippingContactEmail} onChange={ro ? undefined : onShippingContactEmailChange} readOnly={ro} error={mf("shippingContactEmail")} onClearMissing={clr("shippingContactEmail")} />
           </div>
-          <Field label="Address" value={shippingAddress} onChange={ro ? undefined : onShippingAddressChange} readOnly={ro} className="w-full" />
-          <Field label="Receiving Days / Times" value={shippingDaysTimes} onChange={ro ? undefined : onShippingDaysTimesChange} readOnly={ro} className="w-full" />
+          <Field label="Address" value={shippingAddress} onChange={ro ? undefined : onShippingAddressChange} readOnly={ro} className="w-full" error={mf("shippingAddress")} onClearMissing={clr("shippingAddress")} />
+          <Field label="Receiving Days / Times" value={shippingDaysTimes} onChange={ro ? undefined : onShippingDaysTimesChange} readOnly={ro} className="w-full" error={mf("shippingDaysTimes")} onClearMissing={clr("shippingDaysTimes")} />
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Phone" value={shippingPhone} onChange={ro ? undefined : onShippingPhoneChange} readOnly={ro} />
-            <Field label="Fax" value={shippingFax} onChange={ro ? undefined : onShippingFaxChange} readOnly={ro} />
+            <Field label="Phone" value={shippingPhone} onChange={ro ? undefined : onShippingPhoneChange} readOnly={ro} error={mf("shippingPhone")} onClearMissing={clr("shippingPhone")} />
+            <Field label="Fax" value={shippingFax} onChange={ro ? undefined : onShippingFaxChange} readOnly={ro} error={mf("shippingFax")} onClearMissing={clr("shippingFax")} />
           </div>
         </SectionBody>
       </div>
@@ -406,22 +422,22 @@ export function EnrollmentFormDocument({
         <SectionHeader>Additional Shipping Information</SectionHeader>
         <SectionBody>
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Facility Name" value={shipping2FacilityName} onChange={ro ? undefined : onShipping2FacilityNameChange} readOnly={ro} />
-            <Field label="Facility NPI" value={shipping2FacilityNpi} onChange={ro ? undefined : onShipping2FacilityNpiChange} readOnly={ro} />
+            <Field label="Facility Name" value={shipping2FacilityName} onChange={ro ? undefined : onShipping2FacilityNameChange} readOnly={ro} error={mf("shipping2FacilityName")} onClearMissing={clr("shipping2FacilityName")} />
+            <Field label="Facility NPI" value={shipping2FacilityNpi} onChange={ro ? undefined : onShipping2FacilityNpiChange} readOnly={ro} error={mf("shipping2FacilityNpi")} onClearMissing={clr("shipping2FacilityNpi")} />
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Facility TIN" value={shipping2FacilityTin} onChange={ro ? undefined : onShipping2FacilityTinChange} readOnly={ro} />
-            <Field label="Facility PTAN" value={shipping2FacilityPtan} onChange={ro ? undefined : onShipping2FacilityPtanChange} readOnly={ro} />
+            <Field label="Facility TIN" value={shipping2FacilityTin} onChange={ro ? undefined : onShipping2FacilityTinChange} readOnly={ro} error={mf("shipping2FacilityTin")} onClearMissing={clr("shipping2FacilityTin")} />
+            <Field label="Facility PTAN" value={shipping2FacilityPtan} onChange={ro ? undefined : onShipping2FacilityPtanChange} readOnly={ro} error={mf("shipping2FacilityPtan")} onClearMissing={clr("shipping2FacilityPtan")} />
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Contact Name" value={shipping2ContactName} onChange={ro ? undefined : onShipping2ContactNameChange} readOnly={ro} />
-            <Field label="Contact Email" value={shipping2ContactEmail} onChange={ro ? undefined : onShipping2ContactEmailChange} readOnly={ro} />
+            <Field label="Contact Name" value={shipping2ContactName} onChange={ro ? undefined : onShipping2ContactNameChange} readOnly={ro} error={mf("shipping2ContactName")} onClearMissing={clr("shipping2ContactName")} />
+            <Field label="Contact Email" value={shipping2ContactEmail} onChange={ro ? undefined : onShipping2ContactEmailChange} readOnly={ro} error={mf("shipping2ContactEmail")} onClearMissing={clr("shipping2ContactEmail")} />
           </div>
-          <Field label="Address" value={shipping2Address} onChange={ro ? undefined : onShipping2AddressChange} readOnly={ro} className="w-full" />
-          <Field label="Receiving Days / Times" value={shipping2DaysTimes} onChange={ro ? undefined : onShipping2DaysTimesChange} readOnly={ro} className="w-full" />
+          <Field label="Address" value={shipping2Address} onChange={ro ? undefined : onShipping2AddressChange} readOnly={ro} className="w-full" error={mf("shipping2Address")} onClearMissing={clr("shipping2Address")} />
+          <Field label="Receiving Days / Times" value={shipping2DaysTimes} onChange={ro ? undefined : onShipping2DaysTimesChange} readOnly={ro} className="w-full" error={mf("shipping2DaysTimes")} onClearMissing={clr("shipping2DaysTimes")} />
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Phone" value={shipping2Phone} onChange={ro ? undefined : onShipping2PhoneChange} readOnly={ro} />
-            <Field label="Fax" value={shipping2Fax} onChange={ro ? undefined : onShipping2FaxChange} readOnly={ro} />
+            <Field label="Phone" value={shipping2Phone} onChange={ro ? undefined : onShipping2PhoneChange} readOnly={ro} error={mf("shipping2Phone")} onClearMissing={clr("shipping2Phone")} />
+            <Field label="Fax" value={shipping2Fax} onChange={ro ? undefined : onShipping2FaxChange} readOnly={ro} error={mf("shipping2Fax")} onClearMissing={clr("shipping2Fax")} />
           </div>
         </SectionBody>
       </div>
@@ -431,12 +447,12 @@ export function EnrollmentFormDocument({
         <SectionHeader>Claims Contact Information (Required)</SectionHeader>
         <SectionBody>
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Contact Name" value={claimsContactName} onChange={ro ? undefined : onClaimsContactNameChange} readOnly={ro} />
-            <Field label="Contact Phone" value={claimsContactPhone} onChange={ro ? undefined : onClaimsContactPhoneChange} readOnly={ro} />
+            <Field label="Contact Name" value={claimsContactName} onChange={ro ? undefined : onClaimsContactNameChange} readOnly={ro} error={mf("claimsContactName")} onClearMissing={clr("claimsContactName")} />
+            <Field label="Contact Phone" value={claimsContactPhone} onChange={ro ? undefined : onClaimsContactPhoneChange} readOnly={ro} error={mf("claimsContactPhone")} onClearMissing={clr("claimsContactPhone")} />
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Contact Email" value={claimsContactEmail} onChange={ro ? undefined : onClaimsContactEmailChange} readOnly={ro} />
-            <Field label="Third Party Biller" value={claimsThirdParty} onChange={ro ? undefined : onClaimsThirdPartyChange} readOnly={ro} />
+            <Field label="Contact Email" value={claimsContactEmail} onChange={ro ? undefined : onClaimsContactEmailChange} readOnly={ro} error={mf("claimsContactEmail")} onClearMissing={clr("claimsContactEmail")} />
+            <Field label="Third Party Biller" value={claimsThirdParty} onChange={ro ? undefined : onClaimsThirdPartyChange} readOnly={ro} error={mf("claimsThirdParty")} onClearMissing={clr("claimsThirdParty")} />
           </div>
         </SectionBody>
       </div>

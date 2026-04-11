@@ -135,6 +135,7 @@ export default function InviteSignUpForm({
   const [claimsContactPhone, setClaimsContactPhone] = useState("");
   const [claimsContactEmail, setClaimsContactEmail] = useState("");
   const [claimsThirdParty, setClaimsThirdParty] = useState("");
+  const [missingEnrollFields, setMissingEnrollFields] = useState<Set<string>>(new Set());
 
   // Office step only for clinical_provider WITHOUT a pre-assigned facility
   // (sales_rep and clinical_staff never get an office step here)
@@ -265,51 +266,60 @@ export default function InviteSignUpForm({
       return;
     }
     setClientError("");
-    const missing: string[] = [];
 
-    if (!facilityEin.trim()) missing.push("EIN");
-    if (!facilityNpi.trim()) missing.push("Facility NPI");
-    if (!facilityTin.trim()) missing.push("TIN");
-    if (!facilityPtan.trim()) missing.push("PTAN");
-    if (!apContactName.trim()) missing.push("AP Contact Name");
-    if (!apContactEmail.trim()) missing.push("AP Contact Email");
-    if (!billingFax.trim()) missing.push("Billing Fax");
-    if (!dpaContact.trim()) missing.push("DPA Contact");
-    if (!dpaContactEmail.trim()) missing.push("DPA Contact Email");
-    if (!additionalProvider1Name.trim()) missing.push("Additional Provider 1 Name");
-    if (!additionalProvider1Npi.trim()) missing.push("Additional Provider 1 NPI");
-    if (!additionalProvider2Name.trim()) missing.push("Additional Provider 2 Name");
-    if (!additionalProvider2Npi.trim()) missing.push("Additional Provider 2 NPI");
-    if (!shippingFacilityName.trim()) missing.push("Shipping Facility Name");
-    if (!shippingFacilityNpi.trim()) missing.push("Shipping Facility NPI");
-    if (!shippingFacilityTin.trim()) missing.push("Shipping TIN");
-    if (!shippingFacilityPtan.trim()) missing.push("Shipping PTAN");
-    if (!shippingContactName.trim()) missing.push("Shipping Contact Name");
-    if (!shippingContactEmail.trim()) missing.push("Shipping Contact Email");
-    if (!shippingAddress.trim()) missing.push("Shipping Address");
-    if (!shippingDaysTimes.trim()) missing.push("Shipping Days/Times");
-    if (!shippingPhone.trim()) missing.push("Shipping Phone");
-    if (!shippingFax.trim()) missing.push("Shipping Fax");
-    if (!shipping2FacilityName.trim()) missing.push("Shipping 2 Facility Name");
-    if (!shipping2FacilityNpi.trim()) missing.push("Shipping 2 Facility NPI");
-    if (!shipping2FacilityTin.trim()) missing.push("Shipping 2 TIN");
-    if (!shipping2FacilityPtan.trim()) missing.push("Shipping 2 PTAN");
-    if (!shipping2ContactName.trim()) missing.push("Shipping 2 Contact Name");
-    if (!shipping2ContactEmail.trim()) missing.push("Shipping 2 Contact Email");
-    if (!shipping2Address.trim()) missing.push("Shipping 2 Address");
-    if (!shipping2DaysTimes.trim()) missing.push("Shipping 2 Days/Times");
-    if (!shipping2Phone.trim()) missing.push("Shipping 2 Phone");
-    if (!shipping2Fax.trim()) missing.push("Shipping 2 Fax");
-    if (!claimsContactName.trim()) missing.push("Claims Contact Name");
-    if (!claimsContactPhone.trim()) missing.push("Claims Contact Phone");
-    if (!claimsContactEmail.trim()) missing.push("Claims Contact Email");
-    if (!claimsThirdParty.trim()) missing.push("Third Party Administrator");
+    const checks: [string, string][] = [
+      ["facilityEin", facilityEin],
+      ["facilityNpi", facilityNpi],
+      ["facilityTin", facilityTin],
+      ["facilityPtan", facilityPtan],
+      ["apContactName", apContactName],
+      ["apContactEmail", apContactEmail],
+      ["billingFax", billingFax],
+      ["dpaContact", dpaContact],
+      ["dpaContactEmail", dpaContactEmail],
+      ["additionalProvider1Name", additionalProvider1Name],
+      ["additionalProvider1Npi", additionalProvider1Npi],
+      ["additionalProvider2Name", additionalProvider2Name],
+      ["additionalProvider2Npi", additionalProvider2Npi],
+      ["shippingFacilityName", shippingFacilityName],
+      ["shippingFacilityNpi", shippingFacilityNpi],
+      ["shippingFacilityTin", shippingFacilityTin],
+      ["shippingFacilityPtan", shippingFacilityPtan],
+      ["shippingContactName", shippingContactName],
+      ["shippingContactEmail", shippingContactEmail],
+      ["shippingAddress", shippingAddress],
+      ["shippingDaysTimes", shippingDaysTimes],
+      ["shippingPhone", shippingPhone],
+      ["shippingFax", shippingFax],
+      ["shipping2FacilityName", shipping2FacilityName],
+      ["shipping2FacilityNpi", shipping2FacilityNpi],
+      ["shipping2FacilityTin", shipping2FacilityTin],
+      ["shipping2FacilityPtan", shipping2FacilityPtan],
+      ["shipping2ContactName", shipping2ContactName],
+      ["shipping2ContactEmail", shipping2ContactEmail],
+      ["shipping2Address", shipping2Address],
+      ["shipping2DaysTimes", shipping2DaysTimes],
+      ["shipping2Phone", shipping2Phone],
+      ["shipping2Fax", shipping2Fax],
+      ["claimsContactName", claimsContactName],
+      ["claimsContactPhone", claimsContactPhone],
+      ["claimsContactEmail", claimsContactEmail],
+      ["claimsThirdParty", claimsThirdParty],
+    ];
 
-    if (missing.length > 0) {
+    const emptyFields = new Set(
+      checks.filter(([, v]) => !v.trim()).map(([k]) => k),
+    );
+
+    if (emptyFields.size > 0) {
       e.preventDefault();
-      setClientError(`Please complete all required fields: ${missing.join(", ")}.`);
+      setMissingEnrollFields(emptyFields);
+      setClientError("Please complete all highlighted fields before submitting.");
+      return;
     }
-    // If valid, don't preventDefault — form submits naturally to formAction
+
+    setMissingEnrollFields(new Set());
+    // All valid — form submits naturally to formAction
   }
 
   // Enrollment step — full-page layout, renders BEFORE the AuthCard return
@@ -396,6 +406,8 @@ export default function InviteSignUpForm({
           claimsContactPhone={claimsContactPhone} onClaimsContactPhoneChange={setClaimsContactPhone}
           claimsContactEmail={claimsContactEmail} onClaimsContactEmailChange={setClaimsContactEmail}
           claimsThirdParty={claimsThirdParty} onClaimsThirdPartyChange={setClaimsThirdParty}
+          missingFields={missingEnrollFields}
+          onClearMissing={(name) => setMissingEnrollFields((prev) => { const next = new Set(prev); next.delete(name); return next; })}
         />
 
         {/* Bottom: error + submit form */}
