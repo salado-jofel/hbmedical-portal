@@ -58,6 +58,10 @@ type FormState = {
   conditionAnemia: boolean;
   useBloodThinners: boolean;
   bloodThinnerDetails: string;
+  surgicalDressingType: string | null;
+  woundType: string;
+  anticipatedLengthDays: number | null;
+  followupWeeks: number | null;
   woundLocationSide: "RT" | "LT" | "bilateral" | null;
   granulationTissuePct: string;
   exudateAmount: "none" | "minimal" | "moderate" | "heavy" | null;
@@ -83,6 +87,7 @@ function buildFormState(
     patientDate?: string | null;
     physicianSignature?: string | null;
     physicianSignatureDate?: string | null;
+    woundType?: string | null;
   },
 ): FormState {
   return {
@@ -93,6 +98,10 @@ function buildFormState(
     isPatientAtSnf: form?.isPatientAtSnf ?? false,
     icd10Code: form?.icd10Code ?? "",
     followupDays: form?.followupDays ?? null,
+    surgicalDressingType: form?.surgicalDressingType ?? null,
+    woundType: opts?.woundType ?? "",
+    anticipatedLengthDays: form?.anticipatedLengthDays ?? null,
+    followupWeeks: form?.followupWeeks ?? null,
     woundSite: form?.woundSite ?? "",
     woundStage: form?.woundStage ?? "",
     woundLengthCm: form?.woundLengthCm?.toString() ?? "",
@@ -379,21 +388,13 @@ export function OrderFormDocument({
     physicianSignatureDate: order.signed_at
       ? new Date(order.signed_at).toLocaleDateString()
       : null,
+    woundType: order.wound_type ?? "",
   };
 
   const [formData, setFormData] = useState<FormState>(() =>
     buildFormState(orderForm, formFallbacks),
   );
   const [isSaving, setIsSaving] = useState(false);
-
-  // UI-only local state (not persisted to order_form)
-  const [localWoundType, setLocalWoundType] = useState(order.wound_type ?? "");
-  const [surgicalDressingPrimary, setSurgicalDressingPrimary] = useState(false);
-  const [surgicalDressingSecondary, setSurgicalDressingSecondary] =
-    useState(false);
-  const [followupWeeks, setFollowupWeeks] = useState("");
-  // "Other" wound type detail — purely local, not persisted
-  const [woundOtherText, setWoundOtherText] = useState("");
 
   // Re-sync when AI extraction completes
   useEffect(() => {
@@ -432,15 +433,15 @@ export function OrderFormDocument({
     if (!formData.woundVisitNumber) count++;
     if (!formData.granulationTissuePct) count++;
     // Follow up — days OR weeks counts as filled
-    if (!formData.followupDays && !followupWeeks) count++;
-    // Anticipated length — same field (followupDays) used for anticipated length
-    // (section 16 and section 18 both use followupDays — counted once above)
+    if (!formData.followupDays && !formData.followupWeeks) count++;
+    // Anticipated length of need
+    if (!formData.anticipatedLengthDays) count++;
     // Checkbox groups — at least one must be selected
-    if (!localWoundType && !woundOtherText) count++;
+    if (!formData.woundType) count++;
     if (!formData.woundLocationSide) count++;
     if (!formData.exudateAmount) count++;
     if (!formData.skinCondition) count++;
-    if (!surgicalDressingPrimary && !surgicalDressingSecondary) count++;
+    if (!formData.surgicalDressingType) count++;
     if (formData.subjectiveSymptoms.length === 0) count++;
     // Medical conditions — at least one must be checked
     const hasAnyCondition =
@@ -470,14 +471,13 @@ export function OrderFormDocument({
     formData.woundVisitNumber,
     formData.granulationTissuePct,
     formData.followupDays,
-    followupWeeks,
-    localWoundType,
-    woundOtherText,
+    formData.followupWeeks,
+    formData.anticipatedLengthDays,
+    formData.woundType,
     formData.woundLocationSide,
     formData.exudateAmount,
     formData.skinCondition,
-    surgicalDressingPrimary,
-    surgicalDressingSecondary,
+    formData.surgicalDressingType,
     formData.subjectiveSymptoms,
     formData.conditionDecreasedMobility,
     formData.conditionDiabetes,
@@ -489,12 +489,11 @@ export function OrderFormDocument({
   ]);
 
   // Per-field / per-group deficiency flags
-  const woundTypeDeficient = aiExtracted && !localWoundType && !woundOtherText;
+  const woundTypeDeficient = aiExtracted && !formData.woundType;
   const locationSideDeficient = aiExtracted && !formData.woundLocationSide;
   const exudateDeficient = aiExtracted && !formData.exudateAmount;
   const skinDeficient = aiExtracted && !formData.skinCondition;
-  const dressingDeficient =
-    aiExtracted && !surgicalDressingPrimary && !surgicalDressingSecondary;
+  const dressingDeficient = aiExtracted && !formData.surgicalDressingType;
   const symptomsDeficient =
     aiExtracted && formData.subjectiveSymptoms.length === 0;
   const conditionsDeficient =
@@ -510,9 +509,9 @@ export function OrderFormDocument({
     );
   const visitDeficient = aiExtracted && !formData.woundVisitNumber;
   const granulationDeficient = aiExtracted && !formData.granulationTissuePct;
-  const lengthDeficient = aiExtracted && !formData.followupDays;
+  const lengthDeficient = aiExtracted && !formData.anticipatedLengthDays;
   const followupDeficient =
-    aiExtracted && !formData.followupDays && !followupWeeks;
+    aiExtracted && !formData.followupDays && !formData.followupWeeks;
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setFormData((prev) => ({ ...prev, [key]: value }));
@@ -537,6 +536,10 @@ export function OrderFormDocument({
     const strOrNull = (v: string) => v.trim() || null;
 
     const result = await saveOrderForm(orderId, {
+      wound_type: formData.woundType || null,
+      surgical_dressing_type: formData.surgicalDressingType,
+      anticipated_length_days: formData.anticipatedLengthDays,
+      followup_weeks: formData.followupWeeks,
       wound_visit_number: numOrNull(formData.woundVisitNumber),
       chief_complaint: strOrNull(formData.chiefComplaint),
       has_vasculitis_or_burns: formData.hasVasculitisOrBurns,
@@ -599,6 +602,9 @@ export function OrderFormDocument({
       const strOrNull2 = (v: string) => v.trim() || null;
       onSaved({
         ...orderForm,
+        surgicalDressingType: formData.surgicalDressingType,
+        anticipatedLengthDays: formData.anticipatedLengthDays,
+        followupWeeks: formData.followupWeeks,
         woundVisitNumber: numOrNull2(formData.woundVisitNumber),
         chiefComplaint: strOrNull2(formData.chiefComplaint),
         hasVasculitisOrBurns: formData.hasVasculitisOrBurns,
@@ -883,13 +889,13 @@ export function OrderFormDocument({
             )}
           >
             <FormCheckbox
-              checked={surgicalDressingPrimary}
-              onChange={setSurgicalDressingPrimary}
+              checked={formData.surgicalDressingType === "primary"}
+              onChange={(checked) => set("surgicalDressingType", checked ? "primary" : null)}
               label="Primary"
             />
             <FormCheckbox
-              checked={surgicalDressingSecondary}
-              onChange={setSurgicalDressingSecondary}
+              checked={formData.surgicalDressingType === "secondary"}
+              onChange={(checked) => set("surgicalDressingType", checked ? "secondary" : null)}
               label="Secondary"
             />
           </div>
@@ -997,46 +1003,37 @@ export function OrderFormDocument({
                 "ring-1 ring-red-300 rounded bg-red-50/50 px-2 py-1",
             )}
           >
-            {[
-              { v: "diabetic_foot_ulcer", label: "Diabetic Foot Ulcers" },
-              { v: "pressure_ulcer", label: "Pressure Ulcers" },
-              { v: "venous_leg_ulcer", label: "Venous Leg Ulcer" },
-            ].map(({ v: wv, label }) => (
+            {(["diabetic_foot_ulcer", "pressure_ulcer", "venous_leg_ulcer"] as const).map((wv) => (
               <FormCheckbox
                 key={wv}
-                checked={localWoundType === wv}
-                onChange={(checked) => {
-                  setLocalWoundType(checked ? wv : "");
-                  if (checked) setWoundOtherText("");
-                }}
-                label={label}
+                checked={formData.woundType === wv}
+                onChange={(checked) => set("woundType", checked ? wv : "")}
+                label={
+                  wv === "diabetic_foot_ulcer" ? "Diabetic Foot Ulcers"
+                  : wv === "pressure_ulcer" ? "Pressure Ulcers"
+                  : "Venous Leg Ulcer"
+                }
               />
             ))}
-            <FormCheckbox
-              checked={
-                !!woundOtherText ||
-                (!!localWoundType &&
-                  ![
-                    "diabetic_foot_ulcer",
-                    "pressure_ulcer",
-                    "venous_leg_ulcer",
-                  ].includes(localWoundType))
-              }
-              onChange={(checked) => {
-                if (!checked) setWoundOtherText("");
-                else setLocalWoundType("");
-              }}
-              label="Other"
-            />
-            <FormInput
-              value={woundOtherText}
-              onChange={(v) => {
-                setWoundOtherText(v);
-                if (v) setLocalWoundType("");
-              }}
-              className="w-28"
-              placeholder="Specify"
-            />
+            {(() => {
+              const knownTypes = ["diabetic_foot_ulcer", "pressure_ulcer", "venous_leg_ulcer"];
+              const isOther = !!formData.woundType && !knownTypes.includes(formData.woundType);
+              return (
+                <>
+                  <FormCheckbox
+                    checked={isOther}
+                    onChange={(checked) => { if (!checked) set("woundType", ""); }}
+                    label="Other"
+                  />
+                  <FormInput
+                    value={isOther ? formData.woundType : ""}
+                    onChange={(v) => set("woundType", v)}
+                    className="w-28"
+                    placeholder="Specify"
+                  />
+                </>
+              );
+            })()}
           </div>
         </DocRow>
 
@@ -1364,10 +1361,10 @@ export function OrderFormDocument({
           <FL className={cn(lengthDeficient && "text-[#dc2626]")}>
             Anticipated Length of Need:
           </FL>
-          <AiWrap active={ai && !!formData.followupDays}>
+          <AiWrap active={ai && !!formData.anticipatedLengthDays}>
             <FormInput
-              value={formData.followupDays?.toString() ?? ""}
-              onChange={(v) => set("followupDays", v ? Number(v) : null)}
+              value={formData.anticipatedLengthDays?.toString() ?? ""}
+              onChange={(v) => set("anticipatedLengthDays", v ? Number(v) : null)}
               deficient={lengthDeficient}
               type="number"
               className="w-12 text-center"
@@ -1383,11 +1380,11 @@ export function OrderFormDocument({
             )}
           >
             {([15, 21, 30] as const).map((d) => (
-              <AiWrap key={d} active={ai && formData.followupDays === d}>
+              <AiWrap key={d} active={ai && formData.anticipatedLengthDays === d}>
                 <FormCheckbox
-                  checked={formData.followupDays === d}
+                  checked={formData.anticipatedLengthDays === d}
                   onChange={(checked) =>
-                    set("followupDays", checked ? d : null)
+                    set("anticipatedLengthDays", checked ? d : null)
                   }
                   label={`${d} days`}
                 />
@@ -1490,8 +1487,8 @@ export function OrderFormDocument({
           <span className="text-[13px] text-[#444]">days</span>
           <span className="text-[#ccc] mx-2">|</span>
           <FormInput
-            value={followupWeeks}
-            onChange={setFollowupWeeks}
+            value={formData.followupWeeks?.toString() ?? ""}
+            onChange={(v) => set("followupWeeks", v ? Number(v) : null)}
             deficient={followupDeficient}
             type="number"
             className="w-12 text-center"

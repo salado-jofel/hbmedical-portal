@@ -5,6 +5,7 @@ import {
   View,
   StyleSheet,
 } from "@react-pdf/renderer";
+import { PDFHeader } from "./PDFHeader";
 
 const DARK  = "#1F2937";
 const GRAY  = "#6B7280";
@@ -19,18 +20,6 @@ const styles = StyleSheet.create({
     padding: 40,
     paddingBottom: 60,
     backgroundColor: "#fff",
-  },
-  title: {
-    textAlign: "center",
-    fontSize: 13,
-    fontFamily: "Helvetica-Bold",
-    marginBottom: 3,
-  },
-  subtitle: {
-    textAlign: "center",
-    fontSize: 8,
-    color: GRAY,
-    marginBottom: 14,
   },
   sectionHeader: {
     backgroundColor: DARK,
@@ -190,10 +179,10 @@ export function IVRFormPDF({
       <Page size="LETTER" style={styles.page}>
 
         {/* ── Header ── */}
-        <Text style={styles.title}>Patient Insurance Support Form</Text>
-        <Text style={styles.subtitle}>
-          HB Medical Portal  |  Order #{order.order_number ?? "—"}  |  Date of Service: {dateOfService}
-        </Text>
+        <PDFHeader
+          title="Patient Insurance Support Form"
+          subtitle={`Order #${order.order_number ?? "—"}  |  Date of Service: ${dateOfService}`}
+        />
 
         {/* ── 1. Facility Information ── */}
         <SectionHeader title="Facility Information" />

@@ -6,6 +6,7 @@ import {
   View,
   StyleSheet,
 } from "@react-pdf/renderer";
+import { PDFHeader } from "./PDFHeader";
 import type { IServiceLine } from "@/utils/interfaces/orders";
 
 /* ── Constants ── */
@@ -40,37 +41,6 @@ const s = StyleSheet.create({
     paddingHorizontal: 18,
     paddingBottom: 30,
     backgroundColor: "#fff",
-  },
-
-  /* Red top bar */
-  redBar: {
-    borderTop: `3px solid ${RED}`,
-    marginBottom: 3,
-  },
-
-  /* Form title row */
-  titleRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 3,
-  },
-  titleLeft: {
-    fontSize: 6,
-    color: GRAY,
-    flex: 1,
-  },
-  titleCenter: {
-    fontSize: 9,
-    fontFamily: "Helvetica-Bold",
-    textAlign: "center",
-    flex: 2,
-  },
-  titleRight: {
-    fontSize: 6,
-    color: GRAY,
-    flex: 1,
-    textAlign: "right",
   },
 
   /* Generic outer border */
@@ -203,17 +173,11 @@ export function HCFA1500PDF({
     <Document>
       <Page size="LETTER" style={s.page}>
 
-        {/* Red top bar */}
-        <View style={s.redBar} />
-
-        {/* Form title */}
-        <View style={s.titleRow}>
-          <Text style={s.titleLeft}>
-            APPROVED BY NATIONAL UNIFORM CLAIM COMMITTEE (NUCC) 02/12
-          </Text>
-          <Text style={s.titleCenter}>HEALTH INSURANCE CLAIM FORM</Text>
-          <Text style={s.titleRight}>OMB APPROVAL PENDING</Text>
-        </View>
+        {/* ── Header ── */}
+        <PDFHeader
+          title="CMS-1500 Health Insurance Claim Form"
+          subtitle={`Order #${f(order.order_number)}`}
+        />
 
         {/* ── CARRIER block placeholder ── */}
         <View

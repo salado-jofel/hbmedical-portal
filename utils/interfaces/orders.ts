@@ -433,6 +433,11 @@ export interface IOrderForm {
   wound2LengthCm: number | null;
   wound2WidthCm: number | null;
   wound2DepthCm: number | null;
+  // Surgical dressing
+  surgicalDressingType: string | null;
+  // Anticipated length & follow-up
+  anticipatedLengthDays: number | null;
+  followupWeeks: number | null;
   // Treatment
   drainageDescription: string | null;
   treatmentPlan: string | null;

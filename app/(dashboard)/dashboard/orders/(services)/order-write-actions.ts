@@ -328,6 +328,10 @@ export async function saveOrderForm(
     wound2_length_cm?: number | null;
     wound2_width_cm?: number | null;
     wound2_depth_cm?: number | null;
+    surgical_dressing_type?: string | null;
+    anticipated_length_days?: number | null;
+    followup_weeks?: number | null;
+    wound_type?: string | null;
     drainage_description?: string | null;
     treatment_plan?: string | null;
     patient_name?: string | null;
@@ -340,13 +344,23 @@ export async function saveOrderForm(
     await requireIVREditRole();
     const adminClient = createAdminClient();
 
+    // wound_type lives on the orders table — separate update
+    const { wound_type, ...formData } = data;
+
     const { error } = await adminClient
       .from("order_form")
-      .upsert({ order_id: orderId, ...data }, { onConflict: "order_id" });
+      .upsert({ order_id: orderId, ...formData }, { onConflict: "order_id" });
 
     if (error) {
       console.error("[saveOrderForm]", JSON.stringify(error));
       return { success: false, error: error.message ?? "Failed to save." };
+    }
+
+    if (wound_type !== undefined) {
+      await adminClient
+        .from("orders")
+        .update({ wound_type })
+        .eq("id", orderId);
     }
 
     revalidatePath(ORDERS_PATH);

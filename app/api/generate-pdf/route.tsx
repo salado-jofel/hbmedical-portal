@@ -38,6 +38,8 @@ export async function POST(req: NextRequest) {
     const ivr   = ivrRes.data;
     const hcfa  = hcfaRes.data;
 
+    console.log("[generate-pdf] order_form data:", JSON.stringify(form));
+
     if (!order) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
     }
