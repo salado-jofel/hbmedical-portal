@@ -292,7 +292,7 @@ export function EnrollmentFormDocument({
       </div>
 
       {/* ── Section 1: Billing ── */}
-      <SectionHeader>Section 1 — Billing Information</SectionHeader>
+      <SectionHeader>Account Billing Information</SectionHeader>
       <SectionBody>
         {/* Facility Name (read-only, full width) */}
         <Field
@@ -350,7 +350,7 @@ export function EnrollmentFormDocument({
 
       {/* ── Section 2: Provider ── */}
       <div className="mt-4">
-        <SectionHeader>Section 2 — Provider Information</SectionHeader>
+        <SectionHeader>Provider Information</SectionHeader>
         <SectionBody>
           {/* Primary Provider (read-only) */}
           <div className="grid grid-cols-2 gap-4">
@@ -374,7 +374,7 @@ export function EnrollmentFormDocument({
 
       {/* ── Section 3: Shipping Location 1 ── */}
       <div className="mt-4">
-        <SectionHeader>Section 3 — Shipping Location 1</SectionHeader>
+        <SectionHeader>Account Shipping Information</SectionHeader>
         <SectionBody>
           <div className="grid grid-cols-2 gap-4">
             <Field label="Facility Name" value={shippingFacilityName} onChange={ro ? undefined : onShippingFacilityNameChange} readOnly={ro} />
@@ -399,7 +399,7 @@ export function EnrollmentFormDocument({
 
       {/* ── Section 4: Shipping Location 2 ── */}
       <div className="mt-4">
-        <SectionHeader>Section 4 — Shipping Location 2</SectionHeader>
+        <SectionHeader>Additional Shipping Information</SectionHeader>
         <SectionBody>
           <div className="grid grid-cols-2 gap-4">
             <Field label="Facility Name" value={shipping2FacilityName} onChange={ro ? undefined : onShipping2FacilityNameChange} readOnly={ro} />
@@ -424,7 +424,7 @@ export function EnrollmentFormDocument({
 
       {/* ── Section 5: Claims ── */}
       <div className="mt-4">
-        <SectionHeader>Section 5 — Claims Contact</SectionHeader>
+        <SectionHeader>Claims Contact Information (Required)</SectionHeader>
         <SectionBody>
           <div className="grid grid-cols-2 gap-4">
             <Field label="Contact Name" value={claimsContactName} onChange={ro ? undefined : onClaimsContactNameChange} readOnly={ro} />
