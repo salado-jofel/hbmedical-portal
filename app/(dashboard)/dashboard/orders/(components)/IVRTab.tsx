@@ -1,6 +1,6 @@
 "use client";
 
-import type { DashboardOrder, IOrderIVR } from "@/utils/interfaces/orders";
+import type { IOrderIVR } from "@/utils/interfaces/orders";
 import { IVRFormDocument } from "./IVRFormDocument";
 import { cn } from "@/utils/utils";
 
@@ -30,10 +30,9 @@ interface IVRTabProps {
   orderId: string;
   canEdit: boolean;
   ivrData: Partial<IOrderIVR> | null;
-  order: DashboardOrder;
-  physicianName?: string | null;
   resetIvrKey: number;
   isReady: boolean;
+  isExtracting?: boolean;
   onDirtyChange: (dirty: boolean) => void;
   onSave: (saved: Partial<IOrderIVR>) => void | Promise<void>;
 }
@@ -43,21 +42,20 @@ export function IVRTab({
   orderId,
   canEdit,
   ivrData,
-  order,
-  physicianName,
   resetIvrKey,
   isReady,
+  isExtracting = false,
   onDirtyChange,
   onSave,
 }: IVRTabProps) {
   return (
     <div
       className={cn(
-        "absolute inset-0 overflow-y-auto px-6",
+        "absolute inset-0 overflow-y-auto px-3",
         !isActive && "hidden",
       )}
     >
-      {!isReady ? (
+      {!isReady || isExtracting ? (
         <FormSkeleton />
       ) : (
         <IVRFormDocument
@@ -65,8 +63,6 @@ export function IVRTab({
           orderId={orderId}
           canEdit={canEdit}
           ivrData={ivrData}
-          order={order}
-          physicianName={physicianName}
           onDirtyChange={onDirtyChange}
           onSaved={onSave}
         />

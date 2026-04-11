@@ -172,9 +172,7 @@ export function OrderDetailModal({
     order.documents ?? [],
   );
   const [viewingDocId, setViewingDocId] = useState<string | null>(null);
-  const [generatingPdfType, setGeneratingPdfType] = useState<string | null>(
-    null,
-  );
+  const [generatingPdfTypes, setGeneratingPdfTypes] = useState<Set<string>>(new Set());
   const [aiWindowExpired, setAiWindowExpired] = useState(true);
   const [woundPhotoUrls, setWoundPhotoUrls] = useState<Record<string, string>>(
     {},
@@ -194,7 +192,6 @@ export function OrderDetailModal({
 
   /* -- IVR + HCFA (lazy-loaded on first tab visit) -- */
   const [ivrData, setIvrData] = useState<Partial<IOrderIVR> | null>(null);
-  const [ivrPhysicianName, setIvrPhysicianName] = useState<string | null>(null);
   const [hcfaData, setHcfaData] = useState<Record<string, unknown> | null>(
     null,
   );
@@ -242,6 +239,7 @@ export function OrderDetailModal({
     null,
   );
   const pollCountRef = useRef(0);
+  const aiToastShownRef = useRef(false);
 
   function beginPolling() {
     if (pollingIntervalRef.current) {
@@ -261,9 +259,12 @@ export function OrderDetailModal({
             pollingIntervalRef.current = null;
           }
           setTab("order-form");
-          toast.success("AI extraction complete — please review the data", {
-            duration: 5000,
-          });
+          if (!aiToastShownRef.current) {
+            aiToastShownRef.current = true;
+            toast.success("AI extraction complete — please review the data", {
+              duration: 5000,
+            });
+          }
           // Refresh patient name and documents — AI may have linked a patient and generated PDFs
           getOrderById(order.id).then((updated) => {
             if (updated?.patient_full_name) {
@@ -273,6 +274,15 @@ export function OrderDetailModal({
             if (updated?.documents) {
               setLocalDocuments(updated.documents);
             }
+          });
+          // Refresh IVR and HCFA with AI-extracted data so those tabs are current
+          getOrderIVR(order.id).then(({ ivr }) => {
+            setIvrData(ivr ?? {});
+            setLoadedTabs((prev) => new Set([...prev, "ivr"]));
+          });
+          getForm1500(order.id).then((data) => {
+            setHcfaData((data as Record<string, unknown>) ?? {});
+            setLoadedTabs((prev) => new Set([...prev, "hcfa"]));
           });
           return;
         }
@@ -333,7 +343,6 @@ export function OrderDetailModal({
       // Reset all tab data on close
       setLoadedTabs(new Set());
       setIvrData(null);
-      setIvrPhysicianName(null);
       setHcfaData(null);
       setDocuments([]);
       setPaymentData(null);
@@ -382,8 +391,11 @@ export function OrderDetailModal({
           ["facesheet", "clinical_docs"].includes(d.documentType),
         );
         if (hasTriggerDoc) {
-          setAiStatus("processing");
+          // aiStatus is already "processing" from the Master AI effect
           beginPolling();
+        } else {
+          // No extractable docs — allow manual entry
+          setAiStatus("idle");
         }
       }
     });
@@ -396,6 +408,7 @@ export function OrderDetailModal({
         clearInterval(pollingIntervalRef.current);
         pollingIntervalRef.current = null;
       }
+      aiToastShownRef.current = false;
       return;
     }
 
@@ -405,7 +418,6 @@ export function OrderDetailModal({
       pollingIntervalRef.current = null;
     }
     pollCountRef.current = 0;
-    setOrderForm(null);
 
     if (order.ai_extracted) {
       setAiStatus("complete");
@@ -415,7 +427,10 @@ export function OrderDetailModal({
       return;
     }
 
-    setAiStatus("idle");
+    setOrderForm(null);
+    // Set to "processing" optimistically — corrected to "idle" in the modal
+    // open effect if no trigger documents are found after the doc fetch.
+    setAiStatus("processing");
 
     return () => {
       if (pollingIntervalRef.current) {
@@ -669,6 +684,21 @@ export function OrderDetailModal({
     };
   }, [open, order.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /* ── PDF regeneration tracking (form save) ── */
+  useEffect(() => {
+    function handler(e: Event) {
+      const { type, status } = (e as CustomEvent<{ type: string; status: "start" | "done" }>).detail;
+      setGeneratingPdfTypes((prev) => {
+        const next = new Set(prev);
+        if (status === "start") next.add(type);
+        else next.delete(type);
+        return next;
+      });
+    }
+    window.addEventListener("pdf-regenerating", handler as EventListener);
+    return () => window.removeEventListener("pdf-regenerating", handler as EventListener);
+  }, []);
+
   /* ── Handlers ── */
 
   async function handleTabChange(value: TabValue) {
@@ -683,9 +713,8 @@ export function OrderDetailModal({
     }
 
     if (value === "ivr") {
-      const { ivr, physicianName } = await getOrderIVR(order.id);
+      const { ivr } = await getOrderIVR(order.id);
       setIvrData(ivr ?? {});
-      setIvrPhysicianName(physicianName);
       setLoadedTabs((prev) => new Set([...prev, "ivr"]));
     }
 
@@ -791,7 +820,7 @@ export function OrderDetailModal({
     const formType = formTypeMap[docType];
     if (!formType) return;
 
-    setGeneratingPdfType(docType);
+    setGeneratingPdfTypes((prev) => new Set([...prev, docType]));
     try {
       const res = await fetch("/api/generate-pdf", {
         method: "POST",
@@ -808,7 +837,7 @@ export function OrderDetailModal({
     } catch {
       toast.error("Failed to generate PDF. Please try again.");
     } finally {
-      setGeneratingPdfType(null);
+      setGeneratingPdfTypes((prev) => { const next = new Set(prev); next.delete(docType); return next; });
     }
   }
 
@@ -1353,19 +1382,13 @@ export function OrderDetailModal({
                       orderId={order.id}
                       canEdit={canEdit}
                       ivrData={ivrData}
-                      order={order}
-                      physicianName={ivrPhysicianName}
                       resetIvrKey={resetIvrKey}
                       isReady={loadedTabs.has("ivr")}
+                      isExtracting={aiStatus === "processing"}
                       onDirtyChange={setIsIvrDirty}
                       onSave={async (saved) => {
                         setIvrData(saved);
                         setIsIvrDirty(false);
-                        setGeneratingPdfType("additional_ivr");
-                        setTimeout(async () => {
-                          await refreshDocuments();
-                          setGeneratingPdfType(null);
-                        }, 3000);
                       }}
                     />
                     <HCFATab
@@ -1375,15 +1398,11 @@ export function OrderDetailModal({
                       hcfaData={hcfaData}
                       resetHcfaKey={resetHcfaKey}
                       isReady={loadedTabs.has("hcfa")}
+                      isExtracting={aiStatus === "processing"}
                       onDirtyChange={setIsHcfaDirty}
                       onSave={async (saved) => {
                         setHcfaData(saved);
                         setIsHcfaDirty(false);
-                        setGeneratingPdfType("form_1500");
-                        setTimeout(async () => {
-                          await refreshDocuments();
-                          setGeneratingPdfType(null);
-                        }, 3000);
                       }}
                     />
                     <OrderChatTab
@@ -1602,7 +1621,7 @@ export function OrderDetailModal({
                             const isViewLoading =
                               viewingDocId === docRecord?.id;
                             const isPdfGenerating =
-                              generatingPdfType === doc.type;
+                              generatingPdfTypes.has(doc.type);
                             const isRegenerableType = [
                               "order_form",
                               "form_1500",

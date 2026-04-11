@@ -10,7 +10,6 @@ import {
 import {
   Loader2,
   CheckCircle2,
-  AlertTriangle,
   Save,
   RotateCcw,
   Lock,
@@ -25,6 +24,7 @@ import { HBLogo } from "@/app/(components)/HBLogo";
 import { saveOrderForm } from "../(services)/order-write-actions";
 import type { IOrderForm, DashboardOrder } from "@/utils/interfaces/orders";
 import type { AiStatus } from "./OrderFormTab";
+import { FormDeficiencyBanner } from "./FormDeficiencyBanner";
 import { cn } from "@/utils/utils";
 import toast from "react-hot-toast";
 
@@ -394,11 +394,16 @@ export function OrderFormDocument({
   const [formData, setFormData] = useState<FormState>(() =>
     buildFormState(orderForm, formFallbacks),
   );
+  const [baseline, setBaseline] = useState<FormState>(() =>
+    buildFormState(orderForm, formFallbacks),
+  );
   const [isSaving, setIsSaving] = useState(false);
 
   // Re-sync when AI extraction completes
   useEffect(() => {
-    setFormData(buildFormState(orderForm, formFallbacks));
+    const snap = buildFormState(orderForm, formFallbacks);
+    setFormData(snap);
+    setBaseline(snap);
   }, [orderForm?.id, orderForm?.aiExtractedAt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isLocked = orderForm?.isLocked ?? false;
@@ -407,10 +412,8 @@ export function OrderFormDocument({
   const aiExtracted = orderForm?.aiExtracted ?? false;
 
   const isDirty = useMemo(
-    () =>
-      JSON.stringify(formData) !==
-      JSON.stringify(buildFormState(orderForm, formFallbacks)),
-    [formData, orderForm], // eslint-disable-line react-hooks/exhaustive-deps
+    () => JSON.stringify(formData) !== JSON.stringify(baseline),
+    [formData, baseline],
   );
 
   // Deficiency count: every empty field after AI extraction
@@ -527,7 +530,7 @@ export function OrderFormDocument({
   }
 
   function handleDiscard() {
-    setFormData(buildFormState(orderForm, formFallbacks));
+    setFormData(baseline);
   }
 
   async function handleSave() {
@@ -589,13 +592,27 @@ export function OrderFormDocument({
     }
 
     toast.success("Order form saved.");
+    setBaseline({ ...formData });
 
-    // Fire-and-forget PDF generation — failure doesn't block save
+    // Generate PDF — badge shows "Generating..." until complete
+    window.dispatchEvent(
+      new CustomEvent("pdf-regenerating", {
+        detail: { type: "order_form", status: "start" },
+      }),
+    );
     fetch("/api/generate-pdf", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ orderId, formType: "order_form" }),
-    }).catch((err) => console.error("[OrderForm] PDF generation failed:", err));
+    })
+      .catch((err) => console.error("[OrderForm] PDF generation failed:", err))
+      .finally(() => {
+        window.dispatchEvent(
+          new CustomEvent("pdf-regenerating", {
+            detail: { type: "order_form", status: "done" },
+          }),
+        );
+      });
 
     if (onSaved && orderForm) {
       const numOrNull2 = (v: string) => (v.trim() ? Number(v) : null);
@@ -687,23 +704,10 @@ export function OrderFormDocument({
       )}
 
       {/* ── AI extraction banners ── */}
-      {aiExtracted && deficiencyCount > 0 && (
-        <div className="flex items-center gap-2 px-4 py-2.5 bg-red-50 border-b border-red-200 text-sm text-red-700">
-          <AlertTriangle className="w-4 h-4 shrink-0" />
-          <span>
-            <strong>
-              {deficiencyCount} field{deficiencyCount !== 1 ? "s" : ""}
-            </strong>{" "}
-            need manual input before signing — highlighted in red below.
-          </span>
-        </div>
-      )}
-      {aiExtracted && deficiencyCount === 0 && (
-        <div className="flex items-center gap-2 px-4 py-2.5 bg-green-50 border-b border-green-200 text-sm text-green-700">
-          <CheckCircle2 className="w-4 h-4 shrink-0" />
-          <span>All required fields complete — ready for signing.</span>
-        </div>
-      )}
+      <FormDeficiencyBanner
+        aiExtracted={aiExtracted}
+        deficiencyCount={deficiencyCount}
+      />
       {!aiExtracted && aiStatus === "complete" && (
         <div className="flex items-center gap-2 px-4 py-2 bg-green-50 border-b border-green-100 text-xs text-green-700">
           <CheckCircle2 className="w-4 h-4 shrink-0" />
@@ -724,7 +728,7 @@ export function OrderFormDocument({
           PAPER DOCUMENT
           ════════════════════════════════════════════ */}
       <div
-        className="mx-auto my-4 bg-white border border-[#ddd] shadow-[0_1px_3px_rgba(0,0,0,0.08)]"
+        className="mx-auto bg-white border border-[#ddd] shadow-[0_1px_3px_rgba(0,0,0,0.08)]"
         style={{
           maxWidth: 800,
           padding: "28px 32px",
@@ -890,12 +894,16 @@ export function OrderFormDocument({
           >
             <FormCheckbox
               checked={formData.surgicalDressingType === "primary"}
-              onChange={(checked) => set("surgicalDressingType", checked ? "primary" : null)}
+              onChange={(checked) =>
+                set("surgicalDressingType", checked ? "primary" : null)
+              }
               label="Primary"
             />
             <FormCheckbox
               checked={formData.surgicalDressingType === "secondary"}
-              onChange={(checked) => set("surgicalDressingType", checked ? "secondary" : null)}
+              onChange={(checked) =>
+                set("surgicalDressingType", checked ? "secondary" : null)
+              }
               label="Secondary"
             />
           </div>
@@ -1003,26 +1011,42 @@ export function OrderFormDocument({
                 "ring-1 ring-red-300 rounded bg-red-50/50 px-2 py-1",
             )}
           >
-            {(["diabetic_foot_ulcer", "pressure_ulcer", "venous_leg_ulcer"] as const).map((wv) => (
+            {(
+              [
+                "diabetic_foot_ulcer",
+                "pressure_ulcer",
+                "venous_leg_ulcer",
+              ] as const
+            ).map((wv) => (
               <FormCheckbox
                 key={wv}
                 checked={formData.woundType === wv}
                 onChange={(checked) => set("woundType", checked ? wv : "")}
                 label={
-                  wv === "diabetic_foot_ulcer" ? "Diabetic Foot Ulcers"
-                  : wv === "pressure_ulcer" ? "Pressure Ulcers"
-                  : "Venous Leg Ulcer"
+                  wv === "diabetic_foot_ulcer"
+                    ? "Diabetic Foot Ulcers"
+                    : wv === "pressure_ulcer"
+                      ? "Pressure Ulcers"
+                      : "Venous Leg Ulcer"
                 }
               />
             ))}
             {(() => {
-              const knownTypes = ["diabetic_foot_ulcer", "pressure_ulcer", "venous_leg_ulcer"];
-              const isOther = !!formData.woundType && !knownTypes.includes(formData.woundType);
+              const knownTypes = [
+                "diabetic_foot_ulcer",
+                "pressure_ulcer",
+                "venous_leg_ulcer",
+              ];
+              const isOther =
+                !!formData.woundType &&
+                !knownTypes.includes(formData.woundType);
               return (
                 <>
                   <FormCheckbox
                     checked={isOther}
-                    onChange={(checked) => { if (!checked) set("woundType", ""); }}
+                    onChange={(checked) => {
+                      if (!checked) set("woundType", "");
+                    }}
                     label="Other"
                   />
                   <FormInput
@@ -1364,7 +1388,9 @@ export function OrderFormDocument({
           <AiWrap active={ai && !!formData.anticipatedLengthDays}>
             <FormInput
               value={formData.anticipatedLengthDays?.toString() ?? ""}
-              onChange={(v) => set("anticipatedLengthDays", v ? Number(v) : null)}
+              onChange={(v) =>
+                set("anticipatedLengthDays", v ? Number(v) : null)
+              }
               deficient={lengthDeficient}
               type="number"
               className="w-12 text-center"
@@ -1380,7 +1406,10 @@ export function OrderFormDocument({
             )}
           >
             {([15, 21, 30] as const).map((d) => (
-              <AiWrap key={d} active={ai && formData.anticipatedLengthDays === d}>
+              <AiWrap
+                key={d}
+                active={ai && formData.anticipatedLengthDays === d}
+              >
                 <FormCheckbox
                   checked={formData.anticipatedLengthDays === d}
                   onChange={(checked) =>

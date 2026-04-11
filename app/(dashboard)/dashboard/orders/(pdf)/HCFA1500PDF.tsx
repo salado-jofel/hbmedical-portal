@@ -7,7 +7,6 @@ import {
   View,
   StyleSheet,
 } from "@react-pdf/renderer";
-import { PDFHeader } from "./PDFHeader";
 import { CB, CBVal } from "./PDFComponents";
 import type { IServiceLine } from "@/utils/interfaces/orders";
 
@@ -188,11 +187,15 @@ export function HCFA1500PDF({
     <Document>
       <Page size="LETTER" style={s.page}>
 
-        {/* ── Branded header ── */}
-        <PDFHeader
-          title="Health Insurance Claim Form"
-          subtitle="APPROVED OMB-0938-1197 FORM 1500 (02-12)"
-        />
+        {/* ── CMS-1500 standard header ── */}
+        <View style={{ borderBottom: `1pt solid ${RED}`, paddingBottom: 3, marginBottom: 4, alignItems: "center" }}>
+          <Text style={{ fontSize: 9, color: RED, fontFamily: "Helvetica-Bold", letterSpacing: 0.5 }}>
+            HEALTH INSURANCE CLAIM FORM
+          </Text>
+          <Text style={{ fontSize: 6, color: GRAY, marginTop: 1 }}>
+            APPROVED BY NATIONAL UNIFORM CLAIM COMMITTEE (NUCC) 02/12{"   "}PICA | PICA
+          </Text>
+        </View>
 
         {/* ── ROW 1: Box 1 (insurance type) + Box 1a ── */}
         <View style={[s.band, s.formBorder, { borderBottom: "none" }]}>

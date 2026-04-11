@@ -20,9 +20,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { HBLogo } from "@/app/(components)/HBLogo";
 import { upsertOrderIVR } from "../(services)/order-ivr-actions";
-import type { IOrderIVR, DashboardOrder } from "@/utils/interfaces/orders";
+import type { IOrderIVR } from "@/utils/interfaces/orders";
 import { cn } from "@/utils/utils";
 import toast from "react-hot-toast";
+import { FormDeficiencyBanner } from "./FormDeficiencyBanner";
 
 /* ── Design tokens ── */
 const NAVY = "#0f2d4a";
@@ -79,66 +80,56 @@ type IVRFormState = {
   physicianSignatureDate: string;
 };
 
-type FormFallbacks = {
-  physicianName?: string | null;
-  patientName?: string | null;
-  patientDob?: string | null;
-  dateOfProcedure?: string | null;
-  woundType?: string | null;
-  isPatientAtSnf?: boolean | null;
-  salesRepName?: string | null;
-};
-
-function buildFormState(ivr: Partial<IOrderIVR> | null, fb?: FormFallbacks): IVRFormState {
+function buildFormState(ivr: Partial<IOrderIVR> | null): IVRFormState {
   const s = (v: string | null | undefined) => v ?? "";
   return {
-    salesRepName:                s(ivr?.salesRepName) || s(fb?.salesRepName),
-    placeOfService:              s(ivr?.placeOfService),
-    facilityName:                s(ivr?.facilityName),
-    medicareAdminContractor:     s(ivr?.medicareAdminContractor),
-    facilityAddress:             s(ivr?.facilityAddress),
-    facilityNpi:                 s(ivr?.facilityNpi),
-    facilityContact:             s(ivr?.facilityContact),
-    facilityTin:                 s(ivr?.facilityTin),
-    facilityPhone:               s(ivr?.facilityPhone),
-    facilityPtan:                s(ivr?.facilityPtan),
-    facilityFax:                 s(ivr?.facilityFax),
-    physicianName:               s(ivr?.physicianName) || s(fb?.physicianName),
-    physicianFax:                s(ivr?.physicianFax),
-    physicianAddress:            s(ivr?.physicianAddress),
-    physicianNpi:                s(ivr?.physicianNpi),
-    physicianPhone:              s(ivr?.physicianPhone),
-    physicianTin:                s(ivr?.physicianTin),
-    patientName:                 s(ivr?.patientName) || s(fb?.patientName),
-    patientPhone:                s(ivr?.patientPhone),
-    patientAddress:              s(ivr?.patientAddress),
-    okToContactPatient:          ivr?.okToContactPatient ?? null,
-    patientDob:                  s(ivr?.patientDob) || s(fb?.patientDob),
-    subscriberName:              s(ivr?.subscriberName),
-    memberId:                    s(ivr?.memberId),
-    subscriberDob:               s(ivr?.subscriberDob),
-    planType:                    s(ivr?.planType),
-    insurancePhone:              s(ivr?.insurancePhone),
+    salesRepName: s(ivr?.salesRepName),
+    placeOfService: s(ivr?.placeOfService),
+    facilityName: s(ivr?.facilityName),
+    medicareAdminContractor: s(ivr?.medicareAdminContractor),
+    facilityAddress: s(ivr?.facilityAddress),
+    facilityNpi: s(ivr?.facilityNpi),
+    facilityContact: s(ivr?.facilityContact),
+    facilityTin: s(ivr?.facilityTin),
+    facilityPhone: s(ivr?.facilityPhone),
+    facilityPtan: s(ivr?.facilityPtan),
+    facilityFax: s(ivr?.facilityFax),
+    physicianName: s(ivr?.physicianName),
+    physicianFax: s(ivr?.physicianFax),
+    physicianAddress: s(ivr?.physicianAddress),
+    physicianNpi: s(ivr?.physicianNpi),
+    physicianPhone: s(ivr?.physicianPhone),
+    physicianTin: s(ivr?.physicianTin),
+    patientName: s(ivr?.patientName),
+    patientPhone: s(ivr?.patientPhone),
+    patientAddress: s(ivr?.patientAddress),
+    okToContactPatient: ivr?.okToContactPatient ?? null,
+    patientDob: s(ivr?.patientDob),
+    subscriberName: s(ivr?.subscriberName),
+    memberId: s(ivr?.memberId),
+    subscriberDob: s(ivr?.subscriberDob),
+    planType: s(ivr?.planType),
+    insurancePhone: s(ivr?.insurancePhone),
     providerParticipatesPrimary: s(ivr?.providerParticipatesPrimary),
-    secondarySubscriberName:     s(ivr?.secondarySubscriberName),
-    secondaryPolicyNumber:       s(ivr?.secondaryPolicyNumber),
-    secondarySubscriberDob:      s(ivr?.secondarySubscriberDob),
-    secondaryPlanType:           s(ivr?.secondaryPlanType),
-    secondaryInsurancePhone:     s(ivr?.secondaryInsurancePhone),
+    secondarySubscriberName: s(ivr?.secondarySubscriberName),
+    secondaryPolicyNumber: s(ivr?.secondaryPolicyNumber),
+    secondarySubscriberDob: s(ivr?.secondarySubscriberDob),
+    secondaryPlanType: s(ivr?.secondaryPlanType),
+    secondaryInsurancePhone: s(ivr?.secondaryInsurancePhone),
     providerParticipatesSecondary: s(ivr?.providerParticipatesSecondary),
-    woundType:                   s(ivr?.woundType) || s(fb?.woundType),
-    woundSizes:                  s(ivr?.woundSizes),
-    applicationCpts:             s(ivr?.applicationCpts),
-    dateOfProcedure:             s(ivr?.dateOfProcedure) || s(fb?.dateOfProcedure),
-    icd10Codes:                  s(ivr?.icd10Codes),
-    productInformation:          s(ivr?.productInformation),
-    isPatientAtSnf:              ivr?.isPatientAtSnf ?? fb?.isPatientAtSnf ?? null,
-    surgicalGlobalPeriod:        ivr?.surgicalGlobalPeriod ?? null,
-    globalPeriodCpt:             s(ivr?.globalPeriodCpt),
-    priorAuthPermission:         ivr?.priorAuthPermission ?? null,
-    specialtySiteName:           s(ivr?.specialtySiteName),
-    physicianSignature:          s(ivr?.physicianSignature),
-    physicianSignatureDate:      s(ivr?.physicianSignatureDate),
+    woundType: s(ivr?.woundType),
+    woundSizes: s(ivr?.woundSizes),
+    applicationCpts: s(ivr?.applicationCpts),
+    dateOfProcedure: s(ivr?.dateOfProcedure),
+    icd10Codes: s(ivr?.icd10Codes),
+    productInformation: s(ivr?.productInformation),
+    isPatientAtSnf: ivr?.isPatientAtSnf ?? null,
+    surgicalGlobalPeriod: ivr?.surgicalGlobalPeriod ?? null,
+    globalPeriodCpt: s(ivr?.globalPeriodCpt),
+    priorAuthPermission: ivr?.priorAuthPermission ?? null,
+    specialtySiteName: s(ivr?.specialtySiteName),
+    physicianSignature: s(ivr?.physicianSignature),
+    physicianSignatureDate: s(ivr?.physicianSignatureDate),
   };
 }
 
@@ -156,7 +147,12 @@ function FormCheckbox({
   className?: string;
 }) {
   return (
-    <label className={cn("inline-flex items-center gap-1 select-none cursor-pointer", className)}>
+    <label
+      className={cn(
+        "inline-flex items-center gap-1 select-none cursor-pointer",
+        className,
+      )}
+    >
       <span
         onClick={() => onChange(!checked)}
         className={cn(
@@ -164,7 +160,9 @@ function FormCheckbox({
           checked ? "border-[#0d7a6b] bg-[#0d7a6b]" : "border-[#666] bg-white",
         )}
       >
-        {checked && <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />}
+        {checked && (
+          <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />
+        )}
       </span>
       <span className="text-[12px] text-[#333] leading-none">{label}</span>
     </label>
@@ -174,20 +172,26 @@ function FormCheckbox({
 function FormInput({
   value,
   onChange,
+  deficient,
   className,
   ...props
 }: Omit<InputHTMLAttributes<HTMLInputElement>, "onChange" | "required"> & {
   value: string;
   onChange: (v: string) => void;
+  deficient?: boolean;
 }) {
+  const isDeficient = deficient && !value;
   return (
     <input
       value={value}
       onChange={(e) => onChange(e.target.value)}
+      placeholder={isDeficient ? "Required" : props.placeholder}
       className={cn(
-        "border-0 border-b border-[#333] text-[13px] outline-none bg-transparent",
+        "border-0 border-b text-[13px] outline-none bg-transparent",
         "focus:border-[#0d7a6b] transition-colors px-1 py-0.5 leading-tight text-[#222]",
-        "placeholder:text-[#bbb]",
+        isDeficient
+          ? "border-red-400 placeholder:text-red-400"
+          : "border-[#333] placeholder:text-[#bbb]",
         className,
       )}
       {...props}
@@ -233,9 +237,20 @@ function AutoResizeTextarea({
 }
 
 /* Bold uppercase section label */
-function FL({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+function FL({
+  children,
+  className = "",
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
-    <span className={cn("text-[11px] font-bold uppercase tracking-wide text-[#333] shrink-0", className)}>
+    <span
+      className={cn(
+        "text-[11px] font-bold uppercase tracking-wide text-[#333] shrink-0",
+        className,
+      )}
+    >
       {children}
     </span>
   );
@@ -254,12 +269,35 @@ function SectionHeader({ title }: { title: string }) {
 }
 
 /* Two-column grid within a section */
-function TwoCol({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <div className={cn("grid grid-cols-2 gap-x-6 gap-y-2 px-2 pt-2 pb-1", className)}>{children}</div>;
+function TwoCol({
+  children,
+  className = "",
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "grid grid-cols-2 gap-x-6 gap-y-2 px-2 pt-2 pb-1",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
 }
 
 /* Single labeled field block */
-function FieldBlock({ label, children, className = "" }: { label: string; children: React.ReactNode; className?: string }) {
+function FieldBlock({
+  label,
+  children,
+  className = "",
+}: {
+  label: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
     <div className={cn("flex flex-col gap-0.5", className)}>
       <FL>{label}</FL>
@@ -281,8 +319,16 @@ function YesNo({
   return (
     <div className="flex items-center gap-2">
       {label && <FL>{label}</FL>}
-      <FormCheckbox checked={value === true}  onChange={() => onChange(true)}  label="Yes" />
-      <FormCheckbox checked={value === false} onChange={() => onChange(false)} label="No"  />
+      <FormCheckbox
+        checked={value === true}
+        onChange={() => onChange(true)}
+        label="Yes"
+      />
+      <FormCheckbox
+        checked={value === false}
+        onChange={() => onChange(false)}
+        label="No"
+      />
     </div>
   );
 }
@@ -311,13 +357,13 @@ function TriRadio({
 
 /* ── IVR wound types ── */
 const IVR_WOUND_TYPES = [
-  { value: "Diabetic Foot Ulcer",      label: "Diabetic Foot Ulcer" },
-  { value: "Venous Leg Ulcer",         label: "Venous Leg Ulcer" },
-  { value: "Pressure Ulcer",           label: "Pressure Ulcer" },
-  { value: "Traumatic Burns",          label: "Traumatic Burns" },
-  { value: "Radiation Burns",          label: "Radiation Burns" },
-  { value: "Necrotizing Fasciitis",    label: "Necrotizing Fasciitis" },
-  { value: "Dehisced Surgical Wound",  label: "Dehisced Surgical Wound" },
+  { value: "Diabetic Foot Ulcer", label: "Diabetic Foot Ulcer" },
+  { value: "Venous Leg Ulcer", label: "Venous Leg Ulcer" },
+  { value: "Pressure Ulcer", label: "Pressure Ulcer" },
+  { value: "Traumatic Burns", label: "Traumatic Burns" },
+  { value: "Radiation Burns", label: "Radiation Burns" },
+  { value: "Necrotizing Fasciitis", label: "Necrotizing Fasciitis" },
+  { value: "Dehisced Surgical Wound", label: "Dehisced Surgical Wound" },
 ] as const;
 
 const KNOWN_PRODUCTS = [
@@ -328,15 +374,25 @@ const KNOWN_PRODUCTS = [
   "ESANO",
 ] as const;
 
-function parseProducts(str: string): { selected: Set<string>; otherText: string } {
-  const parts = str.split(",").map((s) => s.trim()).filter(Boolean);
+function parseProducts(str: string): {
+  selected: Set<string>;
+  otherText: string;
+} {
+  const parts = str
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
   const selected = new Set<string>();
   let otherText = "";
   for (const p of parts) {
     const known = KNOWN_PRODUCTS.find((k) => p === k);
-    if (known) { selected.add(known); }
-    else if (p.startsWith("Other:")) { otherText = p.slice(6).trim(); }
-    else { otherText = p; }
+    if (known) {
+      selected.add(known);
+    } else if (p.startsWith("Other:")) {
+      otherText = p.slice(6).trim();
+    } else {
+      otherText = p;
+    }
   }
   return { selected, otherText };
 }
@@ -351,8 +407,6 @@ function buildProductString(selected: Set<string>, otherText: string): string {
 interface IVRFormDocumentProps {
   orderId: string;
   ivrData: Partial<IOrderIVR> | null;
-  order: DashboardOrder;
-  physicianName?: string | null;
   canEdit: boolean;
   onSaved?: (saved: Partial<IOrderIVR>) => void;
   onDirtyChange?: (dirty: boolean) => void;
@@ -361,97 +415,140 @@ interface IVRFormDocumentProps {
 export function IVRFormDocument({
   orderId,
   ivrData,
-  order,
-  physicianName,
   canEdit,
   onSaved,
   onDirtyChange,
 }: IVRFormDocumentProps) {
-  const formFallbacks: FormFallbacks = {
-    physicianName:  physicianName ?? order.assigned_provider_name ?? order.created_by_name,
-    patientName:    order.patient_full_name,
-    patientDob:     order.patient_full_name ? undefined : undefined,
-    dateOfProcedure: order.date_of_service,
-    woundType:      order.wound_type,
-    isPatientAtSnf: order.is_patient_at_snf ?? null,
-    salesRepName:   null,
-  };
-
   const [formData, setFormData] = useState<IVRFormState>(() =>
-    buildFormState(ivrData, formFallbacks),
+    buildFormState(ivrData),
+  );
+  const [baseline, setBaseline] = useState<IVRFormState>(() =>
+    buildFormState(ivrData),
   );
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    setFormData(buildFormState(ivrData, formFallbacks));
+    const snap = buildFormState(ivrData);
+    setFormData(snap);
+    setBaseline(snap);
   }, [ivrData?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isDirty = useMemo(
-    () => JSON.stringify(formData) !== JSON.stringify(buildFormState(ivrData, formFallbacks)),
-    [formData, ivrData], // eslint-disable-line react-hooks/exhaustive-deps
+    () => JSON.stringify(formData) !== JSON.stringify(baseline),
+    [formData, baseline],
   );
 
-  useEffect(() => { onDirtyChange?.(isDirty); }, [isDirty]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Stable — set once on mount from the initial ivrData; survives parent re-renders
+  // caused by onSaved callbacks that replace ivrData with a payload lacking aiExtracted.
+  const [aiExtracted] = useState(() => ivrData?.aiExtracted ?? false);
+
+  const deficiencyCount = useMemo(() => {
+    if (!aiExtracted) return 0;
+    const f = formData;
+    const requiredText = [
+      f.salesRepName,
+      f.facilityName,
+      f.medicareAdminContractor,
+      f.facilityAddress,
+      f.facilityNpi,
+      f.facilityContact,
+      f.facilityTin,
+      f.facilityPhone,
+      f.facilityPtan,
+      f.facilityFax,
+      f.physicianName,
+      f.physicianFax,
+      f.physicianAddress,
+      f.physicianNpi,
+      f.physicianTin,
+      f.patientName,
+      f.patientPhone,
+      f.patientAddress,
+      f.patientDob,
+      f.subscriberName,
+      f.memberId,
+      f.subscriberDob,
+      f.insurancePhone,
+      f.woundSizes,
+      f.applicationCpts,
+      f.dateOfProcedure,
+      f.icd10Codes,
+    ];
+    const requiredSelect = [
+      f.placeOfService,
+      f.planType,
+      f.woundType,
+      f.productInformation,
+      f.okToContactPatient !== null ? "ok" : "",
+      f.providerParticipatesPrimary,
+    ];
+    return [...requiredText, ...requiredSelect].filter((v) => !v || v === "")
+      .length;
+  }, [aiExtracted, formData]);
 
   function set<K extends keyof IVRFormState>(key: K, value: IVRFormState[K]) {
     setFormData((prev) => ({ ...prev, [key]: value }));
   }
 
   function handleDiscard() {
-    setFormData(buildFormState(ivrData, formFallbacks));
+    setFormData(baseline);
   }
 
   async function handleSave() {
     setIsSaving(true);
     const ns = (v: string) => v.trim() || null;
     const payload: Partial<IOrderIVR> = {
-      salesRepName:                ns(formData.salesRepName),
-      placeOfService:              ns(formData.placeOfService),
-      facilityName:                ns(formData.facilityName),
-      medicareAdminContractor:     ns(formData.medicareAdminContractor),
-      facilityAddress:             ns(formData.facilityAddress),
-      facilityNpi:                 ns(formData.facilityNpi),
-      facilityContact:             ns(formData.facilityContact),
-      facilityTin:                 ns(formData.facilityTin),
-      facilityPhone:               ns(formData.facilityPhone),
-      facilityPtan:                ns(formData.facilityPtan),
-      facilityFax:                 ns(formData.facilityFax),
-      physicianName:               ns(formData.physicianName),
-      physicianFax:                ns(formData.physicianFax),
-      physicianAddress:            ns(formData.physicianAddress),
-      physicianNpi:                ns(formData.physicianNpi),
-      physicianPhone:              ns(formData.physicianPhone),
-      physicianTin:                ns(formData.physicianTin),
-      patientName:                 ns(formData.patientName),
-      patientPhone:                ns(formData.patientPhone),
-      patientAddress:              ns(formData.patientAddress),
-      okToContactPatient:          formData.okToContactPatient,
-      patientDob:                  ns(formData.patientDob),
-      subscriberName:              ns(formData.subscriberName),
-      memberId:                    ns(formData.memberId),
-      subscriberDob:               ns(formData.subscriberDob),
-      planType:                    ns(formData.planType),
-      insurancePhone:              ns(formData.insurancePhone),
+      salesRepName: ns(formData.salesRepName),
+      placeOfService: ns(formData.placeOfService),
+      facilityName: ns(formData.facilityName),
+      medicareAdminContractor: ns(formData.medicareAdminContractor),
+      facilityAddress: ns(formData.facilityAddress),
+      facilityNpi: ns(formData.facilityNpi),
+      facilityContact: ns(formData.facilityContact),
+      facilityTin: ns(formData.facilityTin),
+      facilityPhone: ns(formData.facilityPhone),
+      facilityPtan: ns(formData.facilityPtan),
+      facilityFax: ns(formData.facilityFax),
+      physicianName: ns(formData.physicianName),
+      physicianFax: ns(formData.physicianFax),
+      physicianAddress: ns(formData.physicianAddress),
+      physicianNpi: ns(formData.physicianNpi),
+      physicianPhone: ns(formData.physicianPhone),
+      physicianTin: ns(formData.physicianTin),
+      patientName: ns(formData.patientName),
+      patientPhone: ns(formData.patientPhone),
+      patientAddress: ns(formData.patientAddress),
+      okToContactPatient: formData.okToContactPatient,
+      patientDob: ns(formData.patientDob),
+      subscriberName: ns(formData.subscriberName),
+      memberId: ns(formData.memberId),
+      subscriberDob: ns(formData.subscriberDob),
+      planType: ns(formData.planType),
+      insurancePhone: ns(formData.insurancePhone),
       providerParticipatesPrimary: ns(formData.providerParticipatesPrimary),
-      secondarySubscriberName:     ns(formData.secondarySubscriberName),
-      secondaryPolicyNumber:       ns(formData.secondaryPolicyNumber),
-      secondarySubscriberDob:      ns(formData.secondarySubscriberDob),
-      secondaryPlanType:           ns(formData.secondaryPlanType),
-      secondaryInsurancePhone:     ns(formData.secondaryInsurancePhone),
+      secondarySubscriberName: ns(formData.secondarySubscriberName),
+      secondaryPolicyNumber: ns(formData.secondaryPolicyNumber),
+      secondarySubscriberDob: ns(formData.secondarySubscriberDob),
+      secondaryPlanType: ns(formData.secondaryPlanType),
+      secondaryInsurancePhone: ns(formData.secondaryInsurancePhone),
       providerParticipatesSecondary: ns(formData.providerParticipatesSecondary),
-      woundType:                   ns(formData.woundType),
-      woundSizes:                  ns(formData.woundSizes),
-      applicationCpts:             ns(formData.applicationCpts),
-      dateOfProcedure:             ns(formData.dateOfProcedure),
-      icd10Codes:                  ns(formData.icd10Codes),
-      productInformation:          ns(formData.productInformation),
-      isPatientAtSnf:              formData.isPatientAtSnf,
-      surgicalGlobalPeriod:        formData.surgicalGlobalPeriod,
-      globalPeriodCpt:             ns(formData.globalPeriodCpt),
-      priorAuthPermission:         formData.priorAuthPermission,
-      specialtySiteName:           ns(formData.specialtySiteName),
-      physicianSignature:          ns(formData.physicianSignature),
-      physicianSignatureDate:      ns(formData.physicianSignatureDate),
+      woundType: ns(formData.woundType),
+      woundSizes: ns(formData.woundSizes),
+      applicationCpts: ns(formData.applicationCpts),
+      dateOfProcedure: ns(formData.dateOfProcedure),
+      icd10Codes: ns(formData.icd10Codes),
+      productInformation: ns(formData.productInformation),
+      isPatientAtSnf: formData.isPatientAtSnf,
+      surgicalGlobalPeriod: formData.surgicalGlobalPeriod,
+      globalPeriodCpt: ns(formData.globalPeriodCpt),
+      priorAuthPermission: formData.priorAuthPermission,
+      specialtySiteName: ns(formData.specialtySiteName),
+      physicianSignature: ns(formData.physicianSignature),
+      physicianSignatureDate: ns(formData.physicianSignatureDate),
     };
     const result = await upsertOrderIVR(orderId, payload);
     setIsSaving(false);
@@ -460,12 +557,27 @@ export function IVRFormDocument({
       return;
     }
     toast.success("IVR form saved.");
+    setBaseline({ ...formData });
     onSaved?.(payload);
+    // Generate PDF — badge shows "Generating..." until complete
+    window.dispatchEvent(
+      new CustomEvent("pdf-regenerating", {
+        detail: { type: "additional_ivr", status: "start" },
+      }),
+    );
     fetch("/api/generate-pdf", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ orderId, formType: "ivr" }),
-    }).catch((err) => console.error("[IVRForm] PDF generation failed:", err));
+    })
+      .catch((err) => console.error("[IVRForm] PDF generation failed:", err))
+      .finally(() => {
+        window.dispatchEvent(
+          new CustomEvent("pdf-regenerating", {
+            detail: { type: "additional_ivr", status: "done" },
+          }),
+        );
+      });
   }
 
   /* ── Render ── */
@@ -474,27 +586,53 @@ export function IVRFormDocument({
       {/* ── Sticky save/discard bar ── */}
       {isDirty && canEdit && (
         <div className="sticky top-0 z-10 flex items-center justify-between gap-3 px-4 py-2 bg-amber-50 border-b border-amber-200">
-          <span className="text-[13px] text-amber-700 font-medium">Unsaved changes</span>
+          <span className="text-[13px] text-amber-700 font-medium">
+            Unsaved changes
+          </span>
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={handleDiscard} disabled={isSaving} className="h-7 px-3 text-xs">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleDiscard}
+              disabled={isSaving}
+              className="h-7 px-3 text-xs"
+            >
               <RotateCcw className="w-3 h-3 mr-1" /> Discard
             </Button>
-            <Button size="sm" onClick={handleSave} disabled={isSaving} className="h-7 px-3 text-xs bg-[#1a3c5e] hover:bg-[#1a3c5e]/90">
-              {isSaving ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Save className="w-3 h-3 mr-1" />}
+            <Button
+              size="sm"
+              onClick={handleSave}
+              disabled={isSaving}
+              className="h-7 px-3 text-xs bg-[#1a3c5e] hover:bg-[#1a3c5e]/90"
+            >
+              {isSaving ? (
+                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+              ) : (
+                <Save className="w-3 h-3 mr-1" />
+              )}
               Save
             </Button>
           </div>
         </div>
       )}
 
+      {/* ── Deficiency banner ── */}
+      <FormDeficiencyBanner
+        aiExtracted={aiExtracted}
+        deficiencyCount={deficiencyCount}
+      />
+
       {/* ════════════════════════════════════════════
           PAPER DOCUMENT
           ════════════════════════════════════════════ */}
       <div
-        className="mx-auto my-4 bg-white border border-[#ddd] shadow-[0_1px_3px_rgba(0,0,0,0.08)]"
-        style={{ maxWidth: 800, padding: "28px 32px", fontFamily: "system-ui, sans-serif" }}
+        className="mx-auto bg-white border border-[#ddd] shadow-[0_1px_3px_rgba(0,0,0,0.08)]"
+        style={{
+          maxWidth: 800,
+          padding: "28px 32px",
+          fontFamily: "system-ui, sans-serif",
+        }}
       >
-
         {/* ── 1. HEADER ── */}
         <div className="flex items-start justify-between pb-3 border-b border-[#e5e5e5]">
           <div className="flex items-center gap-3">
@@ -502,19 +640,40 @@ export function IVRFormDocument({
               <HBLogo variant="light" size="lg" asLink={false} />
             </div>
             <div>
-              <div className="text-[17px] font-bold tracking-widest leading-none" style={{ color: NAVY }}>MERIDIAN</div>
-              <div className="text-[10px] font-semibold tracking-wider leading-tight mt-0.5" style={{ color: TEAL }}>SURGICAL SUPPLIES</div>
-              <div className="text-[9px] font-semibold uppercase tracking-widest mt-0.5 leading-tight" style={{ color: TEAL }}>Empowering Patients From Their Home</div>
+              <div
+                className="text-[17px] font-bold tracking-widest leading-none"
+                style={{ color: NAVY }}
+              >
+                MERIDIAN
+              </div>
+              <div
+                className="text-[10px] font-semibold tracking-wider leading-tight mt-0.5"
+                style={{ color: TEAL }}
+              >
+                SURGICAL SUPPLIES
+              </div>
+              <div
+                className="text-[9px] font-semibold uppercase tracking-widest mt-0.5 leading-tight"
+                style={{ color: TEAL }}
+              >
+                Empowering Patients From Their Home
+              </div>
             </div>
           </div>
           <div className="text-right space-y-0.5">
             {[
-              { Icon: MapPin,  text: "235 Singleton Ridge Road Suite 105, Conway SC 29526" },
-              { Icon: Mail,    text: "Support@meridiansurgicalsupplies.com" },
-              { Icon: Globe,   text: "www.meridiansurgicalsupplies.com" },
-              { Icon: Phone,   text: "(843) 733-9261" },
+              {
+                Icon: MapPin,
+                text: "235 Singleton Ridge Road Suite 105, Conway SC 29526",
+              },
+              { Icon: Mail, text: "Support@meridiansurgicalsupplies.com" },
+              { Icon: Globe, text: "www.meridiansurgicalsupplies.com" },
+              { Icon: Phone, text: "(843) 733-9261" },
             ].map(({ Icon, text }) => (
-              <div key={text} className="flex items-center justify-end gap-1 text-[10px] text-[#555]">
+              <div
+                key={text}
+                className="flex items-center justify-end gap-1 text-[10px] text-[#555]"
+              >
                 <Icon className="w-2.5 h-2.5 shrink-0" />
                 <span>{text}</span>
               </div>
@@ -524,12 +683,19 @@ export function IVRFormDocument({
 
         {/* Form title */}
         <div className="text-center py-2.5">
-          <h1 className="font-serif text-[18px] font-medium tracking-wide" style={{ color: NAVY }}>
+          <h1
+            className="font-serif text-[18px] font-medium tracking-wide"
+            style={{ color: NAVY }}
+          >
             Patient Insurance Support Form
           </h1>
-          <div className="mx-auto mt-1.5 w-28 border-b-2" style={{ borderColor: TEAL }} />
+          <div
+            className="mx-auto mt-1.5 w-28 border-b-2"
+            style={{ borderColor: TEAL }}
+          />
           <p className="text-[11px] text-[#555] mt-1.5">
-            Please fax completed form to toll-free HIPAA compliant fax: <strong>223.336.4751</strong>
+            Please fax completed form to toll-free HIPAA compliant fax:{" "}
+            <strong>223.336.4751</strong>
           </p>
           <p className="text-[11px] text-[#555]">
             Or email to <strong>Reimbursement@MeridianSurgical.com</strong>
@@ -542,6 +708,7 @@ export function IVRFormDocument({
           <FormInput
             value={formData.salesRepName}
             onChange={(v) => set("salesRepName", v)}
+            deficient={aiExtracted}
             className="flex-1 max-w-xs"
             placeholder="Sales representative name"
             disabled={!canEdit}
@@ -552,44 +719,112 @@ export function IVRFormDocument({
         <SectionHeader title="Facility Information" />
         <div className="px-2 pt-2 pb-1 border-b border-[#e5e5e5]">
           {/* Place of Service — full-width row */}
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-2">
+          <div
+            className={cn(
+              "flex flex-wrap items-center gap-x-3 gap-y-1 mb-2 rounded px-1",
+              aiExtracted &&
+                !formData.placeOfService &&
+                "bg-red-50/50 ring-1 ring-red-300",
+            )}
+          >
             <FL>Place of Service</FL>
-            {["Office", "Outpatient Hospital", "Ambulatory Surgical Center", "Other"].map((pos) => (
+            {[
+              "Office",
+              "Outpatient Hospital",
+              "Ambulatory Surgical Center",
+              "Other",
+            ].map((pos) => (
               <FormCheckbox
                 key={pos}
                 checked={formData.placeOfService === pos}
-                onChange={(checked) => set("placeOfService", checked ? pos : "")}
+                onChange={(checked) =>
+                  set("placeOfService", checked ? pos : "")
+                }
                 label={pos}
               />
             ))}
           </div>
           <TwoCol className="px-0">
             <FieldBlock label="Facility Name">
-              <FormInput value={formData.facilityName} onChange={(v) => set("facilityName", v)} className="w-full" disabled={!canEdit} />
+              <FormInput
+                value={formData.facilityName}
+                onChange={(v) => set("facilityName", v)}
+                deficient={aiExtracted}
+                className="w-full"
+                disabled={!canEdit}
+              />
             </FieldBlock>
             <FieldBlock label="Medicare Admin Contractor">
-              <FormInput value={formData.medicareAdminContractor} onChange={(v) => set("medicareAdminContractor", v)} className="w-full" disabled={!canEdit} />
+              <FormInput
+                value={formData.medicareAdminContractor}
+                onChange={(v) => set("medicareAdminContractor", v)}
+                deficient={aiExtracted}
+                className="w-full"
+                disabled={!canEdit}
+              />
             </FieldBlock>
             <FieldBlock label="Address">
-              <FormInput value={formData.facilityAddress} onChange={(v) => set("facilityAddress", v)} className="w-full" disabled={!canEdit} />
+              <FormInput
+                value={formData.facilityAddress}
+                onChange={(v) => set("facilityAddress", v)}
+                deficient={aiExtracted}
+                className="w-full"
+                disabled={!canEdit}
+              />
             </FieldBlock>
             <FieldBlock label="NPI">
-              <FormInput value={formData.facilityNpi} onChange={(v) => set("facilityNpi", v)} className="w-full" disabled={!canEdit} />
+              <FormInput
+                value={formData.facilityNpi}
+                onChange={(v) => set("facilityNpi", v)}
+                deficient={aiExtracted}
+                className="w-full"
+                disabled={!canEdit}
+              />
             </FieldBlock>
             <FieldBlock label="Contact Name">
-              <FormInput value={formData.facilityContact} onChange={(v) => set("facilityContact", v)} className="w-full" disabled={!canEdit} />
+              <FormInput
+                value={formData.facilityContact}
+                onChange={(v) => set("facilityContact", v)}
+                deficient={aiExtracted}
+                className="w-full"
+                disabled={!canEdit}
+              />
             </FieldBlock>
             <FieldBlock label="TIN">
-              <FormInput value={formData.facilityTin} onChange={(v) => set("facilityTin", v)} className="w-full" disabled={!canEdit} />
+              <FormInput
+                value={formData.facilityTin}
+                onChange={(v) => set("facilityTin", v)}
+                deficient={aiExtracted}
+                className="w-full"
+                disabled={!canEdit}
+              />
             </FieldBlock>
             <FieldBlock label="Phone">
-              <FormInput value={formData.facilityPhone} onChange={(v) => set("facilityPhone", v)} className="w-full" disabled={!canEdit} />
+              <FormInput
+                value={formData.facilityPhone}
+                onChange={(v) => set("facilityPhone", v)}
+                deficient={aiExtracted}
+                className="w-full"
+                disabled={!canEdit}
+              />
             </FieldBlock>
             <FieldBlock label="PTAN">
-              <FormInput value={formData.facilityPtan} onChange={(v) => set("facilityPtan", v)} className="w-full" disabled={!canEdit} />
+              <FormInput
+                value={formData.facilityPtan}
+                onChange={(v) => set("facilityPtan", v)}
+                deficient={aiExtracted}
+                className="w-full"
+                disabled={!canEdit}
+              />
             </FieldBlock>
             <FieldBlock label="Fax" className="col-span-1">
-              <FormInput value={formData.facilityFax} onChange={(v) => set("facilityFax", v)} className="w-full" disabled={!canEdit} />
+              <FormInput
+                value={formData.facilityFax}
+                onChange={(v) => set("facilityFax", v)}
+                deficient={aiExtracted}
+                className="w-full"
+                disabled={!canEdit}
+              />
             </FieldBlock>
           </TwoCol>
         </div>
@@ -599,22 +834,57 @@ export function IVRFormDocument({
         <div className="border-b border-[#e5e5e5]">
           <TwoCol>
             <FieldBlock label="Physician Name">
-              <FormInput value={formData.physicianName} onChange={(v) => set("physicianName", v)} className="w-full" disabled={!canEdit} />
+              <FormInput
+                value={formData.physicianName}
+                onChange={(v) => set("physicianName", v)}
+                deficient={aiExtracted}
+                className="w-full"
+                disabled={!canEdit}
+              />
             </FieldBlock>
             <FieldBlock label="Fax">
-              <FormInput value={formData.physicianFax} onChange={(v) => set("physicianFax", v)} className="w-full" disabled={!canEdit} />
+              <FormInput
+                value={formData.physicianFax}
+                onChange={(v) => set("physicianFax", v)}
+                deficient={aiExtracted}
+                className="w-full"
+                disabled={!canEdit}
+              />
             </FieldBlock>
             <FieldBlock label="Address">
-              <FormInput value={formData.physicianAddress} onChange={(v) => set("physicianAddress", v)} className="w-full" disabled={!canEdit} />
+              <FormInput
+                value={formData.physicianAddress}
+                onChange={(v) => set("physicianAddress", v)}
+                deficient={aiExtracted}
+                className="w-full"
+                disabled={!canEdit}
+              />
             </FieldBlock>
             <FieldBlock label="NPI">
-              <FormInput value={formData.physicianNpi} onChange={(v) => set("physicianNpi", v)} className="w-full" disabled={!canEdit} />
+              <FormInput
+                value={formData.physicianNpi}
+                onChange={(v) => set("physicianNpi", v)}
+                deficient={aiExtracted}
+                className="w-full"
+                disabled={!canEdit}
+              />
             </FieldBlock>
             <FieldBlock label="Phone">
-              <FormInput value={formData.physicianPhone} onChange={(v) => set("physicianPhone", v)} className="w-full" disabled={!canEdit} />
+              <FormInput
+                value={formData.physicianPhone}
+                onChange={(v) => set("physicianPhone", v)}
+                className="w-full"
+                disabled={!canEdit}
+              />
             </FieldBlock>
             <FieldBlock label="TIN">
-              <FormInput value={formData.physicianTin} onChange={(v) => set("physicianTin", v)} className="w-full" disabled={!canEdit} />
+              <FormInput
+                value={formData.physicianTin}
+                onChange={(v) => set("physicianTin", v)}
+                deficient={aiExtracted}
+                className="w-full"
+                disabled={!canEdit}
+              />
             </FieldBlock>
           </TwoCol>
         </div>
@@ -624,22 +894,75 @@ export function IVRFormDocument({
         <div className="border-b border-[#e5e5e5]">
           <TwoCol>
             <FieldBlock label="Patient Name">
-              <FormInput value={formData.patientName} onChange={(v) => set("patientName", v)} className="w-full" disabled={!canEdit} />
+              <FormInput
+                value={formData.patientName}
+                onChange={(v) => set("patientName", v)}
+                deficient={aiExtracted}
+                className="w-full"
+                disabled={!canEdit}
+              />
             </FieldBlock>
             <FieldBlock label="Phone">
-              <FormInput value={formData.patientPhone} onChange={(v) => set("patientPhone", v)} className="w-full" disabled={!canEdit} />
+              <FormInput
+                value={formData.patientPhone}
+                onChange={(v) => set("patientPhone", v)}
+                deficient={aiExtracted}
+                className="w-full"
+                disabled={!canEdit}
+              />
             </FieldBlock>
-            <FieldBlock label="Address (City / State / Zip)" className="col-span-2">
-              <FormInput value={formData.patientAddress} onChange={(v) => set("patientAddress", v)} className="w-full" disabled={!canEdit} />
+            <FieldBlock
+              label="Address (City / State / Zip)"
+              className="col-span-2"
+            >
+              <FormInput
+                value={formData.patientAddress}
+                onChange={(v) => set("patientAddress", v)}
+                deficient={aiExtracted}
+                className="w-full"
+                disabled={!canEdit}
+              />
             </FieldBlock>
             <FieldBlock label="Date of Birth">
-              <FormInput value={formData.patientDob} onChange={(v) => set("patientDob", v)} className="w-full" disabled={!canEdit} placeholder="MM/DD/YYYY" />
+              <FormInput
+                value={formData.patientDob}
+                onChange={(v) => set("patientDob", v)}
+                deficient={aiExtracted}
+                className="w-full"
+                disabled={!canEdit}
+                placeholder="MM/DD/YYYY"
+              />
             </FieldBlock>
             <div className="flex flex-col gap-0.5">
               <FL>OK to Contact Patient?</FL>
-              <div className="flex gap-3 py-0.5">
-                <FormCheckbox checked={formData.okToContactPatient === true}  onChange={() => set("okToContactPatient", formData.okToContactPatient === true ? null : true)}  label="Yes" />
-                <FormCheckbox checked={formData.okToContactPatient === false} onChange={() => set("okToContactPatient", formData.okToContactPatient === false ? null : false)} label="No"  />
+              <div
+                className={cn(
+                  "flex gap-3 py-0.5 rounded px-1",
+                  aiExtracted &&
+                    formData.okToContactPatient === null &&
+                    "bg-red-50/50 ring-1 ring-red-300",
+                )}
+              >
+                <FormCheckbox
+                  checked={formData.okToContactPatient === true}
+                  onChange={() =>
+                    set(
+                      "okToContactPatient",
+                      formData.okToContactPatient === true ? null : true,
+                    )
+                  }
+                  label="Yes"
+                />
+                <FormCheckbox
+                  checked={formData.okToContactPatient === false}
+                  onChange={() =>
+                    set(
+                      "okToContactPatient",
+                      formData.okToContactPatient === false ? null : false,
+                    )
+                  }
+                  label="No"
+                />
               </div>
             </div>
           </TwoCol>
@@ -651,59 +974,154 @@ export function IVRFormDocument({
           <div className="grid grid-cols-2 divide-x divide-[#e5e5e5]">
             {/* Primary */}
             <div className="pr-4 pt-2 pb-1 pl-2 space-y-2">
-              <div className="text-[11px] font-bold tracking-wide pb-1 border-b border-[#e5e5e5]" style={{ color: NAVY }}>Primary Insurance</div>
+              <div
+                className="text-[11px] font-bold tracking-wide pb-1 border-b border-[#e5e5e5]"
+                style={{ color: NAVY }}
+              >
+                Primary Insurance
+              </div>
               <FieldBlock label="Subscriber Name">
-                <FormInput value={formData.subscriberName} onChange={(v) => set("subscriberName", v)} className="w-full" disabled={!canEdit} />
+                <FormInput
+                  value={formData.subscriberName}
+                  onChange={(v) => set("subscriberName", v)}
+                  deficient={aiExtracted}
+                  className="w-full"
+                  disabled={!canEdit}
+                />
               </FieldBlock>
               <FieldBlock label="Policy / Member ID">
-                <FormInput value={formData.memberId} onChange={(v) => set("memberId", v)} className="w-full" disabled={!canEdit} />
+                <FormInput
+                  value={formData.memberId}
+                  onChange={(v) => set("memberId", v)}
+                  deficient={aiExtracted}
+                  className="w-full"
+                  disabled={!canEdit}
+                />
               </FieldBlock>
               <FieldBlock label="Subscriber DOB">
-                <FormInput value={formData.subscriberDob} onChange={(v) => set("subscriberDob", v)} className="w-full" placeholder="MM/DD/YYYY" disabled={!canEdit} />
+                <FormInput
+                  value={formData.subscriberDob}
+                  onChange={(v) => set("subscriberDob", v)}
+                  deficient={aiExtracted}
+                  className="w-full"
+                  placeholder="MM/DD/YYYY"
+                  disabled={!canEdit}
+                />
               </FieldBlock>
               <div className="flex flex-col gap-0.5">
                 <FL>Type of Plan</FL>
-                <div className="flex flex-wrap gap-3">
+                <div
+                  className={cn(
+                    "flex flex-wrap gap-3 rounded px-1",
+                    aiExtracted &&
+                      !formData.planType &&
+                      "bg-red-50/50 ring-1 ring-red-300",
+                  )}
+                >
                   {["HMO", "PPO", "Other"].map((t) => (
-                    <FormCheckbox key={t} checked={formData.planType === t} onChange={() => set("planType", formData.planType === t ? "" : t)} label={t} />
+                    <FormCheckbox
+                      key={t}
+                      checked={formData.planType === t}
+                      onChange={() =>
+                        set("planType", formData.planType === t ? "" : t)
+                      }
+                      label={t}
+                    />
                   ))}
                 </div>
               </div>
               <FieldBlock label="Insurance Phone Number">
-                <FormInput value={formData.insurancePhone} onChange={(v) => set("insurancePhone", v)} className="w-full" disabled={!canEdit} />
+                <FormInput
+                  value={formData.insurancePhone}
+                  onChange={(v) => set("insurancePhone", v)}
+                  deficient={aiExtracted}
+                  className="w-full"
+                  disabled={!canEdit}
+                />
               </FieldBlock>
               <div className="flex flex-col gap-0.5">
                 <FL>Does Provider Participate with Network?</FL>
-                <TriRadio value={formData.providerParticipatesPrimary} onChange={(v) => set("providerParticipatesPrimary", v)} />
+                <div
+                  className={cn(
+                    "rounded px-1",
+                    aiExtracted &&
+                      !formData.providerParticipatesPrimary &&
+                      "bg-red-50/50 ring-1 ring-red-300",
+                  )}
+                >
+                  <TriRadio
+                    value={formData.providerParticipatesPrimary}
+                    onChange={(v) => set("providerParticipatesPrimary", v)}
+                  />
+                </div>
               </div>
             </div>
 
             {/* Secondary */}
             <div className="pl-4 pt-2 pb-1 pr-2 space-y-2">
-              <div className="text-[11px] font-bold tracking-wide pb-1 border-b border-[#e5e5e5]" style={{ color: NAVY }}>Secondary Insurance</div>
+              <div
+                className="text-[11px] font-bold tracking-wide pb-1 border-b border-[#e5e5e5]"
+                style={{ color: NAVY }}
+              >
+                Secondary Insurance
+              </div>
               <FieldBlock label="Subscriber Name">
-                <FormInput value={formData.secondarySubscriberName} onChange={(v) => set("secondarySubscriberName", v)} className="w-full" disabled={!canEdit} />
+                <FormInput
+                  value={formData.secondarySubscriberName}
+                  onChange={(v) => set("secondarySubscriberName", v)}
+                  className="w-full"
+                  disabled={!canEdit}
+                />
               </FieldBlock>
               <FieldBlock label="Policy Number">
-                <FormInput value={formData.secondaryPolicyNumber} onChange={(v) => set("secondaryPolicyNumber", v)} className="w-full" disabled={!canEdit} />
+                <FormInput
+                  value={formData.secondaryPolicyNumber}
+                  onChange={(v) => set("secondaryPolicyNumber", v)}
+                  className="w-full"
+                  disabled={!canEdit}
+                />
               </FieldBlock>
               <FieldBlock label="Subscriber DOB">
-                <FormInput value={formData.secondarySubscriberDob} onChange={(v) => set("secondarySubscriberDob", v)} className="w-full" placeholder="MM/DD/YYYY" disabled={!canEdit} />
+                <FormInput
+                  value={formData.secondarySubscriberDob}
+                  onChange={(v) => set("secondarySubscriberDob", v)}
+                  className="w-full"
+                  placeholder="MM/DD/YYYY"
+                  disabled={!canEdit}
+                />
               </FieldBlock>
               <div className="flex flex-col gap-0.5">
                 <FL>Type of Plan</FL>
                 <div className="flex flex-wrap gap-3">
                   {["HMO", "PPO", "Other"].map((t) => (
-                    <FormCheckbox key={t} checked={formData.secondaryPlanType === t} onChange={() => set("secondaryPlanType", formData.secondaryPlanType === t ? "" : t)} label={t} />
+                    <FormCheckbox
+                      key={t}
+                      checked={formData.secondaryPlanType === t}
+                      onChange={() =>
+                        set(
+                          "secondaryPlanType",
+                          formData.secondaryPlanType === t ? "" : t,
+                        )
+                      }
+                      label={t}
+                    />
                   ))}
                 </div>
               </div>
               <FieldBlock label="Insurance Phone Number">
-                <FormInput value={formData.secondaryInsurancePhone} onChange={(v) => set("secondaryInsurancePhone", v)} className="w-full" disabled={!canEdit} />
+                <FormInput
+                  value={formData.secondaryInsurancePhone}
+                  onChange={(v) => set("secondaryInsurancePhone", v)}
+                  className="w-full"
+                  disabled={!canEdit}
+                />
               </FieldBlock>
               <div className="flex flex-col gap-0.5">
                 <FL>Does Provider Participate with Network?</FL>
-                <TriRadio value={formData.providerParticipatesSecondary} onChange={(v) => set("providerParticipatesSecondary", v)} />
+                <TriRadio
+                  value={formData.providerParticipatesSecondary}
+                  onChange={(v) => set("providerParticipatesSecondary", v)}
+                />
               </div>
             </div>
           </div>
@@ -714,22 +1132,35 @@ export function IVRFormDocument({
         <div className="px-2 pt-2 pb-1 border-b border-[#e5e5e5] space-y-2">
           <div>
             <FL className="block mb-1">Wound Type</FL>
-            <div className="flex flex-wrap gap-x-4 gap-y-1">
+            <div
+              className={cn(
+                "flex flex-wrap gap-x-4 gap-y-1 rounded px-1",
+                aiExtracted &&
+                  !formData.woundType &&
+                  "bg-red-50/50 ring-1 ring-red-300",
+              )}
+            >
               {IVR_WOUND_TYPES.map(({ value, label }) => (
                 <FormCheckbox
                   key={value}
                   checked={formData.woundType === value}
-                  onChange={() => set("woundType", formData.woundType === value ? "" : value)}
+                  onChange={() =>
+                    set("woundType", formData.woundType === value ? "" : value)
+                  }
                   label={label}
                 />
               ))}
               {(() => {
-                const isOther = !!formData.woundType && !IVR_WOUND_TYPES.some((t) => t.value === formData.woundType);
+                const isOther =
+                  !!formData.woundType &&
+                  !IVR_WOUND_TYPES.some((t) => t.value === formData.woundType);
                 return (
                   <>
                     <FormCheckbox
                       checked={isOther}
-                      onChange={(checked) => { if (!checked) set("woundType", ""); }}
+                      onChange={(checked) => {
+                        if (!checked) set("woundType", "");
+                      }}
                       label="Other"
                     />
                     {isOther && (
@@ -748,25 +1179,60 @@ export function IVRFormDocument({
           </div>
           <TwoCol className="px-0">
             <FieldBlock label="Wound Size(s)">
-              <FormInput value={formData.woundSizes} onChange={(v) => set("woundSizes", v)} className="w-full" placeholder="e.g. 3cm × 2cm × 0.5cm" disabled={!canEdit} />
+              <FormInput
+                value={formData.woundSizes}
+                onChange={(v) => set("woundSizes", v)}
+                deficient={aiExtracted}
+                className="w-full"
+                placeholder="e.g. 3cm × 2cm × 0.5cm"
+                disabled={!canEdit}
+              />
             </FieldBlock>
             <FieldBlock label="Application CPT(s)">
-              <FormInput value={formData.applicationCpts} onChange={(v) => set("applicationCpts", v)} className="w-full" disabled={!canEdit} />
+              <FormInput
+                value={formData.applicationCpts}
+                onChange={(v) => set("applicationCpts", v)}
+                deficient={aiExtracted}
+                className="w-full"
+                disabled={!canEdit}
+              />
             </FieldBlock>
             <FieldBlock label="Date of Procedure">
-              <FormInput value={formData.dateOfProcedure} onChange={(v) => set("dateOfProcedure", v)} className="w-full" placeholder="MM/DD/YYYY" disabled={!canEdit} />
+              <FormInput
+                value={formData.dateOfProcedure}
+                onChange={(v) => set("dateOfProcedure", v)}
+                deficient={aiExtracted}
+                className="w-full"
+                placeholder="MM/DD/YYYY"
+                disabled={!canEdit}
+              />
             </FieldBlock>
             <FieldBlock label="ICD-10 Diagnosis Code(s)">
-              <FormInput value={formData.icd10Codes} onChange={(v) => set("icd10Codes", v)} className="w-full" disabled={!canEdit} />
+              <FormInput
+                value={formData.icd10Codes}
+                onChange={(v) => set("icd10Codes", v)}
+                deficient={aiExtracted}
+                className="w-full"
+                disabled={!canEdit}
+              />
             </FieldBlock>
           </TwoCol>
           <div>
             <FL className="block mb-1">Product Information</FL>
             {(() => {
-              const { selected, otherText } = parseProducts(formData.productInformation);
+              const { selected, otherText } = parseProducts(
+                formData.productInformation,
+              );
               const isOtherChecked = !!otherText;
               return (
-                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                <div
+                  className={cn(
+                    "flex flex-wrap gap-x-4 gap-y-1 rounded px-1",
+                    aiExtracted &&
+                      !formData.productInformation &&
+                      "bg-red-50/50 ring-1 ring-red-300",
+                  )}
+                >
                   {KNOWN_PRODUCTS.map((product) => (
                     <FormCheckbox
                       key={product}
@@ -774,7 +1240,10 @@ export function IVRFormDocument({
                       onChange={(checked) => {
                         const next = new Set(selected);
                         checked ? next.add(product) : next.delete(product);
-                        set("productInformation", buildProductString(next, otherText));
+                        set(
+                          "productInformation",
+                          buildProductString(next, otherText),
+                        );
                       }}
                       label={product}
                     />
@@ -782,13 +1251,18 @@ export function IVRFormDocument({
                   <FormCheckbox
                     checked={isOtherChecked}
                     onChange={(checked) => {
-                      set("productInformation", buildProductString(selected, checked ? " " : ""));
+                      set(
+                        "productInformation",
+                        buildProductString(selected, checked ? " " : ""),
+                      );
                     }}
                     label="Other:"
                   />
                   <FormInput
                     value={otherText}
-                    onChange={(v) => set("productInformation", buildProductString(selected, v))}
+                    onChange={(v) =>
+                      set("productInformation", buildProductString(selected, v))
+                    }
                     className="w-28"
                     placeholder="Specify"
                     disabled={!canEdit}
@@ -802,55 +1276,101 @@ export function IVRFormDocument({
         {/* ── 8. ADDITIONAL INFORMATION ── */}
         <SectionHeader title="Additional Information" />
         <div className="px-2 pt-2 pb-1 border-b border-[#e5e5e5] space-y-2">
-          <YesNo label="Is the patient currently residing in SNF?" value={formData.isPatientAtSnf} onChange={(v) => set("isPatientAtSnf", v)} />
-          <YesNo label="Is the patient under a surgical Global Period?" value={formData.surgicalGlobalPeriod} onChange={(v) => set("surgicalGlobalPeriod", v)} />
+          <YesNo
+            label="Is the patient currently residing in SNF?"
+            value={formData.isPatientAtSnf}
+            onChange={(v) => set("isPatientAtSnf", v)}
+          />
+          <YesNo
+            label="Is the patient under a surgical Global Period?"
+            value={formData.surgicalGlobalPeriod}
+            onChange={(v) => set("surgicalGlobalPeriod", v)}
+          />
           <FieldBlock label="CPT Code (if global period)">
-            <FormInput value={formData.globalPeriodCpt} onChange={(v) => set("globalPeriodCpt", v)} className="w-48" disabled={!canEdit} />
+            <FormInput
+              value={formData.globalPeriodCpt}
+              onChange={(v) => set("globalPeriodCpt", v)}
+              className="w-48"
+              disabled={!canEdit}
+            />
           </FieldBlock>
           <div className="flex items-start gap-2 pt-1">
             <FormCheckbox
               checked={formData.priorAuthPermission === true}
-              onChange={(checked) => set("priorAuthPermission", checked ? true : null)}
+              onChange={(checked) =>
+                set("priorAuthPermission", checked ? true : null)
+              }
               label=""
             />
             <p className="text-[12px] text-[#333] leading-snug">
-              If Prior Authorization is Required, check here to allow us to work with payer on your behalf.
+              If Prior Authorization is Required, check here to allow us to work
+              with payer on your behalf.
             </p>
           </div>
-          <p className="text-[11px] text-[#666] italic">Please attach a copy of the patient&apos;s clinical records.</p>
+          <p className="text-[11px] text-[#666] italic">
+            Please attach a copy of the patient&apos;s clinical records.
+          </p>
           <FieldBlock label="Specialty Site Name (if different from above)">
-            <FormInput value={formData.specialtySiteName} onChange={(v) => set("specialtySiteName", v)} className="w-full max-w-xs" disabled={!canEdit} />
+            <FormInput
+              value={formData.specialtySiteName}
+              onChange={(v) => set("specialtySiteName", v)}
+              className="w-full max-w-xs"
+              disabled={!canEdit}
+            />
           </FieldBlock>
         </div>
 
         {/* ── 9. IMPORTANT NOTES ── */}
         <div className="mt-3 px-3 py-2.5 bg-[#f5f5f5] border border-[#ddd] text-[11px] text-[#444] space-y-1">
-          <p>• Please include the front &amp; back copy of the patient insurance card.</p>
-          <p>• This verification of benefits is not a guarantee of payment by the payor.</p>
+          <p>
+            • Please include the front &amp; back copy of the patient insurance
+            card.
+          </p>
+          <p>
+            • This verification of benefits is not a guarantee of payment by the
+            payor.
+          </p>
         </div>
 
         {/* ── 10. PHYSICIAN AGREEMENT ── */}
         <div className="mt-4 pt-3 border-t border-[#e5e5e5]">
           <p className="text-[11px] text-[#444] leading-relaxed mb-4">
-            By signing below, I certify that I have received the necessary patient authorization to release the medical and/or
-            other patient information referenced on the form relating to the above-referenced patient. This information is for
-            verifying insurance coverage, seeking reimbursement, and the sole purpose of claim support.
+            By signing below, I certify that I have received the necessary
+            patient authorization to release the medical and/or other patient
+            information referenced on the form relating to the above-referenced
+            patient. This information is for verifying insurance coverage,
+            seeking reimbursement, and the sole purpose of claim support.
           </p>
           <div className="grid grid-cols-2 gap-6">
             <div>
               <FL className="block mb-1">Physician or Authorized Signature</FL>
-              <FormInput value={formData.physicianSignature} onChange={(v) => set("physicianSignature", v)} className="w-full italic" placeholder="—" disabled={!canEdit} />
+              <FormInput
+                value={formData.physicianSignature}
+                onChange={(v) => set("physicianSignature", v)}
+                className="w-full italic"
+                placeholder="—"
+                disabled={!canEdit}
+              />
             </div>
             <div>
               <FL className="block mb-1">Date</FL>
-              <FormInput value={formData.physicianSignatureDate} onChange={(v) => set("physicianSignatureDate", v)} className="w-full" placeholder="—" disabled={!canEdit} />
+              <FormInput
+                value={formData.physicianSignatureDate}
+                onChange={(v) => set("physicianSignatureDate", v)}
+                className="w-full"
+                placeholder="—"
+                disabled={!canEdit}
+              />
             </div>
           </div>
         </div>
 
         {/* ── 11. FOOTER ── */}
         <div className="mt-6 pt-2 border-t border-[#e5e5e5] flex justify-between text-[10px] text-[#888]">
-          <span>235 Singleton Ridge Road Suite 105, Conway SC 29526 | MeridianSurgicalsupplies.com</span>
+          <span>
+            235 Singleton Ridge Road Suite 105, Conway SC 29526 |
+            MeridianSurgicalsupplies.com
+          </span>
           <span>REV2.1</span>
         </div>
       </div>

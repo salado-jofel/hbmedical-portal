@@ -102,124 +102,30 @@ function mapIvrRow(data: Record<string, unknown>): IOrderIVR {
 
 export async function getOrderIVR(
   orderId: string,
-): Promise<{ ivr: IOrderIVR | null; physicianName: string | null }> {
+): Promise<{ ivr: IOrderIVR | null }> {
   try {
     const supabase = await createClient();
     await getCurrentUserOrThrow(supabase);
 
     const adminClient = createAdminClient();
 
-    // Fetch IVR record and order context in parallel
-    const [ivrRes, orderCtxRes] = await Promise.all([
-      adminClient.from("order_ivr").select("*").eq("order_id", orderId).maybeSingle(),
-      adminClient
-        .from("orders")
-        .select(`
-          assigned_provider_id, created_by,
-          facilities!orders_facility_id_fkey(name, address_line_1, phone, contact, assigned_rep),
-          patients!orders_patient_id_fkey(first_name, last_name, date_of_birth)
-        `)
-        .eq("id", orderId)
-        .single(),
-    ]);
+    const { data, error } = await adminClient
+      .from("order_ivr")
+      .select("*")
+      .eq("order_id", orderId)
+      .maybeSingle();
 
-    if (ivrRes.error) {
-      console.error("[getOrderIVR]", JSON.stringify(ivrRes.error));
-      return { ivr: null, physicianName: null };
+    if (error) {
+      console.error("[getOrderIVR]", JSON.stringify(error));
+      return { ivr: null };
     }
 
-    const orderCtx = orderCtxRes.data;
+    if (!data) return { ivr: null };
 
-    // Resolve facility from join
-    const facilityRaw = orderCtx?.facilities as unknown;
-    const facility = (Array.isArray(facilityRaw) ? facilityRaw[0] : facilityRaw) as
-      | { name: string; address_line_1: string | null; phone: string | null; contact: string | null; assigned_rep: string | null }
-      | null | undefined;
-
-    // Resolve patient from join
-    const patientRaw = orderCtx?.patients as unknown;
-    const patient = (Array.isArray(patientRaw) ? patientRaw[0] : patientRaw) as
-      | { first_name: string; last_name: string; date_of_birth: string | null }
-      | null | undefined;
-    const resolvedPatientName = patient?.first_name
-      ? `${patient.first_name} ${patient.last_name ?? ""}`.trim()
-      : null;
-
-    // Resolve physician name: assigned_provider_id → created_by fallback
-    let physicianName: string | null = null;
-    let salesRepName: string | null = null;
-    try {
-      const [providerRes, repRes] = await Promise.all([
-        (() => {
-          const providerId = orderCtx?.assigned_provider_id || orderCtx?.created_by;
-          return providerId
-            ? adminClient.from("profiles").select("first_name, last_name").eq("id", providerId).maybeSingle()
-            : Promise.resolve({ data: null });
-        })(),
-        (() => {
-          const repId = facility?.assigned_rep;
-          return repId
-            ? adminClient.from("profiles").select("first_name, last_name").eq("id", repId).maybeSingle()
-            : Promise.resolve({ data: null });
-        })(),
-      ]);
-      if (providerRes.data) {
-        const p = providerRes.data;
-        physicianName = `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim() || null;
-      }
-      if (repRes.data) {
-        const r = repRes.data;
-        salesRepName = `${r.first_name ?? ""} ${r.last_name ?? ""}`.trim() || null;
-      }
-    } catch {
-      // Non-fatal
-    }
-
-    let data = ivrRes.data;
-
-    // Auto-initialize a new IVR record pre-populated from source tables (Fix 5)
-    if (!data) {
-      await adminClient.from("order_ivr").upsert(
-        {
-          order_id:         orderId,
-          place_of_service: "office",
-          subscriber_name:  resolvedPatientName,
-          // Override columns pre-populated from source tables
-          facility_name:    facility?.name ?? null,
-          facility_address: facility?.address_line_1 ?? null,
-          facility_phone:   facility?.phone ?? null,
-          facility_contact: facility?.contact ?? null,
-          physician_name:   physicianName,
-          patient_name:     resolvedPatientName,
-          patient_dob:      patient?.date_of_birth ?? null,
-          sales_rep_name:   salesRepName,
-        },
-        { onConflict: "order_id" },
-      );
-
-      const { data: created } = await adminClient
-        .from("order_ivr").select("*").eq("order_id", orderId).single();
-      data = created;
-    }
-
-    if (!data) return { ivr: null, physicianName };
-
-    const ivrData = mapIvrRow(data as Record<string, unknown>);
-
-    // Fix 2: Apply source table fallback for null override fields
-    if (!ivrData.facilityName)    ivrData.facilityName    = facility?.name    ?? null;
-    if (!ivrData.facilityAddress) ivrData.facilityAddress = facility?.address_line_1 ?? null;
-    if (!ivrData.facilityPhone)   ivrData.facilityPhone   = facility?.phone   ?? null;
-    if (!ivrData.facilityContact) ivrData.facilityContact = facility?.contact  ?? null;
-    if (!ivrData.physicianName)   ivrData.physicianName   = physicianName;
-    if (!ivrData.patientName)     ivrData.patientName     = resolvedPatientName;
-    if (!ivrData.patientDob)      ivrData.patientDob      = patient?.date_of_birth ?? null;
-    if (!ivrData.salesRepName)    ivrData.salesRepName    = salesRepName;
-
-    return { ivr: ivrData, physicianName };
+    return { ivr: mapIvrRow(data as Record<string, unknown>) };
   } catch (err) {
     console.error("[getOrderIVR] unexpected:", err);
-    return { ivr: null, physicianName: null };
+    return { ivr: null };
   }
 }
 

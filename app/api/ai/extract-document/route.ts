@@ -328,14 +328,12 @@ async function generatePDFWithRetry(
 /* ── Route handler ── */
 
 export async function POST(req: NextRequest) {
+  const baseUrl = new URL(req.url).origin;
   try {
     const { orderId, documentType, filePath, bucket } = await req.json();
 
     if (!orderId || !documentType || !filePath) {
-      return NextResponse.json(
-        { error: "Missing required fields" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
     if (!["facesheet", "clinical_docs"].includes(documentType)) {
@@ -344,7 +342,107 @@ export async function POST(req: NextRequest) {
 
     const adminClient = createAdminClient();
 
-    /* -- Download file from storage -- */
+    /* ── STEP 1: Fetch ALL context before anything else ── */
+
+    // Order + facility + patient (these FKs point to their own tables — safe to join)
+    const { data: orderCtx, error: orderCtxErr } = await adminClient
+      .from("orders")
+      .select(`
+        *,
+        facility:facilities!orders_facility_id_fkey(id, name, phone, contact, address_line_1, city, state, postal_code, assigned_rep),
+        patient:patients!orders_patient_id_fkey(first_name, last_name, date_of_birth)
+      `)
+      .eq("id", orderId)
+      .single();
+
+    if (orderCtxErr || !orderCtx) {
+      console.error("[extract] Failed to fetch order:", orderCtxErr?.message);
+      return NextResponse.json({ error: "Order not found" }, { status: 404 });
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const facility = orderCtx.facility as any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const patient  = orderCtx.patient  as any;
+
+    // Creator profile (orders.created_by → auth.users, so query profiles separately)
+    const { data: creator } = await adminClient
+      .from("profiles")
+      .select("first_name, last_name, phone")
+      .eq("id", orderCtx.created_by)
+      .maybeSingle();
+
+    // Assigned provider profile (may be null)
+    let assignedProvider: { first_name: string | null; last_name: string | null; phone: string | null } | null = null;
+    if (orderCtx.assigned_provider_id) {
+      const { data: ap } = await adminClient
+        .from("profiles")
+        .select("first_name, last_name, phone")
+        .eq("id", orderCtx.assigned_provider_id)
+        .maybeSingle();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      assignedProvider = ap as any;
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const physician = (assignedProvider || creator) as any;
+    const physicianName: string | null = physician
+      ? `${physician.first_name ?? ""} ${physician.last_name ?? ""}`.trim() || null
+      : null;
+    const patientName: string | null = patient
+      ? `${patient.first_name ?? ""} ${patient.last_name ?? ""}`.trim() || null
+      : null;
+
+    // Facility enrollment
+    const { data: enrollmentRaw } = await adminClient
+      .from("facility_enrollment")
+      .select("*")
+      .eq("facility_id", orderCtx.facility_id)
+      .maybeSingle();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const enr = enrollmentRaw as any;
+
+    // Provider credentials
+    const physicianId = orderCtx.assigned_provider_id || orderCtx.created_by;
+    const { data: creds } = await adminClient
+      .from("provider_credentials")
+      .select("npi_number, ptan_number")
+      .eq("user_id", physicianId)
+      .maybeSingle();
+
+    // Sales rep name (facility.assigned_rep → profiles)
+    let repName: string | null = null;
+    if (facility?.assigned_rep) {
+      const { data: rep } = await adminClient
+        .from("profiles")
+        .select("first_name, last_name")
+        .eq("id", facility.assigned_rep)
+        .maybeSingle();
+      if (rep) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const r = rep as any;
+        repName = `${r.first_name ?? ""} ${r.last_name ?? ""}`.trim() || null;
+      }
+    }
+
+    // Billing address: enrollment first, facility fallback
+    const addr: string | null = enr
+      ? [enr.billing_address, enr.billing_city, enr.billing_state, enr.billing_zip].filter(Boolean).join(", ") || null
+      : facility
+        ? [facility.address_line_1, facility.city, facility.state, facility.postal_code].filter(Boolean).join(", ") || null
+        : null;
+
+    console.log(
+      "[extract] Context — facility:", facility?.name ?? null,
+      "| enrollment:", !!enr,
+      "| enr.facility_npi:", enr?.facility_npi ?? null,
+      "| physician:", physicianName,
+      "| patient:", patientName,
+      "| rep:", repName,
+      "| creds.npi:", creds?.npi_number ?? null,
+    );
+
+    /* ── STEP 2: Download file ── */
     const { data: fileData, error: downloadError } = await adminClient.storage
       .from(bucket ?? "hbmedical-bucket-private")
       .download(filePath);
@@ -356,7 +454,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    /* -- Convert to base64 -- */
     const arrayBuffer = await fileData.arrayBuffer();
     const base64 = Buffer.from(arrayBuffer).toString("base64");
 
@@ -369,7 +466,7 @@ export async function POST(req: NextRequest) {
           ? "image/heic"
           : "image/jpeg";
 
-    /* -- For facesheet: fetch existing order_form to use as clinical context -- */
+    /* ── STEP 3: Fetch existing order_form clinical context (facesheet only) ── */
     let orderFormCtx: Record<string, unknown> | null = null;
     if (documentType === "facesheet") {
       const { data: existingForm } = await adminClient
@@ -387,17 +484,14 @@ export async function POST(req: NextRequest) {
           : null;
     }
 
-    /* -- Call model -- */
+    /* ── STEP 4: Call AI model ── */
     const prompt =
       documentType === "facesheet"
         ? buildFacesheetPrompt(orderFormCtx)
         : CLINICAL_DOCS_PROMPT;
 
     const { text } = await generateText({
-      // ── Gemini (active) ──
       model: aiModel("gemini-3.1-flash-lite-preview"),
-      // ── Claude (commented out — swap model string when switching) ──
-      // model: aiModel("claude-sonnet-4-6"),
       messages: [
         {
           role: "user",
@@ -405,11 +499,7 @@ export async function POST(req: NextRequest) {
             {
               type: "file",
               data: base64,
-              mediaType: mimeType as
-                | "application/pdf"
-                | "image/png"
-                | "image/jpeg"
-                | "image/heic",
+              mediaType: mimeType as "application/pdf" | "image/png" | "image/jpeg" | "image/heic",
             },
             { type: "text", text: prompt },
           ],
@@ -417,190 +507,192 @@ export async function POST(req: NextRequest) {
       ],
     });
 
-    /* -- Parse JSON response -- */
+    /* ── STEP 5: Parse JSON response ── */
     let extractedFields: Record<string, unknown> = {};
     try {
       const jsonMatch = text.match(/```json\n?([\s\S]*?)\n?```|(\{[\s\S]*\})/);
       const jsonStr = jsonMatch?.[1] ?? jsonMatch?.[2] ?? text;
       extractedFields = JSON.parse(jsonStr.trim());
     } catch {
-      console.error("[extract-document] JSON parse failed:", text);
-      return NextResponse.json(
-        { error: "Failed to parse AI response as JSON" },
-        { status: 500 },
-      );
+      console.error("[extract] JSON parse failed:", text);
+      return NextResponse.json({ error: "Failed to parse AI response as JSON" }, { status: 500 });
     }
 
-    /* -- Write to appropriate table using sanitized fields only -- */
-    if (documentType === "facesheet") {
-      const safeFields = sanitizeForm1500Fields(extractedFields);
+    /* ── STEP 6: Sanitize AI fields per document type ── */
+    const aiIvr  = documentType === "facesheet"     ? sanitizeIvrFields(extractedFields)        : {};
+    const ai1500 = documentType === "facesheet"     ? sanitizeForm1500Fields(extractedFields)    : {};
+    const aiOf   = documentType === "clinical_docs" ? sanitizeOrderFormFields(extractedFields)   : {};
+    const icd10  = aiOf.icd10_code as string | null | undefined;
 
-      const { error: form1500Error } = await adminClient
-        .from("order_form_1500")
-        .upsert(
-          { order_id: orderId, ...safeFields },
-          { onConflict: "order_id" },
-        );
+    /* ── STEP 7: Upsert order_ivr — AI insurance fields + enrollment fallbacks ── */
+    const ivrPayload = {
+      order_id:          orderId,
+      ai_extracted:      true,
+      ai_extracted_at:   new Date().toISOString(),
+      ...aiIvr,
+      facility_name:     (aiIvr.facility_name     as string | null) || facility?.name           || null,
+      facility_npi:      (aiIvr.facility_npi      as string | null) || enr?.facility_npi        || null,
+      facility_tin:      (aiIvr.facility_tin      as string | null) || enr?.facility_tin        || null,
+      facility_ptan:     (aiIvr.facility_ptan     as string | null) || enr?.facility_ptan       || null,
+      facility_fax:      (aiIvr.facility_fax      as string | null) || enr?.billing_fax         || null,
+      facility_address:  (aiIvr.facility_address  as string | null) || addr                     || null,
+      facility_phone:    (aiIvr.facility_phone    as string | null) || enr?.billing_phone       || facility?.phone || null,
+      facility_contact:  (aiIvr.facility_contact  as string | null) || enr?.ap_contact_name     || facility?.contact || null,
+      physician_name:    (aiIvr.physician_name    as string | null) || physicianName             || null,
+      physician_npi:     (aiIvr.physician_npi     as string | null) || creds?.npi_number        || null,
+      physician_tin:     (aiIvr.physician_tin     as string | null) || enr?.facility_tin        || null,
+      physician_fax:     (aiIvr.physician_fax     as string | null) || enr?.billing_fax         || null,
+      physician_address: (aiIvr.physician_address as string | null) || addr                     || null,
+      physician_phone:   (aiIvr.physician_phone   as string | null) || physician?.phone         || null,
+      patient_name:      (aiIvr.patient_name      as string | null) || patientName              || null,
+      patient_dob:       (aiIvr.patient_dob       as string | null) || patient?.date_of_birth   || null,
+      sales_rep_name:    repName                                                                  || null,
+    };
 
-      if (form1500Error) {
-        return NextResponse.json(
-          { error: `DB write failed: ${form1500Error.message}` },
-          { status: 500 },
-        );
-      }
-
-      /* -- Auto-create patient from extracted facesheet data -- */
-      const firstName = safeFields.patient_first_name as string | undefined;
-      const lastName = safeFields.patient_last_name as string | undefined;
-      const dob = safeFields.patient_dob as string | undefined;
-
-      if (firstName && lastName) {
-        const { data: orderRow } = await adminClient
-          .from("orders")
-          .select("facility_id, patient_id")
-          .eq("id", orderId)
-          .single();
-
-        if (orderRow && !orderRow.patient_id) {
-          // Check if patient already exists in this facility
-          const { data: existingPatient } = await adminClient
-            .from("patients")
-            .select("id")
-            .eq("facility_id", orderRow.facility_id)
-            .ilike("first_name", firstName.trim())
-            .ilike("last_name", lastName.trim())
-            .maybeSingle();
-
-          let patientId: string | undefined;
-
-          if (existingPatient) {
-            patientId = existingPatient.id;
-          } else {
-            const { data: newPatient, error: patientError } = await adminClient
-              .from("patients")
-              .insert({
-                facility_id: orderRow.facility_id,
-                first_name: firstName.trim(),
-                last_name: lastName.trim(),
-                date_of_birth: dob ?? null,
-                is_active: true,
-              })
-              .select("id")
-              .single();
-
-            if (patientError || !newPatient) {
-              console.error(
-                "[extract-document] Failed to create patient:",
-                patientError,
-              );
-              // Non-fatal — continue without patient link
-            } else {
-              patientId = newPatient.id;
-            }
-          }
-
-          if (patientId) {
-            await adminClient
-              .from("orders")
-              .update({ patient_id: patientId })
-              .eq("id", orderId);
-          }
-        }
-      }
-
-      /* -- Upsert insurance data into order_ivr -- */
-      const safeIvrFields = sanitizeIvrFields(extractedFields);
-      if (Object.keys(safeIvrFields).length > 0) {
-        const { error: ivrError } = await adminClient
-          .from("order_ivr")
-          .upsert(
-            {
-              order_id: orderId,
-              ai_extracted: true,
-              ai_extracted_at: new Date().toISOString(),
-              ...safeIvrFields,
-            },
-            { onConflict: "order_id" },
-          );
-        if (ivrError) {
-          console.error(
-            "[AI Extract] order_ivr upsert error:",
-            JSON.stringify(ivrError),
-          );
-        }
-      }
+    const { error: ivrErr } = await adminClient
+      .from("order_ivr")
+      .upsert(ivrPayload, { onConflict: "order_id" });
+    if (ivrErr) {
+      console.error("[extract] order_ivr FAILED:", JSON.stringify(ivrErr));
     } else {
-      const safeFields = sanitizeOrderFormFields(extractedFields);
-
-      const { error } = await adminClient.from("order_form").upsert(
-        {
-          order_id: orderId,
-          ai_extracted: true,
-          ai_extracted_at: new Date().toISOString(),
-          ...safeFields,
-        },
-        { onConflict: "order_id" },
+      console.log(
+        "[extract] order_ivr saved — facility_name:", ivrPayload.facility_name,
+        "| facility_npi:", ivrPayload.facility_npi,
+        "| physician:", ivrPayload.physician_name,
+        "| patient:", ivrPayload.patient_name,
       );
+    }
 
-      if (error) {
-        return NextResponse.json(
-          { error: `DB write failed: ${error.message}` },
-          { status: 500 },
-        );
-      }
+    /* ── STEP 8: Upsert order_form_1500 — AI patient/insurance fields + enrollment fallbacks ── */
+    const form1500Payload = {
+      order_id:                orderId,
+      ...ai1500,
+      ...(icd10 ? { diagnosis_a: icd10 } : {}),
+      service_facility_name:    (ai1500.service_facility_name    as string | null) || facility?.name     || null,
+      service_facility_address: (ai1500.service_facility_address as string | null) || addr               || null,
+      service_facility_npi:     (ai1500.service_facility_npi     as string | null) || enr?.facility_npi  || null,
+      billing_provider_name:    (ai1500.billing_provider_name    as string | null) || facility?.name     || null,
+      billing_provider_address: (ai1500.billing_provider_address as string | null) || addr               || null,
+      billing_provider_phone:   (ai1500.billing_provider_phone   as string | null) || enr?.billing_phone || facility?.phone || null,
+      billing_provider_npi:     (ai1500.billing_provider_npi     as string | null) || enr?.facility_npi  || null,
+      billing_provider_tax_id:  (ai1500.billing_provider_tax_id  as string | null) || enr?.facility_tin  || null,
+      federal_tax_id:           (ai1500.federal_tax_id           as string | null) || enr?.facility_tin  || null,
+      referring_provider_name:  (ai1500.referring_provider_name  as string | null) || physicianName      || null,
+      referring_provider_npi:   (ai1500.referring_provider_npi   as string | null) || creds?.npi_number  || null,
+    };
 
-      /* -- Supplement order_form_1500 with clinical data from order_form --
-           This handles the case where the facesheet was uploaded first and the
-           1500 already has demographics/insurance but is missing diagnosis codes. */
-      const icd10 = safeFields.icd10_code as string | null | undefined;
-      if (icd10) {
-        const { error: diagErr } = await adminClient
-          .from("order_form_1500")
-          .upsert(
-            { order_id: orderId, diagnosis_a: icd10 },
-            { onConflict: "order_id" },
-          );
-        if (diagErr) {
-          console.error(
-            "[AI Extract] order_form_1500 diagnosis_a upsert error:",
-            JSON.stringify(diagErr),
-          );
+    const { error: f15Err } = await adminClient
+      .from("order_form_1500")
+      .upsert(form1500Payload, { onConflict: "order_id" });
+    if (f15Err) {
+      console.error("[extract] order_form_1500 FAILED:", JSON.stringify(f15Err));
+    } else {
+      console.log(
+        "[extract] order_form_1500 saved — billing_provider_name:", form1500Payload.billing_provider_name,
+        "| federal_tax_id:", form1500Payload.federal_tax_id,
+      );
+    }
+
+    /* ── STEP 9: Upsert order_form — AI clinical fields + physician/patient context ── */
+    const orderFormPayload = {
+      order_id:            orderId,
+      ...aiOf,
+      patient_name:        (aiOf.patient_name        as string | null) || patientName         || null,
+      patient_date:        (orderCtx as any).date_of_service           || null,
+      physician_signature: physicianName                                || null,
+      ai_extracted:        true,
+      ai_extracted_at:     new Date().toISOString(),
+    };
+
+    const { error: ofErr } = await adminClient
+      .from("order_form")
+      .upsert(orderFormPayload, { onConflict: "order_id" });
+    if (ofErr) {
+      console.error("[extract] order_form FAILED:", JSON.stringify(ofErr));
+    } else {
+      console.log("[extract] order_form saved — patient_name:", orderFormPayload.patient_name, "| physician_signature:", orderFormPayload.physician_signature);
+    }
+
+    /* ── STEP 10: Auto-create patient record from facesheet ── */
+    if (documentType === "facesheet") {
+      const firstName = ai1500.patient_first_name as string | undefined;
+      const lastName  = ai1500.patient_last_name  as string | undefined;
+      const dob       = ai1500.patient_dob        as string | undefined;
+
+      if (firstName && lastName && !orderCtx.patient_id) {
+        const { data: existingPatient } = await adminClient
+          .from("patients")
+          .select("id")
+          .eq("facility_id", orderCtx.facility_id)
+          .ilike("first_name", firstName.trim())
+          .ilike("last_name", lastName.trim())
+          .maybeSingle();
+
+        let patientId: string | undefined;
+        if (existingPatient) {
+          patientId = existingPatient.id;
+        } else {
+          const { data: newPatient, error: patientErr } = await adminClient
+            .from("patients")
+            .insert({
+              facility_id:   orderCtx.facility_id,
+              first_name:    firstName.trim(),
+              last_name:     lastName.trim(),
+              date_of_birth: dob ?? null,
+              is_active:     true,
+            })
+            .select("id")
+            .single();
+          if (patientErr) console.error("[extract] patient create failed:", patientErr.message);
+          else patientId = newPatient?.id;
+        }
+        if (patientId) {
+          await adminClient.from("orders").update({ patient_id: patientId }).eq("id", orderId);
         }
       }
     }
 
-    /* -- Mark order as AI-extracted (triggers Realtime in the UI) -- */
+    /* ── STEP 11: Mark order AI-extracted (triggers Realtime) ── */
     await adminClient
       .from("orders")
       .update({ ai_extracted: true, ai_extracted_at: new Date().toISOString() })
       .eq("id", orderId);
+    console.log("[extract] orders.ai_extracted=true for:", orderId);
 
-    /* -- Log AI extraction to history -- */
+    /* ── STEP 12: History log (fire-and-forget) ── */
     adminClient.from("order_history").insert({
-      order_id: orderId,
+      order_id:     orderId,
       performed_by: null,
-      action:
-        documentType === "facesheet"
-          ? "AI extracted patient data from facesheet"
-          : "AI extracted clinical data from doctor's notes",
-      old_status: null,
-      new_status: null,
-      notes: null,
+      action:       documentType === "facesheet"
+        ? "AI extracted patient data from facesheet"
+        : "AI extracted clinical data from doctor's notes",
+      old_status:  null,
+      new_status:  null,
+      notes:       null,
     }).then(({ error }) => {
-      if (error) console.error("[AI history]", error.message);
+      if (error) console.error("[extract] history error:", error.message);
     });
 
-    /* -- Auto-generate PDFs (both types, awaited with retry) -- */
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-
-    // Small delay to let the DB upsert propagate before generate-pdf reads it
+    /* ── STEP 13: Generate all 3 PDFs — all data is in DB ── */
+    console.log("[extract] generating PDFs for order:", orderId);
     await new Promise((r) => setTimeout(r, 500));
-
-    await Promise.allSettled([
-      generatePDFWithRetry(baseUrl, orderId, "order_form"),
-      generatePDFWithRetry(baseUrl, orderId, "hcfa_1500"),
-      generatePDFWithRetry(baseUrl, orderId, "ivr"),
-    ]);
+    for (const formType of ["order_form", "ivr", "hcfa_1500"] as const) {
+      try {
+        const res = await fetch(`${baseUrl}/api/generate-pdf`, {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ orderId, formType }),
+        });
+        const pdfData = await res.json();
+        if (!res.ok || pdfData.error) {
+          console.error(`[extract] ${formType} PDF failed:`, pdfData.error ?? res.status);
+        } else {
+          console.log(`[extract] ${formType} PDF ok:`, pdfData.filePath);
+        }
+      } catch (err) {
+        console.error(`[extract] ${formType} PDF error:`, err);
+      }
+    }
 
     return NextResponse.json({ success: true, documentType, extractedFields });
   } catch (err) {

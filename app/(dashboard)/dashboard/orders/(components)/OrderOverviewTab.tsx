@@ -80,7 +80,7 @@ export function OrderOverviewTab({
   return (
     <div
       className={cn(
-        "absolute inset-0 overflow-y-auto px-6 space-y-5",
+        "absolute inset-0 overflow-y-auto space-y-5 px-3",
         !isActive && "hidden",
       )}
     >
@@ -88,11 +88,14 @@ export function OrderOverviewTab({
       <div className="sticky top-0 z-10 bg-white border-b border-gray-300 py-3 flex items-center justify-between">
         <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">
           Overview
-          {canEdit && status === "draft" && isOverviewDirty && !isSavingOverview && (
-            <span className="ml-2 text-amber-500 normal-case font-normal tracking-normal">
-              • Unsaved changes
-            </span>
-          )}
+          {canEdit &&
+            status === "draft" &&
+            isOverviewDirty &&
+            !isSavingOverview && (
+              <span className="ml-2 text-amber-500 normal-case font-normal tracking-normal">
+                • Unsaved changes
+              </span>
+            )}
         </h3>
         {canEdit && status === "draft" && (
           <div className="flex items-center gap-2">
@@ -310,11 +313,14 @@ export function OrderOverviewTab({
 
           {loadingProducts ? (
             <div className="flex items-center gap-2 text-xs text-gray-400 py-4 justify-center">
-              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading products...
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading
+              products...
             </div>
           ) : filteredProducts.length === 0 ? (
             <p className="text-xs text-[#94a3b8] text-center py-4">
-              {productSearch ? "No products match your search" : "No products available"}
+              {productSearch
+                ? "No products match your search"
+                : "No products available"}
             </p>
           ) : (
             <div className="space-y-1 max-h-64 overflow-y-auto pr-0.5">
@@ -359,7 +365,9 @@ export function OrderOverviewTab({
                               ? "bg-[var(--teal)] text-white hover:bg-[var(--teal)]/80"
                               : "bg-[var(--navy)] text-white hover:bg-[var(--navy)]/80",
                           )}
-                          title={existingDraftItem ? "Add another" : "Add to order"}
+                          title={
+                            existingDraftItem ? "Add another" : "Add to order"
+                          }
                         >
                           <Plus className="w-3.5 h-3.5" />
                         </button>
@@ -386,7 +394,7 @@ export function OrderOverviewTab({
 
       {/* ── Admin Notes (info request reason) ── */}
       {liveOrder.admin_notes && (
-        <div className="space-y-2 pb-2">
+        <div className="space-y-2 pb-2 px-6">
           <h3 className="text-xs font-bold uppercase tracking-widest text-amber-500 flex items-center gap-1.5">
             <AlertTriangle className="w-3 h-3" />
             Additional Information Requested
@@ -408,7 +416,7 @@ export function OrderOverviewTab({
       )}
 
       {/* ── Notes ── */}
-      <div className="space-y-2 pb-4">
+      <div className="space-y-2 pb-4 ">
         <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">
           Notes
         </h3>

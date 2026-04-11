@@ -11,6 +11,7 @@ export const maxDuration = 30;
 export async function POST(req: NextRequest) {
   try {
     const { orderId, formType } = await req.json();
+    console.log("[generate-pdf] Called with:", JSON.stringify({ orderId, formType }));
 
     const adminClient = createAdminClient();
 
@@ -39,9 +40,21 @@ export async function POST(req: NextRequest) {
     const hcfa  = hcfaRes.data;
 
     console.log("[generate-pdf] order_form data:", JSON.stringify(form));
+    console.log("[generate-pdf] IVR record found:", !!ivr, "| error:", ivrRes.error?.message ?? null);
+    if (ivr) {
+      console.log("[generate-pdf] IVR facility_name:", ivr.facility_name);
+      console.log("[generate-pdf] IVR physician_name:", ivr.physician_name);
+      console.log("[generate-pdf] IVR patient_name:", ivr.patient_name);
+      console.log("[generate-pdf] IVR sales_rep_name:", ivr.sales_rep_name);
+    }
 
     if (!order) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
+    }
+
+    if (formType === "ivr" && !ivr) {
+      console.error("[generate-pdf] IVR record not found for order:", orderId, "| DB error:", ivrRes.error?.message ?? "no row");
+      return NextResponse.json({ error: "IVR record not found" }, { status: 404 });
     }
 
     // Resolve physician name for IVR PDF (assigned_provider_id → created_by fallback)

@@ -31,6 +31,7 @@ interface HCFATabProps {
   hcfaData: Record<string, unknown> | null;
   resetHcfaKey: number;
   isReady: boolean;
+  isExtracting?: boolean;
   onDirtyChange: (dirty: boolean) => void;
   onSave: (saved: Record<string, unknown>) => void | Promise<void>;
 }
@@ -42,17 +43,18 @@ export function HCFATab({
   hcfaData,
   resetHcfaKey,
   isReady,
+  isExtracting = false,
   onDirtyChange,
   onSave,
 }: HCFATabProps) {
   return (
     <div
       className={cn(
-        "absolute inset-0 overflow-y-auto px-6",
+        "absolute inset-0 overflow-y-auto px-3",
         !isActive && "hidden",
       )}
     >
-      {!isReady ? (
+      {!isReady || isExtracting ? (
         <FormSkeleton />
       ) : (
         <HCFA1500Document
