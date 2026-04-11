@@ -294,6 +294,7 @@ export async function inviteSignUp(
 
         if (enrollError) {
           console.error("[inviteSignUp] facility_enrollment error:", JSON.stringify(enrollError));
+          await supabaseAdmin.from("facilities").delete().eq("id", clinicId);
           await supabaseAdmin.auth.admin.deleteUser(createdUserId);
           return { error: "Failed to save enrollment data. Please try again." };
         }
