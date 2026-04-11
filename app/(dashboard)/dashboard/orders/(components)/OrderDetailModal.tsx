@@ -1353,7 +1353,6 @@ export function OrderDetailModal({
                       orderId={order.id}
                       canEdit={canEdit}
                       ivrData={ivrData}
-                      hcfaData={hcfaData}
                       order={order}
                       physicianName={ivrPhysicianName}
                       resetIvrKey={resetIvrKey}

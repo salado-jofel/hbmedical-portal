@@ -1,3 +1,4 @@
+/** @jsxImportSource react */
 import {
   Document,
   Page,
@@ -6,116 +7,129 @@ import {
   StyleSheet,
 } from "@react-pdf/renderer";
 import { PDFHeader } from "./PDFHeader";
+import { CB, CBVal } from "./PDFComponents";
 
-const DARK  = "#1F2937";
+/* ── Palette ── */
+const NAVY  = "#0f2d4a";
 const GRAY  = "#6B7280";
 const LGRAY = "#F9FAFB";
 const LINE  = "#D1D5DB";
+const BLACK = "#000000";
 const WHITE = "#FFFFFF";
 
-const styles = StyleSheet.create({
+/* ── Styles ── */
+const s = StyleSheet.create({
   page: {
     fontFamily: "Helvetica",
-    fontSize: 9,
-    padding: 40,
-    paddingBottom: 60,
+    fontSize: 8,
+    color: BLACK,
+    paddingTop: 28,
+    paddingBottom: 48,
+    paddingHorizontal: 36,
     backgroundColor: "#fff",
   },
   sectionHeader: {
-    backgroundColor: DARK,
+    backgroundColor: NAVY,
     color: WHITE,
     fontFamily: "Helvetica-Bold",
     fontSize: 7.5,
-    padding: "4 8",
-    marginBottom: 0,
+    padding: "3 8",
+    marginTop: 8,
     letterSpacing: 0.8,
-    marginTop: 10,
   },
   sectionBody: {
-    border: `1px solid ${LINE}`,
-    padding: "8 10",
+    border: `0.5pt solid ${LINE}`,
+    padding: "6 10",
     backgroundColor: LGRAY,
+  },
+  label: {
+    fontSize: 6.5,
+    color: GRAY,
+    fontFamily: "Helvetica-Bold",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  uval: {
+    fontSize: 8,
+    color: BLACK,
+    borderBottom: `0.5pt solid #333`,
+    paddingBottom: 1,
+    flex: 1,
   },
   fieldRow: {
     flexDirection: "row",
-    marginBottom: 6,
     alignItems: "flex-end",
+    marginBottom: 4,
   },
   fieldLabel: {
-    fontSize: 7,
+    fontSize: 6.5,
     color: GRAY,
-    width: 120,
-    paddingBottom: 1,
+    fontFamily: "Helvetica-Bold",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+    width: 100,
     flexShrink: 0,
+    paddingBottom: 1,
   },
-  fieldValue: {
-    flex: 1,
-    fontSize: 8.5,
-    borderBottom: `0.5px solid ${DARK}`,
+  subHeader: {
+    fontFamily: "Helvetica-Bold",
+    fontSize: 7,
+    color: NAVY,
+    borderBottom: `0.5pt solid ${LINE}`,
     paddingBottom: 2,
-    minWidth: 60,
+    marginBottom: 4,
   },
-  twoCol: {
+  twoCol: { flexDirection: "row", gap: 10 },
+  col: { flex: 1 },
+  cbRow: {
     flexDirection: "row",
-    gap: 10,
+    flexWrap: "wrap",
+    alignItems: "center",
+    marginTop: 2,
+    marginBottom: 2,
   },
-  fieldBlock: {
-    flex: 1,
+  notesBox: {
+    marginTop: 8,
+    padding: "6 10",
+    backgroundColor: "#F3F4F6",
+    border: `0.5pt solid ${LINE}`,
+  },
+  sigLine: {
+    borderBottom: `0.75pt solid #333`,
+    marginTop: 16,
+    marginBottom: 2,
   },
   footer: {
     position: "absolute",
-    bottom: 24,
-    left: 40,
-    right: 40,
+    bottom: 18,
+    left: 36,
+    right: 36,
     flexDirection: "row",
     justifyContent: "space-between",
-    fontSize: 7,
+    fontSize: 6.5,
     color: GRAY,
-    borderTop: `0.5px solid ${LINE}`,
-    paddingTop: 6,
-  },
-  signatureLine: {
-    borderBottom: `1px solid ${DARK}`,
-    marginTop: 20,
-    width: 200,
+    borderTop: `0.5pt solid ${LINE}`,
+    paddingTop: 4,
   },
 });
 
-/* ---------- helpers ---------- */
+/* ── Helpers ── */
+const f = (v: unknown, fallback = "—"): string =>
+  v != null && v !== "" ? String(v) : fallback;
 
-const f = (v: unknown): string =>
-  v != null && v !== "" ? String(v) : "—";
+const fBlank = (v: unknown): string =>
+  v != null && v !== "" ? String(v) : "";
 
-const yesNo = (v: boolean | null | undefined): string =>
-  v === true ? "Yes" : v === false ? "No" : "—";
-
-const money = (v: number | null | undefined): string =>
-  v != null ? `$${Number(v).toFixed(2)}` : "—";
-
-const pct = (v: number | null | undefined): string =>
-  v != null ? `${v}%` : "—";
-
-const fmtDate = (v: string | null | undefined): string => {
-  if (!v) return "—";
-  try {
-    return new Date(v).toLocaleDateString("en-US");
-  } catch {
-    return v;
-  }
-};
-
-/* ---------- building blocks ---------- */
-
-function Row({ label, value }: { label: string; value: string }) {
+function Row({ label, value, labelW = 100 }: { label: string; value: string; labelW?: number }) {
   return (
-    <View style={styles.fieldRow}>
-      <Text style={styles.fieldLabel}>{label}:</Text>
-      <Text style={styles.fieldValue}>{value}</Text>
+    <View style={s.fieldRow}>
+      <Text style={[s.fieldLabel, { width: labelW }]}>{label}:</Text>
+      <Text style={s.uval}>{value}</Text>
     </View>
   );
 }
 
-function TwoColRows({
+function TwoRow({
   left,
   right,
 }: {
@@ -123,285 +137,295 @@ function TwoColRows({
   right: { label: string; value: string };
 }) {
   return (
-    <View style={styles.twoCol}>
-      <View style={styles.fieldBlock}>
-        <Row label={left.label} value={left.value} />
-      </View>
-      <View style={styles.fieldBlock}>
-        <Row label={right.label} value={right.value} />
-      </View>
+    <View style={s.twoCol}>
+      <View style={s.col}><Row label={left.label} value={left.value} labelW={80} /></View>
+      <View style={s.col}><Row label={right.label} value={right.value} labelW={80} /></View>
     </View>
   );
 }
 
-function SectionHeader({ title }: { title: string }) {
-  return <Text style={styles.sectionHeader}>{title.toUpperCase()}</Text>;
-}
+/* ── Known wound types & products ── */
+const WOUND_TYPES_ROW1 = [
+  "Diabetic Foot Ulcer",
+  "Venous Leg Ulcer",
+  "Pressure Ulcer",
+  "Traumatic Burns",
+] as const;
 
-/* ---------- PDF component ---------- */
+const WOUND_TYPES_ROW2 = [
+  "Radiation Burns",
+  "Necrotizing Fasciitis",
+  "Dehisced Surgical Wound",
+] as const;
 
+const KNOWN_PRODUCTS = [
+  "CompleteAA",
+  "Membrane Wrap",
+  "Hydro Membrane Wrap",
+  "WoundPlus",
+  "ESANO",
+] as const;
+
+/* ── Component ── */
 export function IVRFormPDF({
   order,
   ivr,
-  form,
-  physicianName,
 }: {
-  order: Record<string, any>;
-  ivr: Record<string, any> | null;
-  form: Record<string, any> | null;
+  order: Record<string, unknown>;
+  ivr: Record<string, unknown> | null;
+  form?: Record<string, unknown> | null;
   physicianName?: string | null;
 }) {
   const i = ivr ?? {};
-  const orderForm = form ?? {};
 
-  const patientFirst  = order.patient?.first_name ?? "";
-  const patientLast   = order.patient?.last_name  ?? "";
-  const fallbackPatientName = patientFirst || patientLast
-    ? `${patientFirst} ${patientLast}`.trim()
-    : null;
+  /* Parse product_information (comma-separated) */
+  const productParts = fBlank(i.product_information)
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const otherProduct = productParts.find((p) => p.startsWith("Other:"));
+  const otherProductText = otherProduct ? otherProduct.slice(6).trim() : "";
 
-  // Override fields: prefer ivr DB values, fall back to source table values
-  const displayFacilityName  = i.facility_name   || order.facility?.name || "—";
-  const displayPhysicianName = i.physician_name  || physicianName || "—";
-  const displayPatientName   = i.patient_name    || fallbackPatientName || "—";
-  const displayPatientDob    = i.patient_dob
-    ? fmtDate(i.patient_dob)
-    : order.patient?.date_of_birth
-      ? fmtDate(order.patient.date_of_birth)
-      : "—";
+  /* Wound type — check if "Other" (not in known list) */
+  const knownWoundTypes: string[] = [...WOUND_TYPES_ROW1, ...WOUND_TYPES_ROW2];
+  const woundTypeIsOther =
+    !!i.wound_type &&
+    !knownWoundTypes.includes(String(i.wound_type));
 
-  const dateOfService = order.date_of_service
-    ? fmtDate(order.date_of_service)
-    : "—";
+  /* Date display */
+  const fmtDate = (v: unknown): string => {
+    if (!v) return "—";
+    try { return new Date(String(v)).toLocaleDateString("en-US"); } catch { return String(v); }
+  };
 
   return (
     <Document>
-      <Page size="LETTER" style={styles.page}>
+      <Page size="LETTER" wrap style={s.page}>
 
-        {/* ── Header ── */}
-        <PDFHeader
-          title="Patient Insurance Support Form"
-          subtitle={`Order #${order.order_number ?? "—"}  |  Date of Service: ${dateOfService}`}
-        />
-
-        {/* ── 1. Facility Information ── */}
-        <SectionHeader title="Facility Information" />
-        <View style={styles.sectionBody}>
-          <TwoColRows
-            left={{ label: "Place of Service",           value: f(i.place_of_service) }}
-            right={{ label: "Facility Name",              value: displayFacilityName }}
-          />
-          <TwoColRows
-            left={{ label: "Medicare Admin Contractor",   value: f(i.medicare_admin_contractor) }}
-            right={{ label: "NPI",                        value: f(i.facility_npi) }}
-          />
-          <TwoColRows
-            left={{ label: "TIN",                         value: f(i.facility_tin) }}
-            right={{ label: "PTAN",                       value: f(i.facility_ptan) }}
-          />
-          <TwoColRows
-            left={{ label: "Fax",                         value: f(i.facility_fax) }}
-            right={{ label: "",                           value: "" }}
-          />
+        {/* ── 1. HEADER ── */}
+        <PDFHeader title="Patient Insurance Support Form" />
+        <View style={{ marginTop: 2, marginBottom: 6, alignItems: "center" }}>
+          <Text style={{ fontSize: 7, color: GRAY }}>
+            Please fax completed form to toll-free HIPAA compliant fax: 223.336.4751
+          </Text>
+          <Text style={{ fontSize: 7, color: GRAY, marginTop: 1 }}>
+            Or email to Reimbursement@MeridianSurgical.com
+          </Text>
         </View>
 
-        {/* ── 2. Physician Information ── */}
-        <SectionHeader title="Physician Information" />
-        <View style={styles.sectionBody}>
-          <TwoColRows
-            left={{ label: "Physician Name",   value: displayPhysicianName }}
-            right={{ label: "TIN",             value: f(i.physician_tin) }}
-          />
-          <TwoColRows
-            left={{ label: "Fax",             value: f(i.physician_fax) }}
-            right={{ label: "Address",         value: f(i.physician_address) }}
-          />
+        {/* ── 2. SALES REP ── */}
+        <View style={[s.fieldRow, { marginBottom: 6 }]}>
+          <Text style={s.fieldLabel}>Sales Rep:</Text>
+          <Text style={s.uval}>{f(i.sales_rep_name)}</Text>
         </View>
 
-        {/* ── 3. Patient Information ── */}
-        <SectionHeader title="Patient Information" />
-        <View style={styles.sectionBody}>
-          <TwoColRows
-            left={{ label: "Patient Name",       value: displayPatientName }}
-            right={{ label: "Date of Birth",      value: displayPatientDob }}
-          />
-          <TwoColRows
-            left={{ label: "Phone",              value: f(i.patient_phone) }}
-            right={{ label: "Address",            value: f(i.patient_address) }}
-          />
-          <Row label="OK to Contact Patient" value={yesNo(i.ok_to_contact_patient)} />
-        </View>
-
-        {/* ── 4. Primary Insurance ── */}
-        <SectionHeader title="Primary Insurance" />
-        <View style={styles.sectionBody}>
-          <TwoColRows
-            left={{ label: "Insurance Provider",         value: f(i.insurance_provider) }}
-            right={{ label: "Insurance Phone",           value: f(i.insurance_phone) }}
-          />
-          <TwoColRows
-            left={{ label: "Subscriber Name",            value: f(i.subscriber_name) }}
-            right={{ label: "Policy / Member ID",        value: f(i.member_id) }}
-          />
-          <TwoColRows
-            left={{ label: "Subscriber DOB",             value: f(i.subscriber_dob) }}
-            right={{ label: "Group Number",              value: f(i.group_number) }}
-          />
-          <TwoColRows
-            left={{ label: "Plan Type",                  value: f(i.plan_type) }}
-            right={{ label: "Plan Name",                 value: f(i.plan_name) }}
-          />
-          <TwoColRows
-            left={{ label: "Subscriber Relationship",    value: f(i.subscriber_relationship) }}
-            right={{ label: "Provider Participates",     value: f(i.provider_participates_primary) }}
-          />
-          <TwoColRows
-            left={{ label: "Coverage Start Date",        value: f(i.coverage_start_date) }}
-            right={{ label: "Coverage End Date",         value: f(i.coverage_end_date) }}
-          />
-        </View>
-
-        {/* ── 5. Secondary Insurance ── */}
-        <SectionHeader title="Secondary Insurance" />
-        <View style={styles.sectionBody}>
-          <TwoColRows
-            left={{ label: "Insurance Provider",         value: f(i.secondary_insurance_provider) }}
-            right={{ label: "Insurance Phone",           value: f(i.secondary_insurance_phone) }}
-          />
-          <TwoColRows
-            left={{ label: "Subscriber Name",            value: f(i.secondary_subscriber_name) }}
-            right={{ label: "Policy Number",             value: f(i.secondary_policy_number) }}
-          />
-          <TwoColRows
-            left={{ label: "Subscriber DOB",             value: f(i.secondary_subscriber_dob) }}
-            right={{ label: "Group Number",              value: f(i.secondary_group_number) }}
-          />
-          <TwoColRows
-            left={{ label: "Plan Type",                  value: f(i.secondary_plan_type) }}
-            right={{ label: "Subscriber Relationship",   value: f(i.secondary_subscriber_relationship) }}
-          />
-          <Row label="Provider Participates" value={f(i.provider_participates_secondary)} />
-        </View>
-
-        {/* ── 6. Benefits & Coverage ── */}
-        <SectionHeader title="Benefits & Coverage" />
-        <View style={styles.sectionBody}>
-          <TwoColRows
-            left={{ label: "Deductible Amount",   value: money(i.deductible_amount) }}
-            right={{ label: "Deductible Met",     value: money(i.deductible_met) }}
-          />
-          <TwoColRows
-            left={{ label: "Out of Pocket Max",   value: money(i.out_of_pocket_max) }}
-            right={{ label: "Out of Pocket Met",  value: money(i.out_of_pocket_met) }}
-          />
-          <TwoColRows
-            left={{ label: "Copay",               value: money(i.copay_amount) }}
-            right={{ label: "Coinsurance",        value: pct(i.coinsurance_percent) }}
-          />
-          <TwoColRows
-            left={{ label: "DME Covered",         value: yesNo(i.dme_covered) }}
-            right={{ label: "Wound Care Covered", value: yesNo(i.wound_care_covered) }}
-          />
-        </View>
-
-        {/* ── 7. Prior Authorization ── */}
-        <SectionHeader title="Prior Authorization" />
-        <View style={styles.sectionBody}>
-          <TwoColRows
-            left={{ label: "Prior Auth Required",           value: yesNo(i.prior_auth_required) }}
-            right={{ label: "Auth Number",                  value: f(i.prior_auth_number) }}
-          />
-          <TwoColRows
-            left={{ label: "Auth Start Date",               value: f(i.prior_auth_start_date) }}
-            right={{ label: "Auth End Date",                value: f(i.prior_auth_end_date) }}
-          />
-          <TwoColRows
-            left={{ label: "Units Authorized",              value: f(i.units_authorized) }}
-            right={{ label: "Permission to Work with Payer", value: yesNo(i.prior_auth_permission) }}
-          />
-        </View>
-
-        {/* ── 8. Wound & Procedure ── */}
-        <SectionHeader title="Wound & Procedure" />
-        <View style={styles.sectionBody}>
-          <TwoColRows
-            left={{ label: "Wound Type",              value: f(order.wound_type) }}
-            right={{ label: "Date of Procedure",      value: dateOfService }}
-          />
-          <TwoColRows
-            left={{ label: "ICD-10 Code(s)",          value: f(orderForm.icd10_code) }}
-            right={{ label: "Application CPTs",       value: f(i.application_cpts) }}
-          />
-          <TwoColRows
-            left={{ label: "Surgical Global Period",  value: yesNo(i.surgical_global_period) }}
-            right={{ label: "Global Period CPT",      value: f(i.global_period_cpt) }}
-          />
-        </View>
-
-        {/* ── 9. Additional Information ── */}
-        <SectionHeader title="Additional Information" />
-        <View style={styles.sectionBody}>
-          <TwoColRows
-            left={{ label: "Patient in SNF",          value: yesNo(orderForm.is_patient_at_snf) }}
-            right={{ label: "Specialty Site Name",    value: f(i.specialty_site_name) }}
-          />
-        </View>
-
-        {/* ── 10. Verification ── */}
-        <SectionHeader title="Verification" />
-        <View style={styles.sectionBody}>
-          <TwoColRows
-            left={{ label: "Verified By",             value: f(i.verified_by) }}
-            right={{ label: "Verified Date",          value: f(i.verified_date) }}
-          />
-          <Row label="Reference Number" value={f(i.verification_reference)} />
-          {i.notes ? (
-            <View style={styles.fieldRow}>
-              <Text style={styles.fieldLabel}>Notes:</Text>
-              <Text
-                style={[
-                  styles.fieldValue,
-                  { borderBottom: "none", backgroundColor: "#F3F4F6", padding: 4 },
-                ]}
-              >
-                {i.notes}
-              </Text>
+        {/* ── 3. FACILITY INFORMATION ── */}
+        <Text style={s.sectionHeader}>FACILITY INFORMATION</Text>
+        <View style={s.sectionBody}>
+          {/* Place of Service */}
+          <View style={{ marginBottom: 4 }}>
+            <Text style={[s.label, { marginBottom: 2 }]}>Place of Service:</Text>
+            <View style={s.cbRow}>
+              {["Office", "Outpatient Hospital", "Ambulatory Surgical Center", "Other"].map((pos) => (
+                <CBVal key={pos} current={i.place_of_service} value={pos} label={pos} />
+              ))}
             </View>
-          ) : (
-            <Row label="Notes" value="—" />
-          )}
+          </View>
+          <TwoRow left={{ label: "Facility Name", value: f(i.facility_name) }} right={{ label: "Medicare Admin Contractor", value: f(i.medicare_admin_contractor) }} />
+          <TwoRow left={{ label: "Address", value: f(i.facility_address) }} right={{ label: "NPI", value: f(i.facility_npi) }} />
+          <TwoRow left={{ label: "Contact Name", value: f(i.facility_contact) }} right={{ label: "TIN", value: f(i.facility_tin) }} />
+          <TwoRow left={{ label: "Phone", value: f(i.facility_phone) }} right={{ label: "PTAN", value: f(i.facility_ptan) }} />
+          <Row label="Fax" value={f(i.facility_fax)} labelW={80} />
         </View>
 
-        {/* ── Signature ── */}
-        <View
-          style={{
-            marginTop: 16,
-            paddingTop: 10,
-            borderTop: `1px solid ${LINE}`,
-            flexDirection: "row",
-            justifyContent: "space-between",
-          }}
-        >
-          <View>
-            <View style={styles.signatureLine} />
-            <Text style={{ fontSize: 7, color: GRAY, marginTop: 3 }}>Signature</Text>
-            <View style={[styles.signatureLine, { marginTop: 8 }]} />
-            <Text style={{ fontSize: 7, color: GRAY, marginTop: 3 }}>Print Name</Text>
-          </View>
-          <View>
-            <View style={[styles.signatureLine, { width: 120 }]} />
-            <Text style={{ fontSize: 7, color: GRAY, marginTop: 3 }}>Date</Text>
+        {/* ── 4. PHYSICIAN INFORMATION ── */}
+        <Text style={s.sectionHeader}>PHYSICIAN INFORMATION</Text>
+        <View style={s.sectionBody}>
+          <TwoRow left={{ label: "Physician Name", value: f(i.physician_name) }} right={{ label: "Fax", value: f(i.physician_fax) }} />
+          <TwoRow left={{ label: "Address", value: f(i.physician_address) }} right={{ label: "NPI", value: f(i.physician_npi) }} />
+          <TwoRow left={{ label: "Phone", value: f(i.physician_phone) }} right={{ label: "TIN", value: f(i.physician_tin) }} />
+        </View>
+
+        {/* ── 5. PATIENT INFORMATION ── */}
+        <Text style={s.sectionHeader}>PATIENT INFORMATION</Text>
+        <View style={s.sectionBody}>
+          <TwoRow left={{ label: "Patient Name", value: f(i.patient_name) }} right={{ label: "Phone", value: f(i.patient_phone) }} />
+          <Row label="Address (City / State / Zip)" value={f(i.patient_address)} labelW={130} />
+          <TwoRow left={{ label: "Date of Birth", value: fmtDate(i.patient_dob) }} right={{ label: "", value: "" }} />
+          <View style={s.fieldRow}>
+            <Text style={s.fieldLabel}>OK to Contact:</Text>
+            <View style={s.cbRow}>
+              <CB checked={i.ok_to_contact_patient === true}  label="Yes" />
+              <CB checked={i.ok_to_contact_patient === false} label="No"  />
+            </View>
           </View>
         </View>
 
-        {/* ── Footer ── */}
-        <View style={styles.footer} fixed>
-          <Text>HB Medical Portal — Patient Insurance Support Form</Text>
-          <Text
-            render={({ pageNumber, totalPages }) =>
-              `Page ${pageNumber} of ${totalPages}`
-            }
-          />
+        {/* ── 6. INSURANCE INFORMATION ── */}
+        <Text style={s.sectionHeader}>INSURANCE INFORMATION</Text>
+        <View style={[s.sectionBody, { flexDirection: "row", gap: 12 }]}>
+          {/* Primary */}
+          <View style={{ flex: 1, borderRight: `0.5pt solid ${LINE}`, paddingRight: 8 }}>
+            <Text style={s.subHeader}>Primary Insurance</Text>
+            <Row label="Subscriber Name" value={f(i.subscriber_name)} labelW={90} />
+            <Row label="Policy / Member ID" value={f(i.member_id)} labelW={90} />
+            <Row label="Subscriber DOB" value={fmtDate(i.subscriber_dob)} labelW={90} />
+            <View style={{ marginBottom: 4 }}>
+              <Text style={[s.label, { marginBottom: 2 }]}>Type of Plan:</Text>
+              <View style={s.cbRow}>
+                <CBVal current={i.plan_type} value="HMO" label="HMO" />
+                <CBVal current={i.plan_type} value="PPO" label="PPO" />
+                <CBVal current={i.plan_type} value="Other" label="Other" />
+              </View>
+            </View>
+            <Row label="Insurance Phone" value={f(i.insurance_phone)} labelW={90} />
+            <View>
+              <Text style={[s.label, { marginBottom: 2 }]}>Provider Participates:</Text>
+              <View style={s.cbRow}>
+                <CBVal current={i.provider_participates_primary} value="Yes"      label="Yes" />
+                <CBVal current={i.provider_participates_primary} value="No"       label="No" />
+                <CBVal current={i.provider_participates_primary} value="Not Sure" label="Not Sure" />
+              </View>
+            </View>
+          </View>
+
+          {/* Secondary */}
+          <View style={{ flex: 1 }}>
+            <Text style={s.subHeader}>Secondary Insurance</Text>
+            <Row label="Subscriber Name" value={f(i.secondary_subscriber_name)} labelW={90} />
+            <Row label="Policy Number" value={f(i.secondary_policy_number)} labelW={90} />
+            <Row label="Subscriber DOB" value={fmtDate(i.secondary_subscriber_dob)} labelW={90} />
+            <View style={{ marginBottom: 4 }}>
+              <Text style={[s.label, { marginBottom: 2 }]}>Type of Plan:</Text>
+              <View style={s.cbRow}>
+                <CBVal current={i.secondary_plan_type} value="HMO" label="HMO" />
+                <CBVal current={i.secondary_plan_type} value="PPO" label="PPO" />
+                <CBVal current={i.secondary_plan_type} value="Other" label="Other" />
+              </View>
+            </View>
+            <Row label="Insurance Phone" value={f(i.secondary_insurance_phone)} labelW={90} />
+            <View>
+              <Text style={[s.label, { marginBottom: 2 }]}>Provider Participates:</Text>
+              <View style={s.cbRow}>
+                <CBVal current={i.provider_participates_secondary} value="Yes"      label="Yes" />
+                <CBVal current={i.provider_participates_secondary} value="No"       label="No" />
+                <CBVal current={i.provider_participates_secondary} value="Not Sure" label="Not Sure" />
+              </View>
+            </View>
+          </View>
+        </View>
+
+        {/* ── 7. WOUND INFORMATION ── */}
+        <Text style={s.sectionHeader}>WOUND INFORMATION</Text>
+        <View style={s.sectionBody}>
+          <View style={{ marginBottom: 4 }}>
+            <Text style={[s.label, { marginBottom: 2 }]}>Wound Type:</Text>
+            <View style={[s.cbRow, { marginBottom: 2 }]}>
+              {WOUND_TYPES_ROW1.map((wt) => (
+                <CBVal key={wt} current={i.wound_type} value={wt} label={wt} />
+              ))}
+            </View>
+            <View style={s.cbRow}>
+              {WOUND_TYPES_ROW2.map((wt) => (
+                <CBVal key={wt} current={i.wound_type} value={wt} label={wt} />
+              ))}
+              <CB
+                checked={woundTypeIsOther}
+                label={woundTypeIsOther ? `Other: ${f(i.wound_type)}` : "Other"}
+              />
+            </View>
+          </View>
+          <TwoRow left={{ label: "Wound Size(s)", value: f(i.wound_sizes) }} right={{ label: "Application CPT(s)", value: f(i.application_cpts) }} />
+          <TwoRow left={{ label: "Date of Procedure", value: fmtDate(i.date_of_procedure) }} right={{ label: "ICD-10 Diagnosis Code(s)", value: f(i.icd10_codes) }} />
+          <View>
+            <Text style={[s.label, { marginBottom: 2 }]}>Product Information:</Text>
+            <View style={s.cbRow}>
+              {KNOWN_PRODUCTS.map((product) => (
+                <CB
+                  key={product}
+                  checked={productParts.includes(product)}
+                  label={product}
+                />
+              ))}
+              <CB
+                checked={!!otherProduct}
+                label={otherProductText ? `Other: ${otherProductText}` : "Other"}
+              />
+            </View>
+          </View>
+        </View>
+
+        {/* ── 8. ADDITIONAL INFORMATION ── */}
+        <Text style={s.sectionHeader}>ADDITIONAL INFORMATION</Text>
+        <View style={s.sectionBody}>
+          <View style={[s.fieldRow, { alignItems: "center" }]}>
+            <Text style={[s.fieldLabel, { width: 200 }]}>Patient currently residing in SNF?</Text>
+            <View style={s.cbRow}>
+              <CB checked={i.is_patient_at_snf === true}  label="Yes" />
+              <CB checked={i.is_patient_at_snf === false} label="No"  />
+            </View>
+          </View>
+          <View style={[s.fieldRow, { alignItems: "center" }]}>
+            <Text style={[s.fieldLabel, { width: 200 }]}>Patient under surgical Global Period?</Text>
+            <View style={s.cbRow}>
+              <CB checked={i.surgical_global_period === true}  label="Yes" />
+              <CB checked={i.surgical_global_period === false} label="No"  />
+            </View>
+          </View>
+          <Row label="CPT Code (if global period)" value={f(i.global_period_cpt)} labelW={130} />
+          <View style={[s.fieldRow, { alignItems: "center", marginTop: 2 }]}>
+            <CB checked={i.prior_auth_permission === true} label="" />
+            <Text style={{ fontSize: 7, color: BLACK, flex: 1, marginLeft: 4 }}>
+              If Prior Authorization is Required, check here to allow us to work with payer on your behalf.
+            </Text>
+          </View>
+          <Text style={{ fontSize: 7, color: GRAY, marginTop: 3, fontFamily: "Helvetica-Oblique" }}>
+            Please attach a copy of the patient&apos;s clinical records.
+          </Text>
+          <Row label="Specialty Site Name (if different)" value={f(i.specialty_site_name)} labelW={150} />
+        </View>
+
+        {/* ── 9. IMPORTANT NOTES ── */}
+        <View style={s.notesBox}>
+          <Text style={{ fontSize: 7, color: BLACK, marginBottom: 2 }}>
+            • Please include the front &amp; back copy of the patient insurance card.
+          </Text>
+          <Text style={{ fontSize: 7, color: BLACK }}>
+            • This verification of benefits is not a guarantee of payment by the payor.
+          </Text>
+        </View>
+
+        {/* ── 10. PHYSICIAN AGREEMENT ── */}
+        <View style={{ marginTop: 10, paddingTop: 6, borderTop: `0.5pt solid ${LINE}` }}>
+          <Text style={{ fontSize: 7, color: BLACK, lineHeight: 1.5, marginBottom: 8 }}>
+            By signing below, I certify that I have received the necessary patient authorization to release the medical
+            and/or other patient information referenced on the form relating to the above-referenced patient. This
+            information is for verifying insurance coverage, seeking reimbursement, and the sole purpose of claim support.
+          </Text>
+          <View style={s.twoCol}>
+            <View style={s.col}>
+              <View style={s.sigLine} />
+              <Text style={[s.label, { marginTop: 2 }]}>Physician or Authorized Signature</Text>
+              {i.physician_signature ? (
+                <Text style={{ fontSize: 8, fontFamily: "Helvetica-Oblique", marginTop: 2 }}>
+                  {String(i.physician_signature)}
+                </Text>
+              ) : null}
+            </View>
+            <View style={{ width: 140 }}>
+              <View style={s.sigLine} />
+              <Text style={[s.label, { marginTop: 2 }]}>Date</Text>
+              {i.physician_signature_date ? (
+                <Text style={{ fontSize: 8, marginTop: 2 }}>{String(i.physician_signature_date)}</Text>
+              ) : null}
+            </View>
+          </View>
+        </View>
+
+        {/* ── 11. FOOTER ── */}
+        <View style={s.footer} fixed>
+          <Text>235 Singleton Ridge Road Suite 105, Conway SC 29526  |  MeridianSurgicalsupplies.com</Text>
+          <Text render={({ pageNumber, totalPages }) => `REV2.1  |  Page ${pageNumber} of ${totalPages}`} />
         </View>
 
       </Page>

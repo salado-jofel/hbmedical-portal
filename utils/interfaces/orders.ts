@@ -275,6 +275,16 @@ export interface IOrderIVR {
   verifiedDate: string | null;
   verificationReference: string | null;
   notes: string | null;
+  // New document fields
+  salesRepName: string | null;
+  woundType: string | null;
+  woundSizes: string | null;
+  dateOfProcedure: string | null;
+  icd10Codes: string | null;
+  productInformation: string | null;
+  isPatientAtSnf: boolean | null;
+  physicianSignature: string | null;
+  physicianSignatureDate: string | null;
   aiExtracted: boolean;
   createdAt: string;
   updatedAt: string;

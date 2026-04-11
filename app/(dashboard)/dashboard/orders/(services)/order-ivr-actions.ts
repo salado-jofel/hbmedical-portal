@@ -85,6 +85,15 @@ function mapIvrRow(data: Record<string, unknown>): IOrderIVR {
     verifiedDate:                data.verified_date as string | null,
     verificationReference:       data.verification_reference as string | null,
     notes:                       data.notes as string | null,
+    salesRepName:                data.sales_rep_name as string | null,
+    woundType:                   data.wound_type as string | null,
+    woundSizes:                  data.wound_sizes as string | null,
+    dateOfProcedure:             data.date_of_procedure as string | null,
+    icd10Codes:                  data.icd10_codes as string | null,
+    productInformation:          data.product_information as string | null,
+    isPatientAtSnf:              data.is_patient_at_snf as boolean | null,
+    physicianSignature:          data.physician_signature as string | null,
+    physicianSignatureDate:      data.physician_signature_date as string | null,
     aiExtracted:                 (data.ai_extracted as boolean) ?? false,
     createdAt:                   data.created_at as string,
     updatedAt:                   data.updated_at as string,
@@ -107,7 +116,7 @@ export async function getOrderIVR(
         .from("orders")
         .select(`
           assigned_provider_id, created_by,
-          facilities!orders_facility_id_fkey(name, address_line_1, phone, contact),
+          facilities!orders_facility_id_fkey(name, address_line_1, phone, contact, assigned_rep),
           patients!orders_patient_id_fkey(first_name, last_name, date_of_birth)
         `)
         .eq("id", orderId)
@@ -124,7 +133,7 @@ export async function getOrderIVR(
     // Resolve facility from join
     const facilityRaw = orderCtx?.facilities as unknown;
     const facility = (Array.isArray(facilityRaw) ? facilityRaw[0] : facilityRaw) as
-      | { name: string; address_line_1: string | null; phone: string | null; contact: string | null }
+      | { name: string; address_line_1: string | null; phone: string | null; contact: string | null; assigned_rep: string | null }
       | null | undefined;
 
     // Resolve patient from join
@@ -138,17 +147,29 @@ export async function getOrderIVR(
 
     // Resolve physician name: assigned_provider_id → created_by fallback
     let physicianName: string | null = null;
+    let salesRepName: string | null = null;
     try {
-      const providerId = orderCtx?.assigned_provider_id || orderCtx?.created_by;
-      if (providerId) {
-        const { data: profile } = await adminClient
-          .from("profiles")
-          .select("first_name, last_name")
-          .eq("id", providerId)
-          .maybeSingle();
-        if (profile) {
-          physicianName = `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() || null;
-        }
+      const [providerRes, repRes] = await Promise.all([
+        (() => {
+          const providerId = orderCtx?.assigned_provider_id || orderCtx?.created_by;
+          return providerId
+            ? adminClient.from("profiles").select("first_name, last_name").eq("id", providerId).maybeSingle()
+            : Promise.resolve({ data: null });
+        })(),
+        (() => {
+          const repId = facility?.assigned_rep;
+          return repId
+            ? adminClient.from("profiles").select("first_name, last_name").eq("id", repId).maybeSingle()
+            : Promise.resolve({ data: null });
+        })(),
+      ]);
+      if (providerRes.data) {
+        const p = providerRes.data;
+        physicianName = `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim() || null;
+      }
+      if (repRes.data) {
+        const r = repRes.data;
+        salesRepName = `${r.first_name ?? ""} ${r.last_name ?? ""}`.trim() || null;
       }
     } catch {
       // Non-fatal
@@ -171,6 +192,7 @@ export async function getOrderIVR(
           physician_name:   physicianName,
           patient_name:     resolvedPatientName,
           patient_dob:      patient?.date_of_birth ?? null,
+          sales_rep_name:   salesRepName,
         },
         { onConflict: "order_id" },
       );
@@ -192,6 +214,7 @@ export async function getOrderIVR(
     if (!ivrData.physicianName)   ivrData.physicianName   = physicianName;
     if (!ivrData.patientName)     ivrData.patientName     = resolvedPatientName;
     if (!ivrData.patientDob)      ivrData.patientDob      = patient?.date_of_birth ?? null;
+    if (!ivrData.salesRepName)    ivrData.salesRepName    = salesRepName;
 
     return { ivr: ivrData, physicianName };
   } catch (err) {
@@ -284,6 +307,16 @@ export async function upsertOrderIVR(
     if (data.verifiedDate !== undefined) payload.verified_date = data.verifiedDate;
     if (data.verificationReference !== undefined) payload.verification_reference = data.verificationReference;
     if (data.notes !== undefined) payload.notes = data.notes;
+    // New document fields
+    if (data.salesRepName !== undefined)         payload.sales_rep_name         = data.salesRepName;
+    if (data.woundType !== undefined)            payload.wound_type             = data.woundType;
+    if (data.woundSizes !== undefined)           payload.wound_sizes            = data.woundSizes;
+    if (data.dateOfProcedure !== undefined)      payload.date_of_procedure      = data.dateOfProcedure;
+    if (data.icd10Codes !== undefined)           payload.icd10_codes            = data.icd10Codes;
+    if (data.productInformation !== undefined)   payload.product_information    = data.productInformation;
+    if (data.isPatientAtSnf !== undefined)       payload.is_patient_at_snf      = data.isPatientAtSnf;
+    if (data.physicianSignature !== undefined)   payload.physician_signature    = data.physicianSignature;
+    if (data.physicianSignatureDate !== undefined) payload.physician_signature_date = data.physicianSignatureDate;
 
     const { error } = await adminClient
       .from("order_ivr")

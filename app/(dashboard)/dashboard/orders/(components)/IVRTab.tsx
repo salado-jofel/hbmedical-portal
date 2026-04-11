@@ -1,7 +1,7 @@
 "use client";
 
 import type { DashboardOrder, IOrderIVR } from "@/utils/interfaces/orders";
-import { OrderIVRForm } from "./OrderIVRForm";
+import { IVRFormDocument } from "./IVRFormDocument";
 import { cn } from "@/utils/utils";
 
 function FormSkeleton() {
@@ -30,7 +30,6 @@ interface IVRTabProps {
   orderId: string;
   canEdit: boolean;
   ivrData: Partial<IOrderIVR> | null;
-  hcfaData: Record<string, unknown> | null;
   order: DashboardOrder;
   physicianName?: string | null;
   resetIvrKey: number;
@@ -44,7 +43,6 @@ export function IVRTab({
   orderId,
   canEdit,
   ivrData,
-  hcfaData,
   order,
   physicianName,
   resetIvrKey,
@@ -62,17 +60,15 @@ export function IVRTab({
       {!isReady ? (
         <FormSkeleton />
       ) : (
-        <OrderIVRForm
+        <IVRFormDocument
           key={resetIvrKey}
           orderId={orderId}
           canEdit={canEdit}
-          initialData={ivrData}
-          isReady={true}
+          ivrData={ivrData}
           order={order}
           physicianName={physicianName}
-          hcfaData={hcfaData}
           onDirtyChange={onDirtyChange}
-          onSave={onSave}
+          onSaved={onSave}
         />
       )}
     </div>
