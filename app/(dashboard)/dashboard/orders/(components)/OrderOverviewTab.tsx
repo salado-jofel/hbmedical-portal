@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Loader2, Plus, Minus, X, AlertTriangle, Shield } from "lucide-react";
+import { FormActionBar } from "./FormActionBar";
 import type { DashboardOrder, ProductRecord } from "@/utils/interfaces/orders";
 import { getProducts } from "../(services)/order-misc-actions";
 import { cn } from "@/utils/utils";
@@ -84,54 +85,16 @@ export function OrderOverviewTab({
         !isActive && "hidden",
       )}
     >
-      {/* ── Unified Save/Discard toolbar ── */}
-      <div className="sticky top-0 z-10 bg-white border-b border-gray-300 py-3 flex items-center justify-between">
-        <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">
-          Overview
-          {canEdit &&
-            status === "draft" &&
-            isOverviewDirty &&
-            !isSavingOverview && (
-              <span className="ml-2 text-amber-500 normal-case font-normal tracking-normal">
-                • Unsaved changes
-              </span>
-            )}
-        </h3>
-        {canEdit && status === "draft" && (
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleDiscardOverview}
-              disabled={!isOverviewDirty || isSavingOverview}
-              className={cn(
-                "px-4 py-1.5 text-sm font-medium rounded-lg",
-                "border border-gray-200 text-gray-500",
-                "hover:bg-gray-50 transition-colors",
-                "disabled:opacity-40 disabled:cursor-not-allowed",
-              )}
-            >
-              Discard changes
-            </button>
-            <button
-              type="button"
-              onClick={handleSaveOverview}
-              disabled={!isOverviewDirty || isSavingOverview}
-              className={cn(
-                "px-4 py-1.5 text-sm font-semibold rounded-lg",
-                "bg-[var(--navy)] text-white",
-                "hover:bg-[var(--navy)]/90 transition-colors",
-                "disabled:opacity-40 disabled:cursor-not-allowed",
-                "flex items-center gap-2",
-              )}
-            >
-              {isSavingOverview && (
-                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              )}
-              {isSavingOverview ? "Saving..." : "Save changes"}
-            </button>
-          </div>
-        )}
-      </div>
+      {/* ── Save/Discard toolbar — only shown when there are unsaved changes ── */}
+      {canEdit && status === "draft" && (
+        <FormActionBar
+          label="Overview"
+          isDirty={isOverviewDirty}
+          isPending={isSavingOverview}
+          onSave={handleSaveOverview}
+          onDiscard={handleDiscardOverview}
+        />
+      )}
 
       {/* ── Order Items ── */}
       <div className="space-y-3 ">

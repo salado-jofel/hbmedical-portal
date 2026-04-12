@@ -63,6 +63,7 @@ import {
   resubmitForReview,
   requestAdditionalInfo,
   markOrderDelivered,
+  signAndSubmitOrder,
 } from "../(services)/order-workflow-actions";
 import {
   getOrderPayment,
@@ -309,6 +310,7 @@ export function OrderDetailModal({
 
   /* -- Sub-modal flags -- */
   const [signOpen, setSignOpen] = useState(false);
+  const [signAndSubmitOpen, setSignAndSubmitOpen] = useState(false);
   const [approveOpen, setApproveOpen] = useState(false);
   const [requestInfoOpen, setRequestInfoOpen] = useState(false);
   const [requestInfoReason, setRequestInfoReason] = useState("");
@@ -930,6 +932,30 @@ export function OrderDetailModal({
     setSubmitting(false);
   }
 
+  function handleSignAndSubmit() {
+    if (draftItems.length === 0) {
+      toast.error("Add at least one product in the Overview tab before signing.", { duration: 4000 });
+      setTab("overview");
+      return;
+    }
+    if (hasAnyUnsavedChanges) {
+      toast.error(
+        `You have unsaved changes in: ${dirtyTabs.join(", ")}. Please save or discard them before signing.`,
+        { duration: 5000 },
+      );
+      if (isOverviewDirty) setTab("overview");
+      else if (isIvrDirty) setTab("ivr");
+      else if (isHcfaDirty) setTab("hcfa");
+      return;
+    }
+    const hasFacesheet = documents.some((d) => d.documentType === "facesheet");
+    if (!hasFacesheet || !order.date_of_service || !order.wound_type) {
+      setCompletionOpen(true);
+      return;
+    }
+    setSignAndSubmitOpen(true);
+  }
+
   function handleClose() {
     if (hasAnyUnsavedChanges) {
       setCloseWarningOpen(true);
@@ -1251,6 +1277,19 @@ export function OrderDetailModal({
         providerName={currentUserName ?? "Provider"}
         onSuccess={refreshOrder}
       />
+      <SignOrderModal
+        open={signAndSubmitOpen}
+        onOpenChange={setSignAndSubmitOpen}
+        order={order}
+        providerName={currentUserName ?? "Provider"}
+        title="Sign & Submit Order"
+        successMessage="Order signed and submitted for review."
+        onSign={(pin) => signAndSubmitOrder(order.id, pin)}
+        onSuccess={() => {
+          dispatch(updateOrderInStore({ ...liveOrder, order_status: "manufacturer_review" }));
+          onClose();
+        }}
+      />
       <ApproveOrderModal
         open={approveOpen}
         onOpenChange={setApproveOpen}
@@ -1440,36 +1479,43 @@ export function OrderDetailModal({
                         </button>
                       )}
 
-                      {/* Submit Order — draft, clinic only */}
+                      {/* Submit / Sign & Submit — draft, clinic only */}
                       {isClinical && status === "draft" && (
-                        <button
-                          onClick={handleSubmitOrder}
-                          disabled={
-                            submitting ||
-                            draftItems.length === 0 ||
-                            hasAnyUnsavedChanges
-                          }
-                          title={
-                            draftItems.length === 0
-                              ? "Add at least one product before submitting"
-                              : hasAnyUnsavedChanges
-                                ? `Save changes in: ${dirtyTabs.join(", ")}`
-                                : undefined
-                          }
-                          className={cn(
-                            "px-5 py-[7px] font-medium rounded-[7px] text-[13px] flex items-center gap-2 transition-all",
-                            submitting ||
-                              draftItems.length === 0 ||
-                              hasAnyUnsavedChanges
-                              ? "bg-[var(--border)] text-[var(--text3)] cursor-not-allowed"
-                              : "bg-[var(--navy)] text-white hover:bg-[var(--navy)]/90 active:scale-[0.98]",
-                          )}
-                        >
-                          {submitting && (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          )}
-                          Submit Order
-                        </button>
+                        canSign ? (
+                          /* Provider: single-step sign & submit */
+                          <button
+                            onClick={handleSignAndSubmit}
+                            disabled={submitting}
+                            className={cn(
+                              "px-5 py-[7px] font-medium rounded-[7px] text-[13px] flex items-center gap-2 transition-all",
+                              submitting
+                                ? "bg-[var(--border)] text-[var(--text3)] cursor-not-allowed"
+                                : "bg-[var(--navy)] text-white hover:bg-[var(--navy)]/90 active:scale-[0.98]",
+                            )}
+                          >
+                            {submitting && (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            )}
+                            Sign &amp; Submit
+                          </button>
+                        ) : (
+                          /* Staff: two-step submit (to pending_signature) */
+                          <button
+                            onClick={handleSubmitOrder}
+                            disabled={submitting}
+                            className={cn(
+                              "px-5 py-[7px] font-medium rounded-[7px] text-[13px] flex items-center gap-2 transition-all",
+                              submitting
+                                ? "bg-[var(--border)] text-[var(--text3)] cursor-not-allowed"
+                                : "bg-[var(--navy)] text-white hover:bg-[var(--navy)]/90 active:scale-[0.98]",
+                            )}
+                          >
+                            {submitting && (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            )}
+                            Submit Order
+                          </button>
+                        )
                       )}
 
                       {/* Recall to Draft — pending_signature, clinic only */}

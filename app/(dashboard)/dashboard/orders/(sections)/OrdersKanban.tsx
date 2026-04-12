@@ -15,6 +15,7 @@ import { createClient } from "@/lib/supabase/client";
 import toast from "react-hot-toast";
 import { OrdersTable } from "./OrdersTable";
 import { OrdersKanbanView } from "./OrdersKanbanView";
+import { ClinicOrdersTable } from "./ClinicOrdersTable";
 import type { KanbanColumn } from "@/utils/interfaces/orders";
 
 export function OrdersKanban({
@@ -212,6 +213,19 @@ export function OrdersKanban({
   );
   const [tableMode, setTableMode] = useState(false);
 
+  // Clinic users get a persistent Table/Board toggle (defaults to table)
+  const isClinic = canCreate && !isAdmin && !isSupport;
+  const [clinicView, setClinicView] = useState<"table" | "kanban">(() => {
+    if (typeof window !== "undefined") {
+      return (localStorage.getItem("orders-view") as "table" | "kanban") || "table";
+    }
+    return "table";
+  });
+  useEffect(() => {
+    if (!isClinic) return;
+    localStorage.setItem("orders-view", clinicView);
+  }, [clinicView, isClinic]);
+
   // Reps get table-only; admin/support default to kanban with toggle
   const shouldShowTable = isRep || tableMode;
 
@@ -308,6 +322,26 @@ export function OrdersKanban({
     />
   );
 
+  // Clinic table view
+  if (isClinic && clinicView === "table") {
+    return (
+      <>
+        <ClinicOrdersTable
+          filtered={filtered}
+          search={search}
+          onSearchChange={setSearch}
+          statusFilter={statusFilter}
+          onStatusFilterChange={setStatusFilter}
+          view={clinicView}
+          onViewChange={setClinicView}
+          canCreate={canCreate}
+          onOrderClick={handleOrderClick}
+        />
+        {modal}
+      </>
+    );
+  }
+
   if (shouldShowTable) {
     return (
       <>
@@ -345,6 +379,8 @@ export function OrdersKanban({
         isSupport={isSupport}
         canCreate={canCreate}
         onOrderClick={handleOrderClick}
+        clinicView={isClinic ? clinicView : undefined}
+        onClinicViewChange={isClinic ? setClinicView : undefined}
       />
       {modal}
     </>
