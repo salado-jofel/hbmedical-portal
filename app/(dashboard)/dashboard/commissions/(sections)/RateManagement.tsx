@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useActionState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus } from "lucide-react";
+import { Plus, Users } from "lucide-react";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { useAppSelector } from "@/store/hooks";
 import { setCommissionRate } from "../(services)/actions";
 import { formatDate } from "@/utils/helpers/formatter";
-import { isAdmin } from "@/utils/helpers/role";
+import { isAdmin, isSalesRep } from "@/utils/helpers/role";
 import type { UserRole } from "@/utils/helpers/role";
 import type { ICommissionRateFormState } from "@/utils/interfaces/commissions";
 import {
@@ -22,7 +22,11 @@ import {
 export default function RateManagement({ reps }: { reps: Array<{ id: string; name: string }> }) {
   const rates = useAppSelector((s) => s.commissions.rates);
   const role = useAppSelector((s) => s.dashboard.role) as UserRole;
+  const userId = useAppSelector((s) => s.dashboard.userId);
   const admin = isAdmin(role);
+  const isRep = isSalesRep(role);
+
+  const displayRates = isRep ? rates.filter((r) => r.repId !== userId) : rates;
 
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -60,8 +64,12 @@ export default function RateManagement({ reps }: { reps: Array<{ id: string; nam
       <div className="overflow-hidden rounded-[var(--r)] border border-[var(--border)] bg-[var(--surface)]">
         <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-[0.8rem]">
           <div>
-            <p className="text-[13px] font-semibold text-[var(--navy)]">Commission Rates</p>
-            <p className="mt-[1px] text-[11px] text-[var(--text3)]">Active rates per rep</p>
+            <p className="text-[13px] font-semibold text-[var(--navy)]">
+              {isRep ? "Sub-Rep Rates" : "Commission Rates"}
+            </p>
+            <p className="mt-[1px] text-[11px] text-[var(--text3)]">
+              {isRep ? "Commission rates for your sub-representatives" : "Active rates per rep"}
+            </p>
           </div>
           {(admin || reps.length > 0) && (
             <Button
@@ -71,19 +79,29 @@ export default function RateManagement({ reps }: { reps: Array<{ id: string; nam
               onClick={() => setOpen(true)}
             >
               <Plus className="h-3.5 w-3.5" />
-              Set Rate
+              {isRep ? "Set Sub-Rep Rate" : "Set Rate"}
             </Button>
           )}
         </div>
 
-        {rates.length === 0 ? (
-          <div className="px-4 py-8 text-center text-[13px] text-[var(--text3)]">No rates configured yet</div>
+        {displayRates.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-8 text-center">
+            <Users className="w-8 h-8 text-[#cbd5e1] mb-2" />
+            <p className="text-[13px] text-[var(--text3)]">
+              {isRep ? "No sub-rep rates configured" : "No rates configured yet"}
+            </p>
+            <p className="mt-1 text-[11px] text-[var(--text3)]">
+              {isRep
+                ? "Set commission rates for your sub-representatives using the button above"
+                : "No commission rates have been set yet"}
+            </p>
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-[var(--border)] bg-[var(--bg)]">
-                  {["Rep Name", "Rate %", "Override %", "Effective From", "Set By"].map((h) => (
+                  {[isRep ? "Sub-Rep" : "Rep Name", "Rate %", "Override %", "Effective From", "Set By"].map((h) => (
                     <th
                       key={h}
                       className="px-4 py-[9px] text-[10px] font-semibold uppercase tracking-[0.6px] text-[var(--text3)] whitespace-nowrap"
@@ -94,7 +112,7 @@ export default function RateManagement({ reps }: { reps: Array<{ id: string; nam
                 </tr>
               </thead>
               <tbody>
-                {rates.map((rate) => (
+                {displayRates.map((rate) => (
                   <tr key={rate.id} className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--bg)]">
                     <td className="px-4 py-[10px] text-[13px] font-medium text-[var(--navy)]">{rate.repName}</td>
                     <td className="px-4 py-[10px] text-[13px]">{rate.ratePercent}%</td>

@@ -93,6 +93,12 @@ export const NAV_GROUPS: NavGroupDef[] = [
         visible: (role) => isAdmin(role) || isSalesRep(role) || isSupport(role),
       },
       {
+        icon: Users,
+        label: "My Team",
+        href: "/dashboard/my-team",
+        visible: (role) => isSalesRep(role) || isAdmin(role),
+      },
+      {
         icon: CheckSquare,
         label: "Tasks",
         href: "/dashboard/tasks",
