@@ -1,4 +1,5 @@
 import commissionsSlice from "@/app/(dashboard)/dashboard/commissions/(redux)/commissions-slice";
+import myTeamSlice from "@/app/(dashboard)/dashboard/my-team/(redux)/my-team-slice";
 import repPerformanceSlice from "@/app/(dashboard)/dashboard/rep-performance/(redux)/rep-performance-slice";
 import dashboardSlice from "@/app/(dashboard)/dashboard/(redux)/dashboard-slice";
 import accountsSlice from "@/app/(dashboard)/dashboard/accounts/(redux)/accounts-slice";
@@ -32,6 +33,7 @@ export const store = configureStore({
     trainings: trainingsSlice,
     hospitalOnboarding: hospitalOnboardingSlice,
     commissions: commissionsSlice,
+    myTeam: myTeamSlice,
     repPerformance: repPerformanceSlice,
     dashboard: dashboardSlice,
   },
