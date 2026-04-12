@@ -10,8 +10,6 @@ import {
 import {
   Loader2,
   CheckCircle2,
-  Save,
-  RotateCcw,
   Lock,
   MapPin,
   Mail,
@@ -19,12 +17,12 @@ import {
   Phone,
   Check,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { HBLogo } from "@/app/(components)/HBLogo";
 import { saveOrderForm } from "../(services)/order-write-actions";
 import type { IOrderForm, DashboardOrder } from "@/utils/interfaces/orders";
 import type { AiStatus } from "./OrderFormTab";
 import { FormDeficiencyBanner } from "./FormDeficiencyBanner";
+import { FormActionBar } from "./FormActionBar";
 import { cn } from "@/utils/utils";
 import toast from "react-hot-toast";
 
@@ -410,6 +408,7 @@ export function OrderFormDocument({
   const isReadOnly = !canEdit || isLocked;
   const ai = orderForm?.aiExtracted ?? false;
   const aiExtracted = orderForm?.aiExtracted ?? false;
+  const isPostSurgical = formData.woundType === "post_surgical";
 
   const isDirty = useMemo(
     () => JSON.stringify(formData) !== JSON.stringify(baseline),
@@ -426,14 +425,14 @@ export function OrderFormDocument({
     if (!formData.chiefComplaint) count++;
     if (!formData.icd10Code) count++;
     if (!formData.woundSite) count++;
-    if (!formData.woundStage) count++;
+    if (!isPostSurgical && !formData.woundStage) count++;
     if (!formData.clinicalNotes) count++;
     if (!formData.woundLengthCm) count++;
     if (!formData.woundWidthCm) count++;
     if (!formData.woundDepthCm) count++;
-    if (!formData.drainageDescription) count++;
+    if (!isPostSurgical && !formData.drainageDescription) count++;
     if (!formData.treatmentPlan) count++;
-    if (!formData.woundVisitNumber) count++;
+    if (!isPostSurgical && !formData.woundVisitNumber) count++;
     if (!formData.granulationTissuePct) count++;
     // Follow up — days OR weeks counts as filled
     if (!formData.followupDays && !formData.followupWeeks) count++;
@@ -443,7 +442,7 @@ export function OrderFormDocument({
     if (!formData.woundType) count++;
     if (!formData.woundLocationSide) count++;
     if (!formData.exudateAmount) count++;
-    if (!formData.skinCondition) count++;
+    if (!isPostSurgical && !formData.skinCondition) count++;
     if (!formData.surgicalDressingType) count++;
     if (formData.subjectiveSymptoms.length === 0) count++;
     // Medical conditions — at least one must be checked
@@ -459,6 +458,7 @@ export function OrderFormDocument({
     return count;
   }, [
     aiExtracted,
+    isPostSurgical,
     formData.patientName,
     formData.patientDate,
     formData.chiefComplaint,
@@ -495,7 +495,7 @@ export function OrderFormDocument({
   const woundTypeDeficient = aiExtracted && !formData.woundType;
   const locationSideDeficient = aiExtracted && !formData.woundLocationSide;
   const exudateDeficient = aiExtracted && !formData.exudateAmount;
-  const skinDeficient = aiExtracted && !formData.skinCondition;
+  const skinDeficient = aiExtracted && !isPostSurgical && !formData.skinCondition;
   const dressingDeficient = aiExtracted && !formData.surgicalDressingType;
   const symptomsDeficient =
     aiExtracted && formData.subjectiveSymptoms.length === 0;
@@ -510,7 +510,7 @@ export function OrderFormDocument({
       formData.conditionChf ||
       formData.conditionAnemia
     );
-  const visitDeficient = aiExtracted && !formData.woundVisitNumber;
+  const visitDeficient = aiExtracted && !isPostSurgical && !formData.woundVisitNumber;
   const granulationDeficient = aiExtracted && !formData.granulationTissuePct;
   const lengthDeficient = aiExtracted && !formData.anticipatedLengthDays;
   const followupDeficient =
@@ -670,38 +670,13 @@ export function OrderFormDocument({
   /* ── Render ── */
   return (
     <div className="relative">
-      {/* ── Sticky save/discard bar ── */}
-      {isDirty && !isReadOnly && (
-        <div className="sticky top-0 z-10 flex items-center justify-between gap-3 px-4 py-2 bg-amber-50 border-b border-amber-200">
-          <span className="text-[13px] text-amber-700 font-medium">
-            Unsaved changes
-          </span>
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleDiscard}
-              disabled={isSaving}
-              className="h-7 px-3 text-xs"
-            >
-              <RotateCcw className="w-3 h-3 mr-1" /> Discard
-            </Button>
-            <Button
-              size="sm"
-              onClick={handleSave}
-              disabled={isSaving}
-              className="h-7 px-3 text-xs bg-[#1a3c5e] hover:bg-[#1a3c5e]/90"
-            >
-              {isSaving ? (
-                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-              ) : (
-                <Save className="w-3 h-3 mr-1" />
-              )}
-              Save
-            </Button>
-          </div>
-        </div>
-      )}
+      <FormActionBar
+        label="Order Form"
+        isDirty={isDirty && !isReadOnly}
+        isPending={isSaving}
+        onSave={handleSave}
+        onDiscard={handleDiscard}
+      />
 
       {/* ── AI extraction banners ── */}
       <FormDeficiencyBanner
@@ -828,18 +803,22 @@ export function OrderFormDocument({
               aiExtracted && !formData.patientDate ? "Required" : "MM/DD/YYYY"
             }
           />
-          <span className="text-[#ccc] mx-1">|</span>
-          <FL>Wound Visit #</FL>
-          <AiWrap active={ai && !!formData.woundVisitNumber}>
-            <FormInput
-              value={formData.woundVisitNumber}
-              onChange={(v) => set("woundVisitNumber", v)}
-              deficient={visitDeficient}
-              type="number"
-              className="w-12 text-center"
-              placeholder="—"
-            />
-          </AiWrap>
+          {!isPostSurgical && (
+            <>
+              <span className="text-[#ccc] mx-1">|</span>
+              <FL>Wound Visit #</FL>
+              <AiWrap active={ai && !!formData.woundVisitNumber}>
+                <FormInput
+                  value={formData.woundVisitNumber}
+                  onChange={(v) => set("woundVisitNumber", v)}
+                  deficient={visitDeficient}
+                  type="number"
+                  className="w-12 text-center"
+                  placeholder="—"
+                />
+              </AiWrap>
+            </>
+          )}
         </DocRow>
 
         {/* ── 3. MEDICARE NOTICE ── */}
@@ -1260,38 +1239,40 @@ export function OrderFormDocument({
         </div>
 
         {/* ── 12. SKIN CONDITION ── */}
-        <DocRow>
-          <FL className={cn(skinDeficient && "text-[#dc2626]")}>
-            Skin Condition
-          </FL>
-          <div
-            className={cn(
-              "flex flex-wrap gap-x-3 gap-y-1",
-              skinDeficient &&
-                "ring-1 ring-red-300 rounded bg-red-50/50 px-2 py-1",
-            )}
-          >
-            {(
-              [
-                { v: "normal", label: "Normal" },
-                { v: "thin", label: "Thin" },
-                { v: "atrophic", label: "Atrophic" },
-                { v: "stasis", label: "Stasis Wound / Venous" },
-                { v: "ischemic", label: "Ischemic" },
-              ] as const
-            ).map(({ v: sc, label }) => (
-              <AiWrap key={sc} active={ai && formData.skinCondition === sc}>
-                <FormCheckbox
-                  checked={formData.skinCondition === sc}
-                  onChange={(checked) =>
-                    set("skinCondition", checked ? sc : null)
-                  }
-                  label={label}
-                />
-              </AiWrap>
-            ))}
-          </div>
-        </DocRow>
+        {!isPostSurgical && (
+          <DocRow>
+            <FL className={cn(skinDeficient && "text-[#dc2626]")}>
+              Skin Condition
+            </FL>
+            <div
+              className={cn(
+                "flex flex-wrap gap-x-3 gap-y-1",
+                skinDeficient &&
+                  "ring-1 ring-red-300 rounded bg-red-50/50 px-2 py-1",
+              )}
+            >
+              {(
+                [
+                  { v: "normal", label: "Normal" },
+                  { v: "thin", label: "Thin" },
+                  { v: "atrophic", label: "Atrophic" },
+                  { v: "stasis", label: "Stasis Wound / Venous" },
+                  { v: "ischemic", label: "Ischemic" },
+                ] as const
+              ).map(({ v: sc, label }) => (
+                <AiWrap key={sc} active={ai && formData.skinCondition === sc}>
+                  <FormCheckbox
+                    checked={formData.skinCondition === sc}
+                    onChange={(checked) =>
+                      set("skinCondition", checked ? sc : null)
+                    }
+                    label={label}
+                  />
+                </AiWrap>
+              ))}
+            </div>
+          </DocRow>
+        )}
 
         {/* ── 13. WOUND STAGE / CLASSIFICATION ── */}
         <div className="py-2 border-b border-[#e5e5e5] space-y-1.5">
@@ -1299,43 +1280,47 @@ export function OrderFormDocument({
           <p className="text-[10px] text-[#777] leading-tight">
             (stage for PUs, Wagner grade for DFUs, CEAP Classification for VLUs)
           </p>
-          <div className="flex space-y-1 flex-col">
-            <FL>Description</FL>
-            <AiWrap active={ai && !!formData.woundStage}>
-              <AutoResizeTextarea
-                value={formData.woundStage}
-                onChange={(v) => set("woundStage", v)}
-                deficient={aiExtracted && !formData.woundStage}
-                minRows={2}
-                placeholder={
-                  aiExtracted && !formData.woundStage
-                    ? "Required — AI missed this field"
-                    : "Enter wound stage, grade, or classification"
-                }
-                aiHighlight={ai && !!formData.woundStage}
-              />
-            </AiWrap>
-          </div>
+          {!isPostSurgical && (
+            <div className="flex space-y-1 flex-col">
+              <FL>Description</FL>
+              <AiWrap active={ai && !!formData.woundStage}>
+                <AutoResizeTextarea
+                  value={formData.woundStage}
+                  onChange={(v) => set("woundStage", v)}
+                  deficient={aiExtracted && !formData.woundStage}
+                  minRows={2}
+                  placeholder={
+                    aiExtracted && !formData.woundStage
+                      ? "Required — AI missed this field"
+                      : "Enter wound stage, grade, or classification"
+                  }
+                  aiHighlight={ai && !!formData.woundStage}
+                />
+              </AiWrap>
+            </div>
+          )}
         </div>
 
         {/* ── 14. DRAINAGE ── */}
-        <div className="py-2 border-b border-[#e5e5e5] flex flex-col">
-          <FL>Drainage</FL>
-          <AiWrap active={ai && !!formData.drainageDescription}>
-            <AutoResizeTextarea
-              value={formData.drainageDescription}
-              onChange={(v) => set("drainageDescription", v)}
-              deficient={aiExtracted && !formData.drainageDescription}
-              minRows={2}
-              placeholder={
-                aiExtracted && !formData.drainageDescription
-                  ? "Required — AI missed this field"
-                  : "Describe drainage character, color, odor"
-              }
-              aiHighlight={ai && !!formData.drainageDescription}
-            />
-          </AiWrap>
-        </div>
+        {!isPostSurgical && (
+          <div className="py-2 border-b border-[#e5e5e5] flex flex-col">
+            <FL>Drainage</FL>
+            <AiWrap active={ai && !!formData.drainageDescription}>
+              <AutoResizeTextarea
+                value={formData.drainageDescription}
+                onChange={(v) => set("drainageDescription", v)}
+                deficient={aiExtracted && !formData.drainageDescription}
+                minRows={2}
+                placeholder={
+                  aiExtracted && !formData.drainageDescription
+                    ? "Required — AI missed this field"
+                    : "Describe drainage character, color, odor"
+                }
+                aiHighlight={ai && !!formData.drainageDescription}
+              />
+            </AiWrap>
+          </div>
+        )}
 
         {/* ── 15. TREATMENT PLAN ── */}
         <div className="py-2 border-b border-[#e5e5e5] space-y-1 flex flex-col">

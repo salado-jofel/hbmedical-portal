@@ -17,6 +17,7 @@ interface OrderCardProps {
   onClick?: () => void;
   unreadCount?: number;
   statusOverride?: string;
+  className?: string;
 }
 
 export function OrderCard({
@@ -24,10 +25,14 @@ export function OrderCard({
   onClick,
   unreadCount,
   statusOverride,
+  className,
 }: OrderCardProps) {
   return (
     <div
-      className="rounded-[var(--r)] border border-[var(--border)] bg-[var(--surface)] p-3.5 transition-all hover:shadow-[0_4px_12px_rgba(0,0,0,0.07)] cursor-pointer"
+      className={cn(
+        "rounded-[var(--r)] border border-[var(--border)] bg-[var(--surface)] p-3.5 transition-all hover:shadow-[0_4px_12px_rgba(0,0,0,0.07)] cursor-pointer",
+        className,
+      )}
       onClick={onClick}
     >
       {/* Header */}

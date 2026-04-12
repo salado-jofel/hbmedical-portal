@@ -9,21 +9,19 @@ import {
 } from "react";
 import {
   Loader2,
-  Save,
-  RotateCcw,
   MapPin,
   Mail,
   Globe,
   Phone,
   Check,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { HBLogo } from "@/app/(components)/HBLogo";
 import { upsertOrderIVR } from "../(services)/order-ivr-actions";
 import type { IOrderIVR } from "@/utils/interfaces/orders";
 import { cn } from "@/utils/utils";
 import toast from "react-hot-toast";
 import { FormDeficiencyBanner } from "./FormDeficiencyBanner";
+import { FormActionBar } from "./FormActionBar";
 
 /* ── Design tokens ── */
 const NAVY = "#0f2d4a";
@@ -583,38 +581,13 @@ export function IVRFormDocument({
   /* ── Render ── */
   return (
     <div className="relative">
-      {/* ── Sticky save/discard bar ── */}
-      {isDirty && canEdit && (
-        <div className="sticky top-0 z-10 flex items-center justify-between gap-3 px-4 py-2 bg-amber-50 border-b border-amber-200">
-          <span className="text-[13px] text-amber-700 font-medium">
-            Unsaved changes
-          </span>
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleDiscard}
-              disabled={isSaving}
-              className="h-7 px-3 text-xs"
-            >
-              <RotateCcw className="w-3 h-3 mr-1" /> Discard
-            </Button>
-            <Button
-              size="sm"
-              onClick={handleSave}
-              disabled={isSaving}
-              className="h-7 px-3 text-xs bg-[#1a3c5e] hover:bg-[#1a3c5e]/90"
-            >
-              {isSaving ? (
-                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-              ) : (
-                <Save className="w-3 h-3 mr-1" />
-              )}
-              Save
-            </Button>
-          </div>
-        </div>
-      )}
+      <FormActionBar
+        label="IVR Form"
+        isDirty={isDirty && canEdit}
+        isPending={isSaving}
+        onSave={handleSave}
+        onDiscard={handleDiscard}
+      />
 
       {/* ── Deficiency banner ── */}
       <FormDeficiencyBanner

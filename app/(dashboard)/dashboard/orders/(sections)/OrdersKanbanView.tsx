@@ -10,8 +10,20 @@ import {
 import { EmptyState } from "@/app/(components)/EmptyState";
 import { PageHeader } from "@/app/(components)/PageHeader";
 import { KanbanColumn as KanbanColumnShell } from "@/app/(components)/KanbanColumn";
-import { Package } from "lucide-react";
+import { Package, List, LayoutGrid } from "lucide-react";
 import { cn } from "@/utils/utils";
+
+/* ── Per-status column styles for clinic kanban ── */
+const CLINIC_COLUMN_STYLES: Record<string, { bg: string; dot: string; headerBg: string }> = {
+  draft:                  { bg: "bg-amber-50/50",   dot: "bg-amber-400",   headerBg: "bg-amber-50"   },
+  pending_signature:      { bg: "bg-blue-50/50",    dot: "bg-blue-400",    headerBg: "bg-blue-50"    },
+  manufacturer_review:    { bg: "bg-purple-50/50",  dot: "bg-purple-400",  headerBg: "bg-purple-50"  },
+  additional_info_needed: { bg: "bg-red-50/50",     dot: "bg-red-400",     headerBg: "bg-red-50"     },
+  approved:               { bg: "bg-emerald-50/50", dot: "bg-emerald-400", headerBg: "bg-emerald-50" },
+  shipped:                { bg: "bg-cyan-50/50",    dot: "bg-cyan-400",    headerBg: "bg-cyan-50"    },
+  delivered:              { bg: "bg-green-50/50",   dot: "bg-green-400",   headerBg: "bg-green-50"   },
+  paid:                   { bg: "bg-green-50/50",   dot: "bg-green-500",   headerBg: "bg-green-50"   },
+};
 
 export function OrdersKanbanView({
   orders,
@@ -28,6 +40,8 @@ export function OrdersKanbanView({
   isSupport,
   canCreate,
   onOrderClick,
+  clinicView,
+  onClinicViewChange,
 }: {
   orders: DashboardOrder[];
   grouped: Record<string, DashboardOrder[]>;
@@ -43,6 +57,8 @@ export function OrdersKanbanView({
   isSupport: boolean;
   canCreate: boolean;
   onOrderClick: (order: DashboardOrder) => void;
+  clinicView?: "table" | "kanban";
+  onClinicViewChange?: (v: "table" | "kanban") => void;
 }) {
   return (
     <div className="space-y-5">
@@ -53,6 +69,7 @@ export function OrdersKanbanView({
         className="pb-4"
         action={
           <div className="flex items-center gap-2">
+            {/* Admin/support: Kanban ↔ Table toggle */}
             {(isAdmin || isSupport) && (
               <div className="flex items-center gap-1 border border-gray-200 rounded-lg p-0.5">
                 <button
@@ -76,6 +93,35 @@ export function OrdersKanbanView({
                   )}
                 >
                   Table
+                </button>
+              </div>
+            )}
+            {/* Clinic: Table ↔ Board toggle */}
+            {canCreate && clinicView !== undefined && (
+              <div className="flex items-center gap-1 bg-[#f1f5f9] rounded-lg p-0.5">
+                <button
+                  onClick={() => onClinicViewChange?.("table")}
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+                    clinicView === "table"
+                      ? "bg-white text-[var(--navy)] shadow-sm"
+                      : "text-[#64748b] hover:text-[#334155]",
+                  )}
+                >
+                  <List className="w-3.5 h-3.5" />
+                  Table
+                </button>
+                <button
+                  onClick={() => onClinicViewChange?.("kanban")}
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+                    clinicView === "kanban"
+                      ? "bg-white text-[var(--navy)] shadow-sm"
+                      : "text-[#64748b] hover:text-[#334155]",
+                  )}
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                  Board
                 </button>
               </div>
             )}
@@ -191,6 +237,58 @@ export function OrdersKanbanView({
                 : col.status === "approved"
                   ? approvedPending
                   : grouped[col.status];
+
+              /* ── Clinic: styled column with per-status tint ── */
+              if (canCreate) {
+                const style = CLINIC_COLUMN_STYLES[key] ?? CLINIC_COLUMN_STYLES.draft;
+                return (
+                  <div
+                    key={key}
+                    className={cn("rounded-xl p-2.5 min-w-[280px] flex-1 min-h-[200px]", style.bg)}
+                  >
+                    {/* Column header */}
+                    <div
+                      className={cn(
+                        "flex items-center justify-between px-3 py-2 rounded-lg mb-3",
+                        style.headerBg,
+                      )}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className={cn("w-2 h-2 rounded-full", style.dot)} />
+                        <span className="text-xs font-semibold uppercase tracking-wide text-[#334155]">
+                          {label}
+                        </span>
+                      </div>
+                      <span className="text-xs font-medium text-[#64748b] bg-white rounded-full px-2 py-0.5 shadow-sm">
+                        {columnOrders.length}
+                      </span>
+                    </div>
+                    {/* Cards */}
+                    <div className="flex flex-col gap-2.5 max-h-[calc(100vh-320px)] overflow-y-auto">
+                      {columnOrders.length === 0 ? (
+                        <EmptyState
+                          icon={<Package className="w-7 h-7 text-[#cbd5e1]" />}
+                          message="No orders"
+                          className="py-8"
+                        />
+                      ) : (
+                        columnOrders.map((order) => (
+                          <OrderCard
+                            key={order.id}
+                            order={order}
+                            onClick={() => onOrderClick(order)}
+                            unreadCount={unreadCounts[order.id] ?? 0}
+                            statusOverride={isPaid ? "processed" : undefined}
+                            className="bg-white border-[#e2e8f0] shadow-sm hover:shadow-md hover:border-[#cbd5e1]"
+                          />
+                        ))
+                      )}
+                    </div>
+                  </div>
+                );
+              }
+
+              /* ── Admin/support: existing KanbanColumnShell ── */
               return (
                 <KanbanColumnShell
                   key={key}

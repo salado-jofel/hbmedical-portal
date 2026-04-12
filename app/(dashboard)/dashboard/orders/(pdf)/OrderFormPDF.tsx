@@ -160,6 +160,7 @@ export function OrderFormPDF({
 
   /* Wound type — form first, then order */
   const woundType = v(form?.wound_type) || v(order.wound_type);
+  const isPostSurgical = woundType === "post_surgical";
 
   /* Anticipated length & follow-up */
   const ald = form?.anticipated_length_days != null
@@ -186,7 +187,7 @@ export function OrderFormPDF({
         <View style={s.row}>
           <UField label="Patient Name" value={patientNameVal} width={120} />
           <UField label="Date" value={patientDateVal} width={64} />
-          <UField label="Wound Visit #" value={v(form?.wound_visit_number)} width={30} />
+          {!isPostSurgical && <UField label="Wound Visit #" value={v(form?.wound_visit_number)} width={30} />}
         </View>
 
         {/* ── Medicare notice ── */}
@@ -340,16 +341,18 @@ export function OrderFormPDF({
         </View>
 
         {/* ── Skin Condition ── */}
-        <View style={s.section}>
-          <View style={cbRowStyle}>
-            <Text style={[s.label, { marginRight: 6 }]}>Skin Condition:</Text>
-            <CBVal current={form?.skin_condition} value="normal"   label="Normal" />
-            <CBVal current={form?.skin_condition} value="thin"     label="Thin" />
-            <CBVal current={form?.skin_condition} value="atrophic" label="Atrophic" />
-            <CBVal current={form?.skin_condition} value="stasis"   label="Stasis Wound / Venous" />
-            <CBVal current={form?.skin_condition} value="ischemic" label="Ischemic" />
+        {!isPostSurgical && (
+          <View style={s.section}>
+            <View style={cbRowStyle}>
+              <Text style={[s.label, { marginRight: 6 }]}>Skin Condition:</Text>
+              <CBVal current={form?.skin_condition} value="normal"   label="Normal" />
+              <CBVal current={form?.skin_condition} value="thin"     label="Thin" />
+              <CBVal current={form?.skin_condition} value="atrophic" label="Atrophic" />
+              <CBVal current={form?.skin_condition} value="stasis"   label="Stasis Wound / Venous" />
+              <CBVal current={form?.skin_condition} value="ischemic" label="Ischemic" />
+            </View>
           </View>
-        </View>
+        )}
 
         {/* ── Wound Stage / Classification ── */}
         <View style={s.section}>
@@ -359,19 +362,23 @@ export function OrderFormPDF({
               (stage for PUs, Wagner grade for DFUs, CEAP Classification for VLUs)
             </Text>
           </Text>
-          <View style={{ flexDirection: "row", alignItems: "flex-end" }}>
-            <Text style={[s.label, { marginRight: 4 }]}>Description: </Text>
-            <View style={[s.uline, { flex: 1 }]}>
-              <Text style={s.val}>{v(form?.wound_stage)}</Text>
+          {!isPostSurgical && (
+            <View style={{ flexDirection: "row", alignItems: "flex-end" }}>
+              <Text style={[s.label, { marginRight: 4 }]}>Description: </Text>
+              <View style={[s.uline, { flex: 1 }]}>
+                <Text style={s.val}>{v(form?.wound_stage)}</Text>
+              </View>
             </View>
-          </View>
+          )}
         </View>
 
         {/* ── Drainage ── */}
-        <View style={s.section}>
-          <Text style={s.sectionLabel}>Drainage</Text>
-          <Text style={s.textArea}>{v(form?.drainage_description)}</Text>
-        </View>
+        {!isPostSurgical && (
+          <View style={s.section}>
+            <Text style={s.sectionLabel}>Drainage</Text>
+            <Text style={s.textArea}>{v(form?.drainage_description)}</Text>
+          </View>
+        )}
 
         {/* ── Treatment Plan ── */}
         <View style={s.section}>
