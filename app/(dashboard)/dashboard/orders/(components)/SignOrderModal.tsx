@@ -20,6 +20,12 @@ interface SignOrderModalProps {
   order: DashboardOrder;
   providerName: string;
   onSuccess?: () => void;
+  /** Override the sign action. If omitted, calls signOrder. */
+  onSign?: (pin: string) => Promise<{ success: boolean; error?: string; noPinSet?: boolean }>;
+  /** Override the modal title. Defaults to "Sign Order". */
+  title?: string;
+  /** Override the success toast message. Defaults to "Order signed successfully." */
+  successMessage?: string;
 }
 
 export function SignOrderModal({
@@ -28,6 +34,9 @@ export function SignOrderModal({
   order,
   providerName,
   onSuccess,
+  onSign,
+  title: titleProp,
+  successMessage,
 }: SignOrderModalProps) {
   const [pin, setPin] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -49,9 +58,10 @@ export function SignOrderModal({
     }
 
     startTransition(async () => {
-      const result = await signOrder(order.id, pin.trim());
+      const action = onSign ?? ((p: string) => signOrder(order.id, p));
+      const result = await action(pin.trim());
       if (result.success) {
-        toast.success("Order signed successfully.");
+        toast.success(successMessage ?? "Order signed successfully.");
         handleClose();
         onSuccess?.();
       } else {
@@ -74,7 +84,7 @@ export function SignOrderModal({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-lg font-bold text-slate-800">
               <PenLine className="w-5 h-5 text-blue-500" />
-              Sign Order
+              {titleProp ?? "Sign Order"}
             </DialogTitle>
           </DialogHeader>
 

@@ -234,6 +234,117 @@ export async function signOrder(
 }
 
 /* -------------------------------------------------------------------------- */
+/* signAndSubmitOrder                                                         */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One-step sign & submit for clinical_provider on draft orders.
+ * Goes directly draft → manufacturer_review (skipping pending_signature).
+ */
+export async function signAndSubmitOrder(
+  orderId: string,
+  pin: string,
+): Promise<{ success: boolean; error?: string; noPinSet?: boolean }> {
+  try {
+    const supabase = await createClient();
+    const user = await getCurrentUserOrThrow(supabase);
+    const role = await getUserRole(supabase);
+
+    if (!isClinicalProvider(role)) {
+      return { success: false, error: "Only clinical providers can sign orders." };
+    }
+
+    const adminClient = createAdminClient();
+
+    // Verify PIN
+    const { data: creds } = await adminClient
+      .from("provider_credentials")
+      .select("pin_hash")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (!creds?.pin_hash) {
+      return { success: false, error: "No PIN set. Please set up your provider PIN.", noPinSet: true };
+    }
+
+    const { data: isValid, error: rpcError } = await adminClient.rpc("verify_pin", {
+      input_pin:   pin,
+      stored_hash: creds.pin_hash,
+    });
+
+    if (rpcError || !isValid) {
+      return { success: false, error: "Incorrect PIN. Please try again." };
+    }
+
+    // Fetch order
+    const { data: order } = await adminClient
+      .from("orders")
+      .select("id, order_status, facility_id, order_number")
+      .eq("id", orderId)
+      .maybeSingle();
+
+    if (!order) return { success: false, error: "Order not found." };
+    if (order.order_status !== "draft") {
+      return { success: false, error: "Only draft orders can be signed and submitted." };
+    }
+
+    // Verify provider is a member of this facility
+    const { data: membership } = await adminClient
+      .from("facility_members")
+      .select("user_id")
+      .eq("user_id", user.id)
+      .eq("facility_id", order.facility_id)
+      .eq("role_type", "clinical_provider")
+      .maybeSingle();
+
+    if (!membership) {
+      return { success: false, error: "You are not a clinical provider for this facility." };
+    }
+
+    // Atomically move draft → manufacturer_review with signature
+    const { error } = await adminClient
+      .from("orders")
+      .update({
+        order_status: "manufacturer_review",
+        signed_by:    user.id,
+        signed_at:    new Date().toISOString(),
+      })
+      .eq("id", orderId);
+
+    if (error) {
+      console.error("[signAndSubmitOrder]", JSON.stringify(error));
+      return { success: false, error: "Failed to sign and submit order." };
+    }
+
+    await insertOrderHistory(
+      adminClient,
+      orderId,
+      "Order signed and submitted by provider",
+      "draft",
+      "manufacturer_review",
+      user.id,
+    );
+    createNotifications({
+      adminClient,
+      orderId,
+      orderNumber: order.order_number,
+      facilityId:  order.facility_id,
+      type:        "order_signed",
+      title:       "Order signed and submitted",
+      body:        `Order ${order.order_number} has been signed and submitted for review.`,
+      oldStatus:   "draft",
+      newStatus:   "manufacturer_review",
+      notifyRoles: ["admin", "support_staff"],
+      excludeUserId: user.id,
+    }).catch(() => {});
+    revalidatePath(ORDERS_PATH);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
 /* approveOrder                                                               */
 /* -------------------------------------------------------------------------- */
 
