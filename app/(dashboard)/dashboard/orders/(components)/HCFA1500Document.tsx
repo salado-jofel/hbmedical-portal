@@ -106,6 +106,13 @@ type F = {
   billingProviderPhone: string;
   billingProviderNpi: string;
   billingProviderTaxId: string;
+  nuccUse: string;
+  insuranceName: string;
+  insuranceAddress: string;
+  insuranceAddress2: string;
+  insuranceCityStateZip: string;
+  claimCodes: string;
+  icdIndicator: string;
 };
 
 function emptyLine(idx: number): IServiceLine {
@@ -115,6 +122,7 @@ function emptyLine(idx: number): IServiceLine {
     cpt_code: "", modifier_1: "", modifier_2: "", modifier_3: "", modifier_4: "",
     diagnosis_pointer: "", charges: "", days_units: "", epsdt: "",
     id_qualifier: "", rendering_npi: "",
+    suppl: "", service_type: "", family_plan: "",
   };
 }
 
@@ -208,6 +216,13 @@ function buildFormState(d: Record<string, unknown> | null): F {
     billingProviderPhone:  sv("billing_provider_phone"),
     billingProviderNpi:    sv("billing_provider_npi"),
     billingProviderTaxId:  sv("billing_provider_tax_id"),
+    nuccUse:               sv("nucc_use"),
+    insuranceName:         sv("insurance_name"),
+    insuranceAddress:      sv("insurance_address"),
+    insuranceAddress2:     sv("insurance_address2"),
+    insuranceCityStateZip: sv("insurance_city_state_zip"),
+    claimCodes:            sv("claim_codes"),
+    icdIndicator:          sv("icd_indicator"),
   };
 }
 
@@ -247,24 +262,40 @@ const SIMPLE: Record<string, keyof F> = {
   physician_date:            "physicianSignatureDate",
   fac_name:                  "serviceFacilityName",
   fac_street:                "serviceFacilityAddress",
+  fac_location:              "serviceFacilityAddress",
   doc_name:                  "billingProviderName",
   doc_street:                "billingProviderAddress",
+  doc_location:              "billingProviderAddress",
   pin:                       "billingProviderNpi",
   pin1:                      "serviceFacilityNpi",
   grp:                       "billingProviderTaxId",
+  grp1:                      "serviceFacilityNpi",
   ref_physician:             "referringProviderName",
   "physician number 17a1":   "referringProviderQual",
   "physician number 17a":    "referringProviderNpi",
   id_physician:              "referringProviderNpi",
   "96":                      "additionalClaimInfo",
+  "40":                      "otherInsuredDob",
+  "41":                      "otherInsuredPlan",
+  "57":                      "insuredEmployer",
   "58":                      "insuredEmployer",
   "73":                      "illnessQualifier",
+  "74":                      "otherDateQualifier",
+  "85":                      "referringProviderQual",
   diagnosis1: "diagnosisA",  diagnosis2:  "diagnosisB",
   diagnosis3: "diagnosisC",  diagnosis4:  "diagnosisD",
   diagnosis5: "diagnosisE",  diagnosis6:  "diagnosisF",
   diagnosis7: "diagnosisG",  diagnosis8:  "diagnosisH",
   diagnosis9: "diagnosisI",  diagnosis10: "diagnosisJ",
   diagnosis11:"diagnosisK",  diagnosis12: "diagnosisL",
+  // Formerly local-only form-level fields
+  "NUCC USE":                 "nuccUse",
+  insurance_name:             "insuranceName",
+  insurance_address:          "insuranceAddress",
+  insurance_address2:         "insuranceAddress2",
+  insurance_city_state_zip:   "insuranceCityStateZip",
+  "50":                       "claimCodes",
+  "99icd":                    "icdIndicator",
 };
 
 /** Date field splits: PDF field name → [F key, part] where part 0=MM, 1=DD, 2=YY */
@@ -297,20 +328,31 @@ function setDatePart(iso: string, part: 0 | 1 | 2, val: string): string {
 }
 
 /** service line pattern: sv1_mm_from, cpt2, mod3a, diag4, ch5, day6, local1a, etc. */
-const SL_RE = /^(sv|place|type|cpt|mod|diag|ch|day|emg|epsdt|local)(\d+)(.*)?$/i;
+const SL_RE = /^(sv|place|type|plan|cpt|mod|diag|ch|day|emg|epsdt|local)(\d+)(.*)?$/i;
 
-/** Fields present in the PDF AcroForm but intentionally not mapped to form state */
+/** Maps supplemental-info PDF field names to 0-based service line indices */
+const SUPPL_MAP: Record<string, number> = {
+  Suppl: 0, Suppla: 1, Supplb: 2, Supplc: 3, Suppld: 4, Supple: 5,
+};
+
+/**
+ * Genuinely reserved/internal fields with no user-editable purpose.
+ * NOTE: "Clear Form", "276", "135"–"245" are NOT in fieldMap.text at all
+ * (276 is a radio group; the rest are PDF-internal buttons/markers).
+ * SKIP_FIELDS is kept as an explicit allowlist for future additions.
+ */
 const SKIP_FIELDS = new Set<string>([]);
 
 const PHONE_FIELDS = new Set(["pt_AreaCode","pt_phone","ins_phone area","ins_phone","doc_phone area","doc_phone"]);
 
-/** Returns true if a PDF field name has an active data mapping */
+/** Returns true if a PDF field name maps to persistent DB state */
 function isPdfFieldMapped(name: string): boolean {
   if (SKIP_FIELDS.has(name)) return false;
   if (SIMPLE[name]) return true;
   if (name === "pt_name" || name === "ins_name") return true;
   if (DATE_SPLITS[name]) return true;
   if (PHONE_FIELDS.has(name)) return true;
+  if (name in SUPPL_MAP) return true;
   if (SL_RE.test(name)) return true;
   return false;
 }
@@ -345,18 +387,7 @@ export function HCFA1500Document({
   }, []);
   const dis = !canEdit;
 
-  /* ── Deficiency ── */
-  const REQ = useMemo(() => new Set<keyof F>([
-    "insuranceType","insuredIdNumber","patientLastName","patientFirstName",
-    "patientDob","patientSex","insuredLastName","insuredFirstName",
-    "patientAddress","patientCity","patientState","patientZip","patientPhone",
-    "patientRelationship","insuredAddress","insuredCity","insuredState","insuredZip",
-    "insuredPolicyGroup","diagnosisA","federalTaxId","physicianSignature",
-    "serviceFacilityName","serviceFacilityAddress",
-    "billingProviderName","billingProviderAddress","billingProviderPhone","billingProviderNpi",
-  ]), []);
   const aiEx = !!(fd.patientFirstName || fd.patientLastName || fd.insuredIdNumber || fd.federalTaxId || fd.billingProviderName);
-  const defCt = useMemo(() => (aiEx ? [...REQ].filter((k) => !fd[k]).length : 0), [aiEx, fd, REQ]);
 
   /* ── Service line helpers ── */
   function rmLn(id: string) {
@@ -454,23 +485,42 @@ export function HCFA1500Document({
       billing_provider_phone: n(fd.billingProviderPhone),
       billing_provider_npi: n(fd.billingProviderNpi),
       billing_provider_tax_id: n(fd.billingProviderTaxId),
+      nucc_use: n(fd.nuccUse),
+      insurance_name: n(fd.insuranceName),
+      insurance_address: n(fd.insuranceAddress),
+      insurance_address2: n(fd.insuranceAddress2),
+      insurance_city_state_zip: n(fd.insuranceCityStateZip),
+      claim_codes: n(fd.claimCodes),
+      icd_indicator: n(fd.icdIndicator),
     };
     const res = await upsertForm1500(orderId, p);
-    setSaving(false);
-    if (!res.success) { toast.error(res.error ?? "Failed to save."); return; }
-    toast.success("HCFA-1500 saved.");
+    if (!res.success) {
+      setSaving(false);
+      toast.error(res.error ?? "Failed to save.");
+      return;
+    }
+
     setBl({ ...fd });
     onSave?.(p);
+
+    // Regenerate PDF — awaited so the document is ready before setSaving(false)
     window.dispatchEvent(new CustomEvent("pdf-regenerating", { detail: { type: "form_1500", status: "start" } }));
-    fetch("/api/generate-pdf", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderId, formType: "hcfa_1500" }),
-    })
-      .catch((e) => console.error("[HCFA1500] PDF gen failed:", e))
-      .finally(() => {
-        window.dispatchEvent(new CustomEvent("pdf-regenerating", { detail: { type: "form_1500", status: "done" } }));
+    try {
+      const pdfRes = await fetch("/api/generate-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId, formType: "hcfa_1500" }),
       });
+      if (!pdfRes.ok) throw new Error(`PDF generation failed (${pdfRes.status})`);
+      toast.success("HCFA-1500 saved.");
+    } catch (e) {
+      console.error("[HCFA1500] PDF gen failed:", e);
+      toast.success("HCFA-1500 saved."); // form data is saved even if PDF fails
+      toast.error("PDF could not be regenerated — try again.");
+    } finally {
+      window.dispatchEvent(new CustomEvent("pdf-regenerating", { detail: { type: "form_1500", status: "done" } }));
+      setSaving(false);
+    }
   }
 
   /* ══════════════════════════════════════════════════════════════════════ */
@@ -502,7 +552,10 @@ export function HCFA1500Document({
     if (name === "doc_phone area") return digits(fd.billingProviderPhone).slice(0, 3);
     if (name === "doc_phone")      return digits(fd.billingProviderPhone).slice(3);
 
-    // 5. Service line fields
+    // 5. Supplemental info fields (Suppl, Suppla–Supple → service line suppl)
+    if (name in SUPPL_MAP) return fd.serviceLines[SUPPL_MAP[name]]?.suppl ?? "";
+
+    // 6. Service line fields
     const m = name.match(SL_RE);
     if (m) {
       const idx    = parseInt(m[2]) - 1;
@@ -531,6 +584,8 @@ export function HCFA1500Document({
       if (prefix === "day")    return String(line.days_units ?? "");
       if (prefix === "emg")    return line.emg ? "Y" : "";
       if (prefix === "epsdt")  return line.epsdt ?? "";
+      if (prefix === "type")   return line.service_type ?? "";
+      if (prefix === "plan")   return line.family_plan ?? "";
       if (prefix === "local")  {
         if (suffix === "a") return line.id_qualifier ?? "";
         return line.rendering_npi ?? "";
@@ -539,6 +594,11 @@ export function HCFA1500Document({
 
     return "";
   }
+
+  /* Count empty active text widgets — matches the yellow highlight count exactly */
+  const defCt = !aiEx ? 0 : (fieldMap.text as Array<{ name: string; width: number }>)
+    .filter((f) => f.width > 0.3 && isPdfFieldMapped(f.name) && !getValueForPdfField(f.name).trim())
+    .length;
 
   function setValueForPdfField(name: string, val: string) {
     // 1. Direct mapping
@@ -590,7 +650,10 @@ export function HCFA1500Document({
       return;
     }
 
-    // 5. Service line fields
+    // 5. Supplemental info fields
+    if (name in SUPPL_MAP) { upLnIdx(SUPPL_MAP[name], "suppl", val); return; }
+
+    // 6. Service line fields
     const m = name.match(SL_RE);
     if (m) {
       const idx    = parseInt(m[2]) - 1;
@@ -622,6 +685,8 @@ export function HCFA1500Document({
       if (prefix === "day")    { upLnIdx(idx, "days_units",        val); return; }
       if (prefix === "emg")    { upLnIdx(idx, "emg",           val === "Y"); return; }
       if (prefix === "epsdt")  { upLnIdx(idx, "epsdt",             val); return; }
+      if (prefix === "type")   { upLnIdx(idx, "service_type",      val); return; }
+      if (prefix === "plan")   { upLnIdx(idx, "family_plan",       val); return; }
       if (prefix === "local")  {
         if (suffix === "a") { upLnIdx(idx, "id_qualifier",  val); return; }
         upLnIdx(idx, "rendering_npi", val);
@@ -697,8 +762,10 @@ export function HCFA1500Document({
   return (
     <div className="relative">
       <style>{`
-        .hcfa-field:hover { background: rgba(191, 219, 254, 0.6) !important; }
-        .hcfa-field:focus { background: rgba(191, 219, 254, 0.7) !important; outline: 1px solid rgba(59, 130, 246, 0.4); }
+        .hcfa-filled:hover { background: rgba(191, 219, 254, 0.6) !important; }
+        .hcfa-filled:focus { background: rgba(191, 219, 254, 0.7) !important; outline: 1px solid rgba(59, 130, 246, 0.4); }
+        .hcfa-empty:hover  { background: rgba(252, 211, 77,  0.7) !important; }
+        .hcfa-empty:focus  { background: rgba(252, 211, 77,  0.8) !important; outline: 1px solid rgba(217, 119, 6, 0.5); }
       `}</style>
       <FormActionBar
         label="HCFA/1500"
@@ -719,14 +786,24 @@ export function HCFA1500Document({
             {(fieldMap.text as Array<{ name: string; left: number; top: number; width: number; height: number }>)
               .filter((f) => f.width > 0.3)
               .map((f) => {
-                const isMapped = isPdfFieldMapped(f.name);
+                const isActive = isPdfFieldMapped(f.name);
+                const val      = getValueForPdfField(f.name);
+                const isEmpty  = isActive && !val.trim();
+                const bg = !isActive ? "transparent"
+                         : isEmpty   ? "rgba(254, 243, 199, 0.55)"
+                         :             "rgba(219, 234, 254, 0.45)";
+                const title = !isActive ? "This field is not used on this form" : undefined;
                 return (
                   <input
                     key={f.name}
-                    value={getValueForPdfField(f.name)}
+                    value={val}
                     onChange={(e) => setValueForPdfField(f.name, e.target.value)}
-                    disabled={dis || !isMapped}
-                    className={cn("absolute outline-none", isMapped && "hcfa-field")}
+                    disabled={dis || !isActive}
+                    title={title}
+                    className={cn(
+                      "absolute outline-none",
+                      isActive && (isEmpty ? "hcfa-empty" : "hcfa-filled"),
+                    )}
                     style={{
                       left:       `${f.left}%`,
                       top:        `${f.top}%`,
@@ -735,13 +812,13 @@ export function HCFA1500Document({
                       fontSize:   f.height > 2 ? 10 : 8,
                       fontFamily: "'Courier New', Courier, monospace",
                       color:      "#000",
-                      background: isMapped ? "rgba(219, 234, 254, 0.45)" : "transparent",
+                      background: bg,
                       border:     "none",
                       padding:    "0 1px",
                       boxSizing:  "border-box",
                       zIndex:     2,
-                      opacity:    isMapped ? 1 : 0.3,
-                      cursor:     isMapped && canEdit ? "text" : "default",
+                      opacity:    isActive ? 1 : 0.3,
+                      cursor:     isActive && canEdit ? "text" : "default",
                     }}
                   />
                 );

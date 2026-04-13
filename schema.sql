@@ -324,6 +324,13 @@ CREATE TABLE IF NOT EXISTS public.order_form_1500 (
   billing_provider_phone text,
   billing_provider_npi text,
   billing_provider_tax_id text,
+  nucc_use text,
+  insurance_name text,
+  insurance_address text,
+  insurance_address2 text,
+  insurance_city_state_zip text,
+  claim_codes text,
+  icd_indicator text,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );

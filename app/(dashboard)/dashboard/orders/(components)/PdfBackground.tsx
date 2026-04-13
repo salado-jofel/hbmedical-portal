@@ -1,15 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import * as pdfjsLib from "pdfjs-dist";
-
-// Use local worker copy for reliable offline/dev/prod support
-pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
 /**
  * Renders page 1 of a PDF to a <canvas> at the given scale.
  * Default scale = 1275/612 ≈ 2.0833 so the canvas is exactly 1275×1650 px —
  * matching the IMG_W/IMG_H constants used for overlay positioning.
+ *
+ * pdfjs-dist is imported dynamically inside useEffect to avoid SSR crashes
+ * caused by browser-only APIs (DOMMatrix) running in Node.js.
  */
 export function PdfBackground({
   pdfUrl,
@@ -27,6 +26,8 @@ export function PdfBackground({
     let cancelled = false;
 
     async function render() {
+      const pdfjsLib = await import("pdfjs-dist");
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
       const loadingTask = pdfjsLib.getDocument(pdfUrl);
       const pdf = await loadingTask.promise;
       const page = await pdf.getPage(1);

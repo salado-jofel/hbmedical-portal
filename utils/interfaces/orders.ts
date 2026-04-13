@@ -307,6 +307,9 @@ export interface IServiceLine {
   epsdt:             string;  // 24H
   id_qualifier:      string;  // 24I
   rendering_npi:     string;  // 24J
+  suppl?:            string;  // 24 supplemental info
+  service_type?:     string;  // 24C service type
+  family_plan?:      string;  // 24H family plan
 }
 
 export interface IOrderForm1500 {
