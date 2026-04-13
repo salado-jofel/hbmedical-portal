@@ -4,7 +4,7 @@ import { renderToBuffer } from "@react-pdf/renderer";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { OrderFormPDF } from "@/app/(dashboard)/dashboard/orders/(pdf)/OrderFormPDF";
 import { IVRFormPDF } from "@/app/(dashboard)/dashboard/orders/(pdf)/IVRFormPDF";
-import { HCFA1500PDF } from "@/app/(dashboard)/dashboard/orders/(pdf)/HCFA1500PDF";
+import { generateFilledCMS1500 } from "@/lib/pdf/generate-cms1500";
 
 export const maxDuration = 30;
 
@@ -92,9 +92,8 @@ export async function POST(req: NextRequest) {
       documentType = "additional_ivr";
 
     } else if (formType === "hcfa_1500") {
-      pdfBuffer = await renderToBuffer(
-        <HCFA1500PDF order={order} hcfa={hcfa} />
-      );
+      const filled = await generateFilledCMS1500(hcfa ?? {});
+      pdfBuffer    = Buffer.from(filled);
       fileName     = `hcfa-1500-${order.order_number}.pdf`;
       documentType = "form_1500";
 
