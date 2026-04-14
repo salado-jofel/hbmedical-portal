@@ -147,7 +147,10 @@ function UploadZone({
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
-          className={cn("space-y-1", isDragging && "ring-2 ring-[var(--navy)] rounded-lg")}
+          className={cn(
+            "space-y-1",
+            isDragging && "ring-2 ring-[var(--navy)] rounded-lg",
+          )}
         >
           {typeFiles.map((df, localIdx) => (
             <div
@@ -203,6 +206,7 @@ export function CreateOrderModal() {
   const [woundType, setWoundType] = useState<"chronic" | "post_surgical">(
     "chronic",
   );
+  const [orderType, setOrderType] = useState<"non_omeza" | "omeza">("non_omeza");
   const [dateOfService, setDateOfService] = useState(
     new Date().toISOString().split("T")[0],
   );
@@ -341,6 +345,35 @@ export function CreateOrderModal() {
                       )}
                     >
                       {wt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Order Type */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">
+                  Order Type <span className="text-red-500">*</span>
+                </label>
+                <div className="flex gap-3">
+                  {(
+                    [
+                      { value: "non_omeza", label: "Non-Omeza" },
+                      { value: "omeza",     label: "Omeza" },
+                    ] as const
+                  ).map((ot) => (
+                    <button
+                      key={ot.value}
+                      type="button"
+                      onClick={() => setOrderType(ot.value)}
+                      className={cn(
+                        "flex-1 py-2.5 px-3 rounded-xl border-2 text-sm font-medium transition-all",
+                        orderType === ot.value
+                          ? "border-[var(--navy)] bg-blue-50 text-[var(--navy)]"
+                          : "border-slate-200 text-slate-600 hover:border-slate-300",
+                      )}
+                    >
+                      {ot.label}
                     </button>
                   ))}
                 </div>

@@ -390,6 +390,7 @@ export function HCFA1500Document({
   const [bl, setBl] = useState<F>(() => buildFormState(initialData));
   const [saving, setSaving] = useState(false);
   const [signModalOpen, setSignModalOpen] = useState(false);
+  const [pdfReady, setPdfReady] = useState(false);
 
   const dirty = useMemo(() => JSON.stringify(fd) !== JSON.stringify(bl), [fd, bl]);
   useEffect(() => { onDirtyChange?.(dirty); }, [dirty]); // eslint-disable-line
@@ -790,9 +791,22 @@ export function HCFA1500Document({
       />
       <FormDeficiencyBanner aiExtracted={aiEx} deficiencyCount={defCt} />
 
-      <div className="mx-auto" style={{ maxWidth: 1400 }}>
+      {/* PDF skeleton shown until the canvas finishes rendering */}
+      {!pdfReady && (
+        <div className="mx-auto animate-pulse" style={{ maxWidth: 1400 }}>
+          <div className="bg-gray-100 rounded" style={{ aspectRatio: "612 / 792", width: "100%" }}>
+            <div className="p-6 space-y-3 h-full">
+              {Array.from({ length: 28 }).map((_, i) => (
+                <div key={i} className="h-3 bg-gray-200 rounded" style={{ width: `${60 + (i % 5) * 8}%` }} />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="mx-auto" style={{ maxWidth: 1400, display: pdfReady ? undefined : "none" }}>
         <div className="relative inline-block w-full">
-          <PdfBackground pdfUrl="/cms-1500-fillable.pdf" />
+          <PdfBackground pdfUrl="/cms-1500-fillable.pdf" onReady={() => setPdfReady(true)} />
 
           <div className="absolute inset-0" style={{ zIndex: 2 }}>
 

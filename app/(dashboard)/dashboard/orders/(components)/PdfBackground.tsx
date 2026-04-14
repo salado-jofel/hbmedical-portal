@@ -14,10 +14,12 @@ export function PdfBackground({
   pdfUrl,
   scale = 1275 / 612,
   onDimensionsReady,
+  onReady,
 }: {
   pdfUrl: string;
   scale?: number;
   onDimensionsReady?: (width: number, height: number) => void;
+  onReady?: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [loaded, setLoaded] = useState(false);
@@ -45,6 +47,7 @@ export function PdfBackground({
       if (!cancelled) {
         setLoaded(true);
         onDimensionsReady?.(viewport.width, viewport.height);
+        onReady?.();
       }
     }
 
