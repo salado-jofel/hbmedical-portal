@@ -94,10 +94,19 @@ export async function generateFilledCMS1500(
   function splitDate(dateStr: unknown): [string, string, string] {
     const s = String(dateStr ?? "");
     if (!s) return ["", "", ""];
+    // Full ISO: YYYY-MM-DD
     const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (iso) return [iso[2], iso[3], iso[1].slice(-2)];
+    // US format: MM/DD/YYYY
     const us = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
     if (us) return [us[1], us[2], us[3].slice(-2)];
+    // Lenient fallback: stored as YYYY-MM-DD parts, possibly partial or malformed.
+    // The portal assembles dates from individual MM/DD/YY inputs — whatever the user
+    // typed lands here as-is, even if the year is a single digit or day is missing.
+    const parts = s.split("-");
+    if (parts.length >= 3) {
+      return [parts[1] ?? "", parts[2] ?? "", (parts[0] ?? "").slice(-2)];
+    }
     return ["", "", ""];
   }
 
@@ -180,6 +189,8 @@ export async function generateFilledCMS1500(
   // ═══ BOX 9: Other Insured ════════════════════════════════════════════════
   t("other_ins_name",   d.other_insured_name);
   t("other_ins_policy", d.other_insured_policy);
+  t("40",               d.other_insured_dob);
+  t("41",               d.other_insured_plan);
 
   // ═══ BOX 10a: Employment ════════════════════════════════════════════════
   radio("employment",       d.condition_employment    ? "YES" : "NO");
@@ -201,6 +212,7 @@ export async function generateFilledCMS1500(
   if (sv("insured_sex") === "female") radio("ins_sex", "FEMALE");
 
   // ═══ BOX 11b: Employer ═══════════════════════════════════════════════════
+  t("57", d.insured_employer);
   t("58", d.insured_employer);
 
   // ═══ BOX 11c: Insurance Plan Name ═══════════════════════════════════════
@@ -227,6 +239,7 @@ export async function generateFilledCMS1500(
   // ═══ BOX 15: Other Date ══════════════════════════════════════════════════
   const [oMM, oDD, oYY] = splitDate(d.other_date);
   t("sim_ill_mm", oMM); t("sim_ill_dd", oDD); t("sim_ill_yy", oYY);
+  t("74", d.other_date_qualifier);
 
   // ═══ BOX 16: Unable to Work ══════════════════════════════════════════════
   const [wfMM, wfDD, wfYY] = splitDate(d.unable_work_from);
@@ -237,6 +250,7 @@ export async function generateFilledCMS1500(
   // ═══ BOX 17: Referring Provider ══════════════════════════════════════════
   t("ref_physician",         d.referring_provider_name);
   t("physician number 17a1", d.referring_provider_qual);
+  t("85",                    d.referring_provider_qual);
   t("physician number 17a",  d.referring_provider_npi);
   t("id_physician",          d.referring_provider_npi);
 
@@ -319,18 +333,21 @@ export async function generateFilledCMS1500(
   t("physician_date",      d.physician_signature_date);
 
   // ═══ BOX 32: Service Facility ════════════════════════════════════════════
-  t("fac_name",   d.service_facility_name);
-  t("fac_street", d.service_facility_address);
-  t("pin1",       d.service_facility_npi);
+  t("fac_name",     d.service_facility_name);
+  t("fac_street",   d.service_facility_address);
+  t("fac_location", d.service_facility_address);
+  t("pin1",         d.service_facility_npi);
+  t("grp1",         d.service_facility_npi);
 
   // ═══ BOX 33: Billing Provider ════════════════════════════════════════════
   const [bpAC, bpPh] = splitPhone(d.billing_provider_phone);
   t("doc_phone area", bpAC);
   t("doc_phone",      bpPh);
-  t("doc_name",   d.billing_provider_name);
-  t("doc_street", d.billing_provider_address);
-  t("pin",        d.billing_provider_npi);
-  t("grp",        d.billing_provider_tax_id);
+  t("doc_name",       d.billing_provider_name);
+  t("doc_street",     d.billing_provider_address);
+  t("doc_location",   d.billing_provider_address);
+  t("pin",            d.billing_provider_npi);
+  t("grp",            d.billing_provider_tax_id);
 
   // ── Remove push-button fields (e.g. "Clear Form") ───────────────────────
   for (const field of form.getFields()) {

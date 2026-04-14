@@ -861,7 +861,7 @@ export function HCFA1500Document({
               if (!pos || !canEdit) return null;
               return (
                 <button
-                  key={line.id}
+                  key={i}
                   type="button"
                   onClick={() => rmLn(line.id)}
                   className="absolute text-red-400 hover:text-red-600"
