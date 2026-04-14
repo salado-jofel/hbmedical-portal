@@ -12,6 +12,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Plus, Loader2, Upload, X, FileText } from "lucide-react";
 import { createOrder } from "../(services)/order-write-actions";
 import { uploadOrderDocument } from "../(services)/order-document-actions";
+import { getOrderById } from "../(services)/order-read-actions";
+import { addOrderToStore } from "../(redux)/orders-slice";
+import { useAppDispatch } from "@/store/hooks";
 import toast from "react-hot-toast";
 import { cn } from "@/utils/utils";
 import type { DocumentType } from "@/utils/interfaces/orders";
@@ -202,6 +205,7 @@ function UploadZone({
 }
 
 export function CreateOrderModal() {
+  const dispatch = useAppDispatch();
   const [open, setOpen] = useState(false);
   const [woundType, setWoundType] = useState<"chronic" | "post_surgical">(
     "chronic",
@@ -290,6 +294,17 @@ export function CreateOrderModal() {
       toast.success("Order created. Upload confirmed.");
       setOpen(false);
       reset();
+
+      // Add to store and open detail modal immediately
+      const fullOrder = await getOrderById(orderId);
+      if (fullOrder) {
+        dispatch(addOrderToStore(fullOrder));
+        window.dispatchEvent(
+          new CustomEvent("open-order-modal", {
+            detail: { orderId, tab: "overview" },
+          }),
+        );
+      }
     });
   }
 

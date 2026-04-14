@@ -789,32 +789,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    /* ── STEP 11: Mark order AI-extracted (triggers Realtime) ── */
-    await adminClient
-      .from("orders")
-      .update({ ai_extracted: true, ai_extracted_at: new Date().toISOString() })
-      .eq("id", orderId);
-    console.log("[extract] orders.ai_extracted=true for:", orderId);
-
-    /* ── STEP 12: History log (fire-and-forget) ── */
-    adminClient
-      .from("order_history")
-      .insert({
-        order_id: orderId,
-        performed_by: null,
-        action:
-          documentType === "facesheet"
-            ? "AI extracted patient data from facesheet"
-            : "AI extracted clinical data from doctor's notes",
-        old_status: null,
-        new_status: null,
-        notes: null,
-      })
-      .then(({ error }) => {
-        if (error) console.error("[extract] history error:", error.message);
-      });
-
-    /* ── STEP 13: Generate all 3 PDFs — all data is in DB ── */
+    /* ── STEP 11: Generate all 3 PDFs first — must exist before poll detects completion ── */
     console.log("[extract] generating PDFs for order:", orderId);
     await new Promise((r) => setTimeout(r, 500));
     for (const formType of ["order_form", "ivr", "hcfa_1500"] as const) {
@@ -837,6 +812,31 @@ export async function POST(req: NextRequest) {
         console.error(`[extract] ${formType} PDF error:`, err);
       }
     }
+
+    /* ── STEP 12: Mark order AI-extracted AFTER PDFs are ready (this triggers frontend poll) ── */
+    await adminClient
+      .from("orders")
+      .update({ ai_extracted: true, ai_extracted_at: new Date().toISOString() })
+      .eq("id", orderId);
+    console.log("[extract] orders.ai_extracted=true for:", orderId);
+
+    /* ── STEP 13: History log (fire-and-forget) ── */
+    adminClient
+      .from("order_history")
+      .insert({
+        order_id: orderId,
+        performed_by: null,
+        action:
+          documentType === "facesheet"
+            ? "AI extracted patient data from facesheet"
+            : "AI extracted clinical data from doctor's notes",
+        old_status: null,
+        new_status: null,
+        notes: null,
+      })
+      .then(({ error }) => {
+        if (error) console.error("[extract] history error:", error.message);
+      });
 
     return NextResponse.json({ success: true, documentType, extractedFields });
   } catch (err) {

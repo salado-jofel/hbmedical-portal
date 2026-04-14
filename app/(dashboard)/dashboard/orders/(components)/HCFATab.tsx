@@ -59,7 +59,7 @@ export function HCFATab({
         !isActive && "hidden",
       )}
     >
-      {!isReady || isExtracting ? (
+      {!isReady ? (
         <FormSkeleton />
       ) : (
         <HCFA1500Document
