@@ -82,12 +82,13 @@ export async function generateFilledCMS1500(
 
   function radio(groupName: string, value: string | null | undefined) {
     if (!value) return;
-    // Record for direct drawing regardless of AcroForm success
+    // Record for direct X-mark drawing after flatten (always works regardless of AcroForm type)
     selectedRadios.set(groupName, value);
     try {
       form.getRadioGroup(groupName).select(value);
-    } catch (err) {
-      console.error(`[CMS1500] radio "${groupName}" select("${value}") failed:`, err);
+    } catch {
+      // Field may be a checkbox in this PDF template — X mark is drawn directly on the page after
+      // flatten via selectedRadios, so the visual result is correct regardless.
     }
   }
 
