@@ -285,6 +285,8 @@ export interface IOrderIVR {
   isPatientAtSnf: boolean | null;
   physicianSignature: string | null;
   physicianSignatureDate: string | null;
+  physicianSignedAt: string | null;
+  physicianSignedBy: string | null;
   aiExtracted: boolean;
   createdAt: string;
   updatedAt: string;
@@ -459,6 +461,8 @@ export interface IOrderForm {
   patientDate: string | null;
   physicianSignature: string | null;
   physicianSignatureDate: string | null;
+  physicianSignedAt: string | null;
+  physicianSignedBy: string | null;
   // Meta
   aiExtracted: boolean;
   aiExtractedAt: string | null;

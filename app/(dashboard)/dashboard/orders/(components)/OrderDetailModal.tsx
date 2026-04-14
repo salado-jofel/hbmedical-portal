@@ -10,6 +10,9 @@ import {
 // bakes in `sm:max-w-sm` via @media which cannot be overridden with className.
 import { Dialog as RadixDialog } from "radix-ui";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
   DialogPortal,
   DialogOverlay,
   DialogTitle,
@@ -63,7 +66,8 @@ import {
   resubmitForReview,
   requestAdditionalInfo,
   markOrderDelivered,
-  signAndSubmitOrder,
+  getUnsignedForms,
+  submitSignedOrder,
 } from "../(services)/order-workflow-actions";
 import {
   getOrderPayment,
@@ -310,7 +314,8 @@ export function OrderDetailModal({
 
   /* -- Sub-modal flags -- */
   const [signOpen, setSignOpen] = useState(false);
-  const [signAndSubmitOpen, setSignAndSubmitOpen] = useState(false);
+  const [unsignedFormsOpen, setUnsignedFormsOpen] = useState(false);
+  const [unsignedFormsList, setUnsignedFormsList] = useState<string[]>([]);
   const [approveOpen, setApproveOpen] = useState(false);
   const [requestInfoOpen, setRequestInfoOpen] = useState(false);
   const [requestInfoReason, setRequestInfoReason] = useState("");
@@ -932,7 +937,7 @@ export function OrderDetailModal({
     setSubmitting(false);
   }
 
-  function handleSignAndSubmit() {
+  async function handleSignAndSubmit() {
     if (draftItems.length === 0) {
       toast.error("Add at least one product in the Overview tab before signing.", { duration: 4000 });
       setTab("overview");
@@ -953,7 +958,23 @@ export function OrderDetailModal({
       setCompletionOpen(true);
       return;
     }
-    setSignAndSubmitOpen(true);
+    setSubmitting(true);
+    const { unsignedForms } = await getUnsignedForms(order.id);
+    if (unsignedForms.length > 0) {
+      setSubmitting(false);
+      setUnsignedFormsList(unsignedForms);
+      setUnsignedFormsOpen(true);
+      return;
+    }
+    const result = await submitSignedOrder(order.id);
+    setSubmitting(false);
+    if (result.success) {
+      toast.success("Order submitted for review.");
+      dispatch(updateOrderInStore({ ...liveOrder, order_status: "manufacturer_review" }));
+      onClose();
+    } else {
+      toast.error(result.error ?? "Failed to submit order.");
+    }
   }
 
   function handleClose() {
@@ -1277,19 +1298,40 @@ export function OrderDetailModal({
         providerName={currentUserName ?? "Provider"}
         onSuccess={refreshOrder}
       />
-      <SignOrderModal
-        open={signAndSubmitOpen}
-        onOpenChange={setSignAndSubmitOpen}
-        order={order}
-        providerName={currentUserName ?? "Provider"}
-        title="Sign & Submit Order"
-        successMessage="Order signed and submitted for review."
-        onSign={(pin) => signAndSubmitOrder(order.id, pin)}
-        onSuccess={() => {
-          dispatch(updateOrderInStore({ ...liveOrder, order_status: "manufacturer_review" }));
-          onClose();
-        }}
-      />
+      {/* Unsigned forms blocking modal */}
+      <Dialog open={unsignedFormsOpen} onOpenChange={setUnsignedFormsOpen}>
+        <DialogContent className="max-w-sm rounded-2xl border-0 shadow-2xl p-0 overflow-hidden">
+          <div className="h-1 w-full bg-gradient-to-r from-amber-400 via-orange-400 to-red-400" />
+          <div className="p-6 space-y-4">
+            <DialogHeader>
+              <DialogTitle className="text-base font-bold text-slate-800">
+                Forms Require Physician Signature
+              </DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-slate-600">
+              All forms must be signed by the physician before the order can be submitted. The following forms are missing a physician signature:
+            </p>
+            <ul className="space-y-2">
+              {unsignedFormsList.map((name) => (
+                <li key={name} className="flex items-center gap-2 text-sm font-medium text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
+                  {name} — not signed
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs text-slate-500">
+              Open each form, sign it using your provider PIN, and save the form before submitting.
+            </p>
+            <button
+              onClick={() => setUnsignedFormsOpen(false)}
+              className="w-full px-4 py-2.5 bg-slate-800 text-white text-sm font-medium rounded-xl hover:bg-slate-700 transition-colors"
+            >
+              OK, I&apos;ll sign the forms
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <ApproveOrderModal
         open={approveOpen}
         onOpenChange={setApproveOpen}
@@ -1413,13 +1455,17 @@ export function OrderDetailModal({
                       orderForm={orderForm}
                       order={liveOrder}
                       canEdit={canEdit}
+                      canSign={canSign}
+                      currentUserName={currentUserName ?? null}
                       patientName={patientName}
                       onSaved={(updated) => setOrderForm(updated)}
                     />
                     <IVRTab
                       isActive={tab === "ivr"}
-                      orderId={order.id}
+                      order={liveOrder}
                       canEdit={canEdit}
+                      canSign={canSign}
+                      currentUserName={currentUserName ?? null}
                       ivrData={ivrData}
                       resetIvrKey={resetIvrKey}
                       isReady={loadedTabs.has("ivr")}
@@ -1432,8 +1478,10 @@ export function OrderDetailModal({
                     />
                     <HCFATab
                       isActive={tab === "hcfa"}
-                      orderId={order.id}
+                      order={liveOrder}
                       canEdit={canEdit}
+                      canSign={canSign}
+                      currentUserName={currentUserName ?? null}
                       hcfaData={hcfaData}
                       resetHcfaKey={resetHcfaKey}
                       isReady={loadedTabs.has("hcfa")}
@@ -1496,7 +1544,7 @@ export function OrderDetailModal({
                             {submitting && (
                               <Loader2 className="w-3.5 h-3.5 animate-spin" />
                             )}
-                            Sign &amp; Submit
+                            Submit Order
                           </button>
                         ) : (
                           /* Staff: two-step submit (to pending_signature) */
@@ -1537,9 +1585,33 @@ export function OrderDetailModal({
                       {/* Sign Order — pending_signature, provider only */}
                       {canSign && status === "pending_signature" && (
                         <button
-                          onClick={() => setSignOpen(true)}
-                          className="px-5 py-[7px] bg-[var(--navy)] text-white font-medium rounded-[7px] hover:bg-[var(--navy)]/90 active:scale-[0.98] transition-all text-[13px]"
+                          onClick={async () => {
+                            setSubmitting(true);
+                            const { unsignedForms } = await getUnsignedForms(order.id);
+                            if (unsignedForms.length > 0) {
+                              setSubmitting(false);
+                              setUnsignedFormsList(unsignedForms);
+                              setUnsignedFormsOpen(true);
+                              return;
+                            }
+                            const result = await submitSignedOrder(order.id);
+                            setSubmitting(false);
+                            if (result.success) {
+                              toast.success("Order signed and submitted for review.");
+                              refreshOrder();
+                            } else {
+                              toast.error(result.error ?? "Failed to submit order.");
+                            }
+                          }}
+                          disabled={submitting}
+                          className={cn(
+                            "px-5 py-[7px] font-medium rounded-[7px] text-[13px] flex items-center gap-2 transition-all",
+                            submitting
+                              ? "bg-[var(--border)] text-[var(--text3)] cursor-not-allowed"
+                              : "bg-[var(--navy)] text-white hover:bg-[var(--navy)]/90 active:scale-[0.98]",
+                          )}
                         >
+                          {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                           Sign Order
                         </button>
                       )}

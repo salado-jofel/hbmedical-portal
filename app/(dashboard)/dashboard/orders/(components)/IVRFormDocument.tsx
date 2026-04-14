@@ -14,14 +14,17 @@ import {
   Globe,
   Phone,
   Check,
+  PenLine,
 } from "lucide-react";
 import { HBLogo } from "@/app/(components)/HBLogo";
 import { upsertOrderIVR } from "../(services)/order-ivr-actions";
-import type { IOrderIVR } from "@/utils/interfaces/orders";
+import { verifyProviderPin } from "../(services)/order-workflow-actions";
+import type { IOrderIVR, DashboardOrder } from "@/utils/interfaces/orders";
 import { cn } from "@/utils/utils";
 import toast from "react-hot-toast";
 import { FormDeficiencyBanner } from "./FormDeficiencyBanner";
 import { FormActionBar } from "./FormActionBar";
+import { SignOrderModal } from "./SignOrderModal";
 
 /* ── Design tokens ── */
 const NAVY = "#0f2d4a";
@@ -76,6 +79,8 @@ type IVRFormState = {
   specialtySiteName: string;
   physicianSignature: string;
   physicianSignatureDate: string;
+  physicianSignedAt: string | null;
+  physicianSignedBy: string | null;
 };
 
 function buildFormState(ivr: Partial<IOrderIVR> | null): IVRFormState {
@@ -128,6 +133,8 @@ function buildFormState(ivr: Partial<IOrderIVR> | null): IVRFormState {
     specialtySiteName: s(ivr?.specialtySiteName),
     physicianSignature: s(ivr?.physicianSignature),
     physicianSignatureDate: s(ivr?.physicianSignatureDate),
+    physicianSignedAt:  ivr?.physicianSignedAt  ?? null,
+    physicianSignedBy:  ivr?.physicianSignedBy  ?? null,
   };
 }
 
@@ -403,20 +410,25 @@ function buildProductString(selected: Set<string>, otherText: string): string {
 
 /* ── Component props ── */
 interface IVRFormDocumentProps {
-  orderId: string;
+  order: DashboardOrder;
   ivrData: Partial<IOrderIVR> | null;
   canEdit: boolean;
+  canSign: boolean;
+  currentUserName: string | null;
   onSaved?: (saved: Partial<IOrderIVR>) => void;
   onDirtyChange?: (dirty: boolean) => void;
 }
 
 export function IVRFormDocument({
-  orderId,
+  order,
   ivrData,
   canEdit,
+  canSign,
+  currentUserName,
   onSaved,
   onDirtyChange,
 }: IVRFormDocumentProps) {
+  const orderId = order.id;
   const [formData, setFormData] = useState<IVRFormState>(() =>
     buildFormState(ivrData),
   );
@@ -424,6 +436,7 @@ export function IVRFormDocument({
     buildFormState(ivrData),
   );
   const [isSaving, setIsSaving] = useState(false);
+  const [signModalOpen, setSignModalOpen] = useState(false);
 
   useEffect(() => {
     const snap = buildFormState(ivrData);
@@ -547,6 +560,8 @@ export function IVRFormDocument({
       specialtySiteName: ns(formData.specialtySiteName),
       physicianSignature: ns(formData.physicianSignature),
       physicianSignatureDate: ns(formData.physicianSignatureDate),
+      physicianSignedAt: formData.physicianSignedAt ?? null,
+      physicianSignedBy: formData.physicianSignedBy ?? null,
     };
     const result = await upsertOrderIVR(orderId, payload);
     setIsSaving(false);
@@ -1317,13 +1332,42 @@ export function IVRFormDocument({
           <div className="grid grid-cols-2 gap-6">
             <div>
               <FL className="block mb-1">Physician or Authorized Signature</FL>
-              <FormInput
-                value={formData.physicianSignature}
-                onChange={(v) => set("physicianSignature", v)}
-                className="w-full italic"
-                placeholder="—"
-                disabled={!canEdit}
-              />
+              {formData.physicianSignedAt ? (
+                <div className="flex items-center gap-2 py-1">
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-green-50 border border-green-200">
+                    <Check className="w-3.5 h-3.5 text-green-600 shrink-0" />
+                    <span className="text-[11px] font-semibold text-green-700">Signed</span>
+                  </div>
+                  <div className="text-[11px] text-[#444]">
+                    <span className="font-medium">{formData.physicianSignature}</span>
+                    <span className="text-[#999] ml-1">
+                      {new Date(formData.physicianSignedAt).toLocaleDateString("en-US", {
+                        month: "short", day: "numeric", year: "numeric",
+                      })}
+                    </span>
+                  </div>
+                  {canSign && (
+                    <button
+                      type="button"
+                      onClick={() => set("physicianSignedAt", null)}
+                      className="text-[11px] text-[#999] hover:text-red-500 underline underline-offset-2 transition-colors ml-1"
+                    >
+                      Unsign
+                    </button>
+                  )}
+                </div>
+              ) : canSign ? (
+                <button
+                  type="button"
+                  onClick={() => setSignModalOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-[#0f2d4a] text-[#0f2d4a] text-[11px] font-semibold hover:bg-[#0f2d4a] hover:text-white transition-colors"
+                >
+                  <PenLine className="w-3.5 h-3.5 shrink-0" />
+                  Sign
+                </button>
+              ) : (
+                <p className="text-[11px] text-[#999] italic py-1">Awaiting provider signature</p>
+              )}
             </div>
             <div>
               <FL className="block mb-1">Date</FL>
@@ -1347,6 +1391,20 @@ export function IVRFormDocument({
           <span>REV2.1</span>
         </div>
       </div>
+
+      <SignOrderModal
+        open={signModalOpen}
+        onOpenChange={setSignModalOpen}
+        order={order}
+        providerName={currentUserName ?? "Provider"}
+        title="Sign IVR Form"
+        successMessage="IVR form signed. Save the form to persist your signature."
+        onSign={(pin) => verifyProviderPin(pin)}
+        onSuccess={() => {
+          const now = new Date().toISOString();
+          setFormData((prev) => ({ ...prev, physicianSignedAt: now, physicianSignature: currentUserName ?? "" }));
+        }}
+      />
     </div>
   );
 }

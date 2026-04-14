@@ -230,6 +230,8 @@ CREATE TABLE IF NOT EXISTS public.order_form (
   is_locked bool NOT NULL DEFAULT false,
   locked_at timestamptz,
   locked_by uuid,
+  physician_signed_at timestamptz,
+  physician_signed_by uuid,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );

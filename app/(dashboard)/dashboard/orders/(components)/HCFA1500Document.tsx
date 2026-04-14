@@ -1,12 +1,14 @@
 "use client";
 
 import React, { useState, useMemo, useEffect, useCallback } from "react";
-import { Trash2 } from "lucide-react";
+import { Trash2, Check, PenLine } from "lucide-react";
 import { upsertForm1500 } from "../(services)/order-document-actions";
+import { verifyProviderPin } from "../(services)/order-workflow-actions";
 import { FormActionBar } from "./FormActionBar";
 import { PdfBackground } from "./PdfBackground";
 import { FormDeficiencyBanner } from "./FormDeficiencyBanner";
-import type { IServiceLine } from "@/utils/interfaces/orders";
+import { SignOrderModal } from "./SignOrderModal";
+import type { IServiceLine, DashboardOrder } from "@/utils/interfaces/orders";
 import { cn } from "@/utils/utils";
 import toast from "react-hot-toast";
 import fieldMap from "./cms1500-fields.json";
@@ -98,6 +100,8 @@ type F = {
   rsvdNucc: string;
   physicianSignature: string;
   physicianSignatureDate: string;
+  physicianSignedAt: string | null;
+  physicianSignedBy: string | null;
   serviceFacilityName: string;
   serviceFacilityAddress: string;
   serviceFacilityNpi: string;
@@ -208,6 +212,8 @@ function buildFormState(d: Record<string, unknown> | null): F {
     rsvdNucc:              sv("rsvd_nucc"),
     physicianSignature:    sv("physician_signature"),
     physicianSignatureDate: sv("physician_signature_date"),
+    physicianSignedAt:     (r["physician_signed_at"] as string) ?? null,
+    physicianSignedBy:     (r["physician_signed_by"] as string) ?? null,
     serviceFacilityName:   sv("service_facility_name"),
     serviceFacilityAddress: sv("service_facility_address"),
     serviceFacilityNpi:    sv("service_facility_npi"),
@@ -363,21 +369,27 @@ type RadioOpt = { value: string; left: number; top: number; width: number; heigh
 /*  COMPONENT                                                              */
 /* ══════════════════════════════════════════════════════════════════════ */
 export function HCFA1500Document({
-  orderId,
+  order,
   canEdit,
+  canSign,
+  currentUserName,
   initialData,
   onDirtyChange,
   onSave,
 }: {
-  orderId: string;
+  order: DashboardOrder;
   canEdit: boolean;
+  canSign: boolean;
+  currentUserName: string | null;
   initialData: Record<string, unknown> | null;
   onDirtyChange?: (dirty: boolean) => void;
   onSave?: (data: Record<string, unknown>) => void;
 }) {
+  const orderId = order.id;
   const [fd, setFd] = useState<F>(() => buildFormState(initialData));
   const [bl, setBl] = useState<F>(() => buildFormState(initialData));
   const [saving, setSaving] = useState(false);
+  const [signModalOpen, setSignModalOpen] = useState(false);
 
   const dirty = useMemo(() => JSON.stringify(fd) !== JSON.stringify(bl), [fd, bl]);
   useEffect(() => { onDirtyChange?.(dirty); }, [dirty]); // eslint-disable-line
@@ -477,6 +489,8 @@ export function HCFA1500Document({
       rsvd_nucc: n(fd.rsvdNucc),
       physician_signature: n(fd.physicianSignature),
       physician_signature_date: n(fd.physicianSignatureDate),
+      physician_signed_at: fd.physicianSignedAt ?? null,
+      physician_signed_by: fd.physicianSignedBy ?? null,
       service_facility_name: n(fd.serviceFacilityName),
       service_facility_address: n(fd.serviceFacilityAddress),
       service_facility_npi: n(fd.serviceFacilityNpi),
@@ -879,6 +893,65 @@ export function HCFA1500Document({
           </div>
         </div>
       </div>
+
+      {/* ── Physician Signature Section ── */}
+      <div className="mt-4 mx-auto px-4 pb-4" style={{ maxWidth: 1400 }}>
+        <div className="border border-[#e5e5e5] rounded-lg p-4">
+          <p className="text-[10px] font-bold uppercase tracking-wide text-[#555] mb-2">
+            Physicians Signature (Box 31)
+          </p>
+          {fd.physicianSignedAt ? (
+            <div className="flex items-center gap-2 py-1">
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-green-50 border border-green-200">
+                <Check className="w-3.5 h-3.5 text-green-600 shrink-0" />
+                <span className="text-[11px] font-semibold text-green-700">Signed</span>
+              </div>
+              <div className="text-[11px] text-[#444]">
+                <span className="font-medium">{fd.physicianSignature}</span>
+                <span className="text-[#999] ml-1">
+                  {new Date(fd.physicianSignedAt).toLocaleDateString("en-US", {
+                    month: "short", day: "numeric", year: "numeric",
+                  })}
+                </span>
+              </div>
+              {canSign && (
+                <button
+                  type="button"
+                  onClick={() => s("physicianSignedAt", null)}
+                  className="text-[11px] text-[#999] hover:text-red-500 underline underline-offset-2 transition-colors ml-1"
+                >
+                  Unsign
+                </button>
+              )}
+            </div>
+          ) : canSign ? (
+            <button
+              type="button"
+              onClick={() => setSignModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-[#0f2d4a] text-[#0f2d4a] text-[11px] font-semibold hover:bg-[#0f2d4a] hover:text-white transition-colors"
+            >
+              <PenLine className="w-3.5 h-3.5 shrink-0" />
+              Sign
+            </button>
+          ) : (
+            <p className="text-[11px] text-[#999] italic py-1">Awaiting provider signature</p>
+          )}
+        </div>
+      </div>
+
+      <SignOrderModal
+        open={signModalOpen}
+        onOpenChange={setSignModalOpen}
+        order={order}
+        providerName={currentUserName ?? "Provider"}
+        title="Sign CMS-1500 Form"
+        successMessage="CMS-1500 form signed. Save the form to persist your signature."
+        onSign={(pin) => verifyProviderPin(pin)}
+        onSuccess={() => {
+          const now = new Date().toISOString();
+          setFd((prev) => ({ ...prev, physicianSignedAt: now, physicianSignature: currentUserName ?? "" }));
+        }}
+      />
     </div>
   );
 }
