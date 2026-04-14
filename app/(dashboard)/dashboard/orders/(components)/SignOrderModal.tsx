@@ -10,14 +10,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Loader2, AlertTriangle, PenLine } from "lucide-react";
 import { cn } from "@/utils/utils";
-import type { DashboardOrder } from "@/utils/interfaces/orders";
 import { signOrder } from "../(services)/order-workflow-actions";
 import toast from "react-hot-toast";
 
 interface SignOrderModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  order: DashboardOrder;
+  order: { id: string; order_number?: string | null; patient_full_name?: string | null; wound_type?: string | null; date_of_service?: string | null };
   providerName: string;
   onSuccess?: () => void;
   /** Override the sign action. If omitted, calls signOrder. */

@@ -193,10 +193,6 @@ export async function upsertForm1500(
       return { success: false, error: "Failed to save form." };
     }
 
-    generateOrderPDFs(orderId, ["hcfa_1500"]).catch(
-      err => console.error("[HCFA PDF]", err),
-    );
-
     return { success: true };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };

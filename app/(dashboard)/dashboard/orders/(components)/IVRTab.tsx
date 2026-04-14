@@ -1,6 +1,6 @@
 "use client";
 
-import type { IOrderIVR } from "@/utils/interfaces/orders";
+import type { IOrderIVR, DashboardOrder } from "@/utils/interfaces/orders";
 import { IVRFormDocument } from "./IVRFormDocument";
 import { cn } from "@/utils/utils";
 
@@ -27,8 +27,10 @@ function FormSkeleton() {
 
 interface IVRTabProps {
   isActive: boolean;
-  orderId: string;
+  order: DashboardOrder;
   canEdit: boolean;
+  canSign: boolean;
+  currentUserName: string | null;
   ivrData: Partial<IOrderIVR> | null;
   resetIvrKey: number;
   isReady: boolean;
@@ -39,8 +41,10 @@ interface IVRTabProps {
 
 export function IVRTab({
   isActive,
-  orderId,
+  order,
   canEdit,
+  canSign,
+  currentUserName,
   ivrData,
   resetIvrKey,
   isReady,
@@ -60,8 +64,10 @@ export function IVRTab({
       ) : (
         <IVRFormDocument
           key={resetIvrKey}
-          orderId={orderId}
+          order={order}
           canEdit={canEdit}
+          canSign={canSign}
+          currentUserName={currentUserName}
           ivrData={ivrData}
           onDirtyChange={onDirtyChange}
           onSaved={onSave}

@@ -480,13 +480,11 @@ export function OrderFormPDF({
           <View style={s.sigBlock}>
             <Text style={s.label}>Physicians Signature</Text>
             <View style={s.sigLine} />
-            <Text style={{ fontSize: 7.5, fontFamily: "Helvetica-Bold" }}>{physSig}</Text>
             <Text style={{ fontSize: 6, color: GRAY, marginTop: 1 }}>Authorized Provider Signature</Text>
           </View>
           <View style={{ width: 110 }}>
             <Text style={s.label}>Date</Text>
             <View style={s.sigLine} />
-            <Text style={{ fontSize: 7.5, fontFamily: "Helvetica-Bold" }}>{physSigDate}</Text>
           </View>
         </View>
         <View style={[s.sigGrid, { marginTop: 6 }]}>

@@ -1,0 +1,1871 @@
+{
+  "text": [
+    {
+      "name": "NUCC USE",
+      "left": 37.188,
+      "top": 22.188,
+      "width": 22.992,
+      "height": 4.994
+    },
+    {
+      "name": "40",
+      "left": 4.074,
+      "top": 34.623,
+      "width": 32.413,
+      "height": 1.515
+    },
+    {
+      "name": "57",
+      "left": 60.804,
+      "top": 34.623,
+      "width": 2.561,
+      "height": 1.515
+    },
+    {
+      "name": "58",
+      "left": 64.375,
+      "top": 34.623,
+      "width": 31.367,
+      "height": 1.515
+    },
+    {
+      "name": "41",
+      "left": 4.074,
+      "top": 37.653,
+      "width": 32.413,
+      "height": 1.515
+    },
+    {
+      "name": "50",
+      "left": 37.473,
+      "top": 40.621,
+      "width": 22.724,
+      "height": 1.515
+    },
+    {
+      "name": "73",
+      "left": 21.323,
+      "top": 50.027,
+      "width": 12.683,
+      "height": 1.515
+    },
+    {
+      "name": "74",
+      "left": 38.32,
+      "top": 50.027,
+      "width": 3.903,
+      "height": 1.515
+    },
+    {
+      "name": "85",
+      "left": 3.462,
+      "top": 52.671,
+      "width": 2.887,
+      "height": 1.718
+    },
+    {
+      "name": "96",
+      "left": 3.486,
+      "top": 55.598,
+      "width": 56.589,
+      "height": 1.641
+    },
+    {
+      "name": "99icd",
+      "left": 51.5,
+      "top": 57.723,
+      "width": 2.17,
+      "height": 1.531
+    },
+    {
+      "name": "insurance_name",
+      "left": 52.658,
+      "top": 3.377,
+      "width": 35.702,
+      "height": 1.515
+    },
+    {
+      "name": "insurance_address",
+      "left": 52.658,
+      "top": 5.01,
+      "width": 35.702,
+      "height": 1.515
+    },
+    {
+      "name": "insurance_address2",
+      "left": 52.658,
+      "top": 6.65,
+      "width": 35.702,
+      "height": 1.515
+    },
+    {
+      "name": "insurance_city_state_zip",
+      "left": 52.658,
+      "top": 8.289,
+      "width": 35.702,
+      "height": 1.515
+    },
+    {
+      "name": "pt_name",
+      "left": 4.074,
+      "top": 16.315,
+      "width": 32.413,
+      "height": 1.515
+    },
+    {
+      "name": "insurance_id",
+      "left": 61.591,
+      "top": 13.411,
+      "width": 34.15,
+      "height": 1.515
+    },
+    {
+      "name": "ins_name",
+      "left": 61.591,
+      "top": 16.441,
+      "width": 34.15,
+      "height": 1.515
+    },
+    {
+      "name": "birth_mm",
+      "left": 38.694,
+      "top": 16.567,
+      "width": 2.659,
+      "height": 1.515
+    },
+    {
+      "name": "birth_dd",
+      "left": 42.078,
+      "top": 16.567,
+      "width": 2.846,
+      "height": 1.515
+    },
+    {
+      "name": "birth_yy",
+      "left": 45.578,
+      "top": 16.567,
+      "width": 4.412,
+      "height": 1.515
+    },
+    {
+      "name": "pt_street",
+      "left": 4.074,
+      "top": 19.219,
+      "width": 32.413,
+      "height": 1.515
+    },
+    {
+      "name": "pt_city",
+      "left": 4.074,
+      "top": 22.375,
+      "width": 28.236,
+      "height": 1.515
+    },
+    {
+      "name": "pt_state",
+      "left": 33.296,
+      "top": 22.375,
+      "width": 3.164,
+      "height": 1.515
+    },
+    {
+      "name": "pt_zip",
+      "left": 4.074,
+      "top": 25.658,
+      "width": 14.054,
+      "height": 1.515
+    },
+    {
+      "name": "pt_AreaCode",
+      "left": 19.989,
+      "top": 25.658,
+      "width": 3.518,
+      "height": 1.515
+    },
+    {
+      "name": "pt_phone",
+      "left": 24.446,
+      "top": 25.658,
+      "width": 12.036,
+      "height": 1.515
+    },
+    {
+      "name": "ins_street",
+      "left": 61.664,
+      "top": 19.231,
+      "width": 34.15,
+      "height": 1.515
+    },
+    {
+      "name": "ins_city",
+      "left": 61.591,
+      "top": 22.375,
+      "width": 26.26,
+      "height": 1.515
+    },
+    {
+      "name": "ins_state",
+      "left": 89.532,
+      "top": 22.375,
+      "width": 4.386,
+      "height": 1.515
+    },
+    {
+      "name": "ins_zip",
+      "left": 61.617,
+      "top": 25.64,
+      "width": 13.462,
+      "height": 1.515
+    },
+    {
+      "name": "ins_phone area",
+      "left": 78.651,
+      "top": 25.64,
+      "width": 3.919,
+      "height": 1.515
+    },
+    {
+      "name": "ins_phone",
+      "left": 83.206,
+      "top": 25.58,
+      "width": 12.682,
+      "height": 1.515
+    },
+    {
+      "name": "ins_policy",
+      "left": 61.591,
+      "top": 28.42,
+      "width": 34.15,
+      "height": 1.641
+    },
+    {
+      "name": "ins_dob_mm",
+      "left": 64.452,
+      "top": 31.886,
+      "width": 2.941,
+      "height": 1.515
+    },
+    {
+      "name": "ins_dob_dd",
+      "left": 67.766,
+      "top": 31.886,
+      "width": 3.056,
+      "height": 1.515
+    },
+    {
+      "name": "ins_dob_yy",
+      "left": 71.314,
+      "top": 31.886,
+      "width": 5.719,
+      "height": 1.515
+    },
+    {
+      "name": "other_ins_name",
+      "left": 4.02,
+      "top": 28.546,
+      "width": 32.413,
+      "height": 1.515
+    },
+    {
+      "name": "other_ins_policy",
+      "left": 4.074,
+      "top": 31.388,
+      "width": 32.413,
+      "height": 1.515
+    },
+    {
+      "name": "ins_signature",
+      "left": 67.378,
+      "top": 46.365,
+      "width": 28.2,
+      "height": 1.515
+    },
+    {
+      "name": "ins_plan_name",
+      "left": 61.591,
+      "top": 37.653,
+      "width": 34.15,
+      "height": 1.515
+    },
+    {
+      "name": "pt_signature",
+      "left": 9.149,
+      "top": 46.365,
+      "width": 29.437,
+      "height": 1.515
+    },
+    {
+      "name": "pt_date",
+      "left": 44.547,
+      "top": 46.365,
+      "width": 15.573,
+      "height": 1.515
+    },
+    {
+      "name": "cur_ill_mm",
+      "left": 4.401,
+      "top": 50.027,
+      "width": 2.941,
+      "height": 1.515
+    },
+    {
+      "name": "cur_ill_dd",
+      "left": 7.763,
+      "top": 50.027,
+      "width": 3.103,
+      "height": 1.515
+    },
+    {
+      "name": "cur_ill_yy",
+      "left": 11.25,
+      "top": 50.027,
+      "width": 5.507,
+      "height": 1.515
+    },
+    {
+      "name": "ref_physician",
+      "left": 6.959,
+      "top": 52.671,
+      "width": 27.525,
+      "height": 1.718
+    },
+    {
+      "name": "id_physician",
+      "left": 40.459,
+      "top": 53.114,
+      "width": 19.439,
+      "height": 1.393
+    },
+    {
+      "name": "physician number 17a1",
+      "left": 36.858,
+      "top": 51.703,
+      "width": 3.299,
+      "height": 1.394
+    },
+    {
+      "name": "physician number 17a",
+      "left": 40.248,
+      "top": 51.599,
+      "width": 19.813,
+      "height": 1.394
+    },
+    {
+      "name": "sim_ill_mm",
+      "left": 45.598,
+      "top": 50.027,
+      "width": 2.941,
+      "height": 1.515
+    },
+    {
+      "name": "sim_ill_dd",
+      "left": 49.146,
+      "top": 50.027,
+      "width": 2.889,
+      "height": 1.515
+    },
+    {
+      "name": "sim_ill_yy",
+      "left": 52.623,
+      "top": 50.027,
+      "width": 4.412,
+      "height": 1.515
+    },
+    {
+      "name": "work_mm_from",
+      "left": 65.156,
+      "top": 50.027,
+      "width": 2.941,
+      "height": 1.515
+    },
+    {
+      "name": "work_dd_from",
+      "left": 68.76,
+      "top": 50.027,
+      "width": 3.21,
+      "height": 1.515
+    },
+    {
+      "name": "work_yy_from",
+      "left": 72.592,
+      "top": 50.027,
+      "width": 4.358,
+      "height": 1.515
+    },
+    {
+      "name": "work_mm_end",
+      "left": 81.959,
+      "top": 50.027,
+      "width": 2.941,
+      "height": 1.515
+    },
+    {
+      "name": "work_dd_end",
+      "left": 85.468,
+      "top": 50.027,
+      "width": 2.862,
+      "height": 1.515
+    },
+    {
+      "name": "work_yy_end",
+      "left": 88.822,
+      "top": 50.027,
+      "width": 4.412,
+      "height": 1.515
+    },
+    {
+      "name": "hosp_mm_from",
+      "left": 65.156,
+      "top": 53.057,
+      "width": 2.941,
+      "height": 1.515
+    },
+    {
+      "name": "hosp_dd_from",
+      "left": 68.76,
+      "top": 53.057,
+      "width": 3.21,
+      "height": 1.515
+    },
+    {
+      "name": "hosp_yy_from",
+      "left": 72.592,
+      "top": 53.057,
+      "width": 4.412,
+      "height": 1.515
+    },
+    {
+      "name": "hosp_mm_end",
+      "left": 81.959,
+      "top": 53.057,
+      "width": 2.941,
+      "height": 1.515
+    },
+    {
+      "name": "hosp_dd_end",
+      "left": 85.468,
+      "top": 53.057,
+      "width": 2.862,
+      "height": 1.515
+    },
+    {
+      "name": "hosp_yy_end",
+      "left": 88.822,
+      "top": 53.057,
+      "width": 4.412,
+      "height": 1.515
+    },
+    {
+      "name": "charge",
+      "left": 77.198,
+      "top": 55.609,
+      "width": 10.654,
+      "height": 1.641
+    },
+    {
+      "name": "medicaid_resub",
+      "left": 65.666,
+      "top": 59.322,
+      "width": 8.07,
+      "height": 1.311
+    },
+    {
+      "name": "original_ref",
+      "left": 74.771,
+      "top": 59.322,
+      "width": 21.21,
+      "height": 1.311
+    },
+    {
+      "name": "prior_auth",
+      "left": 61.264,
+      "top": 61.895,
+      "width": 34.592,
+      "height": 1.641
+    },
+    {
+      "name": "emg1",
+      "left": 78.257,
+      "top": 66.849,
+      "width": 3.431,
+      "height": 1.298
+    },
+    {
+      "name": "local1a",
+      "left": 82.356,
+      "top": 66.786,
+      "width": 13.693,
+      "height": 1.298
+    },
+    {
+      "name": "sv1_mm_from",
+      "left": 3.294,
+      "top": 68.289,
+      "width": 2.944,
+      "height": 1.298
+    },
+    {
+      "name": "sv1_dd_from",
+      "left": 6.481,
+      "top": 68.289,
+      "width": 3.142,
+      "height": 1.298
+    },
+    {
+      "name": "sv1_yy_from",
+      "left": 9.969,
+      "top": 68.289,
+      "width": 3.219,
+      "height": 1.298
+    },
+    {
+      "name": "sv1_mm_end",
+      "left": 13.651,
+      "top": 68.289,
+      "width": 3.081,
+      "height": 1.298
+    },
+    {
+      "name": "sv1_dd_end",
+      "left": 17.066,
+      "top": 68.289,
+      "width": 3.348,
+      "height": 1.298
+    },
+    {
+      "name": "sv1_yy_end",
+      "left": 20.821,
+      "top": 68.289,
+      "width": 2.941,
+      "height": 1.298
+    },
+    {
+      "name": "diag1",
+      "left": 54.891,
+      "top": 68.289,
+      "width": 5.392,
+      "height": 1.298
+    },
+    {
+      "name": "ch1",
+      "left": 60.976,
+      "top": 68.289,
+      "width": 9.657,
+      "height": 1.298
+    },
+    {
+      "name": "day1",
+      "left": 71.42,
+      "top": 68.289,
+      "width": 4.054,
+      "height": 1.298
+    },
+    {
+      "name": "sv2_mm_from",
+      "left": 3.294,
+      "top": 71.361,
+      "width": 2.944,
+      "height": 1.298
+    },
+    {
+      "name": "sv3_mm_from",
+      "left": 3.294,
+      "top": 74.362,
+      "width": 2.944,
+      "height": 1.298
+    },
+    {
+      "name": "sv4_mm_from",
+      "left": 3.294,
+      "top": 77.423,
+      "width": 2.944,
+      "height": 1.298
+    },
+    {
+      "name": "sv5_mm_from",
+      "left": 3.294,
+      "top": 80.454,
+      "width": 2.944,
+      "height": 1.298
+    },
+    {
+      "name": "sv6_mm_from",
+      "left": 3.294,
+      "top": 83.463,
+      "width": 2.944,
+      "height": 1.298
+    },
+    {
+      "name": "sv2_dd_from",
+      "left": 6.481,
+      "top": 71.361,
+      "width": 3.142,
+      "height": 1.298
+    },
+    {
+      "name": "sv3_dd_from",
+      "left": 6.481,
+      "top": 74.362,
+      "width": 3.142,
+      "height": 1.298
+    },
+    {
+      "name": "sv4_dd_from",
+      "left": 6.481,
+      "top": 77.423,
+      "width": 3.142,
+      "height": 1.298
+    },
+    {
+      "name": "sv5_dd_from",
+      "left": 6.481,
+      "top": 80.454,
+      "width": 3.142,
+      "height": 1.298
+    },
+    {
+      "name": "sv6_dd_from",
+      "left": 6.481,
+      "top": 83.463,
+      "width": 3.142,
+      "height": 1.298
+    },
+    {
+      "name": "sv2_yy_from",
+      "left": 9.969,
+      "top": 71.361,
+      "width": 3.219,
+      "height": 1.298
+    },
+    {
+      "name": "sv3_yy_from",
+      "left": 9.969,
+      "top": 74.362,
+      "width": 3.219,
+      "height": 1.298
+    },
+    {
+      "name": "sv4_yy_from",
+      "left": 9.969,
+      "top": 77.423,
+      "width": 3.219,
+      "height": 1.298
+    },
+    {
+      "name": "sv5_yy_from",
+      "left": 10.045,
+      "top": 80.454,
+      "width": 3.219,
+      "height": 1.298
+    },
+    {
+      "name": "sv6_yy_from",
+      "left": 9.969,
+      "top": 83.463,
+      "width": 3.219,
+      "height": 1.298
+    },
+    {
+      "name": "sv2_mm_end",
+      "left": 13.651,
+      "top": 71.361,
+      "width": 3.081,
+      "height": 1.298
+    },
+    {
+      "name": "sv3_mm_end",
+      "left": 13.651,
+      "top": 74.362,
+      "width": 3.081,
+      "height": 1.298
+    },
+    {
+      "name": "sv4_mm_end",
+      "left": 13.651,
+      "top": 77.423,
+      "width": 3.081,
+      "height": 1.298
+    },
+    {
+      "name": "sv5_mm_end",
+      "left": 13.651,
+      "top": 80.454,
+      "width": 3.081,
+      "height": 1.298
+    },
+    {
+      "name": "sv6_mm_end",
+      "left": 13.651,
+      "top": 83.463,
+      "width": 3.081,
+      "height": 1.298
+    },
+    {
+      "name": "sv2_dd_end",
+      "left": 17.066,
+      "top": 71.361,
+      "width": 3.348,
+      "height": 1.298
+    },
+    {
+      "name": "sv3_dd_end",
+      "left": 17.066,
+      "top": 74.362,
+      "width": 3.348,
+      "height": 1.298
+    },
+    {
+      "name": "sv4_dd_end",
+      "left": 17.066,
+      "top": 77.423,
+      "width": 3.348,
+      "height": 1.298
+    },
+    {
+      "name": "sv5_dd_end",
+      "left": 17.066,
+      "top": 80.454,
+      "width": 3.348,
+      "height": 1.298
+    },
+    {
+      "name": "sv6_dd_end",
+      "left": 17.066,
+      "top": 83.463,
+      "width": 3.348,
+      "height": 1.298
+    },
+    {
+      "name": "sv2_yy_end",
+      "left": 20.821,
+      "top": 71.361,
+      "width": 2.941,
+      "height": 1.298
+    },
+    {
+      "name": "sv3_yy_end",
+      "left": 20.821,
+      "top": 74.362,
+      "width": 2.941,
+      "height": 1.298
+    },
+    {
+      "name": "sv4_yy_end",
+      "left": 20.821,
+      "top": 77.423,
+      "width": 2.941,
+      "height": 1.298
+    },
+    {
+      "name": "sv5_yy_end",
+      "left": 20.821,
+      "top": 80.454,
+      "width": 2.941,
+      "height": 1.298
+    },
+    {
+      "name": "sv6_yy_end",
+      "left": 20.821,
+      "top": 83.463,
+      "width": 2.941,
+      "height": 1.298
+    },
+    {
+      "name": "place2",
+      "left": 24.273,
+      "top": 71.361,
+      "width": 3.425,
+      "height": 1.298
+    },
+    {
+      "name": "place3",
+      "left": 24.192,
+      "top": 74.362,
+      "width": 3.425,
+      "height": 1.298
+    },
+    {
+      "name": "place4",
+      "left": 24.192,
+      "top": 77.423,
+      "width": 3.425,
+      "height": 1.298
+    },
+    {
+      "name": "place5",
+      "left": 24.192,
+      "top": 80.454,
+      "width": 3.425,
+      "height": 1.298
+    },
+    {
+      "name": "place6",
+      "left": 24.192,
+      "top": 83.463,
+      "width": 3.425,
+      "height": 1.298
+    },
+    {
+      "name": "diag2",
+      "left": 54.891,
+      "top": 71.479,
+      "width": 5.392,
+      "height": 1.18
+    },
+    {
+      "name": "diag3",
+      "left": 54.891,
+      "top": 74.362,
+      "width": 5.392,
+      "height": 1.298
+    },
+    {
+      "name": "diag4",
+      "left": 54.891,
+      "top": 77.423,
+      "width": 5.392,
+      "height": 1.298
+    },
+    {
+      "name": "ch2",
+      "left": 60.976,
+      "top": 71.361,
+      "width": 9.657,
+      "height": 1.298
+    },
+    {
+      "name": "ch3",
+      "left": 60.976,
+      "top": 74.362,
+      "width": 9.657,
+      "height": 1.298
+    },
+    {
+      "name": "ch4",
+      "left": 60.976,
+      "top": 77.423,
+      "width": 9.657,
+      "height": 1.298
+    },
+    {
+      "name": "ch5",
+      "left": 60.976,
+      "top": 80.454,
+      "width": 9.657,
+      "height": 1.298
+    },
+    {
+      "name": "ch6",
+      "left": 60.976,
+      "top": 83.463,
+      "width": 9.657,
+      "height": 1.298
+    },
+    {
+      "name": "Suppla",
+      "left": 3.294,
+      "top": 69.804,
+      "width": 72.525,
+      "height": 1.298
+    },
+    {
+      "name": "Supplb",
+      "left": 3.294,
+      "top": 72.876,
+      "width": 72.525,
+      "height": 1.298
+    },
+    {
+      "name": "Supplc",
+      "left": 3.294,
+      "top": 75.885,
+      "width": 72.607,
+      "height": 1.298
+    },
+    {
+      "name": "Suppld",
+      "left": 3.294,
+      "top": 78.812,
+      "width": 72.607,
+      "height": 1.298
+    },
+    {
+      "name": "Supple",
+      "left": 3.294,
+      "top": 81.917,
+      "width": 72.607,
+      "height": 1.298
+    },
+    {
+      "name": "day2",
+      "left": 71.42,
+      "top": 71.361,
+      "width": 4.054,
+      "height": 1.298
+    },
+    {
+      "name": "day3",
+      "left": 71.42,
+      "top": 74.362,
+      "width": 4.054,
+      "height": 1.298
+    },
+    {
+      "name": "day4",
+      "left": 71.42,
+      "top": 77.423,
+      "width": 4.054,
+      "height": 1.298
+    },
+    {
+      "name": "day5",
+      "left": 71.42,
+      "top": 80.454,
+      "width": 4.054,
+      "height": 1.298
+    },
+    {
+      "name": "day6",
+      "left": 71.42,
+      "top": 83.463,
+      "width": 4.054,
+      "height": 1.298
+    },
+    {
+      "name": "emg2",
+      "left": 78.257,
+      "top": 69.804,
+      "width": 3.431,
+      "height": 1.298
+    },
+    {
+      "name": "emg3",
+      "left": 78.176,
+      "top": 72.876,
+      "width": 3.431,
+      "height": 1.298
+    },
+    {
+      "name": "emg4",
+      "left": 78.257,
+      "top": 75.885,
+      "width": 3.431,
+      "height": 1.298
+    },
+    {
+      "name": "emg5",
+      "left": 78.257,
+      "top": 78.939,
+      "width": 3.431,
+      "height": 1.298
+    },
+    {
+      "name": "emg6",
+      "left": 78.257,
+      "top": 81.917,
+      "width": 3.431,
+      "height": 1.298
+    },
+    {
+      "name": "local1",
+      "left": 82.356,
+      "top": 68.289,
+      "width": 13.507,
+      "height": 1.298
+    },
+    {
+      "name": "local2a",
+      "left": 82.356,
+      "top": 69.804,
+      "width": 13.507,
+      "height": 1.298
+    },
+    {
+      "name": "local2",
+      "left": 82.356,
+      "top": 71.361,
+      "width": 13.507,
+      "height": 1.298
+    },
+    {
+      "name": "local3a",
+      "left": 82.356,
+      "top": 72.876,
+      "width": 13.6,
+      "height": 1.298
+    },
+    {
+      "name": "local3",
+      "left": 82.356,
+      "top": 74.362,
+      "width": 13.6,
+      "height": 1.298
+    },
+    {
+      "name": "local4a",
+      "left": 82.356,
+      "top": 75.885,
+      "width": 13.786,
+      "height": 1.298
+    },
+    {
+      "name": "local4",
+      "left": 82.356,
+      "top": 77.423,
+      "width": 13.693,
+      "height": 1.298
+    },
+    {
+      "name": "local5a",
+      "left": 82.356,
+      "top": 78.939,
+      "width": 13.6,
+      "height": 1.298
+    },
+    {
+      "name": "local5",
+      "left": 82.356,
+      "top": 80.454,
+      "width": 13.6,
+      "height": 1.298
+    },
+    {
+      "name": "local6a",
+      "left": 82.356,
+      "top": 81.917,
+      "width": 13.693,
+      "height": 1.298
+    },
+    {
+      "name": "local6",
+      "left": 82.356,
+      "top": 83.463,
+      "width": 13.693,
+      "height": 1.298
+    },
+    {
+      "name": "tax_id",
+      "left": 3.408,
+      "top": 85.885,
+      "width": 18.314,
+      "height": 1.768
+    },
+    {
+      "name": "pt_account",
+      "left": 29.112,
+      "top": 85.885,
+      "width": 16.793,
+      "height": 1.768
+    },
+    {
+      "name": "t_charge",
+      "left": 62.114,
+      "top": 86.064,
+      "width": 11.047,
+      "height": 1.476
+    },
+    {
+      "name": "amt_paid",
+      "left": 75.67,
+      "top": 86.084,
+      "width": 9.269,
+      "height": 1.476
+    },
+    {
+      "name": "physician_signature",
+      "left": 3.249,
+      "top": 91.682,
+      "width": 25.488,
+      "height": 1.515
+    },
+    {
+      "name": "physician_date",
+      "left": 18.522,
+      "top": 93.185,
+      "width": 10.215,
+      "height": 1.515
+    },
+    {
+      "name": "fac_name",
+      "left": 29.02,
+      "top": 89.081,
+      "width": 31.294,
+      "height": 1.35
+    },
+    {
+      "name": "fac_street",
+      "left": 29.02,
+      "top": 90.431,
+      "width": 31.294,
+      "height": 1.515
+    },
+    {
+      "name": "fac_location",
+      "left": 29.112,
+      "top": 91.946,
+      "width": 31.294,
+      "height": 1.515
+    },
+    {
+      "name": "doc_name",
+      "left": 60.821,
+      "top": 89.164,
+      "width": 34.92,
+      "height": 1.35
+    },
+    {
+      "name": "doc_street",
+      "left": 60.821,
+      "top": 90.513,
+      "width": 34.92,
+      "height": 1.515
+    },
+    {
+      "name": "doc_location",
+      "left": 60.821,
+      "top": 92.029,
+      "width": 34.92,
+      "height": 1.515
+    },
+    {
+      "name": "doc_phone area",
+      "left": 79.89,
+      "top": 88.015,
+      "width": 3.659,
+      "height": 1.156
+    },
+    {
+      "name": "doc_phone",
+      "left": 84.475,
+      "top": 87.961,
+      "width": 11.266,
+      "height": 1.208
+    },
+    {
+      "name": "pin",
+      "left": 62.224,
+      "top": 93.854,
+      "width": 11.704,
+      "height": 1.447
+    },
+    {
+      "name": "grp",
+      "left": 75.848,
+      "top": 93.854,
+      "width": 20.037,
+      "height": 1.447
+    },
+    {
+      "name": "accident_place",
+      "left": 54.965,
+      "top": 34.662,
+      "width": 3.164,
+      "height": 1.515
+    },
+    {
+      "name": "other_ins_plan_name",
+      "left": 4.151,
+      "top": 40.559,
+      "width": 32.413,
+      "height": 1.515
+    },
+    {
+      "name": "diagnosis1",
+      "left": 5.518,
+      "top": 59.021,
+      "width": 8.336,
+      "height": 1.463
+    },
+    {
+      "name": "diagnosis4",
+      "left": 51.511,
+      "top": 59.259,
+      "width": 8.336,
+      "height": 1.334
+    },
+    {
+      "name": "diagnosis3",
+      "left": 36.13,
+      "top": 59.037,
+      "width": 8.185,
+      "height": 1.453
+    },
+    {
+      "name": "diagnosis2",
+      "left": 20.745,
+      "top": 59.14,
+      "width": 8.336,
+      "height": 1.432
+    },
+    {
+      "name": "diagnosis5",
+      "left": 5.525,
+      "top": 60.571,
+      "width": 8.185,
+      "height": 1.376
+    },
+    {
+      "name": "diagnosis6",
+      "left": 20.786,
+      "top": 60.669,
+      "width": 8.261,
+      "height": 1.36
+    },
+    {
+      "name": "diagnosis7",
+      "left": 36.137,
+      "top": 60.576,
+      "width": 8.336,
+      "height": 1.432
+    },
+    {
+      "name": "diagnosis8",
+      "left": 51.518,
+      "top": 60.674,
+      "width": 8.31,
+      "height": 1.355
+    },
+    {
+      "name": "diagnosis9",
+      "left": 5.52,
+      "top": 62.041,
+      "width": 8.336,
+      "height": 1.494
+    },
+    {
+      "name": "diagnosis10",
+      "left": 20.783,
+      "top": 62.111,
+      "width": 8.034,
+      "height": 1.417
+    },
+    {
+      "name": "diagnosis11",
+      "left": 36.13,
+      "top": 62.116,
+      "width": 8.336,
+      "height": 1.417
+    },
+    {
+      "name": "diagnosis12",
+      "left": 51.518,
+      "top": 62.116,
+      "width": 8.056,
+      "height": 1.267
+    },
+    {
+      "name": "place1",
+      "left": 24.192,
+      "top": 68.289,
+      "width": 3.425,
+      "height": 1.298
+    },
+    {
+      "name": "diag6",
+      "left": 54.891,
+      "top": 83.463,
+      "width": 5.392,
+      "height": 1.298
+    },
+    {
+      "name": "diag5",
+      "left": 54.891,
+      "top": 80.454,
+      "width": 5.392,
+      "height": 1.298
+    },
+    {
+      "name": "type6",
+      "left": 28.174,
+      "top": 83.463,
+      "width": 2.6,
+      "height": 1.298
+    },
+    {
+      "name": "type5",
+      "left": 28.174,
+      "top": 80.454,
+      "width": 2.6,
+      "height": 1.298
+    },
+    {
+      "name": "cpt6",
+      "left": 31.765,
+      "top": 83.463,
+      "width": 7.601,
+      "height": 1.298
+    },
+    {
+      "name": "cpt5",
+      "left": 31.765,
+      "top": 80.454,
+      "width": 7.601,
+      "height": 1.298
+    },
+    {
+      "name": "cpt4",
+      "left": 31.765,
+      "top": 77.423,
+      "width": 7.601,
+      "height": 1.298
+    },
+    {
+      "name": "mod6",
+      "left": 40.322,
+      "top": 83.463,
+      "width": 3.378,
+      "height": 1.298
+    },
+    {
+      "name": "mod5",
+      "left": 40.322,
+      "top": 80.454,
+      "width": 3.378,
+      "height": 1.298
+    },
+    {
+      "name": "mod4",
+      "left": 40.322,
+      "top": 77.423,
+      "width": 3.378,
+      "height": 1.298
+    },
+    {
+      "name": "mod3",
+      "left": 40.322,
+      "top": 74.362,
+      "width": 3.378,
+      "height": 1.298
+    },
+    {
+      "name": "mod2",
+      "left": 40.322,
+      "top": 71.361,
+      "width": 3.378,
+      "height": 1.298
+    },
+    {
+      "name": "mod6a",
+      "left": 44.321,
+      "top": 83.463,
+      "width": 2.843,
+      "height": 1.298
+    },
+    {
+      "name": "mod5a",
+      "left": 44.321,
+      "top": 80.454,
+      "width": 2.843,
+      "height": 1.298
+    },
+    {
+      "name": "mod4a",
+      "left": 44.321,
+      "top": 77.423,
+      "width": 2.843,
+      "height": 1.298
+    },
+    {
+      "name": "mod3a",
+      "left": 44.321,
+      "top": 74.362,
+      "width": 2.843,
+      "height": 1.298
+    },
+    {
+      "name": "mod2a",
+      "left": 44.321,
+      "top": 71.361,
+      "width": 2.843,
+      "height": 1.298
+    },
+    {
+      "name": "mod1a",
+      "left": 44.321,
+      "top": 68.289,
+      "width": 2.843,
+      "height": 1.298
+    },
+    {
+      "name": "mod6b",
+      "left": 47.702,
+      "top": 83.463,
+      "width": 3.065,
+      "height": 1.298
+    },
+    {
+      "name": "mod5b",
+      "left": 47.702,
+      "top": 80.454,
+      "width": 3.065,
+      "height": 1.298
+    },
+    {
+      "name": "mod4b",
+      "left": 47.702,
+      "top": 77.423,
+      "width": 3.065,
+      "height": 1.298
+    },
+    {
+      "name": "mod3b",
+      "left": 47.702,
+      "top": 74.362,
+      "width": 3.065,
+      "height": 1.298
+    },
+    {
+      "name": "mod2b",
+      "left": 47.702,
+      "top": 71.361,
+      "width": 3.065,
+      "height": 1.298
+    },
+    {
+      "name": "mod1b",
+      "left": 47.702,
+      "top": 68.289,
+      "width": 3.065,
+      "height": 1.298
+    },
+    {
+      "name": "mod6c",
+      "left": 51.297,
+      "top": 83.463,
+      "width": 3.051,
+      "height": 1.298
+    },
+    {
+      "name": "mod5c",
+      "left": 51.297,
+      "top": 80.454,
+      "width": 3.051,
+      "height": 1.298
+    },
+    {
+      "name": "mod4c",
+      "left": 51.297,
+      "top": 77.423,
+      "width": 3.051,
+      "height": 1.298
+    },
+    {
+      "name": "mod3c",
+      "left": 51.297,
+      "top": 74.362,
+      "width": 3.051,
+      "height": 1.298
+    },
+    {
+      "name": "mod1c",
+      "left": 51.297,
+      "top": 68.289,
+      "width": 3.051,
+      "height": 1.298
+    },
+    {
+      "name": "mod2c",
+      "left": 51.297,
+      "top": 71.361,
+      "width": 3.051,
+      "height": 1.298
+    },
+    {
+      "name": "type1",
+      "left": 28.256,
+      "top": 68.289,
+      "width": 2.6,
+      "height": 1.298
+    },
+    {
+      "name": "type2",
+      "left": 28.174,
+      "top": 71.361,
+      "width": 2.6,
+      "height": 1.298
+    },
+    {
+      "name": "type3",
+      "left": 28.174,
+      "top": 74.362,
+      "width": 2.6,
+      "height": 1.298
+    },
+    {
+      "name": "type4",
+      "left": 28.174,
+      "top": 77.423,
+      "width": 2.6,
+      "height": 1.298
+    },
+    {
+      "name": "cpt1",
+      "left": 31.765,
+      "top": 68.289,
+      "width": 7.601,
+      "height": 1.298
+    },
+    {
+      "name": "cpt2",
+      "left": 31.765,
+      "top": 71.361,
+      "width": 7.601,
+      "height": 1.298
+    },
+    {
+      "name": "cpt3",
+      "left": 31.765,
+      "top": 74.362,
+      "width": 7.601,
+      "height": 1.298
+    },
+    {
+      "name": "mod1",
+      "left": 40.322,
+      "top": 68.289,
+      "width": 3.378,
+      "height": 1.298
+    },
+    {
+      "name": "pin1",
+      "left": 30.631,
+      "top": 93.854,
+      "width": 11.654,
+      "height": 1.447
+    },
+    {
+      "name": "grp1",
+      "left": 44.526,
+      "top": 93.854,
+      "width": 15.623,
+      "height": 1.447
+    },
+    {
+      "name": "Suppl",
+      "left": 3.294,
+      "top": 66.786,
+      "width": 72.362,
+      "height": 1.298
+    },
+    {
+      "name": "plan1",
+      "left": 76.225,
+      "top": 68.371,
+      "width": 1.797,
+      "height": 1.263
+    },
+    {
+      "name": "plan2",
+      "left": 76.144,
+      "top": 71.338,
+      "width": 1.797,
+      "height": 1.326
+    },
+    {
+      "name": "plan3",
+      "left": 76.151,
+      "top": 74.362,
+      "width": 1.793,
+      "height": 1.298
+    },
+    {
+      "name": "plan4",
+      "left": 76.144,
+      "top": 77.399,
+      "width": 1.797,
+      "height": 1.326
+    },
+    {
+      "name": "plan5",
+      "left": 76.225,
+      "top": 80.429,
+      "width": 1.797,
+      "height": 1.326
+    },
+    {
+      "name": "plan6",
+      "left": 76.151,
+      "top": 83.463,
+      "width": 1.793,
+      "height": 1.298
+    },
+    {
+      "name": "epsdt1",
+      "left": 76.225,
+      "top": 66.856,
+      "width": 1.797,
+      "height": 1.263
+    },
+    {
+      "name": "epsdt3",
+      "left": 76.144,
+      "top": 72.79,
+      "width": 1.797,
+      "height": 1.326
+    },
+    {
+      "name": "epsdt6",
+      "left": 76.144,
+      "top": 81.881,
+      "width": 1.797,
+      "height": 1.326
+    },
+    {
+      "name": "epsdt5",
+      "left": 76.144,
+      "top": 78.851,
+      "width": 1.797,
+      "height": 1.326
+    },
+    {
+      "name": "epsdt4",
+      "left": 76.062,
+      "top": 75.947,
+      "width": 1.797,
+      "height": 1.326
+    },
+    {
+      "name": "epsdt2",
+      "left": 76.144,
+      "top": 69.823,
+      "width": 1.797,
+      "height": 1.326
+    }
+  ],
+  "radios": {
+    "276": [
+      {
+        "value": "Yes",
+        "left": 72.103,
+        "top": 84.809,
+        "width": 1.742,
+        "height": 1.242
+      }
+    ],
+    "insurance_type": [
+      {
+        "value": "Medicare",
+        "left": 3.414,
+        "top": 13.653,
+        "width": 1.65,
+        "height": 1.275
+      },
+      {
+        "value": "Medicaid",
+        "left": 11.317,
+        "top": 13.643,
+        "width": 1.65,
+        "height": 1.275
+      },
+      {
+        "value": "Tricare",
+        "left": 19.599,
+        "top": 13.679,
+        "width": 1.65,
+        "height": 1.275
+      },
+      {
+        "value": "Champva",
+        "left": 30.202,
+        "top": 13.643,
+        "width": 1.65,
+        "height": 1.275
+      },
+      {
+        "value": "Group",
+        "left": 38.453,
+        "top": 13.643,
+        "width": 1.65,
+        "height": 1.275
+      },
+      {
+        "value": "Feca",
+        "left": 47.825,
+        "top": 13.643,
+        "width": 1.65,
+        "height": 1.275
+      },
+      {
+        "value": "Other",
+        "left": 54.907,
+        "top": 13.679,
+        "width": 1.65,
+        "height": 1.275
+      }
+    ],
+    "sex": [
+      {
+        "value": "M",
+        "left": 51.378,
+        "top": 16.655,
+        "width": 1.653,
+        "height": 1.267
+      },
+      {
+        "value": "F",
+        "left": 57.236,
+        "top": 16.655,
+        "width": 1.653,
+        "height": 1.267
+      }
+    ],
+    "rel_to_ins": [
+      {
+        "value": "S",
+        "left": 40.835,
+        "top": 19.761,
+        "width": 1.652,
+        "height": 1.276
+      },
+      {
+        "value": "M",
+        "left": 46.736,
+        "top": 19.765,
+        "width": 1.652,
+        "height": 1.276
+      },
+      {
+        "value": "C",
+        "left": 51.389,
+        "top": 19.786,
+        "width": 1.652,
+        "height": 1.277
+      },
+      {
+        "value": "O",
+        "left": 57.304,
+        "top": 19.708,
+        "width": 1.652,
+        "height": 1.276
+      }
+    ],
+    "ins_sex": [
+      {
+        "value": "MALE",
+        "left": 82.016,
+        "top": 31.859,
+        "width": 1.642,
+        "height": 1.267
+      },
+      {
+        "value": "FEMALE",
+        "left": 90.384,
+        "top": 31.922,
+        "width": 1.644,
+        "height": 1.273
+      }
+    ],
+    "ins_benefit_plan": [
+      {
+        "value": "YES",
+        "left": 63.098,
+        "top": 40.956,
+        "width": 1.652,
+        "height": 1.266
+      },
+      {
+        "value": "NO",
+        "left": 69.033,
+        "top": 40.987,
+        "width": 1.652,
+        "height": 1.266
+      }
+    ],
+    "lab": [
+      {
+        "value": "YES",
+        "left": 63.258,
+        "top": 56.122,
+        "width": 1.654,
+        "height": 1.264
+      },
+      {
+        "value": "NO",
+        "left": 69.181,
+        "top": 56.107,
+        "width": 1.647,
+        "height": 1.259
+      }
+    ],
+    "assignment": [
+      {
+        "value": "YES",
+        "left": 46.912,
+        "top": 86.418,
+        "width": 1.652,
+        "height": 1.275
+      },
+      {
+        "value": "NO",
+        "left": 52.743,
+        "top": 86.43,
+        "width": 1.659,
+        "height": 1.277
+      }
+    ],
+    "employment": [
+      {
+        "value": "YES",
+        "left": 43.157,
+        "top": 31.868,
+        "width": 1.652,
+        "height": 1.276
+      },
+      {
+        "value": "NO",
+        "left": 50.322,
+        "top": 31.913,
+        "width": 1.652,
+        "height": 1.276
+      }
+    ],
+    "pt_auto_accident": [
+      {
+        "value": "YES",
+        "left": 43.281,
+        "top": 34.889,
+        "width": 1.652,
+        "height": 1.276
+      },
+      {
+        "value": "NO",
+        "left": 50.446,
+        "top": 34.934,
+        "width": 1.652,
+        "height": 1.277
+      }
+    ],
+    "other_accident": [
+      {
+        "value": "YES",
+        "left": 43.197,
+        "top": 37.823,
+        "width": 1.652,
+        "height": 1.276
+      },
+      {
+        "value": "NO",
+        "left": 50.362,
+        "top": 37.868,
+        "width": 1.652,
+        "height": 1.276
+      }
+    ],
+    "ssn": [
+      {
+        "value": "SSN",
+        "left": 22.258,
+        "top": 86.363,
+        "width": 1.655,
+        "height": 1.279
+      },
+      {
+        "value": "EIN",
+        "left": 24.536,
+        "top": 86.399,
+        "width": 1.655,
+        "height": 1.275
+      }
+    ]
+  }
+}

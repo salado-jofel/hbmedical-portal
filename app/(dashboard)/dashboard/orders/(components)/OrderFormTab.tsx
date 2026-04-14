@@ -14,6 +14,8 @@ interface OrderFormTabProps {
   orderForm: IOrderForm | null;
   order: DashboardOrder;
   canEdit: boolean;
+  canSign: boolean;
+  currentUserName: string | null;
   patientName: string | null;
   onSaved?: (updated: IOrderForm) => void;
 }
@@ -49,6 +51,8 @@ export function OrderFormTab({
   orderForm,
   order,
   canEdit,
+  canSign,
+  currentUserName,
   patientName,
   onSaved,
 }: OrderFormTabProps) {
@@ -73,6 +77,8 @@ export function OrderFormTab({
           orderForm={orderForm}
           order={order}
           canEdit={canEdit}
+          canSign={canSign}
+          currentUserName={currentUserName}
           aiStatus={aiStatus}
           patientName={patientName}
           onSaved={onSaved}
@@ -98,6 +104,8 @@ export function OrderFormTab({
             orderForm={orderForm}
             order={order}
             canEdit={canEdit}
+            canSign={canSign}
+            currentUserName={currentUserName}
             aiStatus={aiStatus}
             patientName={patientName}
             onSaved={onSaved}

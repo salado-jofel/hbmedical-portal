@@ -345,6 +345,248 @@ export async function signAndSubmitOrder(
 }
 
 /* -------------------------------------------------------------------------- */
+/* verifyProviderPin                                                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Pure PIN verification — no DB writes.  Used by all form-level Sign buttons
+ * to authenticate the provider before marking the form signed in local state.
+ */
+export async function verifyProviderPin(
+  pin: string,
+): Promise<{ success: boolean; error?: string; noPinSet?: boolean }> {
+  try {
+    const supabase = await createClient();
+    const user = await getCurrentUserOrThrow(supabase);
+    const role = await getUserRole(supabase);
+
+    if (!isClinicalProvider(role)) {
+      return { success: false, error: "Only clinical providers can sign." };
+    }
+
+    const adminClient = createAdminClient();
+
+    const { data: creds } = await adminClient
+      .from("provider_credentials")
+      .select("pin_hash")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (!creds?.pin_hash) {
+      return { success: false, error: "No PIN set. Please set up your provider PIN.", noPinSet: true };
+    }
+
+    const { data: isValid, error: rpcError } = await adminClient.rpc("verify_pin", {
+      input_pin:   pin,
+      stored_hash: creds.pin_hash,
+    });
+
+    if (rpcError || !isValid) {
+      return { success: false, error: "Incorrect PIN. Please try again." };
+    }
+
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* getUnsignedForms                                                           */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Returns the names of forms that have not yet been physician-signed.
+ * Used by the footer Sign Order / Sign & Submit handlers to block submission
+ * until all 3 forms are signed.
+ */
+export async function getUnsignedForms(
+  orderId: string,
+): Promise<{ unsignedForms: string[] }> {
+  try {
+    const adminClient = createAdminClient();
+
+    const [{ data: orderForm }, { data: ivrForm }, { data: hcfaForm }] = await Promise.all([
+      adminClient.from("order_form").select("physician_signed_at").eq("order_id", orderId).maybeSingle(),
+      adminClient.from("order_ivr").select("physician_signed_at").eq("order_id", orderId).maybeSingle(),
+      adminClient.from("order_form_1500").select("physician_signed_at").eq("order_id", orderId).maybeSingle(),
+    ]);
+
+    const unsigned: string[] = [];
+    if (!orderForm?.physician_signed_at) unsigned.push("Order Form");
+    if (!ivrForm?.physician_signed_at)   unsigned.push("IVR Form");
+    if (!hcfaForm?.physician_signed_at)  unsigned.push("CMS-1500 Form");
+
+    return { unsignedForms: unsigned };
+  } catch {
+    return { unsignedForms: ["Order Form", "IVR Form", "CMS-1500 Form"] };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* submitSignedOrder                                                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Submits an order for review after verifying all 3 forms are physician-signed.
+ * No PIN required — the form-level PIN signing already authenticated the provider.
+ * Works for both draft → manufacturer_review and pending_signature → manufacturer_review.
+ */
+export async function submitSignedOrder(
+  orderId: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await createClient();
+    const user = await getCurrentUserOrThrow(supabase);
+    const role = await getUserRole(supabase);
+
+    if (!isClinicalProvider(role)) {
+      return { success: false, error: "Only clinical providers can submit orders." };
+    }
+
+    const adminClient = createAdminClient();
+
+    // Re-validate all 3 form signatures server-side
+    const [{ data: orderForm }, { data: ivrForm }, { data: hcfaForm }] = await Promise.all([
+      adminClient.from("order_form").select("physician_signed_at").eq("order_id", orderId).maybeSingle(),
+      adminClient.from("order_ivr").select("physician_signed_at").eq("order_id", orderId).maybeSingle(),
+      adminClient.from("order_form_1500").select("physician_signed_at").eq("order_id", orderId).maybeSingle(),
+    ]);
+
+    const unsigned: string[] = [];
+    if (!orderForm?.physician_signed_at) unsigned.push("Order Form");
+    if (!ivrForm?.physician_signed_at)   unsigned.push("IVR Form");
+    if (!hcfaForm?.physician_signed_at)  unsigned.push("CMS-1500 Form");
+
+    if (unsigned.length > 0) {
+      return { success: false, error: `The following forms are not signed: ${unsigned.join(", ")}.` };
+    }
+
+    const { data: order } = await adminClient
+      .from("orders")
+      .select("id, order_status, facility_id, order_number")
+      .eq("id", orderId)
+      .maybeSingle();
+
+    if (!order) return { success: false, error: "Order not found." };
+    if (order.order_status !== "draft" && order.order_status !== "pending_signature") {
+      return { success: false, error: "Order cannot be submitted in its current status." };
+    }
+
+    const { data: membership } = await adminClient
+      .from("facility_members")
+      .select("user_id")
+      .eq("user_id", user.id)
+      .eq("facility_id", order.facility_id)
+      .eq("role_type", "clinical_provider")
+      .maybeSingle();
+
+    if (!membership) {
+      return { success: false, error: "You are not a clinical provider for this facility." };
+    }
+
+    const prevStatus = order.order_status as string;
+
+    const { error } = await adminClient
+      .from("orders")
+      .update({
+        order_status: "manufacturer_review",
+        signed_by:    user.id,
+        signed_at:    new Date().toISOString(),
+      })
+      .eq("id", orderId);
+
+    if (error) {
+      console.error("[submitSignedOrder]", JSON.stringify(error));
+      return { success: false, error: "Failed to submit order." };
+    }
+
+    await insertOrderHistory(
+      adminClient,
+      orderId,
+      "Order signed and submitted by provider",
+      prevStatus,
+      "manufacturer_review",
+      user.id,
+    );
+    createNotifications({
+      adminClient,
+      orderId,
+      orderNumber: order.order_number,
+      facilityId:  order.facility_id,
+      type:        "order_signed",
+      title:       "Order signed and submitted",
+      body:        `Order ${order.order_number} has been signed and submitted for review.`,
+      oldStatus:   prevStatus,
+      newStatus:   "manufacturer_review",
+      notifyRoles: ["admin", "support_staff"],
+      excludeUserId: user.id,
+    }).catch(() => {});
+    revalidatePath(ORDERS_PATH);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* signOrderFormPhysician                                                     */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Verifies the provider's PIN and records the physician signature on the
+ * order form (physician_signed_at + physician_signed_by).  Does not change
+ * the order status — use signOrder / signAndSubmitOrder for that.
+ */
+export async function signOrderFormPhysician(
+  orderId: string,
+  pin: string,
+): Promise<{ success: boolean; error?: string; noPinSet?: boolean }> {
+  try {
+    const supabase = await createClient();
+    const user = await getCurrentUserOrThrow(supabase);
+    const role = await getUserRole(supabase);
+
+    if (!isClinicalProvider(role)) {
+      return { success: false, error: "Only clinical providers can sign." };
+    }
+
+    const adminClient = createAdminClient();
+
+    const { data: creds } = await adminClient
+      .from("provider_credentials")
+      .select("pin_hash")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (!creds?.pin_hash) {
+      return { success: false, error: "No PIN set. Please set up your provider PIN.", noPinSet: true };
+    }
+
+    const { data: isValid, error: rpcError } = await adminClient.rpc("verify_pin", {
+      input_pin:   pin,
+      stored_hash: creds.pin_hash,
+    });
+
+    if (rpcError || !isValid) {
+      return { success: false, error: "Incorrect PIN. Please try again." };
+    }
+
+    const now = new Date().toISOString();
+
+    await adminClient
+      .from("order_form")
+      .update({ physician_signed_at: now, physician_signed_by: user.id })
+      .eq("order_id", orderId);
+
+    revalidatePath(ORDERS_PATH);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
 /* approveOrder                                                               */
 /* -------------------------------------------------------------------------- */
 
