@@ -338,6 +338,8 @@ export async function saveOrderForm(
     patient_date?: string | null;
     physician_signature?: string | null;
     physician_signature_date?: string | null;
+    physician_signed_at?: string | null;
+    physician_signed_by?: string | null;
   },
 ): Promise<{ success: boolean; error?: string }> {
   try {

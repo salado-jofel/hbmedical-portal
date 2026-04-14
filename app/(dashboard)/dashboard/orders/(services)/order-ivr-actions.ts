@@ -94,6 +94,8 @@ function mapIvrRow(data: Record<string, unknown>): IOrderIVR {
     isPatientAtSnf:              data.is_patient_at_snf as boolean | null,
     physicianSignature:          data.physician_signature as string | null,
     physicianSignatureDate:      data.physician_signature_date as string | null,
+    physicianSignedAt:           data.physician_signed_at as string | null,
+    physicianSignedBy:           data.physician_signed_by as string | null,
     aiExtracted:                 (data.ai_extracted as boolean) ?? false,
     createdAt:                   data.created_at as string,
     updatedAt:                   data.updated_at as string,
@@ -223,6 +225,8 @@ export async function upsertOrderIVR(
     if (data.isPatientAtSnf !== undefined)       payload.is_patient_at_snf      = data.isPatientAtSnf;
     if (data.physicianSignature !== undefined)   payload.physician_signature    = data.physicianSignature;
     if (data.physicianSignatureDate !== undefined) payload.physician_signature_date = data.physicianSignatureDate;
+    if (data.physicianSignedAt !== undefined)    payload.physician_signed_at    = data.physicianSignedAt;
+    if (data.physicianSignedBy !== undefined)    payload.physician_signed_by    = data.physicianSignedBy;
 
     const { error } = await adminClient
       .from("order_ivr")
@@ -323,6 +327,8 @@ export async function getOrderAiStatus(
       patientDate:                 form.patient_date ?? null,
       physicianSignature:          form.physician_signature ?? null,
       physicianSignatureDate:      form.physician_signature_date ?? null,
+      physicianSignedAt:           form.physician_signed_at ?? null,
+      physicianSignedBy:           form.physician_signed_by ?? null,
       aiExtracted:                 form.ai_extracted ?? false,
       aiExtractedAt:               form.ai_extracted_at ?? null,
       isLocked:                    form.is_locked ?? false,

@@ -285,6 +285,8 @@ export interface IOrderIVR {
   isPatientAtSnf: boolean | null;
   physicianSignature: string | null;
   physicianSignatureDate: string | null;
+  physicianSignedAt: string | null;
+  physicianSignedBy: string | null;
   aiExtracted: boolean;
   createdAt: string;
   updatedAt: string;
@@ -307,6 +309,9 @@ export interface IServiceLine {
   epsdt:             string;  // 24H
   id_qualifier:      string;  // 24I
   rendering_npi:     string;  // 24J
+  suppl?:            string;  // 24 supplemental info
+  service_type?:     string;  // 24C service type
+  family_plan?:      string;  // 24H family plan
 }
 
 export interface IOrderForm1500 {
@@ -456,6 +461,8 @@ export interface IOrderForm {
   patientDate: string | null;
   physicianSignature: string | null;
   physicianSignatureDate: string | null;
+  physicianSignedAt: string | null;
+  physicianSignedBy: string | null;
   // Meta
   aiExtracted: boolean;
   aiExtractedAt: string | null;

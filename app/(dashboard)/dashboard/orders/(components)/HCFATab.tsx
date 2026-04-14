@@ -1,5 +1,6 @@
 "use client";
 
+import type { DashboardOrder } from "@/utils/interfaces/orders";
 import { HCFA1500Document } from "./HCFA1500Document";
 import { cn } from "@/utils/utils";
 
@@ -26,8 +27,10 @@ function FormSkeleton() {
 
 interface HCFATabProps {
   isActive: boolean;
-  orderId: string;
+  order: DashboardOrder;
   canEdit: boolean;
+  canSign: boolean;
+  currentUserName: string | null;
   hcfaData: Record<string, unknown> | null;
   resetHcfaKey: number;
   isReady: boolean;
@@ -38,8 +41,10 @@ interface HCFATabProps {
 
 export function HCFATab({
   isActive,
-  orderId,
+  order,
   canEdit,
+  canSign,
+  currentUserName,
   hcfaData,
   resetHcfaKey,
   isReady,
@@ -59,8 +64,10 @@ export function HCFATab({
       ) : (
         <HCFA1500Document
           key={resetHcfaKey}
-          orderId={orderId}
+          order={order}
           canEdit={canEdit}
+          canSign={canSign}
+          currentUserName={currentUserName}
           initialData={hcfaData}
           onDirtyChange={onDirtyChange}
           onSave={onSave}
