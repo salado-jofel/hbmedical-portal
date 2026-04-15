@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, Loader2, Upload, X, FileText } from "lucide-react";
 import { createOrder } from "../(services)/order-write-actions";
-import { uploadOrderDocument } from "../(services)/order-document-actions";
+import { uploadOrderDocument, triggerOrderExtraction } from "../(services)/order-document-actions";
 import { getOrderById } from "../(services)/order-read-actions";
 import { addOrderToStore } from "../(redux)/orders-slice";
 import { useAppDispatch } from "@/store/hooks";
@@ -274,7 +274,8 @@ export function CreateOrderModal() {
 
       const orderId = result.orderId;
 
-      // Upload documents sequentially
+      // Upload documents sequentially; collect file paths for AI extraction
+      const extractableDocs: Array<{ documentType: string; filePath: string }> = [];
       for (let i = 0; i < docs.length; i++) {
         const d = docs[i];
         setUploadProgress(`Uploading ${i + 1}/${docs.length}: ${d.file.name}`);
@@ -287,7 +288,22 @@ export function CreateOrderModal() {
         );
         if (!res.success) {
           toast.error(`Failed to upload ${d.file.name}: ${res.error}`);
+        } else if (
+          res.document &&
+          ["facesheet", "clinical_docs"].includes(d.type)
+        ) {
+          extractableDocs.push({
+            documentType: d.type,
+            filePath: res.document.filePath,
+          });
         }
+      }
+
+      // Trigger a single combined AI extraction after all uploads complete
+      if (extractableDocs.length > 0) {
+        triggerOrderExtraction(orderId, extractableDocs).catch((err) =>
+          console.error("[CreateOrderModal] AI trigger:", err),
+        );
       }
 
       setUploadProgress(null);

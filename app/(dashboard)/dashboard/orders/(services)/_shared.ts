@@ -211,6 +211,46 @@ export async function createNotifications(params: {
   }
 }
 
+export async function triggerCombinedExtraction(
+  orderId: string,
+  documents: Array<{ documentType: string; filePath: string; bucket?: string }>,
+): Promise<{ success: boolean; error: string | null; skipped?: boolean }> {
+  try {
+    const extractable = documents.filter((d) =>
+      ["facesheet", "clinical_docs"].includes(d.documentType),
+    );
+    if (extractable.length === 0) {
+      return { success: true, error: null, skipped: true };
+    }
+
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+
+    const response = await fetch(`${baseUrl}/api/ai/extract-document`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        orderId,
+        documents: extractable.map((d) => ({
+          ...d,
+          bucket: d.bucket ?? BUCKET,
+        })),
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || data.error) {
+      console.error("[triggerCombinedExtraction]", data.error);
+      return { success: false, error: data.error };
+    }
+
+    return { success: true, error: null };
+  } catch (err) {
+    console.error("[triggerCombinedExtraction] unexpected:", err);
+    return { success: false, error: "AI extraction failed — fill form manually." };
+  }
+}
+
 export async function triggerAiExtraction(
   orderId: string,
   documentType: string,
