@@ -1464,6 +1464,18 @@ export function OrderDetailModal({
               <div className="flex flex-1 overflow-hidden">
                 {/* ──── LEFT COLUMN: Tabs ──── */}
                 <div className="flex-1 flex flex-col border-r border-[var(--border)] overflow-hidden min-w-0">
+                  {aiStatus === "processing" ? (
+                    /* Extraction in progress — block all tab interaction */
+                    <div className="flex-1 flex flex-col items-center justify-center gap-4 p-10">
+                      <Loader2 className="w-10 h-10 text-[var(--navy)] animate-spin" />
+                      <div className="text-center space-y-1">
+                        <p className="text-[14px] font-semibold text-[var(--navy)]">AI is analyzing your documents</p>
+                        <p className="text-[13px] text-[var(--text2)]">Forms will be auto-filled and ready shortly — please wait</p>
+                        <p className="text-[11px] text-[var(--text3)] mt-2">This usually takes 30–60 seconds</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
                   {/* Tab bar */}
                   <div className="flex-shrink-0 border-b border-[var(--border)] px-3 py-2">
                     <div
@@ -1542,7 +1554,7 @@ export function OrderDetailModal({
                       ivrData={ivrData}
                       resetIvrKey={resetIvrKey}
                       isReady={loadedTabs.has("ivr")}
-                      isExtracting={aiStatus === "processing"}
+                      isExtracting={false}
                       onDirtyChange={setIsIvrDirty}
                       onSave={async (saved) => {
                         setIvrData(saved);
@@ -1558,7 +1570,7 @@ export function OrderDetailModal({
                       hcfaData={hcfaData}
                       resetHcfaKey={resetHcfaKey}
                       isReady={loadedTabs.has("hcfa")}
-                      isExtracting={aiStatus === "processing"}
+                      isExtracting={false}
                       onDirtyChange={setIsHcfaDirty}
                       onSave={async (saved) => {
                         setHcfaData(saved);
@@ -1586,6 +1598,8 @@ export function OrderDetailModal({
                     />
                   </div>
                   {/* end tab content */}
+                    </>
+                  )}
 
                   {/* ── Footer: action buttons ── */}
                   <div className="flex-shrink-0 px-5 py-3 border-t border-[var(--border)] flex items-center justify-end bg-[var(--surface)]">
@@ -1870,7 +1884,8 @@ export function OrderDetailModal({
                                 {!uploaded &&
                                   !isPdfGenerating &&
                                   !isAiGenerating &&
-                                  isRegenerableType && (
+                                  isRegenerableType &&
+                                  aiStatus !== "processing" && (
                                     <button
                                       type="button"
                                       onClick={() =>
