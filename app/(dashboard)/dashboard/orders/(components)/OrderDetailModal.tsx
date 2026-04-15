@@ -80,6 +80,7 @@ import {
   deleteOrderDocument,
   getDocumentSignedUrl,
   getForm1500,
+  triggerDocumentExtraction,
 } from "../(services)/order-document-actions";
 import {
   sendOrderMessage,
@@ -250,6 +251,11 @@ export function OrderDetailModal({
   // effect cleanup kills the interval before completion — this flag lets the
   // Master AI effect detect that and run the IVR/HCFA fetch itself.
   const pollCompletedRef = useRef(false);
+  // One-way latch: once AI extraction is confirmed complete for this modal session,
+  // never allow aiStatus to regress back to "processing". Stale RSC payloads or
+  // realtime events can temporarily deliver order.ai_extracted=false even after
+  // extraction finished — this ref gates against those transient flips.
+  const aiCompletedRef = useRef(false);
 
   function beginPolling() {
     if (pollingIntervalRef.current) {
@@ -262,6 +268,11 @@ export function OrderDetailModal({
       try {
         const result = await getOrderAiStatus(order.id);
         if (result.aiExtracted && result.orderForm) {
+          // Guard: the Master AI effect fallback may have already fired while this
+          // in-flight poll callback was awaiting getOrderAiStatus. Without this check
+          // both paths complete and increment resetHcfaKey/resetIvrKey twice, causing
+          // the HCFA skeleton to flash a second time.
+          if (pollCompletedRef.current) return;
           pollCompletedRef.current = true;
           setOrderForm(result.orderForm);
           setAiStatus("complete");
@@ -375,8 +386,12 @@ export function OrderDetailModal({
       }
       pollCountRef.current = 0;
       aiToastShownRef.current = false;
+      aiCompletedRef.current = false;
       return;
     }
+
+    // Reset latch on open so it reflects the current order's extraction state
+    aiCompletedRef.current = order.ai_extracted;
 
     // Mark immediately-ready tabs; others load on first visit
     setLoadedTabs(new Set(["overview", "order-form"]));
@@ -449,6 +464,7 @@ export function OrderDetailModal({
     pollCountRef.current = 0;
 
     if (order.ai_extracted) {
+      aiCompletedRef.current = true; // Latch: extraction confirmed complete
       setAiStatus("complete");
       getOrderAiStatus(order.id).then((result) => {
         if (result.orderForm) setOrderForm(result.orderForm);
@@ -475,6 +491,12 @@ export function OrderDetailModal({
       }
       return;
     }
+
+    // order.ai_extracted is false — but guard against stale props after completion.
+    // Delayed RSC payloads or out-of-order realtime events can briefly deliver
+    // ai_extracted=false even after extraction finished. Once the latch is set,
+    // never regress aiStatus back to "processing".
+    if (aiCompletedRef.current) return;
 
     setOrderForm(null);
     // Only treat as "processing" if the order was created very recently (within 10 min).
@@ -903,10 +925,17 @@ export function OrderDetailModal({
     if (result.success && result.document) {
       setDocuments((prev) => [result.document!, ...prev]);
       toast.success("Document uploaded.");
-      // Start AI polling for extractable doc types
+      // Start AI polling and explicitly trigger extraction for extractable doc types
+      // (auto-trigger was removed from uploadOrderDocument to prevent races on new orders)
       if (["facesheet", "clinical_docs"].includes(docType)) {
         setAiStatus("processing");
+        pollCompletedRef.current = false;
         beginPolling();
+        triggerDocumentExtraction(
+          order.id,
+          docType,
+          result.document.filePath,
+        ).catch((err) => console.error("[handleUploadDoc] AI trigger:", err));
       }
       if (docType === "wound_pictures") {
         const { url } = await getDocumentSignedUrl(result.document.filePath);
@@ -1435,6 +1464,18 @@ export function OrderDetailModal({
               <div className="flex flex-1 overflow-hidden">
                 {/* ──── LEFT COLUMN: Tabs ──── */}
                 <div className="flex-1 flex flex-col border-r border-[var(--border)] overflow-hidden min-w-0">
+                  {aiStatus === "processing" ? (
+                    /* Extraction in progress — block all tab interaction */
+                    <div className="flex-1 flex flex-col items-center justify-center gap-4 p-10">
+                      <Loader2 className="w-10 h-10 text-[var(--navy)] animate-spin" />
+                      <div className="text-center space-y-1">
+                        <p className="text-[14px] font-semibold text-[var(--navy)]">AI is analyzing your documents</p>
+                        <p className="text-[13px] text-[var(--text2)]">Forms will be auto-filled and ready shortly — please wait</p>
+                        <p className="text-[11px] text-[var(--text3)] mt-2">This usually takes 30–60 seconds</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
                   {/* Tab bar */}
                   <div className="flex-shrink-0 border-b border-[var(--border)] px-3 py-2">
                     <div
@@ -1513,7 +1554,7 @@ export function OrderDetailModal({
                       ivrData={ivrData}
                       resetIvrKey={resetIvrKey}
                       isReady={loadedTabs.has("ivr")}
-                      isExtracting={aiStatus === "processing"}
+                      isExtracting={false}
                       onDirtyChange={setIsIvrDirty}
                       onSave={async (saved) => {
                         setIvrData(saved);
@@ -1529,7 +1570,7 @@ export function OrderDetailModal({
                       hcfaData={hcfaData}
                       resetHcfaKey={resetHcfaKey}
                       isReady={loadedTabs.has("hcfa")}
-                      isExtracting={aiStatus === "processing"}
+                      isExtracting={false}
                       onDirtyChange={setIsHcfaDirty}
                       onSave={async (saved) => {
                         setHcfaData(saved);
@@ -1557,6 +1598,8 @@ export function OrderDetailModal({
                     />
                   </div>
                   {/* end tab content */}
+                    </>
+                  )}
 
                   {/* ── Footer: action buttons ── */}
                   <div className="flex-shrink-0 px-5 py-3 border-t border-[var(--border)] flex items-center justify-end bg-[var(--surface)]">
@@ -1841,7 +1884,8 @@ export function OrderDetailModal({
                                 {!uploaded &&
                                   !isPdfGenerating &&
                                   !isAiGenerating &&
-                                  isRegenerableType && (
+                                  isRegenerableType &&
+                                  aiStatus !== "processing" && (
                                     <button
                                       type="button"
                                       onClick={() =>

@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, Loader2, Upload, X, FileText } from "lucide-react";
 import { createOrder } from "../(services)/order-write-actions";
-import { uploadOrderDocument } from "../(services)/order-document-actions";
+import { uploadOrderDocument, triggerOrderExtraction } from "../(services)/order-document-actions";
 import { getOrderById } from "../(services)/order-read-actions";
 import { addOrderToStore } from "../(redux)/orders-slice";
 import { useAppDispatch } from "@/store/hooks";
@@ -23,7 +23,30 @@ import { WOUND_TYPES } from "@/utils/constants/orders";
 type DocFile = { file: File; type: string };
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-const ACCEPT = ".pdf,.jpg,.jpeg,.png,.heic,image/*";
+
+// Documents: PDF or images (AI extraction supports these formats only)
+const ACCEPT_DOCS = ".pdf,.jpg,.jpeg,.png,.heic";
+// Wound pictures: images only
+const ACCEPT_IMAGES = ".jpg,.jpeg,.png,.heic";
+
+const VALID_DOC_EXTS = new Set([".pdf", ".jpg", ".jpeg", ".png", ".heic"]);
+const VALID_IMG_EXTS = new Set([".jpg", ".jpeg", ".png", ".heic"]);
+
+function fileExt(file: File): string {
+  return "." + (file.name.split(".").pop() ?? "").toLowerCase();
+}
+
+function isValidDocFile(file: File): boolean {
+  return (
+    VALID_DOC_EXTS.has(fileExt(file)) ||
+    file.type === "application/pdf" ||
+    file.type.startsWith("image/")
+  );
+}
+
+function isValidImageFile(file: File): boolean {
+  return VALID_IMG_EXTS.has(fileExt(file)) || file.type.startsWith("image/");
+}
 
 function formatSize(bytes: number): string {
   return bytes < 1024 * 1024
@@ -41,6 +64,8 @@ interface UploadZoneProps {
   onAdd: (files: File[], type: string) => void;
   onRemove: (idx: number) => void;
   error?: boolean;
+  accept: string;
+  fileType: "document" | "image";
 }
 
 function UploadZone({
@@ -53,9 +78,14 @@ function UploadZone({
   onAdd,
   onRemove,
   error,
+  accept,
+  fileType,
 }: UploadZoneProps) {
   const [isDragging, setIsDragging] = useState(false);
   const typeFiles = files.filter((f) => f.type === docType);
+  const isValid = fileType === "image" ? isValidImageFile : isValidDocFile;
+  const allowedLabel = fileType === "image" ? "JPG, PNG, HEIC" : "PDF, JPG, PNG, HEIC";
+  const hintText = fileType === "image" ? "JPG, PNG, HEIC · max 10 MB" : "PDF, JPG, PNG, HEIC · max 10 MB";
 
   // Map local index within this docType back to global index in `files`
   function globalIdx(localIdx: number): number {
@@ -77,6 +107,10 @@ function UploadZone({
     const valid = droppedFiles.filter((f) => {
       if (f.size > MAX_FILE_SIZE) {
         toast.error(`${f.name} exceeds 10 MB.`);
+        return false;
+      }
+      if (!isValid(f)) {
+        toast.error(`${f.name}: unsupported format. Allowed: ${allowedLabel}`);
         return false;
       }
       return true;
@@ -124,18 +158,22 @@ function UploadZone({
             <span className="text-[var(--navy)] font-medium">browse</span>
           </span>
           <span className="text-[11px] text-slate-400 mt-1">
-            PDF, JPG, PNG, HEIC · max 10 MB
+            {hintText}
           </span>
           <input
             type="file"
             className="hidden"
-            accept={ACCEPT}
+            accept={accept}
             multiple={multiple}
             onChange={(e) => {
               const selected = Array.from(e.target.files ?? []);
               const valid = selected.filter((f) => {
                 if (f.size > MAX_FILE_SIZE) {
                   toast.error(`${f.name} exceeds 10 MB.`);
+                  return false;
+                }
+                if (!isValid(f)) {
+                  toast.error(`${f.name}: unsupported format. Allowed: ${allowedLabel}`);
                   return false;
                 }
                 return true;
@@ -182,13 +220,17 @@ function UploadZone({
             <input
               type="file"
               className="hidden"
-              accept={ACCEPT}
+              accept={accept}
               multiple={multiple}
               onChange={(e) => {
                 const selected = Array.from(e.target.files ?? []);
                 const valid = selected.filter((f) => {
                   if (f.size > MAX_FILE_SIZE) {
                     toast.error(`${f.name} exceeds 10 MB.`);
+                    return false;
+                  }
+                  if (!isValid(f)) {
+                    toast.error(`${f.name}: unsupported format. Allowed: ${allowedLabel}`);
                     return false;
                   }
                   return true;
@@ -274,7 +316,8 @@ export function CreateOrderModal() {
 
       const orderId = result.orderId;
 
-      // Upload documents sequentially
+      // Upload documents sequentially; collect file paths for AI extraction
+      const extractableDocs: Array<{ documentType: string; filePath: string }> = [];
       for (let i = 0; i < docs.length; i++) {
         const d = docs[i];
         setUploadProgress(`Uploading ${i + 1}/${docs.length}: ${d.file.name}`);
@@ -287,7 +330,22 @@ export function CreateOrderModal() {
         );
         if (!res.success) {
           toast.error(`Failed to upload ${d.file.name}: ${res.error}`);
+        } else if (
+          res.document &&
+          ["facesheet", "clinical_docs"].includes(d.type)
+        ) {
+          extractableDocs.push({
+            documentType: d.type,
+            filePath: res.document.filePath,
+          });
         }
+      }
+
+      // Trigger a single combined AI extraction after all uploads complete
+      if (extractableDocs.length > 0) {
+        triggerOrderExtraction(orderId, extractableDocs).catch((err) =>
+          console.error("[CreateOrderModal] AI trigger:", err),
+        );
       }
 
       setUploadProgress(null);
@@ -453,6 +511,8 @@ export function CreateOrderModal() {
                   onAdd={addDocs}
                   onRemove={removeDoc}
                   error={facesheetError}
+                  accept={ACCEPT_DOCS}
+                  fileType="document"
                 />
                 <UploadZone
                   label="Clinical Documentation"
@@ -464,6 +524,8 @@ export function CreateOrderModal() {
                   onAdd={addDocs}
                   onRemove={removeDoc}
                   error={clinicalDocsError}
+                  accept={ACCEPT_DOCS}
+                  fileType="document"
                 />
               </div>
 
@@ -489,6 +551,8 @@ export function CreateOrderModal() {
                 onAdd={addDocs}
                 onRemove={removeDoc}
                 error={woundPicsError}
+                accept={ACCEPT_IMAGES}
+                fileType="image"
               />
               {woundPicsError && (
                 <p className="text-xs text-red-500">

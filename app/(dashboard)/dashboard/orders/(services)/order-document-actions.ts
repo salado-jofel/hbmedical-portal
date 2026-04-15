@@ -11,6 +11,7 @@ import {
   getDocumentLabel,
   insertOrderHistory,
   triggerAiExtraction,
+  triggerCombinedExtraction,
   generateOrderPDFs,
 } from "./_shared";
 
@@ -67,13 +68,6 @@ export async function uploadOrderDocument(
       // Clean up storage
       await adminClient.storage.from(BUCKET).remove([filePath]);
       return { success: false, error: "Failed to save document record." };
-    }
-
-    // Non-blocking AI extraction for facesheet and clinical_docs
-    if (["facesheet", "clinical_docs"].includes(documentType)) {
-      triggerAiExtraction(orderId, documentType, filePath).catch((err) =>
-        console.error("[uploadOrderDocument] AI trigger:", err),
-      );
     }
 
     await insertOrderHistory(
@@ -302,4 +296,37 @@ export async function getForm1500(orderId: string) {
   if (!row.billing_provider_tax_id)  row.billing_provider_tax_id  = enrollment?.facility_tin ?? null;
 
   return row;
+}
+
+/* -------------------------------------------------------------------------- */
+/* AI extraction server action wrappers (callable from client components)     */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Trigger single-document AI extraction (for re-uploads from the detail modal).
+ * Fire-and-forget — returns immediately; extraction runs in the background.
+ */
+export async function triggerDocumentExtraction(
+  orderId: string,
+  documentType: string,
+  filePath: string,
+): Promise<{ success: boolean; error: string | null }> {
+  triggerAiExtraction(orderId, documentType, filePath).catch((err) =>
+    console.error("[triggerDocumentExtraction]", err),
+  );
+  return { success: true, error: null };
+}
+
+/**
+ * Trigger combined AI extraction for a new order (facesheet + clinical_docs together).
+ * Fire-and-forget — returns immediately; extraction runs in the background.
+ */
+export async function triggerOrderExtraction(
+  orderId: string,
+  documents: Array<{ documentType: string; filePath: string }>,
+): Promise<{ success: boolean; error: string | null }> {
+  triggerCombinedExtraction(orderId, documents).catch((err) =>
+    console.error("[triggerOrderExtraction]", err),
+  );
+  return { success: true, error: null };
 }
