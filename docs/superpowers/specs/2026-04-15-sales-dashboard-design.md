@@ -1,26 +1,26 @@
 # Sales Dashboard — Design Spec
 **Date:** 2026-04-15  
-**Scope:** Enhance existing Accounts and Rep Performance pages for the `sales_representative` role to match the client's reference dashboard (Lucas AI Sales Dashboard).
+**Scope:** Enhance existing Accounts and Rep Performance pages for both `sales_representative` and `admin` roles to match the client's reference dashboard (Lucas AI Sales Dashboard).
 
 ---
 
 ## Overview
 
-Two existing pages get enhanced for the sales rep role. Admins are unaffected.
+Two existing pages get enhanced. Both admins and reps see the new enriched accounts view.
 
 | Page | Change |
 |---|---|
-| `/dashboard/accounts` | Rep sees KPI rows + enriched table with per-account order metrics + period filter |
+| `/dashboard/accounts` | All roles see KPI rows + enriched table with per-account order metrics + period filter. Admins see all accounts; reps see accounts scoped to them and their sub-reps. |
 | `/dashboard/rep-performance` | Two new KPI cards added (Pipeline Revenue, 1-Year Est. Projected) |
 
 ABC tiers are out of scope for this iteration.
 
 ---
 
-## 1. Accounts Page — Rep View (`/dashboard/accounts`)
+## 1. Accounts Page (`/dashboard/accounts`)
 
 ### 1.1 KPI Row 1 — Counts
-Four cards rendered above the table when `isSalesRep(role)`:
+Four cards rendered above the table for all roles:
 
 | Card | Value |
 |---|---|
@@ -41,7 +41,7 @@ Three cards rendered below the counts row:
 Commission amounts = revenue × rep's current `commission_rate` (from existing commissions system).
 
 ### 1.3 Period Filter
-Added to the rep filter bar alongside the existing view toggle and search. Options:
+Added to the filter bar for all roles, alongside the existing view toggle (rep) / rep filter dropdown (admin) and search. Options:
 
 - This Month *(default)*
 - Last 3 Months
@@ -49,7 +49,7 @@ Added to the rep filter bar alongside the existing view toggle and search. Optio
 
 Period selection is stored in Redux accounts slice. Changing the period triggers a page-level re-fetch via `router.refresh()` or a Redux-driven re-query (implementation detail to decide in plan).
 
-### 1.4 Enhanced Table Columns (rep view only)
+### 1.4 Enhanced Table Columns (all roles)
 Replaces the current CRM columns (Status, Assigned Rep, Location, Contacts, Orders) with:
 
 | Column | Value | Notes |
@@ -65,12 +65,13 @@ Replaces the current CRM columns (Status, Assigned Rep, Location, Contacts, Orde
 
 Rows still navigate to `/dashboard/accounts/[id]` on click.
 
-### 1.5 New Component: `AccountsRepKpiRow`
-File: `app/(dashboard)/dashboard/accounts/(sections)/AccountsRepKpiRow.tsx`  
-Renders the two KPI rows. Receives totals computed from the accounts Redux slice via selectors.
+### 1.5 New Component: `AccountsKpiRow`
+File: `app/(dashboard)/dashboard/accounts/(sections)/AccountsKpiRow.tsx`  
+Renders the two KPI rows. Receives totals computed from the accounts Redux slice via selectors. Shown for all roles.
 
-### 1.6 Admin view unchanged
-When `isAdmin(role)`, the page calls the existing `getAccounts()` and renders the current `AccountsList` with no changes.
+### 1.6 Role scoping
+- **Admin:** `getAccountsWithMetrics()` returns all facilities. Rep filter dropdown still present to narrow results. KPI rows reflect currently filtered set.
+- **Sales rep:** `getAccountsWithMetrics()` returns only facilities assigned to the rep or their sub-reps. View toggle (All / My Accounts / Sub-Rep) still present.
 
 ---
 
@@ -96,8 +97,8 @@ Everything else on the page is unchanged (RepHero, QuickLogBanner, RepTables, Ad
 getAccountsWithMetrics(period: "this_month" | "last_3_months" | "all_time"): Promise<IAccountWithMetrics[]>
 ```
 
-- Auth: `sales_representative` only (redirects otherwise)
-- Fetches facilities scoped to the rep (assigned to them or to their sub-reps)
+- Auth: `sales_representative` or `admin` (redirects otherwise)
+- Fetches facilities scoped by role: reps see their own + sub-rep accounts; admins see all
 - Joins `orders` + `order_items` per facility
 - Returns per-facility aggregates: `signed_count`, `delivered_count`, `avg_day`, `avg_week`, `one_year_est`, `onboarded_at`, `invited_by_name`, `delivered_revenue`, `pipeline_revenue`, `commission_amount`
 - Period filtering applied via `placed_at` date range on orders
@@ -145,14 +146,14 @@ interface IAccountWithMetrics extends IAccount {
 ### New files
 | File | Purpose |
 |---|---|
-| `accounts/(sections)/AccountsRepKpiRow.tsx` | Two KPI rows (counts + revenue) for rep view |
+| `accounts/(sections)/AccountsKpiRow.tsx` | Two KPI rows (counts + revenue) for all roles |
 
 ### Modified files
 | File | Change |
 |---|---|
 | `accounts/(services)/actions.ts` | Add `getAccountsWithMetrics()` |
-| `accounts/page.tsx` | Call `getAccountsWithMetrics()` for reps, `getAccounts()` for admins |
-| `accounts/(sections)/AccountsList.tsx` | Add metric columns + period dropdown for rep view |
+| `accounts/page.tsx` | Both roles call `getAccountsWithMetrics()`; `getAccounts()` retired from this page |
+| `accounts/(sections)/AccountsList.tsx` | Replace CRM columns with metric columns + period dropdown for all roles |
 | `accounts/(sections)/Providers.tsx` | Pass `IAccountWithMetrics[]` to Redux |
 | `utils/interfaces/accounts.ts` | Add `IAccountWithMetrics` |
 | `store/accounts-slice.ts` | Add `period` field + `setPeriod` action |
@@ -166,4 +167,3 @@ interface IAccountWithMetrics extends IAccount {
 - ABC Tier system (A/B/C badges per account)
 - "Generate Report" button
 - Sales Reps, Revenue, Onboarding, Media tabs from the reference image
-- Admin-side visibility into per-rep account metrics
