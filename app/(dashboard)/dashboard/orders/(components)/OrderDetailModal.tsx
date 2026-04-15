@@ -80,6 +80,7 @@ import {
   deleteOrderDocument,
   getDocumentSignedUrl,
   getForm1500,
+  triggerDocumentExtraction,
 } from "../(services)/order-document-actions";
 import {
   sendOrderMessage,
@@ -245,6 +246,16 @@ export function OrderDetailModal({
   );
   const pollCountRef = useRef(0);
   const aiToastShownRef = useRef(false);
+  // Tracks whether the poll ran its full completion handler (fetched IVR/HCFA).
+  // If the Supabase realtime UPDATE arrives before the next poll tick, React's
+  // effect cleanup kills the interval before completion — this flag lets the
+  // Master AI effect detect that and run the IVR/HCFA fetch itself.
+  const pollCompletedRef = useRef(false);
+  // One-way latch: once AI extraction is confirmed complete for this modal session,
+  // never allow aiStatus to regress back to "processing". Stale RSC payloads or
+  // realtime events can temporarily deliver order.ai_extracted=false even after
+  // extraction finished — this ref gates against those transient flips.
+  const aiCompletedRef = useRef(false);
 
   function beginPolling() {
     if (pollingIntervalRef.current) {
@@ -257,13 +268,22 @@ export function OrderDetailModal({
       try {
         const result = await getOrderAiStatus(order.id);
         if (result.aiExtracted && result.orderForm) {
+          // Guard: the Master AI effect fallback may have already fired while this
+          // in-flight poll callback was awaiting getOrderAiStatus. Without this check
+          // both paths complete and increment resetHcfaKey/resetIvrKey twice, causing
+          // the HCFA skeleton to flash a second time.
+          if (pollCompletedRef.current) return;
+          pollCompletedRef.current = true;
           setOrderForm(result.orderForm);
           setAiStatus("complete");
           if (pollingIntervalRef.current) {
             clearInterval(pollingIntervalRef.current);
             pollingIntervalRef.current = null;
           }
-          setTab("order-form");
+          // Only auto-switch to order-form if user hasn't navigated away
+          setTab((current) =>
+            current === "overview" || current === "order-form" ? "order-form" : current,
+          );
           if (!aiToastShownRef.current) {
             aiToastShownRef.current = true;
             toast.success("AI extraction complete — please review the data", {
@@ -281,13 +301,16 @@ export function OrderDetailModal({
             }
           });
           // Refresh IVR and HCFA with AI-extracted data so those tabs are current
+          // Increment reset keys so already-mounted forms remount with fresh AI data
           getOrderIVR(order.id).then(({ ivr }) => {
             setIvrData(ivr ?? {});
             setLoadedTabs((prev) => new Set([...prev, "ivr"]));
+            setResetIvrKey((k) => k + 1);
           });
           getForm1500(order.id).then((data) => {
             setHcfaData((data as Record<string, unknown>) ?? {});
             setLoadedTabs((prev) => new Set([...prev, "hcfa"]));
+            setResetHcfaKey((k) => k + 1);
           });
           return;
         }
@@ -356,8 +379,19 @@ export function OrderDetailModal({
       setInvoiceData(null);
       setMessages([]);
       setHistory([]);
+      // Reset poll state so stale counters don't affect the next open
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+      pollCountRef.current = 0;
+      aiToastShownRef.current = false;
+      aiCompletedRef.current = false;
       return;
     }
+
+    // Reset latch on open so it reflects the current order's extraction state
+    aiCompletedRef.current = order.ai_extracted;
 
     // Mark immediately-ready tabs; others load on first visit
     setLoadedTabs(new Set(["overview", "order-form"]));
@@ -392,16 +426,18 @@ export function OrderDetailModal({
         });
       }
 
-      // AI polling check
+      // AI polling check — only for recently created orders that haven't been extracted yet
       if (!order.ai_extracted) {
+        const ageMs = Date.now() - new Date(order.created_at).getTime();
+        const isRecentOrder = ageMs < 10 * 60 * 1000;
         const hasTriggerDoc = docs.some((d) =>
           ["facesheet", "clinical_docs"].includes(d.documentType),
         );
-        if (hasTriggerDoc) {
+        if (hasTriggerDoc && isRecentOrder) {
           // aiStatus is already "processing" from the Master AI effect
           beginPolling();
         } else {
-          // No extractable docs — allow manual entry
+          // Old order or no extractable docs — show form as-is
           setAiStatus("idle");
         }
       }
@@ -416,6 +452,7 @@ export function OrderDetailModal({
         pollingIntervalRef.current = null;
       }
       aiToastShownRef.current = false;
+      pollCompletedRef.current = false;
       return;
     }
 
@@ -427,17 +464,46 @@ export function OrderDetailModal({
     pollCountRef.current = 0;
 
     if (order.ai_extracted) {
+      aiCompletedRef.current = true; // Latch: extraction confirmed complete
       setAiStatus("complete");
       getOrderAiStatus(order.id).then((result) => {
         if (result.orderForm) setOrderForm(result.orderForm);
       });
+
+      // Guard: if the Supabase realtime UPDATE arrived before the next poll tick,
+      // React's effect cleanup killed the interval before the poll completion handler
+      // ran (which is the only place that fetches IVR/HCFA for new orders).
+      // Detect this by checking the flag and fetch IVR/HCFA here as a fallback.
+      const ageMs = Date.now() - new Date(order.created_at).getTime();
+      const isRecentOrder = ageMs < 10 * 60 * 1000;
+      if (isRecentOrder && !pollCompletedRef.current) {
+        pollCompletedRef.current = true;
+        getOrderIVR(order.id).then(({ ivr }) => {
+          setIvrData(ivr ?? {});
+          setLoadedTabs((prev) => new Set([...prev, "ivr"]));
+          setResetIvrKey((k) => k + 1);
+        });
+        getForm1500(order.id).then((data) => {
+          setHcfaData((data as Record<string, unknown>) ?? {});
+          setLoadedTabs((prev) => new Set([...prev, "hcfa"]));
+          setResetHcfaKey((k) => k + 1);
+        });
+      }
       return;
     }
 
+    // order.ai_extracted is false — but guard against stale props after completion.
+    // Delayed RSC payloads or out-of-order realtime events can briefly deliver
+    // ai_extracted=false even after extraction finished. Once the latch is set,
+    // never regress aiStatus back to "processing".
+    if (aiCompletedRef.current) return;
+
     setOrderForm(null);
-    // Set to "processing" optimistically — corrected to "idle" in the modal
-    // open effect if no trigger documents are found after the doc fetch.
-    setAiStatus("processing");
+    // Only treat as "processing" if the order was created very recently (within 10 min).
+    // Older orders with ai_extracted=false had a failed/skipped extraction — show form as-is.
+    const ageMs = Date.now() - new Date(order.created_at).getTime();
+    const isRecentOrder = ageMs < 10 * 60 * 1000;
+    setAiStatus(isRecentOrder ? "processing" : "idle");
 
     return () => {
       if (pollingIntervalRef.current) {
@@ -859,10 +925,17 @@ export function OrderDetailModal({
     if (result.success && result.document) {
       setDocuments((prev) => [result.document!, ...prev]);
       toast.success("Document uploaded.");
-      // Start AI polling for extractable doc types
+      // Start AI polling and explicitly trigger extraction for extractable doc types
+      // (auto-trigger was removed from uploadOrderDocument to prevent races on new orders)
       if (["facesheet", "clinical_docs"].includes(docType)) {
         setAiStatus("processing");
+        pollCompletedRef.current = false;
         beginPolling();
+        triggerDocumentExtraction(
+          order.id,
+          docType,
+          result.document.filePath,
+        ).catch((err) => console.error("[handleUploadDoc] AI trigger:", err));
       }
       if (docType === "wound_pictures") {
         const { url } = await getDocumentSignedUrl(result.document.filePath);
@@ -1391,6 +1464,18 @@ export function OrderDetailModal({
               <div className="flex flex-1 overflow-hidden">
                 {/* ──── LEFT COLUMN: Tabs ──── */}
                 <div className="flex-1 flex flex-col border-r border-[var(--border)] overflow-hidden min-w-0">
+                  {aiStatus === "processing" ? (
+                    /* Extraction in progress — block all tab interaction */
+                    <div className="flex-1 flex flex-col items-center justify-center gap-4 p-10">
+                      <Loader2 className="w-10 h-10 text-[var(--navy)] animate-spin" />
+                      <div className="text-center space-y-1">
+                        <p className="text-[14px] font-semibold text-[var(--navy)]">AI is analyzing your documents</p>
+                        <p className="text-[13px] text-[var(--text2)]">Forms will be auto-filled and ready shortly — please wait</p>
+                        <p className="text-[11px] text-[var(--text3)] mt-2">This usually takes 30–60 seconds</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
                   {/* Tab bar */}
                   <div className="flex-shrink-0 border-b border-[var(--border)] px-3 py-2">
                     <div
@@ -1469,7 +1554,7 @@ export function OrderDetailModal({
                       ivrData={ivrData}
                       resetIvrKey={resetIvrKey}
                       isReady={loadedTabs.has("ivr")}
-                      isExtracting={aiStatus === "processing"}
+                      isExtracting={false}
                       onDirtyChange={setIsIvrDirty}
                       onSave={async (saved) => {
                         setIvrData(saved);
@@ -1485,7 +1570,7 @@ export function OrderDetailModal({
                       hcfaData={hcfaData}
                       resetHcfaKey={resetHcfaKey}
                       isReady={loadedTabs.has("hcfa")}
-                      isExtracting={aiStatus === "processing"}
+                      isExtracting={false}
                       onDirtyChange={setIsHcfaDirty}
                       onSave={async (saved) => {
                         setHcfaData(saved);
@@ -1513,6 +1598,8 @@ export function OrderDetailModal({
                     />
                   </div>
                   {/* end tab content */}
+                    </>
+                  )}
 
                   {/* ── Footer: action buttons ── */}
                   <div className="flex-shrink-0 px-5 py-3 border-t border-[var(--border)] flex items-center justify-end bg-[var(--surface)]">
@@ -1797,7 +1884,8 @@ export function OrderDetailModal({
                                 {!uploaded &&
                                   !isPdfGenerating &&
                                   !isAiGenerating &&
-                                  isRegenerableType && (
+                                  isRegenerableType &&
+                                  aiStatus !== "processing" && (
                                     <button
                                       type="button"
                                       onClick={() =>

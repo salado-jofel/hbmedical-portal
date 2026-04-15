@@ -59,7 +59,7 @@ export function IVRTab({
         !isActive && "hidden",
       )}
     >
-      {!isReady || isExtracting ? (
+      {!isReady ? (
         <FormSkeleton />
       ) : (
         <IVRFormDocument
