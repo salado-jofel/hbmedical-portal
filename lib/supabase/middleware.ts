@@ -1,4 +1,3 @@
-import { getUserData } from "@/app/(dashboard)/dashboard/(services)/actions";
 import { createServerClient } from "@supabase/ssr";
 import { jwtDecode } from "jwt-decode";
 import { type NextRequest, NextResponse } from "next/server";
@@ -30,8 +29,6 @@ export async function updateSession(request: NextRequest) {
       },
     },
   );
-  const userData = await getUserData();
-
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -115,19 +112,23 @@ export async function updateSession(request: NextRequest) {
   }
 
   if (user) {
-    const userRole = userData?.role;
+    // Fetch role + setup flag with the SAME supabase client that validated the
+    // user above — avoids a second client / cookie race that causes Server
+    // Action POSTs to misfire on Vercel Edge runtime.
+    const { data: profileRow } = await supabase
+      .from("profiles")
+      .select("role, has_completed_setup")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    const userRole = profileRow?.role as UserRole | undefined;
+    const hasCompletedSetup = profileRow?.has_completed_setup;
 
     // ── Setup guard ───────────────────────────────────────────────────────────
     // Sales reps who haven't completed facility setup must finish before
     // accessing any other route.
     if (isSalesRep(userRole as UserRole)) {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("has_completed_setup")
-        .eq("id", user.id)
-        .single();
-
-      const needsSetup = profile?.has_completed_setup === false;
+      const needsSetup = hasCompletedSetup === false;
       const isSetupPath = currentPath.startsWith("/onboarding/setup");
       const isAuthPath =
         currentPath === "/sign-in" ||

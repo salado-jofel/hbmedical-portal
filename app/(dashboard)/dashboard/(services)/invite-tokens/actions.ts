@@ -242,7 +242,7 @@ export async function deleteInviteToken(tokenId: string): Promise<void> {
 
 
 const LOGO_URL =
-  "https://eyrefohymvvabazvmemq.supabase.co/storage/v1/object/public/spearhead-assets/assets/email/hb-logo-name-2.png";
+  "https://ersdsmuybpfvgvaiwcgl.supabase.co/storage/v1/object/public/hbmedical-bucket-public/assets/hb-logo-name-2%20(1).png";
 
 export async function inviteSubRep(
   _prev: IInviteTokenFormState | null,

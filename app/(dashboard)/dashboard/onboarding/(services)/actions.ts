@@ -51,7 +51,7 @@ function getBaseUrl(): string {
 }
 
 const LOGO_URL =
-  "https://eyrefohymvvabazvmemq.supabase.co/storage/v1/object/public/spearhead-assets/assets/email/hb-logo-name-2.png";
+  "https://ersdsmuybpfvgvaiwcgl.supabase.co/storage/v1/object/public/hbmedical-bucket-public/assets/hb-logo-name-2%20(1).png";
 
 /* -------------------------------------------------------------------------- */
 /* getSalesRepsWithFacilities                                                 */
