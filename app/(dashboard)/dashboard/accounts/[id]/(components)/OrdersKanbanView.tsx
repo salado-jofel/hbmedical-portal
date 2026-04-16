@@ -5,6 +5,7 @@ import {
   groupOrdersByStatus,
   KANBAN_STATUS_CONFIG,
   PAID_COLUMN_CONFIG,
+  STATUS_COLUMN_STYLES,
 } from "@/app/(dashboard)/dashboard/orders/(components)/kanban-config";
 import type { DashboardOrder, OrderStatus } from "@/utils/interfaces/orders";
 import { cn } from "@/utils/utils";
@@ -54,22 +55,23 @@ export function OrdersKanbanView({
             ? approvedPending
             : (grouped[col.status] ?? []);
 
+        const style = STATUS_COLUMN_STYLES[isProcessed ? "paid" : col.status] ?? STATUS_COLUMN_STYLES.draft;
         return (
-          <div key={key} className="flex-shrink-0 w-72 flex flex-col">
-            <div className="flex items-center gap-2 mb-3 px-1">
-              <span className={cn("w-2 h-2 rounded-full shrink-0", config.dot)} />
-              <span className="text-xs font-semibold text-[var(--navy)]">{config.label}</span>
-              <span
-                className={cn(
-                  "ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full border",
-                  config.badge,
-                )}
-              >
+          <div
+            key={key}
+            className={cn("flex-shrink-0 w-72 rounded-xl p-2.5 min-h-[200px]", style.bg)}
+          >
+            <div className={cn("flex items-center justify-between px-3 py-2 rounded-lg mb-3", style.headerBg)}>
+              <div className="flex items-center gap-2">
+                <span className={cn("w-2 h-2 rounded-full shrink-0", style.dot)} />
+                <span className="text-xs font-semibold uppercase tracking-wide text-[#334155]">{config.label}</span>
+              </div>
+              <span className="text-xs font-medium text-[#64748b] bg-white rounded-full px-2 py-0.5 shadow-sm">
                 {colOrders.length}
               </span>
             </div>
 
-            <div className="flex flex-col gap-2 min-h-[120px] bg-[var(--bg)] border border-[var(--border)] rounded-xl p-2">
+            <div className="flex flex-col gap-2.5">
               {colOrders.length === 0 ? (
                 <div className="flex items-center justify-center py-8">
                   <p className="text-xs text-gray-400">No orders</p>
@@ -82,6 +84,7 @@ export function OrdersKanbanView({
                     statusOverride={isProcessed ? "processed" : undefined}
                     onClick={() => onOrderClick(order.id)}
                     unreadCount={0}
+                    className="bg-white border-[#e2e8f0] shadow-sm hover:shadow-md hover:border-[#cbd5e1]"
                   />
                 ))
               )}

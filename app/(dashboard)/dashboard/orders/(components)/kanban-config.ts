@@ -91,6 +91,19 @@ export const PAID_COLUMN_CONFIG = {
   badgeSolid: "bg-green-500 text-white",
 } as const;
 
+/* ── Shared per-status tinted column styles (applied to all kanbans) ── */
+export const STATUS_COLUMN_STYLES: Record<string, { bg: string; dot: string; headerBg: string }> = {
+  draft:                  { bg: "bg-amber-50/50",   dot: "bg-amber-400",   headerBg: "bg-amber-50"   },
+  pending_signature:      { bg: "bg-blue-50/50",    dot: "bg-blue-400",    headerBg: "bg-blue-50"    },
+  manufacturer_review:    { bg: "bg-purple-50/50",  dot: "bg-purple-400",  headerBg: "bg-purple-50"  },
+  additional_info_needed: { bg: "bg-red-50/50",     dot: "bg-red-400",     headerBg: "bg-red-50"     },
+  approved:               { bg: "bg-emerald-50/50", dot: "bg-emerald-400", headerBg: "bg-emerald-50" },
+  shipped:                { bg: "bg-cyan-50/50",    dot: "bg-cyan-400",    headerBg: "bg-cyan-50"    },
+  delivered:              { bg: "bg-green-50/50",   dot: "bg-green-400",   headerBg: "bg-green-50"   },
+  canceled:               { bg: "bg-slate-50/50",   dot: "bg-slate-400",   headerBg: "bg-slate-100"  },
+  paid:                   { bg: "bg-green-50/50",   dot: "bg-green-500",   headerBg: "bg-green-50"   },
+};
+
 /* ── Keep legacy types/exports for backwards compat ── */
 export const BOARD_STATUSES = ["New Orders", "Delivered"] as const;
 export type BoardStatus = (typeof BOARD_STATUSES)[number];

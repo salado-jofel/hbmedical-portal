@@ -219,7 +219,7 @@ export function OrdersKanban({
   const [mobileTab, setMobileTab] = useState<OrderStatus | "paid">(
     (isAdmin || isSupport) ? "manufacturer_review" : "draft",
   );
-  const [tableMode, setTableMode] = useState(false);
+  const [tableMode, setTableMode] = useState(true);
 
   // Clinic users get a persistent Table/Board toggle (defaults to table)
   const isClinic = canCreate && !isAdmin && !isSupport;
@@ -268,9 +268,12 @@ export function OrdersKanban({
     setInitialTab("overview");
   }
 
-  // Filter orders
+  // Filter orders — admin/support only see manufacturer_review onwards
   const filtered = useMemo(() => {
     return orders.filter((o) => {
+      if ((isAdmin || isSupport) && !VISIBLE_STATUSES.includes(o.order_status)) {
+        return false;
+      }
       const matchSearch =
         !search ||
         o.order_number.toLowerCase().includes(search.toLowerCase()) ||
@@ -284,7 +287,7 @@ export function OrdersKanban({
 
       return matchSearch && matchStatus;
     });
-  }, [orders, search, statusFilter]);
+  }, [orders, search, statusFilter, isAdmin, isSupport, VISIBLE_STATUSES]);
 
   const grouped = useMemo(() => groupOrdersByStatus(filtered), [filtered]);
 

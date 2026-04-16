@@ -501,3 +501,193 @@ export async function getRepPerformanceSummary(): Promise<IRepPerformanceSummary
     tierCounts,
   };
 }
+
+/* -------------------------------------------------------------------------- */
+/* getAdminPerformanceExtras — admin-only team analytics                      */
+/* -------------------------------------------------------------------------- */
+
+export interface IAdminPerformanceExtras {
+  monthlyByRep: Array<{ month: string } & Record<string, number | string>>;
+  repNames: string[];
+  repRanking: Array<{ id: string; name: string; trailing3moRevenue: number }>;
+  quotaAttainment: Array<{ id: string; name: string; actualRevenue: number; quota: number | null; pct: number | null }>;
+  teamFunnel: Array<{ status: string; label: string; count: number; revenue: number }>;
+}
+
+export async function getAdminPerformanceExtras(): Promise<IAdminPerformanceExtras> {
+  const supabase = await createClient();
+  await getCurrentUserOrThrow(supabase);
+  const role = await getUserRole(supabase);
+  if (!isAdmin(role)) {
+    return { monthlyByRep: [], repNames: [], repRanking: [], quotaAttainment: [], teamFunnel: [] };
+  }
+  const adminClient = createAdminClient();
+
+  const { data: reps } = await adminClient
+    .from("profiles")
+    .select("id, first_name, last_name")
+    .eq("role", "sales_representative")
+    .eq("status", "active")
+    .order("first_name");
+  const repList = (reps ?? []).map((r: any) => ({
+    id: r.id as string,
+    name: `${r.first_name ?? ""} ${r.last_name ?? ""}`.trim() || "Rep",
+  }));
+  if (repList.length === 0) {
+    return { monthlyByRep: [], repNames: [], repRanking: [], quotaAttainment: [], teamFunnel: [] };
+  }
+  const repIds = repList.map((r) => r.id);
+
+  // Facilities assigned per rep
+  const { data: facs } = await adminClient
+    .from("facilities")
+    .select("id, assigned_rep")
+    .in("assigned_rep", repIds)
+    .neq("facility_type", "rep_office");
+  const facilitiesByRep: Record<string, string[]> = {};
+  for (const f of facs ?? []) {
+    const r = f.assigned_rep as string;
+    (facilitiesByRep[r] ??= []).push(f.id as string);
+  }
+  const allFacilityIds = Object.values(facilitiesByRep).flat();
+  const repByFacility: Record<string, string> = {};
+  for (const r of repIds) for (const fid of facilitiesByRep[r] ?? []) repByFacility[fid] = r;
+
+  /* -------------------- monthlyByRep (last 12 months) -------------------- */
+  const now = new Date();
+  const months: { key: string; label: string }[] = [];
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months.push({
+      key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
+      label: `${["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][d.getMonth()]} ${String(d.getFullYear()).slice(2)}`,
+    });
+  }
+  const earliest = new Date(now.getFullYear(), now.getMonth() - 11, 1).toISOString();
+
+  let deliveredOrders: Array<{ id: string; facility_id: string; delivered_at: string | null; order_items: any[] }> = [];
+  if (allFacilityIds.length > 0) {
+    const { data } = await adminClient
+      .from("orders")
+      .select("id, facility_id, delivered_at, order_items(total_amount)")
+      .in("facility_id", allFacilityIds)
+      .eq("delivery_status", "delivered")
+      .gte("delivered_at", earliest);
+    deliveredOrders = (data ?? []) as any;
+  }
+
+  function orderTotal(o: any): number {
+    const items = (o.order_items ?? []) as { total_amount: string | number }[];
+    return items.reduce((s, i) => s + Number(i.total_amount ?? 0), 0);
+  }
+
+  const monthlyMatrix: Record<string, Record<string, number>> = {};
+  for (const m of months) monthlyMatrix[m.key] = {};
+
+  for (const o of deliveredOrders) {
+    if (!o.delivered_at) continue;
+    const d = new Date(o.delivered_at);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    if (!(key in monthlyMatrix)) continue;
+    const rid = repByFacility[o.facility_id];
+    if (!rid) continue;
+    monthlyMatrix[key][rid] = (monthlyMatrix[key][rid] ?? 0) + orderTotal(o);
+  }
+
+  const monthlyByRep = months.map((m) => {
+    const row: Record<string, number | string> = { month: m.label };
+    for (const r of repList) row[r.name] = Math.round(monthlyMatrix[m.key][r.id] ?? 0);
+    return row as { month: string } & Record<string, number | string>;
+  });
+  const repNames = repList.map((r) => r.name);
+
+  /* -------------------- repRanking (trailing 3 months) -------------------- */
+  const cutoff3mo = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate()).toISOString();
+  const revenue3moByRep: Record<string, number> = {};
+  for (const o of deliveredOrders) {
+    if (!o.delivered_at || o.delivered_at < cutoff3mo) continue;
+    const rid = repByFacility[o.facility_id];
+    if (!rid) continue;
+    revenue3moByRep[rid] = (revenue3moByRep[rid] ?? 0) + orderTotal(o);
+  }
+  const repRanking = repList
+    .map((r) => ({ id: r.id, name: r.name, trailing3moRevenue: Math.round(revenue3moByRep[r.id] ?? 0) }))
+    .sort((a, b) => b.trailing3moRevenue - a.trailing3moRevenue);
+
+  /* -------------------- quotaAttainment (current period) -------------------- */
+  const currentPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const { data: quotaRows } = await adminClient
+    .from("sales_quotas")
+    .select("rep_id, target_amount")
+    .in("rep_id", repIds)
+    .eq("period", currentPeriod);
+  const quotaByRep: Record<string, number> = {};
+  for (const q of quotaRows ?? []) quotaByRep[q.rep_id as string] = Number(q.target_amount ?? 0);
+
+  // Current-month actual revenue (paid orders in current month)
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
+  let actualByRep: Record<string, number> = {};
+  if (allFacilityIds.length > 0) {
+    const { data: paid } = await adminClient
+      .from("orders")
+      .select("id, facility_id, order_items(total_amount)")
+      .in("facility_id", allFacilityIds)
+      .eq("payment_status", "paid")
+      .gte("paid_at", monthStart)
+      .lt("paid_at", monthEnd);
+    for (const o of paid ?? []) {
+      const rid = repByFacility[(o as any).facility_id];
+      if (!rid) continue;
+      actualByRep[rid] = (actualByRep[rid] ?? 0) + orderTotal(o);
+    }
+  }
+
+  const quotaAttainment = repList.map((r) => {
+    const quota = quotaByRep[r.id] ?? null;
+    const actualRevenue = Math.round(actualByRep[r.id] ?? 0);
+    const pct = quota != null && quota > 0 ? (actualRevenue / quota) * 100 : null;
+    return { id: r.id, name: r.name, actualRevenue, quota, pct };
+  });
+
+  /* -------------------- teamFunnel (all statuses across team) -------------------- */
+  const FUNNEL_STATUSES = [
+    "pending_signature",
+    "manufacturer_review",
+    "additional_info_needed",
+    "approved",
+    "shipped",
+    "delivered",
+  ];
+  const FUNNEL_LABELS: Record<string, string> = {
+    pending_signature: "Pending Signature",
+    manufacturer_review: "Mfr. Review",
+    additional_info_needed: "Info Needed",
+    approved: "Approved",
+    shipped: "Shipped",
+    delivered: "Delivered",
+  };
+  const funnelAcc: Record<string, { count: number; revenue: number }> = {};
+  for (const s of FUNNEL_STATUSES) funnelAcc[s] = { count: 0, revenue: 0 };
+  if (allFacilityIds.length > 0) {
+    const { data: allTeamOrders } = await adminClient
+      .from("orders")
+      .select("id, facility_id, order_status, order_items(total_amount)")
+      .in("facility_id", allFacilityIds)
+      .in("order_status", FUNNEL_STATUSES);
+    for (const o of allTeamOrders ?? []) {
+      const s = (o as any).order_status as string;
+      if (!(s in funnelAcc)) continue;
+      funnelAcc[s].count += 1;
+      funnelAcc[s].revenue += orderTotal(o);
+    }
+  }
+  const teamFunnel = FUNNEL_STATUSES.map((s) => ({
+    status: s,
+    label: FUNNEL_LABELS[s],
+    count: funnelAcc[s].count,
+    revenue: Math.round(funnelAcc[s].revenue),
+  }));
+
+  return { monthlyByRep, repNames, repRanking, quotaAttainment, teamFunnel };
+}
