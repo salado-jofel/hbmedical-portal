@@ -126,7 +126,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
         icon: DollarSign,
         label: "Commissions",
         href: "/dashboard/commissions",
-        visible: (role) => isAdmin(role) || isSalesRep(role),
+        visible: (role) => isSalesRep(role),
       },
 {
         icon: TrendingUp,

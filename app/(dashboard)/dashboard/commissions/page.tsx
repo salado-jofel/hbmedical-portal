@@ -7,17 +7,16 @@ import { PageHeader } from "@/app/(components)/PageHeader";
 import { KpiCard } from "@/app/(components)/KpiCard";
 import { formatAmount } from "@/utils/helpers/formatter";
 import Providers from "./(sections)/Providers";
-import CommissionCalculator from "./(sections)/CommissionCalculator";
 import PayoutTable from "./(sections)/PayoutTable";
 import CommissionLedger from "./(sections)/CommissionLedger";
-import RateManagement from "./(sections)/RateManagement";
+import TeamEarnings from "./(sections)/TeamEarnings";
+import { getMySubReps } from "@/app/(dashboard)/dashboard/my-team/(services)/actions";
 import type { ICommissionSummary } from "@/utils/interfaces/commissions";
 import {
   getCommissionRates,
   getCommissions,
   getPayouts,
   getRepCommissionSummary,
-  getSubRepsForRateDropdown,
 } from "./(services)/actions";
 
 export const metadata: Metadata = { title: "Commissions" };
@@ -30,17 +29,17 @@ export default async function CommissionsPage() {
   const role = await getUserRole(supabase);
 
   if (!isAdmin(role) && !isSalesRep(role)) redirect("/dashboard");
+  if (isAdmin(role)) redirect("/dashboard/my-team");
 
   // Each fetch is isolated — one failure must not crash the entire page re-render,
   // since revalidatePath (called from server actions) triggers a full re-render and
   // any thrown error surfaces as "unexpected response" on the client.
-  const [rates, commissions, payouts, summary, reps] = await Promise.all([
+  const [rates, commissions, payouts, summary, subReps] = await Promise.all([
     getCommissionRates().catch((e) => { console.error("[commissions/page] getCommissionRates:", e); return []; }),
     getCommissions().catch((e)     => { console.error("[commissions/page] getCommissions:", e);     return []; }),
     getPayouts().catch((e)         => { console.error("[commissions/page] getPayouts:", e);         return []; }),
     getRepCommissionSummary().catch((e) => { console.error("[commissions/page] getSummary:", e);   return EMPTY_SUMMARY; }),
-    // Role-scoped: admin gets all sales reps, sales_rep gets only their sub-reps
-    getSubRepsForRateDropdown().catch((e) => { console.error("[commissions/page] getSubRepsForRateDropdown:", e); return []; }),
+    getMySubReps().catch((e) => { console.error("[commissions/page] getMySubReps:", e); return []; }),
   ]);
 
   return (
@@ -56,10 +55,9 @@ export default async function CommissionsPage() {
           <KpiCard label="Current Rate"    value={summary.currentRate != null ? `${summary.currentRate}%` : "—"} accentColor="blue" />
         </div>
 
-        {/* Two-column: Calculator + Rate Management */}
-        <div className="mb-5 grid grid-cols-1 gap-5 lg:grid-cols-2">
-          <CommissionCalculator />
-          <RateManagement reps={reps} />
+        {/* Team Earnings — sub-rep override summary */}
+        <div className="mb-5">
+          <TeamEarnings subReps={subReps} />
         </div>
 
         {/* Full-width: Ledger */}

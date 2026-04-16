@@ -10,6 +10,7 @@ import QuickLogBanner from "./(sections)/QuickLogBanner";
 import RepKpiRow from "./(sections)/RepKpiRow";
 import RepTables from "./(sections)/RepTables";
 import AdminQuotaBoard from "./(sections)/AdminQuotaBoard";
+import TierBreakdown from "./(sections)/TierBreakdown";
 import { getRepPerformanceSummary, getQuotas } from "./(services)/actions";
 import type { IRepPerformanceSummary, IQuota } from "@/utils/interfaces/quotas";
 
@@ -46,11 +47,13 @@ export default async function RepPerformancePage() {
           <RepHero />
           <QuickLogBanner />
           <RepKpiRow />
+          <TierBreakdown />
           <RepTables />
         </>
       ) : (
         <>
           <RepHero />
+          <TierBreakdown />
           <AdminQuotaBoard />
         </>
       )}

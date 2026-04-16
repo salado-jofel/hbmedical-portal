@@ -1,19 +1,6 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
-
-interface SubRep {
-  id: string;
-  first_name: string | null;
-  last_name: string | null;
-  email: string | null;
-  phone: string | null;
-  status: string | null;
-  role: string | null;
-  accountCount: number;
-  orderCount: number;
-  revenue: number;
-  commissionRate: number;
-  overridePercent: number;
-}
+import type { SubRep } from "@/utils/interfaces/my-team";
+export type { SubRep };
 
 interface MyTeamState {
   items: SubRep[];
@@ -32,5 +19,4 @@ const myTeamSlice = createSlice({
 });
 
 export const { setMyTeam } = myTeamSlice.actions;
-export type { SubRep };
 export default myTeamSlice.reducer;

@@ -15,6 +15,8 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { cn } from "@/utils/utils";
+import Link from "next/link";
+import { formatAmount } from "@/utils/helpers/formatter";
 import type { SubRep } from "../(redux)/my-team-slice";
 
 const STATUS_CONFIG = {
@@ -99,8 +101,10 @@ function SubRepCard({ rep }: { rep: SubRep }) {
     STATUS_CONFIG.pending;
 
   return (
-    <div className="bg-white border border-[var(--border)] rounded-xl p-5 hover:shadow-md transition-shadow">
-      {/* Header */}
+    <Link
+      href={`/dashboard/my-team/${rep.id}`}
+      className="block bg-white border border-[var(--border)] rounded-xl p-5 hover:shadow-md transition-shadow"
+    >
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-[var(--navy)] text-white flex items-center justify-center text-sm font-medium shrink-0">
@@ -125,8 +129,7 @@ function SubRepCard({ rep }: { rep: SubRep }) {
         </span>
       </div>
 
-      {/* Contact info */}
-      <div className="space-y-1.5 mb-4 text-xs text-[#64748b]">
+      <div className="space-y-1.5 mb-3 text-xs text-[#64748b]">
         <div className="flex items-center gap-2">
           <Mail className="w-3 h-3 shrink-0" />
           <span className="truncate">{rep.email}</span>
@@ -139,28 +142,29 @@ function SubRepCard({ rep }: { rep: SubRep }) {
         )}
       </div>
 
-      {/* Stats grid */}
-      <div className="grid grid-cols-3 gap-3 pt-3 border-t border-[var(--border)]">
+      <p className="mb-3 text-[11px] text-[#64748b]">
+        Your override: <span className="font-semibold text-[var(--navy)]">{rep.overridePercent}%</span>
+      </p>
+
+      <div className="grid grid-cols-4 gap-2 pt-3 border-t border-[var(--border)]">
         <div className="text-center">
-          <p className="text-base font-semibold text-[var(--navy)]">
-            {rep.accountCount}
-          </p>
+          <p className="text-base font-semibold text-[var(--navy)]">{rep.accountCount}</p>
           <p className="text-[10px] text-[#94a3b8]">Accounts</p>
         </div>
         <div className="text-center">
-          <p className="text-base font-semibold text-[var(--navy)]">
-            {rep.orderCount}
-          </p>
+          <p className="text-base font-semibold text-[var(--navy)]">{rep.orderCount}</p>
           <p className="text-[10px] text-[#94a3b8]">Orders</p>
         </div>
         <div className="text-center">
-          <p className="text-base font-semibold text-[#0d7a6b]">
-            {rep.commissionRate}%
-          </p>
+          <p className="text-base font-semibold text-[#0d7a6b]">{rep.commissionRate}%</p>
           <p className="text-[10px] text-[#94a3b8]">Rate</p>
         </div>
+        <div className="text-center">
+          <p className="text-base font-semibold text-[var(--navy)]">{formatAmount(rep.commissionEarned)}</p>
+          <p className="text-[10px] text-[#94a3b8]">Comm $</p>
+        </div>
       </div>
-    </div>
+    </Link>
   );
 }
 

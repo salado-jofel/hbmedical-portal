@@ -56,6 +56,32 @@ export interface IAccountFilters {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Period type for sales metrics filter                                       */
+/* -------------------------------------------------------------------------- */
+
+export type AccountPeriod = "this_month" | "last_3_months" | "all_time";
+
+export type AccountTier = "A" | "B" | "C";
+
+/* -------------------------------------------------------------------------- */
+/* Account with per-account sales metrics (rep/admin enriched view)           */
+/* -------------------------------------------------------------------------- */
+
+export interface IAccountWithMetrics extends IAccount {
+  signed_count: number;
+  delivered_count: number;
+  avg_day: number;
+  avg_week: number;
+  one_year_est: number;           // projected order count (avg_week × 52)
+  onboarded_at: string;           // same as created_at, explicit alias
+  invited_by_name: string | null; // assigned rep's full name
+  delivered_revenue: number;
+  pipeline_revenue: number;
+  one_year_projected_revenue: number; // delivered_revenue / periodWeeks × 52
+  tier: AccountTier;
+}
+
+/* -------------------------------------------------------------------------- */
 /* Raw Supabase response before mapping                                       */
 /* -------------------------------------------------------------------------- */
 

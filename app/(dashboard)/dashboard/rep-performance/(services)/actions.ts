@@ -8,6 +8,7 @@ import { isAdmin, isSalesRep } from "@/utils/helpers/role";
 import { setQuotaSchema } from "@/utils/validators/quotas";
 import { SALES_QUOTAS_TABLE, REP_PERFORMANCE_PATH } from "@/utils/constants/quotas";
 import type { IQuota, IQuotaFormState, IRepPerformance, IRepPerformanceSummary } from "@/utils/interfaces/quotas";
+import { assignTiers } from "@/utils/helpers/tiers";
 
 /* -------------------------------------------------------------------------- */
 /* Helpers                                                                    */
@@ -178,6 +179,133 @@ async function getMonthlyRevenue(
   return results;
 }
 
+async function buildRevenueExtras(
+  repId: string | null,
+  adminClient: ReturnType<typeof createAdminClient>,
+): Promise<{ pipelineRevenue: number; oneYearProjectedRevenue: number }> {
+  let facilityIds: string[] | null = null;
+  if (repId) {
+    const { data: facs } = await adminClient
+      .from("facilities")
+      .select("id")
+      .eq("assigned_rep", repId);
+    facilityIds = (facs ?? []).map((f: any) => f.id as string);
+    if (facilityIds.length === 0) return { pipelineRevenue: 0, oneYearProjectedRevenue: 0 };
+  }
+
+  let pipelineQ = adminClient
+    .from("orders")
+    .select("id")
+    .in("order_status", ["approved", "shipped"]);
+  if (facilityIds) pipelineQ = pipelineQ.in("facility_id", facilityIds);
+  const { data: pipelineOrders } = await pipelineQ;
+
+  const pipelineOrderIds = (pipelineOrders ?? []).map((o: any) => o.id as string);
+  let pipelineRevenue = 0;
+  if (pipelineOrderIds.length > 0) {
+    const { data: items } = await adminClient
+      .from("order_items")
+      .select("total_amount")
+      .in("order_id", pipelineOrderIds);
+    pipelineRevenue = (items ?? []).reduce(
+      (sum: number, i: any) => sum + Number(i.total_amount ?? 0), 0,
+    );
+  }
+
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate()).toISOString();
+
+  let deliveredQ = adminClient
+    .from("orders")
+    .select("id")
+    .eq("delivery_status", "delivered")
+    .gte("delivered_at", start);
+  if (facilityIds) deliveredQ = deliveredQ.in("facility_id", facilityIds);
+  const { data: deliveredOrders } = await deliveredQ;
+
+  const deliveredIds = (deliveredOrders ?? []).map((o: any) => o.id as string);
+  let trailing3moRevenue = 0;
+  if (deliveredIds.length > 0) {
+    const { data: items } = await adminClient
+      .from("order_items")
+      .select("total_amount")
+      .in("order_id", deliveredIds);
+    trailing3moRevenue = (items ?? []).reduce(
+      (sum: number, i: any) => sum + Number(i.total_amount ?? 0), 0,
+    );
+  }
+
+  const oneYearProjectedRevenue = (trailing3moRevenue / 13) * 52;
+
+  return { pipelineRevenue, oneYearProjectedRevenue };
+}
+
+async function buildTierCounts(
+  repId: string | null,
+  adminClient: ReturnType<typeof createAdminClient>,
+): Promise<{ A: number; B: number; C: number }> {
+  let facilityIds: string[] = [];
+  if (repId) {
+    const { data: facs } = await adminClient
+      .from("facilities")
+      .select("id")
+      .eq("assigned_rep", repId);
+    facilityIds = (facs ?? []).map((f: any) => f.id as string);
+    if (facilityIds.length === 0) return { A: 0, B: 0, C: 0 };
+  } else {
+    const { data: facs } = await adminClient
+      .from("facilities")
+      .select("id")
+      .eq("facility_type", "clinic");
+    facilityIds = (facs ?? []).map((f: any) => f.id as string);
+    if (facilityIds.length === 0) return { A: 0, B: 0, C: 0 };
+  }
+
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate()).toISOString();
+
+  const { data: deliveredOrders } = await adminClient
+    .from("orders")
+    .select("id, facility_id")
+    .in("facility_id", facilityIds)
+    .eq("delivery_status", "delivered")
+    .gte("delivered_at", start);
+
+  const deliveredIds = (deliveredOrders ?? []).map((o: any) => o.id as string);
+  const revenueByOrder: Record<string, number> = {};
+  if (deliveredIds.length > 0) {
+    const { data: items } = await adminClient
+      .from("order_items")
+      .select("order_id, total_amount")
+      .in("order_id", deliveredIds);
+    for (const it of items ?? []) {
+      revenueByOrder[it.order_id] =
+        (revenueByOrder[it.order_id] ?? 0) + Number(it.total_amount ?? 0);
+    }
+  }
+
+  const revenueByFacility: Record<string, number> = {};
+  for (const o of deliveredOrders ?? []) {
+    const fid = o.facility_id as string;
+    revenueByFacility[fid] =
+      (revenueByFacility[fid] ?? 0) + (revenueByOrder[o.id] ?? 0);
+  }
+
+  const tierInputs = facilityIds.map((id) => ({
+    id,
+    delivered_revenue: revenueByFacility[id] ?? 0,
+  }));
+
+  const tiered = assignTiers(tierInputs);
+  let A = 0, B = 0, C = 0;
+  for (const t of tiered) {
+    if (t.tier === "A") A += 1;
+    else if (t.tier === "B") B += 1;
+    else C += 1;
+  }
+  return { A, B, C };
+}
+
 /* -------------------------------------------------------------------------- */
 /* 1. getQuotas                                                               */
 /* -------------------------------------------------------------------------- */
@@ -341,5 +469,18 @@ export async function getRepPerformanceSummary(): Promise<IRepPerformanceSummary
     adminClient,
   );
 
-  return { currentPeriod: period, myPerformance, subRepPerformance, monthlyRevenue };
+  const [{ pipelineRevenue, oneYearProjectedRevenue }, tierCounts] = await Promise.all([
+    buildRevenueExtras(isSalesRep(role) ? user.id : null, adminClient),
+    buildTierCounts(isSalesRep(role) ? user.id : null, adminClient),
+  ]);
+
+  return {
+    currentPeriod: period,
+    myPerformance,
+    subRepPerformance,
+    monthlyRevenue,
+    pipelineRevenue,
+    oneYearProjectedRevenue,
+    tierCounts,
+  };
 }
