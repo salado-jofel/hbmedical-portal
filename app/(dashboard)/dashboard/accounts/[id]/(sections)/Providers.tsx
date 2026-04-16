@@ -8,6 +8,7 @@ import { setActivities } from "@/app/(dashboard)/dashboard/(redux)/activities-sl
 import type { IAccount } from "@/utils/interfaces/accounts";
 import type { IContact } from "@/utils/interfaces/contacts";
 import type { IActivity } from "@/utils/interfaces/activities";
+import { withZeroMetrics } from "@/utils/helpers/accounts";
 
 export default function Providers({
   children,
@@ -23,7 +24,7 @@ export default function Providers({
   const dispatch = useAppDispatch();
 
   useEffect(() => {
-    dispatch(setAccounts([account]));
+    dispatch(setAccounts([withZeroMetrics(account)]));
     dispatch(setContacts(contacts));
     dispatch(setActivities(activities));
   }, [dispatch, account, contacts, activities]);

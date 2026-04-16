@@ -79,15 +79,15 @@ function getMarketingIcon(item: MarketingMaterial) {
   const kind = getDisplayKind(item);
   switch (kind) {
     case "sales-presentation":
-      return <Presentation className="w-6 h-6 text-white" />;
+      return <Presentation className="w-5 h-5" />;
     case "clinical-reference":
-      return <FlaskConical className="w-6 h-6 text-white" />;
+      return <FlaskConical className="w-5 h-5" />;
     case "brochure":
-      return <BookOpen className="w-6 h-6 text-white" />;
+      return <BookOpen className="w-5 h-5" />;
     case "reimbursement-guide":
-      return <FileBarChart2 className="w-6 h-6 text-white" />;
+      return <FileBarChart2 className="w-5 h-5" />;
     default:
-      return <FileText className="w-6 h-6 text-white" />;
+      return <FileText className="w-5 h-5" />;
   }
 }
 
@@ -260,6 +260,7 @@ export default function MarketingCards() {
                       dispatch(toggleSelectMarketingItem(id))
                     }
                     isActive={card.is_active}
+                    category="marketing"
                   />
                 ) : (
                   <MaterialCard
@@ -271,6 +272,7 @@ export default function MarketingCards() {
                     onDownload={handleDownload}
                     icon={getMarketingIcon(card)}
                     tagSeparator=" - "
+                    category="marketing"
                   />
                 ),
               )}

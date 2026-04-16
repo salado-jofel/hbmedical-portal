@@ -111,15 +111,15 @@ function getContractsIcon(item: ContractMaterial) {
 
   switch (kind) {
     case "agreement":
-      return <FileSignature className="w-6 h-6 text-white" />;
+      return <FileSignature className="w-5 h-5" />;
     case "contract":
-      return <ScrollText className="w-6 h-6 text-white" />;
+      return <ScrollText className="w-5 h-5" />;
     case "nda":
-      return <ShieldCheck className="w-6 h-6 text-white" />;
+      return <ShieldCheck className="w-5 h-5" />;
     case "commercial-terms":
-      return <FileBarChart2 className="w-6 h-6 text-white" />;
+      return <FileBarChart2 className="w-5 h-5" />;
     default:
-      return <FileText className="w-6 h-6 text-white" />;
+      return <FileText className="w-5 h-5" />;
   }
 }
 
@@ -282,6 +282,7 @@ export default function ContractsCards() {
                       dispatch(toggleSelectContractItem(id))
                     }
                     isActive={card.is_active}
+                    category="contracts"
                   />
                 ) : (
                   <MaterialCard
@@ -293,6 +294,7 @@ export default function ContractsCards() {
                     onDownload={handleDownload}
                     icon={getContractsIcon(card)}
                     tagSeparator=" - "
+                    category="contracts"
                   />
                 ),
               )}

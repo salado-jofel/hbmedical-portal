@@ -1,25 +1,34 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { Building2, User, ChevronRight, Users } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Building2, Users } from "lucide-react";
 import { useAppSelector } from "@/store/hooks";
 import { isSalesRep } from "@/utils/helpers/role";
 import type { UserRole } from "@/utils/helpers/role";
-import { AccountStatusBadge } from "../(components)/AccountStatusBadge";
 import { AccountsFilters } from "../(components)/AccountsFilters";
+import { AccountsKpiRow } from "./AccountsKpiRow";
 import { DataTable } from "@/app/(components)/DataTable";
-import { CountBadge } from "@/app/(components)/CountBadge";
 import { EmptyState } from "@/app/(components)/EmptyState";
 import { cn } from "@/utils/utils";
+import { formatDate } from "@/utils/helpers/formatter";
 import type { TableColumn } from "@/utils/interfaces/table-column";
-import type { IRepProfile, AccountStatus } from "@/utils/interfaces/accounts";
+import type {
+  IRepProfile,
+  AccountStatus,
+  AccountPeriod,
+  AccountTier,
+  IAccountWithMetrics,
+} from "@/utils/interfaces/accounts";
+import { AccountTierBadge } from "../(components)/AccountTierBadge";
 
-export function AccountsList({ salesReps, isAdmin }: {
+export function AccountsList({ salesReps, isAdmin, period }: {
   salesReps: IRepProfile[];
   isAdmin: boolean;
+  period: AccountPeriod;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const accounts = useAppSelector((state) => state.accounts.items);
   const role = useAppSelector((s) => s.dashboard.role) as UserRole;
   const userId = useAppSelector((s) => s.dashboard.userId);
@@ -29,17 +38,17 @@ export function AccountsList({ salesReps, isAdmin }: {
   const [statusFilter, setStatusFilter] = useState<AccountStatus | "all">("all");
   const [repFilter, setRepFilter] = useState<string>("all");
   const [ownerFilter, setOwnerFilter] = useState<"all" | "mine" | "sub_reps">("all");
+  const [tierFilter, setTierFilter] = useState<AccountTier | "all">("all");
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   const myCount = isRep ? accounts.filter((a) => a.assigned_rep === userId).length : 0;
   const subRepCount = isRep ? accounts.filter((a) => a.assigned_rep && a.assigned_rep !== userId).length : 0;
 
   const filtered = useMemo(() => {
-    // 1. Rep ownership filter (sales_rep only)
     let result = accounts;
     if (isRep && ownerFilter === "mine") result = result.filter((a) => a.assigned_rep === userId);
     else if (isRep && ownerFilter === "sub_reps") result = result.filter((a) => a.assigned_rep && a.assigned_rep !== userId);
-
-    // 2. Search + status filters on top
     if (search.trim()) {
       const term = search.trim().toLowerCase();
       result = result.filter(
@@ -52,98 +61,112 @@ export function AccountsList({ salesReps, isAdmin }: {
     }
     if (statusFilter !== "all") result = result.filter((a) => a.status === statusFilter);
     if (isAdmin && repFilter !== "all") result = result.filter((a) => a.assigned_rep === repFilter);
+    if (tierFilter !== "all") result = result.filter((a) => a.tier === tierFilter);
     return result;
-  }, [accounts, search, statusFilter, repFilter, isAdmin, isRep, ownerFilter, userId]);
+  }, [accounts, search, statusFilter, repFilter, tierFilter, isAdmin, isRep, ownerFilter, userId]);
 
-  const columns: TableColumn<(typeof accounts)[number]>[] = [
+  function handlePeriodChange(newPeriod: AccountPeriod) {
+    const params = new URLSearchParams(searchParams?.toString() ?? "");
+    params.set("period", newPeriod);
+    router.push(`/dashboard/accounts?${params.toString()}`);
+  }
+
+  const columns: TableColumn<IAccountWithMetrics>[] = [
     {
       key: "account",
-      label: "Account",
-      render: (account) => (
+      label: "Account / Provider",
+      render: (a) => (
         <div className="min-w-0">
-          <p className="text-sm font-medium text-[var(--navy)] truncate group-hover:text-[var(--navy)] transition-colors">
-            {account.name}
-          </p>
-          <p className="text-xs text-[var(--text3)] truncate mt-0.5">
-            {account.city}, {account.state} · {account.country}
-          </p>
+          <p className="text-sm font-medium text-[var(--navy)] truncate">{a.name}</p>
+          <p className="text-xs text-[var(--text3)] truncate mt-0.5">{a.city}, {a.state}</p>
         </div>
       ),
     },
     {
-      key: "status",
-      label: "Status",
-      headerClassName: "hidden sm:table-cell",
-      cellClassName: "hidden sm:table-cell",
-      render: (account) => <AccountStatusBadge status={account.status} />,
-    },
-    {
-      key: "rep",
-      label: "Assigned Rep",
-      headerClassName: "hidden md:table-cell",
-      cellClassName: "hidden md:table-cell",
-      render: (account) => (
-        <div className="flex items-center gap-1.5 min-w-0">
-          {account.assigned_rep_profile ? (
-            <>
-              <div className="w-6 h-6 rounded-full bg-[#EFF6FF] flex items-center justify-center shrink-0">
-                <User className="w-3 h-3 text-[var(--navy)]" />
-              </div>
-              <span className="text-xs text-[var(--text2)] truncate">
-                {account.assigned_rep_profile.first_name}{" "}
-                {account.assigned_rep_profile.last_name}
-              </span>
-            </>
-          ) : (
-            <span className="text-xs text-[var(--text3)]">Unassigned</span>
-          )}
+      key: "tier",
+      label: "Tier",
+      headerClassName: "text-center",
+      cellClassName: "text-center",
+      render: (a) => (
+        <div className="inline-flex">
+          <AccountTierBadge tier={a.tier} />
         </div>
       ),
     },
     {
-      key: "location",
-      label: "Location",
-      headerClassName: "hidden lg:table-cell",
-      cellClassName: "hidden lg:table-cell",
-      render: (account) => (
-        <span className="text-xs text-[var(--text2)]">
-          {account.city}, {account.state}
+      key: "signed",
+      label: "Signed",
+      headerClassName: "text-right",
+      cellClassName: "text-right",
+      render: (a) => <span className="text-sm text-[var(--navy)]">{a.signed_count}</span>,
+    },
+    {
+      key: "avg_day",
+      label: "Avg/Day",
+      headerClassName: "hidden md:table-cell text-right",
+      cellClassName: "hidden md:table-cell text-right",
+      render: (a) => <span className="text-sm text-[var(--text2)]">{(a.avg_day ?? 0).toFixed(1)}</span>,
+    },
+    {
+      key: "avg_week",
+      label: "Avg/Week",
+      headerClassName: "hidden md:table-cell text-right",
+      cellClassName: "hidden md:table-cell text-right",
+      render: (a) => <span className="text-sm text-[var(--text2)]">{(a.avg_week ?? 0).toFixed(1)}</span>,
+    },
+    {
+      key: "one_year_est",
+      label: "1 Year Est.",
+      headerClassName: "hidden lg:table-cell text-right",
+      cellClassName: "hidden lg:table-cell text-right",
+      render: (a) => (
+        <span className="text-sm font-medium text-[var(--navy)]">
+          {(a.one_year_est ?? 0) > 0 ? a.one_year_est : "—"}
         </span>
       ),
     },
     {
-      key: "contacts",
-      label: "Contacts",
-      headerClassName: "hidden sm:table-cell text-right",
-      cellClassName: "hidden sm:table-cell text-right",
-      render: (account) => (
-        <CountBadge count={account.contacts_count} variant="muted" />
+      key: "delivered",
+      label: "Delivered",
+      headerClassName: "text-right",
+      cellClassName: "text-right",
+      render: (a) => (
+        <span className={cn("text-sm font-medium", (a.delivered_count ?? 0) > 0 ? "text-[var(--green)]" : "text-[var(--text3)]")}>
+          {a.delivered_count ?? 0}
+        </span>
       ),
     },
     {
-      key: "orders",
-      label: "Orders",
-      headerClassName: "text-right",
-      cellClassName: "text-right",
-      render: (account) => (
-        <div className="inline-flex items-center gap-3 justify-end">
-          <CountBadge count={account.orders_count} variant="accent" />
-          <ChevronRight className="w-4 h-4 text-[var(--text3)] group-hover:text-[var(--navy)] transition-colors shrink-0" />
-        </div>
+      key: "invited_by",
+      label: "Invited By",
+      headerClassName: "hidden lg:table-cell",
+      cellClassName: "hidden lg:table-cell",
+      render: (a) => (
+        <span className="text-sm text-[var(--text2)]">{a.invited_by_name ?? "—"}</span>
+      ),
+    },
+    {
+      key: "onboarded",
+      label: "Onboarded",
+      headerClassName: "hidden xl:table-cell",
+      cellClassName: "hidden xl:table-cell",
+      render: (a) => (
+        <span className="text-sm text-[var(--text2)]">{formatDate(a.onboarded_at)}</span>
       ),
     },
   ];
 
   return (
     <div className="space-y-4">
-      {/* ── Rep ownership filter tabs (sales_rep only) ── */}
-      {isRep && (
+      <AccountsKpiRow />
+
+      {mounted && isRep && (
         <div className="flex items-center gap-1 bg-[#f1f5f9] rounded-lg p-0.5 w-fit">
           {(
             [
-              { key: "all",      label: "All Accounts",      count: accounts.length },
-              { key: "mine",     label: "My Accounts",       count: myCount         },
-              { key: "sub_reps", label: "Sub-Rep Accounts",  count: subRepCount     },
+              { key: "all", label: "All Accounts", count: accounts.length },
+              { key: "mine", label: "My Accounts", count: myCount },
+              { key: "sub_reps", label: "Sub-Rep Accounts", count: subRepCount },
             ] as const
           ).map(({ key, label, count }) => (
             <button
@@ -157,14 +180,8 @@ export function AccountsList({ salesReps, isAdmin }: {
               )}
             >
               {label}
-              <span
-                className={cn(
-                  "text-[10px] px-1.5 py-0.5 rounded-full font-medium",
-                  ownerFilter === key
-                    ? "bg-[var(--navy)] text-white"
-                    : "bg-[#e2e8f0] text-[#64748b]",
-                )}
-              >
+              <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full font-medium",
+                ownerFilter === key ? "bg-[var(--navy)] text-white" : "bg-[#e2e8f0] text-[#64748b]")}>
                 {count}
               </span>
             </button>
@@ -172,7 +189,6 @@ export function AccountsList({ salesReps, isAdmin }: {
         </div>
       )}
 
-      {/* ── Filters ── */}
       <AccountsFilters
         search={search}
         onSearchChange={setSearch}
@@ -180,11 +196,14 @@ export function AccountsList({ salesReps, isAdmin }: {
         onStatusFilterChange={setStatusFilter}
         repFilter={repFilter}
         onRepFilterChange={setRepFilter}
+        periodFilter={period}
+        onPeriodFilterChange={handlePeriodChange}
+        tierFilter={tierFilter}
+        onTierFilterChange={setTierFilter}
         salesReps={salesReps}
         isAdmin={isAdmin}
       />
 
-      {/* ── Per-filter empty states ── */}
       {isRep && ownerFilter === "mine" && filtered.length === 0 ? (
         <EmptyState
           icon={<Building2 className="w-10 h-10 stroke-1" />}
@@ -199,7 +218,6 @@ export function AccountsList({ salesReps, isAdmin }: {
         />
       ) : (
         <>
-          {/* ── Table ── */}
           <div className="overflow-hidden rounded-[var(--r)] border border-[var(--border)] bg-[var(--surface)]">
             <DataTable
               columns={columns}
@@ -207,11 +225,10 @@ export function AccountsList({ salesReps, isAdmin }: {
               keyExtractor={(a) => a.id}
               emptyMessage="No accounts found"
               emptyIcon={<Building2 className="w-10 h-10 stroke-1" />}
-              onRowClick={(account) => router.push(`/dashboard/accounts/${account.id}`)}
+              onRowClick={(a) => router.push(`/dashboard/accounts/${a.id}`)}
               rowClassName="group"
             />
           </div>
-
           <p className="text-xs text-[var(--text3)] text-right">
             {filtered.length} of {accounts.length} account{accounts.length !== 1 ? "s" : ""}
           </p>

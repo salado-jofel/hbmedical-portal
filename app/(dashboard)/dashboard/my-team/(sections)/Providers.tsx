@@ -2,21 +2,22 @@
 
 import { type ReactNode, useEffect } from "react";
 import { useAppDispatch } from "@/store/hooks";
-import { setMyTeam } from "../(redux)/my-team-slice";
-import type { SubRep } from "../(redux)/my-team-slice";
+import { setRows, setKpis } from "../(redux)/my-team-slice";
+import type { IRepListRow, IMyTeamKpis } from "@/utils/interfaces/my-team";
 
 export default function Providers({
   children,
-  subReps,
+  rows,
+  kpis,
 }: {
   children: ReactNode;
-  subReps: SubRep[];
+  rows: IRepListRow[];
+  kpis: IMyTeamKpis;
 }) {
   const dispatch = useAppDispatch();
-
   useEffect(() => {
-    dispatch(setMyTeam(subReps));
-  }, [dispatch, subReps]);
-
+    dispatch(setRows(rows));
+    dispatch(setKpis(kpis));
+  }, [dispatch, rows, kpis]);
   return <>{children}</>;
 }

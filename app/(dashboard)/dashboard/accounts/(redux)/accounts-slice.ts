@@ -1,18 +1,18 @@
-import type { IAccount } from "@/utils/interfaces/accounts";
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
 import { initialState } from "./accounts-state";
+import type { IAccountWithMetrics } from "@/utils/interfaces/accounts";
 
 const accountsSlice = createSlice({
   name: "accounts",
   initialState,
   reducers: {
-    setAccounts(state, action: PayloadAction<IAccount[]>) {
+    setAccounts(state, action: PayloadAction<IAccountWithMetrics[]>) {
       state.items = action.payload;
     },
-    addAccountToStore(state, action: PayloadAction<IAccount>) {
+    addAccountToStore(state, action: PayloadAction<IAccountWithMetrics>) {
       state.items.unshift(action.payload);
     },
-    updateAccountInStore(state, action: PayloadAction<IAccount>) {
+    updateAccountInStore(state, action: PayloadAction<IAccountWithMetrics>) {
       const index = state.items.findIndex((a) => a.id === action.payload.id);
       if (index !== -1) {
         state.items[index] = action.payload;

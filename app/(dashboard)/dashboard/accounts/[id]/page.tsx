@@ -34,7 +34,7 @@ export default async function AccountDetailPage({
   const adminUser = checkIsAdmin(role);
   const repUser = isSalesRep(role);
   const supportUser = isSupport(role);
-  const canEdit = adminUser; // only admins may create / update / delete
+  const canEdit = adminUser || repUser; // admins and sales reps may create / update / delete
   const showActivities = adminUser || repUser; // support staff cannot see activities
 
   const [account, salesReps] = await Promise.all([
@@ -54,7 +54,7 @@ export default async function AccountDetailPage({
   ]);
 
   return (
-    <div className="p-6 md:p-8 max-w-480 mx-auto space-y-6">
+    <div className=" max-w-480 mx-auto space-y-6">
       <Providers account={account} contacts={contacts} activities={activities}>
         <AccountHeader
           accountId={account.id}

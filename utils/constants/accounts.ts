@@ -1,4 +1,4 @@
-import type { AccountStatus } from "@/utils/interfaces/accounts";
+import type { AccountStatus, AccountPeriod, AccountTier } from "@/utils/interfaces/accounts";
 
 export const ACCOUNTS_TABLE = "facilities";
 export const CONTACTS_TABLE = "contacts";
@@ -89,4 +89,17 @@ export const ACCOUNT_STATUS_FILTER_OPTIONS: { value: AccountStatus | "all"; labe
   { value: "active",   label: "Active" },
   { value: "prospect", label: "Prospect" },
   { value: "inactive", label: "Inactive" },
+];
+
+export const ACCOUNT_PERIOD_OPTIONS: { value: AccountPeriod; label: string }[] = [
+  { value: "this_month",    label: "This Month"    },
+  { value: "last_3_months", label: "Last 3 Months" },
+  { value: "all_time",      label: "All Time"      },
+];
+
+export const ACCOUNT_TIER_FILTER_OPTIONS: { value: AccountTier | "all"; label: string }[] = [
+  { value: "all", label: "All tiers"    },
+  { value: "A",   label: "A-Tier only"  },
+  { value: "B",   label: "B-Tier only"  },
+  { value: "C",   label: "C-Tier only"  },
 ];

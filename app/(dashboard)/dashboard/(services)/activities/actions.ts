@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentUserOrThrow, getUserRole, requireAdminOrThrow } from "@/lib/supabase/auth";
+import { getCurrentUserOrThrow, getUserRole } from "@/lib/supabase/auth";
 import { isAdmin, isSalesRep } from "@/utils/helpers/role";
 import {
   ACTIVITIES_TABLE,
@@ -22,6 +22,30 @@ import {
 function toNullable(val: string | null | undefined): string | null {
   if (!val || val.trim() === "" || val.trim() === "none") return null;
   return val.trim();
+}
+
+async function authorizeActivityWrite(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  facilityId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const user = await getCurrentUserOrThrow(supabase);
+  const role = await getUserRole(supabase);
+  const adminUser = isAdmin(role);
+  const repUser   = isSalesRep(role);
+
+  if (!adminUser && !repUser) return { ok: false, error: "Unauthorized." };
+
+  if (repUser) {
+    const { data: facility } = await supabase
+      .from("facilities")
+      .select("assigned_rep")
+      .eq("id", facilityId)
+      .single();
+    if (!facility || facility.assigned_rep !== user.id) {
+      return { ok: false, error: "You can only manage activities for your own assigned clinics." };
+    }
+  }
+  return { ok: true };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -65,7 +89,8 @@ export async function createActivity(
 ): Promise<IActivityFormState> {
   try {
     const supabase = await createClient();
-    await requireAdminOrThrow(supabase);
+    const auth = await authorizeActivityWrite(supabase, facilityId);
+    if (!auth.ok) return { error: auth.error, success: false };
     const user = await getCurrentUserOrThrow(supabase);
 
     const raw = {
@@ -120,7 +145,8 @@ export async function updateActivity(
 ): Promise<IActivityFormState> {
   try {
     const supabase = await createClient();
-    await requireAdminOrThrow(supabase);
+    const auth = await authorizeActivityWrite(supabase, facilityId);
+    if (!auth.ok) return { error: auth.error, success: false };
 
     const raw = {
       type: formData.get("type") as string,
@@ -169,7 +195,8 @@ export async function deleteActivity(
   facilityId: string,
 ): Promise<void> {
   const supabase = await createClient();
-  await requireAdminOrThrow(supabase);
+  const auth = await authorizeActivityWrite(supabase, facilityId);
+  if (!auth.ok) throw new Error(auth.error);
 
   const { error } = await supabase
     .from(ACTIVITIES_TABLE)

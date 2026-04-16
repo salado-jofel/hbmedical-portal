@@ -3,6 +3,8 @@
 import { ReactNode, useState } from "react";
 import { Download, Trash2 } from "lucide-react";
 import ConfirmModal from "@/app/(components)/ConfirmModal";
+import { cn } from "@/utils/utils";
+import type { MaterialCategory } from "@/app/(components)/MaterialCard";
 
 interface AdminMaterialCardProps {
   id: string;
@@ -17,7 +19,53 @@ interface AdminMaterialCardProps {
   selected: boolean;
   onToggleSelect: (id: string) => void;
   isActive?: boolean;
+  category?: MaterialCategory;
 }
+
+const CATEGORY_STYLES: Record<MaterialCategory, {
+  headerBg: string;
+  iconText: string;
+  tagBg: string;
+  tagBorder: string;
+  tagText: string;
+}> = {
+  marketing: {
+    headerBg:   "bg-[var(--blue-lt)]",
+    iconText:   "text-[var(--blue)]",
+    tagBg:      "bg-[var(--blue-lt)]",
+    tagBorder:  "border-[var(--blue)]/30",
+    tagText:    "text-[var(--blue)]",
+  },
+  contracts: {
+    headerBg:   "bg-[var(--purple-lt)]",
+    iconText:   "text-[var(--purple)]",
+    tagBg:      "bg-[var(--purple-lt)]",
+    tagBorder:  "border-[var(--purple)]/30",
+    tagText:    "text-[var(--purple)]",
+  },
+  training: {
+    headerBg:   "bg-[var(--gold-lt)]",
+    iconText:   "text-[var(--gold)]",
+    tagBg:      "bg-[var(--gold-lt)]",
+    tagBorder:  "border-[var(--gold-border)]",
+    tagText:    "text-[var(--gold)]",
+  },
+  onboarding: {
+    headerBg:   "bg-[var(--teal-lt)]",
+    iconText:   "text-[var(--teal)]",
+    tagBg:      "bg-[var(--teal-lt)]",
+    tagBorder:  "border-[var(--teal)]/30",
+    tagText:    "text-[var(--teal)]",
+  },
+};
+
+const NEUTRAL_STYLES = {
+  headerBg:   "bg-slate-50",
+  iconText:   "text-[var(--text2)]",
+  tagBg:      "bg-slate-100",
+  tagBorder:  "border-slate-200",
+  tagText:    "text-[var(--text2)]",
+};
 
 function splitTag(tag?: string | null, separator = " - ") {
   if (!tag) return { prefix: "", label: "" };
@@ -39,12 +87,14 @@ export function AdminMaterialCard({
   selected,
   onToggleSelect,
   isActive = true,
+  category,
 }: AdminMaterialCardProps) {
   const [isDownloading, setIsDownloading] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   const { prefix, label } = splitTag(tag, tagSeparator);
+  const styles = category ? CATEGORY_STYLES[category] : NEUTRAL_STYLES;
 
   async function handleDownloadClick() {
     try {
@@ -74,25 +124,27 @@ export function AdminMaterialCard({
   return (
     <>
       <div
-        className={`relative overflow-hidden rounded-[var(--r)] border bg-[var(--surface)] transition-all duration-150 hover:shadow-[0_4px_12px_rgba(0,0,0,0.07)] ${
+        className={cn(
+          "group relative flex flex-col min-h-[280px] overflow-hidden rounded-2xl border bg-[var(--surface)] shadow-sm transition-all duration-150 hover:shadow-md",
           selected
-            ? "border-[var(--navy)] ring-2 ring-[var(--navy)]/20 hover:border-[var(--border2)]"
-            : "border-[var(--border)] hover:border-[var(--border2)]"
-        } ${!isActive ? "opacity-60" : ""}`}
+            ? "border-[var(--navy)] ring-2 ring-[var(--navy)]/20"
+            : "border-slate-200 hover:border-slate-300",
+          !isActive && "opacity-60",
+        )}
       >
-        {/* Checkbox overlay */}
         <button
           type="button"
           onClick={() => onToggleSelect(id)}
-          className={`absolute left-3 top-3 z-20 flex h-5 w-5 items-center justify-center rounded border-2 transition-colors ${
+          className={cn(
+            "absolute left-3 top-3 z-20 flex h-5 w-5 items-center justify-center rounded border-2 transition-colors",
             selected
-              ? "border-white bg-white"
-              : "border-white/70 bg-white/20 hover:bg-white/40"
-          }`}
+              ? "border-[var(--navy)] bg-white"
+              : "border-slate-300 bg-white hover:border-[var(--navy)]",
+          )}
           aria-label={selected ? "Deselect" : "Select"}
         >
           {selected && (
-            <svg viewBox="0 0 10 8" className="h-3 w-3 fill-[var(--navy)]">
+            <svg viewBox="0 0 10 8" className="h-3 w-3">
               <path
                 d="M1 4l3 3 5-6"
                 stroke="var(--navy)"
@@ -105,64 +157,58 @@ export function AdminMaterialCard({
           )}
         </button>
 
-        {/* Delete button */}
         <button
           type="button"
           onClick={() => setConfirmOpen(true)}
-          className="absolute right-0 top-0 z-20 flex h-6 w-6 items-center justify-center rounded-bl-lg bg-red-500/80 text-white transition hover:bg-red-600"
+          className="absolute right-0 top-0 z-20 flex h-6 w-6 items-center justify-center rounded-bl-lg bg-red-500/90 text-white transition hover:bg-red-600"
           aria-label="Delete material"
         >
           <Trash2 className="h-3 w-3" />
         </button>
 
-        {/* Inactive badge */}
         {!isActive && (
-          <div className="absolute right-12 top-3 z-20 rounded-full bg-[var(--text3)]/70 px-2 py-0.5 text-[10px] font-semibold uppercase text-white">
+          <div className="absolute right-10 top-3 z-20 rounded-full bg-[var(--text3)]/70 px-2 py-0.5 text-[10px] font-semibold uppercase text-white">
             Inactive
           </div>
         )}
 
-        <div className="relative min-h-[144px] bg-gradient-to-br from-[var(--navy)] to-[#125d8e] px-5 pb-5 pt-5">
-          <div className="absolute right-0 top-0 h-20 w-20 rounded-bl-[999px] bg-white/8" />
-          <div className="absolute right-5 top-5 z-10 flex max-w-[55%] justify-end">
-            {(prefix || label) && (
-              <div className="inline-flex max-w-full items-center gap-1 rounded-full bg-white/18 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.02em] text-white backdrop-blur-sm">
-                {prefix ? <span className="shrink-0">{prefix}</span> : null}
-                {label ? (
-                  <span className="truncate normal-case text-[10px] font-semibold tracking-normal">
-                    {label}
-                  </span>
-                ) : null}
-              </div>
-            )}
+        <div className={cn("relative flex items-start justify-between px-5 py-4 pl-10", styles.headerBg)}>
+          <div className={cn("flex h-11 w-11 items-center justify-center rounded-full bg-white shadow-sm", styles.iconText)}>
+            {icon}
           </div>
-
-          <div className="relative z-10 flex h-full flex-col">
-            <div className="mb-4 mt-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-white/14 text-white shadow-inner shadow-white/10">
-              {icon}
+          {(prefix || label) && (
+            <div className={cn(
+              "inline-flex max-w-[55%] items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide mt-8",
+              styles.tagBg,
+              styles.tagBorder,
+              styles.tagText,
+            )}>
+              {prefix ? <span className="shrink-0">{prefix}</span> : null}
+              {label ? (
+                <span className="truncate normal-case tracking-normal">{label}</span>
+              ) : null}
             </div>
-            <h3
-              className="pr-28 text-[18px] font-semibold leading-[1.25] text-white truncate "
-              title={title}
-            >
-              {title}
-            </h3>
-          </div>
+          )}
         </div>
 
-        <div className="px-5 pb-5 pt-4">
+        <div className="flex flex-1 flex-col px-5 pb-5 pt-4">
+          <h3
+            className="text-[15px] font-semibold leading-snug text-[var(--navy)] line-clamp-2"
+            title={title}
+          >
+            {title}
+          </h3>
           <p
-            className="min-h-[72px] text-[14px] leading-6 text-[var(--text2)] line-clamp-2"
+            className="mt-2 text-[13px] leading-5 text-[var(--text2)] line-clamp-3 flex-1"
             title={description || "No description available."}
           >
             {description || "No description available."}
           </p>
-
           <button
             type="button"
             onClick={handleDownloadClick}
             disabled={isDownloading}
-            className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-[7px] bg-[var(--teal)] px-4 h-9 text-sm font-medium text-white transition-colors hover:bg-[var(--teal)]/90 disabled:cursor-not-allowed disabled:opacity-70"
+            className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-[7px] bg-[var(--navy)] px-4 h-9 text-sm font-medium text-white transition-colors hover:bg-[var(--navy)]/90 disabled:cursor-not-allowed disabled:opacity-70"
           >
             <Download className="h-4 w-4" />
             <span>{isDownloading ? "Preparing..." : "Download"}</span>

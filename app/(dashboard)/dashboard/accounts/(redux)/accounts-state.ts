@@ -1,7 +1,7 @@
-import type { IAccount } from "@/utils/interfaces/accounts";
+import type { IAccountWithMetrics } from "@/utils/interfaces/accounts";
 
 export interface AccountsState {
-  items: IAccount[];
+  items: IAccountWithMetrics[];
 }
 
 export const initialState: AccountsState = {

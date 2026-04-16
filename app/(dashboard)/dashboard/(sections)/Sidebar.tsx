@@ -102,7 +102,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
         icon: CheckSquare,
         label: "Tasks",
         href: "/dashboard/tasks",
-        visible: isAdmin,
+        visible: (role) => isAdmin(role) || isSalesRep(role),
       },
       {
         icon: Share2,
@@ -126,7 +126,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
         icon: DollarSign,
         label: "Commissions",
         href: "/dashboard/commissions",
-        visible: (role) => isAdmin(role) || isSalesRep(role),
+        visible: (role) => isSalesRep(role),
       },
 {
         icon: TrendingUp,

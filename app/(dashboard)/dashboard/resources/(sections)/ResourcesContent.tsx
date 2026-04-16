@@ -51,10 +51,10 @@ type ResourceItem = {
 
 function getCategoryIcon(category: Category) {
   switch (category) {
-    case "marketing": return <Megaphone className="w-6 h-6 text-white" />;
-    case "contracts": return <ScrollText className="w-6 h-6 text-white" />;
-    case "training": return <BookOpen className="w-6 h-6 text-white" />;
-    case "onboarding": return <Hospital className="w-6 h-6 text-white" />;
+    case "marketing": return <Megaphone className="w-5 h-5" />;
+    case "contracts": return <ScrollText className="w-5 h-5" />;
+    case "training": return <BookOpen className="w-5 h-5" />;
+    case "onboarding": return <Hospital className="w-5 h-5" />;
   }
 }
 
@@ -204,6 +204,7 @@ export default function ResourcesContent({
           selected={isItemSelected(item)}
           onToggleSelect={() => toggleItem(item)}
           isActive={item.is_active}
+          category={item.category}
         />
       );
     }
@@ -217,6 +218,7 @@ export default function ResourcesContent({
         onDownload={handleDownload}
         icon={icon}
         tagSeparator=" - "
+        category={item.category}
       />
     );
   }
@@ -273,7 +275,7 @@ export default function ResourcesContent({
             const group = filtered.filter((i) => i.category === cat);
             if (group.length === 0) return null;
             return (
-              <MaterialsSection key={cat} title={getCategoryLabel(cat)}>
+              <MaterialsSection key={cat} title={getCategoryLabel(cat)} category={cat}>
                 {group.map(renderCard)}
               </MaterialsSection>
             );
