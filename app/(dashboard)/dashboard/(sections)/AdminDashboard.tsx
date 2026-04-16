@@ -69,8 +69,19 @@ export function AdminDashboard({
     () => orders.filter((o) => o.order_status !== "canceled" && o.order_status !== "draft").length,
     [orders],
   );
+  const ADMIN_VISIBLE_STATUSES = [
+    "manufacturer_review",
+    "additional_info_needed",
+    "approved",
+    "shipped",
+    "delivered",
+  ];
   const recent = useMemo(
-    () => [...orders].sort((a, b) => new Date(b.placed_at).getTime() - new Date(a.placed_at).getTime()).slice(0, 10),
+    () =>
+      orders
+        .filter((o) => ADMIN_VISIBLE_STATUSES.includes(o.order_status))
+        .sort((a, b) => new Date(b.placed_at).getTime() - new Date(a.placed_at).getTime())
+        .slice(0, 10),
     [orders],
   );
 
@@ -136,7 +147,16 @@ export function AdminDashboard({
             <p className="text-[13px] font-semibold text-[var(--navy)]">Recent Orders</p>
             <p className="mt-[1px] text-[11px] text-[var(--text3)]">Latest {recent.length} orders</p>
           </div>
-          <DataTable columns={columns} data={recent} keyExtractor={(o) => o.id} emptyMessage="No orders yet" onRowClick={() => router.push("/dashboard/orders")} />
+          <DataTable
+            columns={columns}
+            data={recent}
+            keyExtractor={(o) => o.id}
+            emptyMessage="No orders yet"
+            onRowClick={(order) => {
+              sessionStorage.setItem("pending-order-open", JSON.stringify({ orderId: order.id, tab: "overview" }));
+              router.push("/dashboard/orders");
+            }}
+          />
         </div>
 
         <div className="flex flex-col gap-4">

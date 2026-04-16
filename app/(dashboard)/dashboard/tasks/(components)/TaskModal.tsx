@@ -34,6 +34,12 @@ interface TaskModalProps {
   defaultFacilityId?: string;
   /** Render trigger as mobile FAB (circular + button) */
   fab?: boolean;
+  /** Auto-open on mount (used for deep-linked task edits) */
+  initialOpen?: boolean;
+  /** Render without the trigger button (useful when auto-opened) */
+  hideTrigger?: boolean;
+  /** Called when the dialog closes */
+  onClosed?: () => void;
 }
 
 export function TaskModal({
@@ -43,9 +49,12 @@ export function TaskModal({
   isAdmin,
   defaultFacilityId,
   fab,
+  initialOpen,
+  hideTrigger,
+  onClosed,
 }: TaskModalProps) {
   const dispatch = useAppDispatch();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initialOpen ?? false);
   const formRef = useRef<HTMLFormElement>(null);
 
   const isEdit = !!task;
@@ -90,30 +99,38 @@ export function TaskModal({
   }, [state]);
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {isEdit ? (
-          <Button variant="ghost" size="icon" className="w-7 h-7">
-            <Pencil className="w-3.5 h-3.5" />
-          </Button>
-        ) : fab ? (
-          <button
-            type="button"
-            className="size-14 rounded-full bg-[var(--navy)] shadow-lg flex items-center justify-center text-white"
-            aria-label="New task"
-          >
-            <Plus className="w-6 h-6" />
-          </button>
-        ) : (
-          <Button
-            size="sm"
-            className="gap-1.5 bg-[var(--navy)] hover:bg-[var(--navy)]/90 text-white"
-          >
-            <Plus className="w-4 h-4" />
-            New Task
-          </Button>
-        )}
-      </DialogTrigger>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        setOpen(v);
+        if (!v) onClosed?.();
+      }}
+    >
+      {!hideTrigger && (
+        <DialogTrigger asChild>
+          {isEdit ? (
+            <Button variant="ghost" size="icon" className="w-7 h-7">
+              <Pencil className="w-3.5 h-3.5" />
+            </Button>
+          ) : fab ? (
+            <button
+              type="button"
+              className="size-14 rounded-full bg-[var(--navy)] shadow-lg flex items-center justify-center text-white"
+              aria-label="New task"
+            >
+              <Plus className="w-6 h-6" />
+            </button>
+          ) : (
+            <Button
+              size="sm"
+              className="gap-1.5 bg-[var(--navy)] hover:bg-[var(--navy)]/90 text-white"
+            >
+              <Plus className="w-4 h-4" />
+              New Task
+            </Button>
+          )}
+        </DialogTrigger>
+      )}
 
       <DialogContent className="sm:max-w-lg max-h-[85dvh] overflow-y-auto sm:rounded-2xl border border-[var(--border)] shadow-[0_20px_60px_rgba(0,0,0,0.12)]">
         <DialogHeader>

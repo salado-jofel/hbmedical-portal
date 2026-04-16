@@ -11,7 +11,7 @@ import {
 import { useAppSelector } from "@/store/hooks";
 import { formatAmount } from "@/utils/helpers/formatter";
 
-export default function CommissionCalculator() {
+export default function CommissionCalculator({ lockedRepId }: { lockedRepId?: string }) {
   const summary = useAppSelector((s) => s.commissions.summary);
 
   const [saleAmount, setSaleAmount] = useState(25000);

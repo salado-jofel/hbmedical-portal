@@ -38,4 +38,7 @@ export interface IRepPerformanceSummary {
   myPerformance: IRepPerformance | null;
   subRepPerformance: IRepPerformance[];
   monthlyRevenue: Array<{ period: string; revenue: number }>;
+  pipelineRevenue: number;
+  oneYearProjectedRevenue: number;
+  tierCounts: { A: number; B: number; C: number };
 }

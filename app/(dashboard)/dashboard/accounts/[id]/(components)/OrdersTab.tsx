@@ -1,37 +1,32 @@
 "use client";
 
-import { EmptyState } from "@/app/(components)/EmptyState";
-import { OrderCard } from "@/app/(dashboard)/dashboard/orders/(components)/OrderCard";
-import {
-  groupOrdersByStatus,
-  KANBAN_STATUS_CONFIG,
-  PAID_COLUMN_CONFIG,
-} from "@/app/(dashboard)/dashboard/orders/(components)/kanban-config";
-import type { DashboardOrder, OrderStatus } from "@/utils/interfaces/orders";
+import { useMemo, useState } from "react";
 import { ShoppingCart } from "lucide-react";
-import { cn } from "@/utils/utils";
+import { EmptyState } from "@/app/(components)/EmptyState";
+import { OrdersChartsRow } from "./OrdersChartsRow";
+import {
+  OrdersFilterBar,
+  type OrdersStatusFilter,
+  type OrdersPeriodFilter,
+  type OrdersView,
+} from "./OrdersFilterBar";
+import { OrdersTableView } from "./OrdersTableView";
+import { OrdersKanbanView } from "./OrdersKanbanView";
+import type { DashboardOrder } from "@/utils/interfaces/orders";
 
-const ADMIN_VISIBLE_STATUSES: OrderStatus[] = [
-  "manufacturer_review",
-  "additional_info_needed",
-  "approved",
-  "shipped",
-  "delivered",
-];
-
-type KanbanCol =
-  | { type: "status"; status: OrderStatus }
-  | { type: "processed" };
-
-const COLUMNS: KanbanCol[] = ADMIN_VISIBLE_STATUSES.flatMap(
-  (status): KanbanCol[] =>
-    status === "approved"
-      ? [
-          { type: "status" as const, status },
-          { type: "processed" as const },
-        ]
-      : [{ type: "status" as const, status }],
-);
+function periodBounds(period: OrdersPeriodFilter): { start: string | null; end: string | null } {
+  const now = new Date();
+  if (period === "this_month") {
+    const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
+    return { start, end };
+  }
+  if (period === "last_3_months") {
+    const start = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate()).toISOString();
+    return { start, end: null };
+  }
+  return { start: null, end: null };
+}
 
 interface OrdersTabProps {
   orders: DashboardOrder[];
@@ -39,6 +34,39 @@ interface OrdersTabProps {
 }
 
 export function OrdersTab({ orders, onOrderClick }: OrdersTabProps) {
+  const [statusFilter, setStatusFilter] = useState<OrdersStatusFilter>("all");
+  const [periodFilter, setPeriodFilter] = useState<OrdersPeriodFilter>("all_time");
+  const [search, setSearch] = useState("");
+  const [view, setView] = useState<OrdersView>("table");
+
+  const filtered = useMemo(() => {
+    let result = orders;
+    if (statusFilter !== "all") {
+      result = result.filter((o) => o.order_status === statusFilter);
+    }
+    if (periodFilter !== "all_time") {
+      const { start, end } = periodBounds(periodFilter);
+      result = result.filter((o) => {
+        const placed = o.placed_at;
+        if (!placed) return false;
+        if (start && placed < start) return false;
+        if (end && placed >= end) return false;
+        return true;
+      });
+    }
+    if (search.trim()) {
+      const term = search.trim().toLowerCase();
+      result = result.filter((o) => {
+        const orderNum = (o.order_number ?? "").toLowerCase();
+        const p: any = (o as any).patients ?? (o as any).patient ?? null;
+        const row = Array.isArray(p) ? p[0] : p;
+        const patientStr = `${row?.first_name ?? ""} ${row?.last_name ?? ""}`.toLowerCase();
+        return orderNum.includes(term) || patientStr.includes(term);
+      });
+    }
+    return result;
+  }, [orders, statusFilter, periodFilter, search]);
+
   if (orders.length === 0) {
     return (
       <EmptyState
@@ -48,73 +76,30 @@ export function OrdersTab({ orders, onOrderClick }: OrdersTabProps) {
     );
   }
 
-  const grouped = groupOrdersByStatus(orders);
-  const approvedPending = (grouped["approved"] ?? []).filter(
-    (o) => !o.payment_method,
-  );
-  const approvedProcessed = (grouped["approved"] ?? []).filter(
-    (o) => !!o.payment_method,
-  );
-
   return (
     <div>
-      <p className="text-sm text-[var(--text2)] mb-4">
-        {orders.length} order{orders.length !== 1 ? "s" : ""}
+      <OrdersChartsRow orders={orders} />
+
+      <OrdersFilterBar
+        statusFilter={statusFilter}
+        onStatusFilterChange={setStatusFilter}
+        periodFilter={periodFilter}
+        onPeriodFilterChange={setPeriodFilter}
+        search={search}
+        onSearchChange={setSearch}
+        view={view}
+        onViewChange={setView}
+      />
+
+      <p className="mb-3 text-xs text-[var(--text3)]">
+        {filtered.length} of {orders.length} order{orders.length !== 1 ? "s" : ""}
       </p>
 
-      <div className="flex gap-4 overflow-x-auto pb-4">
-        {COLUMNS.map((col) => {
-          const isProcessed = col.type === "processed";
-          const key = isProcessed ? "processed" : col.status;
-          const config = isProcessed
-            ? PAID_COLUMN_CONFIG
-            : KANBAN_STATUS_CONFIG[col.status];
-          const colOrders = isProcessed
-            ? approvedProcessed
-            : col.status === "approved"
-              ? approvedPending
-              : (grouped[col.status] ?? []);
-
-          return (
-            <div key={key} className="flex-shrink-0 w-72 flex flex-col">
-              {/* Column header */}
-              <div className="flex items-center gap-2 mb-3 px-1">
-                <span className={cn("w-2 h-2 rounded-full shrink-0", config.dot)} />
-                <span className="text-xs font-semibold text-[var(--navy)]">
-                  {config.label}
-                </span>
-                <span
-                  className={cn(
-                    "ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full border",
-                    config.badge,
-                  )}
-                >
-                  {colOrders.length}
-                </span>
-              </div>
-
-              {/* Cards */}
-              <div className="flex flex-col gap-2 min-h-[120px] bg-[var(--bg)] border border-[var(--border)] rounded-xl p-2">
-                {colOrders.length === 0 ? (
-                  <div className="flex items-center justify-center py-8">
-                    <p className="text-xs text-gray-400">No orders</p>
-                  </div>
-                ) : (
-                  colOrders.map((order) => (
-                    <OrderCard
-                      key={order.id}
-                      order={order}
-                      statusOverride={isProcessed ? "processed" : undefined}
-                      onClick={() => onOrderClick(order.id)}
-                      unreadCount={0}
-                    />
-                  ))
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      {view === "table" ? (
+        <OrdersTableView orders={filtered} onOrderClick={onOrderClick} />
+      ) : (
+        <OrdersKanbanView orders={filtered} onOrderClick={onOrderClick} />
+      )}
     </div>
   );
 }

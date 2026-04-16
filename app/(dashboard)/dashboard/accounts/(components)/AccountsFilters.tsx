@@ -1,9 +1,18 @@
 "use client";
 
 import { TableToolbar } from "@/app/(components)/TableToolbar";
-import { ACCOUNT_STATUS_FILTER_OPTIONS } from "@/utils/constants/accounts";
+import {
+  ACCOUNT_STATUS_FILTER_OPTIONS,
+  ACCOUNT_PERIOD_OPTIONS,
+  ACCOUNT_TIER_FILTER_OPTIONS,
+} from "@/utils/constants/accounts";
 import type { FilterSelect } from "@/utils/interfaces/table-toolbar";
-import type { IRepProfile, AccountStatus } from "@/utils/interfaces/accounts";
+import type {
+  IRepProfile,
+  AccountStatus,
+  AccountPeriod,
+  AccountTier,
+} from "@/utils/interfaces/accounts";
 
 export function AccountsFilters({
   search,
@@ -12,6 +21,10 @@ export function AccountsFilters({
   onStatusFilterChange,
   repFilter,
   onRepFilterChange,
+  periodFilter,
+  onPeriodFilterChange,
+  tierFilter,
+  onTierFilterChange,
   salesReps,
   isAdmin,
 }: {
@@ -21,6 +34,10 @@ export function AccountsFilters({
   onStatusFilterChange: (v: AccountStatus | "all") => void;
   repFilter: string;
   onRepFilterChange: (v: string) => void;
+  periodFilter: AccountPeriod;
+  onPeriodFilterChange: (v: AccountPeriod) => void;
+  tierFilter: AccountTier | "all";
+  onTierFilterChange: (v: AccountTier | "all") => void;
   salesReps: IRepProfile[];
   isAdmin: boolean;
 }) {
@@ -51,6 +68,20 @@ export function AccountsFilters({
           } satisfies FilterSelect,
         ]
       : []),
+    {
+      value: periodFilter,
+      onChange: (v) => onPeriodFilterChange(v as AccountPeriod),
+      options: ACCOUNT_PERIOD_OPTIONS,
+      placeholder: "This Month",
+      className: "w-full sm:w-40",
+    },
+    {
+      value: tierFilter,
+      onChange: (v) => onTierFilterChange(v as AccountTier | "all"),
+      options: ACCOUNT_TIER_FILTER_OPTIONS,
+      placeholder: "All tiers",
+      className: "w-full sm:w-36",
+    },
   ];
 
   return (

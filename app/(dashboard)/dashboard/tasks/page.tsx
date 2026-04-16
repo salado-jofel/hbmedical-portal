@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole } from "@/lib/supabase/auth";
-import { isAdmin as checkIsAdmin } from "@/utils/helpers/role";
+import { isAdmin as checkIsAdmin, isSalesRep } from "@/utils/helpers/role";
 import { PageHeader } from "@/app/(components)/PageHeader";
 
 export const metadata: Metadata = { title: "Tasks" };
@@ -21,7 +21,7 @@ export default async function TasksPage() {
   const role = await getUserRole(supabase);
   const admin = checkIsAdmin(role);
 
-  if (!admin) redirect("/dashboard");
+  if (!admin && !isSalesRep(role)) redirect("/dashboard");
 
   const [tasks, accounts, salesReps] = await Promise.all([
     getTasks(),

@@ -59,8 +59,12 @@ export default function RepHero() {
             {mounted ? (initials ?? "?") : null}
           </div>
           <div>
-            <p className="text-[18px] font-semibold leading-tight text-white">{name ?? "—"}</p>
-            <p className="mt-0.5 text-[12px]" style={{ color: "#7fb3cc" }}>{subtitle}</p>
+            <p className="text-[18px] font-semibold leading-tight text-white">
+              {mounted ? (name ?? "—") : "—"}
+            </p>
+            <p className="mt-0.5 text-[12px]" style={{ color: "#7fb3cc" }}>
+              {mounted ? subtitle : "\u00A0"}
+            </p>
           </div>
         </div>
         <div className="text-right">

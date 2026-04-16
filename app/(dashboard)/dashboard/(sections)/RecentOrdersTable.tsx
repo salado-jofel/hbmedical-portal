@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { StatusBadge } from "@/app/(components)/StatusBadge";
 import { DataTable } from "@/app/(components)/DataTable";
 import { OrderMobileCard } from "@/app/(components)/OrderMobileCard";
@@ -48,6 +49,7 @@ interface RecentOrdersTableProps {
 export default function RecentOrdersTable({
   initialOrders,
 }: RecentOrdersTableProps) {
+  const router = useRouter();
   const recent = useMemo(
     () =>
       [...(initialOrders ?? [])]
@@ -80,7 +82,17 @@ export default function RecentOrdersTable({
       <div className="divide-y divide-[var(--border)] md:hidden">
         {recent.length > 0 ? (
           recent.map((order) => (
-            <OrderMobileCard key={order.id} order={order} />
+            <button
+              key={order.id}
+              type="button"
+              onClick={() => {
+                sessionStorage.setItem("pending-order-open", JSON.stringify({ orderId: order.id, tab: "overview" }));
+                router.push("/dashboard/orders");
+              }}
+              className="block w-full text-left"
+            >
+              <OrderMobileCard order={order} />
+            </button>
           ))
         ) : (
           <p className="p-4 text-[13px] text-[var(--text3)]">No orders yet.</p>
@@ -95,6 +107,10 @@ export default function RecentOrdersTable({
           keyExtractor={(row) => String(row.id ?? "")}
           emptyMessage="No orders yet."
           headerVariant="minimal"
+          onRowClick={(order) => {
+            sessionStorage.setItem("pending-order-open", JSON.stringify({ orderId: order.id, tab: "overview" }));
+            router.push("/dashboard/orders");
+          }}
         />
       </div>
     </div>

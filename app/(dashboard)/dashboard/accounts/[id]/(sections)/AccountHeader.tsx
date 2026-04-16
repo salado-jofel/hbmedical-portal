@@ -8,6 +8,7 @@ import { useAppSelector, useAppDispatch } from "@/store/hooks";
 import { updateAccountInStore } from "@/app/(dashboard)/dashboard/accounts/(redux)/accounts-slice";
 import { updateAccountStatus, assignRep } from "@/app/(dashboard)/dashboard/accounts/(services)/actions";
 import { AccountStatusBadge } from "../../(components)/AccountStatusBadge";
+import { AccountTierBadge } from "../../(components)/AccountTierBadge";
 import {
   Select,
   SelectContent,
@@ -17,6 +18,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/utils/utils";
 import type { IRepProfile, AccountStatus } from "@/utils/interfaces/accounts";
+import { withZeroMetrics } from "@/utils/helpers/accounts";
 
 const STATUS_OPTIONS: { value: AccountStatus; label: string }[] = [
   { value: "active", label: "Active" },
@@ -32,9 +34,8 @@ interface AccountHeaderProps {
 
 export function AccountHeader({ accountId, isAdmin, salesReps }: AccountHeaderProps) {
   const dispatch = useAppDispatch();
-  const account = useAppSelector((s) =>
-    s.accounts.items.find((a) => a.id === accountId),
-  );
+  const accounts = useAppSelector((s) => s.accounts.items);
+  const account = accounts.find((a) => a.id === accountId);
 
   const [statusPending, startStatusTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -56,7 +57,8 @@ export function AccountHeader({ accountId, isAdmin, salesReps }: AccountHeaderPr
     startStatusTransition(async () => {
       try {
         const updated = await updateAccountStatus(accountId, value as AccountStatus);
-        dispatch(updateAccountInStore(updated));
+        const existing = accounts.find((a) => a.id === updated.id);
+        dispatch(updateAccountInStore(withZeroMetrics(updated, existing)));
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to update status.");
       }
@@ -71,7 +73,8 @@ export function AccountHeader({ accountId, isAdmin, salesReps }: AccountHeaderPr
     try {
       const repId = newRepId === "none" ? null : newRepId;
       const updated = await assignRep(accountId, repId);
-      dispatch(updateAccountInStore(updated));
+      const existing = accounts.find((a) => a.id === updated.id);
+      dispatch(updateAccountInStore(withZeroMetrics(updated, existing)));
       toast.success("Sales rep updated.");
     } catch {
       setSelectedRep(previous);
@@ -106,6 +109,7 @@ export function AccountHeader({ accountId, isAdmin, salesReps }: AccountHeaderPr
             <p className="text-sm text-[var(--text2)] mt-0.5 truncate">{account.contact}</p>
           </div>
           <AccountStatusBadge status={account.status} className="shrink-0" />
+          <AccountTierBadge tier={account.tier} className="shrink-0" />
         </div>
 
         {/* Rep view — assigned rep as plain text */}

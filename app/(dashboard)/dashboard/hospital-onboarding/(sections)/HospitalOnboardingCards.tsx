@@ -100,17 +100,17 @@ function getHospitalOnboardingIcon(item: HospitalOnboardingMaterial) {
   switch (kind) {
     case "onboarding-guide":
     case "orientation":
-      return <BookOpen className="w-6 h-6 text-white" />;
+      return <BookOpen className="w-5 h-5" />;
     case "credentialing":
-      return <ScrollText className="w-6 h-6 text-white" />;
+      return <ScrollText className="w-5 h-5" />;
     case "facility-guide":
-      return <Building2 className="w-6 h-6 text-white" />;
+      return <Building2 className="w-5 h-5" />;
     case "checklist":
-      return <ClipboardCheck className="w-6 h-6 text-white" />;
+      return <ClipboardCheck className="w-5 h-5" />;
     case "presentation":
-      return <Presentation className="w-6 h-6 text-white" />;
+      return <Presentation className="w-5 h-5" />;
     default:
-      return <FileText className="w-6 h-6 text-white" />;
+      return <FileText className="w-5 h-5" />;
   }
 }
 
@@ -287,6 +287,7 @@ export default function HospitalOnboardingCards() {
                       dispatch(toggleSelectHospitalOnboardingItem(id))
                     }
                     isActive={card.is_active}
+                    category="onboarding"
                   />
                 ) : (
                   <MaterialCard
@@ -298,6 +299,7 @@ export default function HospitalOnboardingCards() {
                     onDownload={handleDownload}
                     icon={getHospitalOnboardingIcon(card)}
                     tagSeparator=" - "
+                    category="onboarding"
                   />
                 ),
               )}
