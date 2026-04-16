@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useTopLoader } from "nextjs-toploader";
-import { Settings, LogOut, CheckSquare, UserPlus } from "lucide-react";
+import { Settings, LogOut, CheckSquare, UserPlus, ChevronDown } from "lucide-react";
+import { cn } from "@/utils/utils";
 import { useAppSelector } from "@/store/hooks";
 import { HBLogo } from "@/app/(components)/HBLogo";
 import { NotificationBell } from "@/app/(dashboard)/(components)/NotificationBell";
@@ -75,7 +76,7 @@ export function TopBar() {
             <PopoverTrigger asChild>
               <button
                 type="button"
-                className="flex items-center gap-2.5 rounded-lg px-1 py-0.5 transition hover:bg-white/10 focus:outline-none"
+                className="flex items-center gap-2.5 rounded-lg px-1 py-0.5 pr-2 transition hover:bg-white/10 focus:outline-none"
               >
                 {/* 36px avatar circle */}
                 <div
@@ -98,6 +99,14 @@ export function TopBar() {
                     </p>
                   )}
                 </div>
+                {/* Dropdown affordance */}
+                <ChevronDown
+                  className={cn(
+                    "h-4 w-4 shrink-0 text-white/70 transition-transform duration-150",
+                    open && "rotate-180",
+                  )}
+                  strokeWidth={2}
+                />
               </button>
             </PopoverTrigger>
 
@@ -189,7 +198,7 @@ export function TopBar() {
         ) : (
           <button
             type="button"
-            className="flex items-center gap-2.5 rounded-lg px-1 py-0.5 transition hover:bg-white/10 focus:outline-none"
+            className="flex items-center gap-2.5 rounded-lg px-1 py-0.5 pr-2 transition hover:bg-white/10 focus:outline-none"
           >
             <div
               className="flex h-9 w-9 shrink-0 select-none items-center justify-center rounded-full text-[13px] font-semibold text-white"
@@ -210,6 +219,7 @@ export function TopBar() {
                 </p>
               )}
             </div>
+            <ChevronDown className="h-4 w-4 shrink-0 text-white/70" strokeWidth={2} />
           </button>
         )}
       </div>
