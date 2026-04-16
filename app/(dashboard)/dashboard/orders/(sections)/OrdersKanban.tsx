@@ -90,7 +90,7 @@ export function OrdersKanban({
       openModal(orderId, tab ?? "overview");
     }
 
-    // sessionStorage: set by NotificationBell when navigating from another page
+    // sessionStorage: set by NotificationBell / Recent Orders deep-link
     const pending = sessionStorage.getItem("pending-order-open");
     if (pending) {
       try {
