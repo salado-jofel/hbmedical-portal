@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAppSelector } from "@/store/hooks";
@@ -16,6 +17,8 @@ function isActive(href: string, pathname: string): boolean {
 export function TabNav() {
   const pathname = usePathname();
   const role = useAppSelector((state) => state.dashboard.role) as UserRole;
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   // Flatten all groups → visible items for this role (Settings/Profile live in avatar dropdown)
   const visibleItems = NAV_GROUPS.flatMap((group) =>
@@ -26,6 +29,17 @@ export function TabNav() {
       item.href !== "/dashboard/tasks" &&
       item.href !== "/dashboard/onboarding",
   );
+
+  // Render a placeholder on SSR/first client render so useId() counters stay stable
+  // between server and client. Role comes from Redux and is only available post-hydration.
+  if (!mounted) {
+    return (
+      <div
+        className="mb-5 flex gap-[3px] overflow-x-auto rounded-[var(--r)] border border-[var(--border)] bg-[var(--surface)] p-1"
+        style={{ scrollbarWidth: "none", minHeight: 38 }}
+      />
+    );
+  }
 
   if (visibleItems.length === 0) return null;
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Plus, ShoppingCart } from "lucide-react";
 import { KpiCard } from "@/app/(components)/KpiCard";
@@ -73,10 +74,10 @@ export function ClinicDashboard({ orders }: { orders: DashboardOrder[] }) {
           </div>
           <div className="flex flex-col gap-2 p-3">
             {QUICK_ACTIONS.map(({ label, icon: Icon, href }) => (
-              <button key={label} onClick={() => router.push(href)} className="flex items-center gap-3 rounded-[var(--r)] border border-[var(--border)] px-4 py-3 text-left transition hover:border-[var(--navy)] hover:shadow-sm">
+              <Link key={label} href={href} className="flex items-center gap-3 rounded-[var(--r)] border border-[var(--border)] px-4 py-3 text-left transition hover:border-[var(--navy)] hover:shadow-sm">
                 <Icon className="h-4 w-4 shrink-0 text-[var(--navy)]" />
                 <span className="text-[13px] font-medium text-[var(--navy)]">{label}</span>
-              </button>
+              </Link>
             ))}
           </div>
         </div>
