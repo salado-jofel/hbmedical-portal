@@ -3,7 +3,7 @@ import { ROLE_LABELS } from "@/utils/helpers/role";
 import type { InviteTokenRole } from "@/utils/interfaces/invite-tokens";
 
 const LOGO_URL =
-  "https://eyrefohymvvabazvmemq.supabase.co/storage/v1/object/public/spearhead-assets/assets/email/hb-logo-name-2.png";
+  "https://ersdsmuybpfvgvaiwcgl.supabase.co/storage/v1/object/public/hbmedical-bucket-public/assets/hb-logo-name-2%20(1).png";
 
 type SendInviteEmailParams = {
   to: string;
