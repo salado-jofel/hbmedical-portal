@@ -93,17 +93,17 @@ function getTrainingIcon(item: TrainingMaterial) {
   const kind = getDisplayKind(item);
   switch (kind) {
     case "training-deck":
-      return <Presentation className="w-6 h-6 text-white" />;
+      return <Presentation className="w-5 h-5" />;
     case "clinical-training":
-      return <FlaskConical className="w-6 h-6 text-white" />;
+      return <FlaskConical className="w-5 h-5" />;
     case "onboarding-guide":
-      return <BookOpen className="w-6 h-6 text-white" />;
+      return <BookOpen className="w-5 h-5" />;
     case "training-checklist":
-      return <ClipboardCheck className="w-6 h-6 text-white" />;
+      return <ClipboardCheck className="w-5 h-5" />;
     case "instructions-for-use":
-      return <ScrollText className="w-6 h-6 text-white" />;
+      return <ScrollText className="w-5 h-5" />;
     default:
-      return <FileText className="w-6 h-6 text-white" />;
+      return <FileText className="w-5 h-5" />;
   }
 }
 
@@ -255,6 +255,7 @@ export default function TrainingsCards() {
                       dispatch(toggleSelectTrainingItem(id))
                     }
                     isActive={card.is_active}
+                    category="training"
                   />
                 ) : (
                   <MaterialCard
@@ -266,6 +267,7 @@ export default function TrainingsCards() {
                     onDownload={handleDownload}
                     icon={getTrainingIcon(card)}
                     tagSeparator=" - "
+                    category="training"
                   />
                 ),
               )}

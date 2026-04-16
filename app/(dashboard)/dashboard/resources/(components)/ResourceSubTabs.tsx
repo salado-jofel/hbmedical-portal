@@ -15,7 +15,7 @@ export function ResourceSubTabs({
 }) {
   return (
     <div
-      className="flex gap-[3px] overflow-x-auto rounded-[var(--r)] border border-[var(--border)] bg-[var(--surface)] p-1"
+      className="flex gap-6 overflow-x-auto border-b border-slate-200"
       style={{ scrollbarWidth: "none" }}
     >
       {TABS.map((tab) => {
@@ -29,20 +29,20 @@ export function ResourceSubTabs({
             type="button"
             onClick={() => onTabChange(tab)}
             className={cn(
-              "flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-[7px] px-2 py-[7px] text-[12px] font-medium transition-all duration-150 min-w-[80px]",
+              "inline-flex items-center gap-1.5 whitespace-nowrap px-1 py-2.5 text-[13px] transition-colors border-b-2 -mb-px",
               active
-                ? "bg-[var(--navy)] text-white"
-                : "text-[var(--text2)] hover:bg-[var(--bg)]",
+                ? "font-semibold text-[var(--navy)] border-[var(--navy)]"
+                : "font-medium text-[var(--text3)] border-transparent hover:text-[var(--navy)]",
             )}
           >
             <span>{tab}</span>
             {count > 0 && (
               <span
                 className={cn(
-                  "inline-flex items-center justify-center rounded-full px-1.5 py-px text-[10px] font-semibold leading-none",
+                  "inline-flex items-center justify-center rounded-full px-1.5 text-[10px] font-semibold leading-[1.6]",
                   active
-                    ? "bg-white/20 text-white"
-                    : "bg-[var(--bg)] text-[var(--text3)]",
+                    ? "bg-[var(--navy)] text-white"
+                    : "bg-slate-100 text-[var(--text3)]",
                 )}
               >
                 {count}

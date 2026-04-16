@@ -120,7 +120,7 @@ async function buildRepPerformance(
   };
 }
 
-async function getMonthlyRevenue(
+export async function getMonthlyRevenue(
   repId: string | null,
   adminClient: ReturnType<typeof createAdminClient>,
 ): Promise<Array<{ period: string; revenue: number }>> {
