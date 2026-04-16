@@ -54,7 +54,7 @@ export default async function AccountDetailPage({
   ]);
 
   return (
-    <div className="p-6 md:p-8 max-w-480 mx-auto space-y-6">
+    <div className=" max-w-480 mx-auto space-y-6">
       <Providers account={account} contacts={contacts} activities={activities}>
         <AccountHeader
           accountId={account.id}

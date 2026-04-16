@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { requireAdminOrThrow, getCurrentUserOrThrow, getUserRole } from "@/lib/supabase/auth";
+import { getCurrentUserOrThrow, getUserRole } from "@/lib/supabase/auth";
 import { isAdmin, isSalesRep } from "@/utils/helpers/role";
 import { setQuotaSchema } from "@/utils/validators/quotas";
 import { SALES_QUOTAS_TABLE, REP_PERFORMANCE_PATH } from "@/utils/constants/quotas";
@@ -360,8 +360,25 @@ export async function setQuota(
 ): Promise<IQuotaFormState> {
   try {
     const supabase = await createClient();
-    await requireAdminOrThrow(supabase);
     const user = await getCurrentUserOrThrow(supabase);
+    const role = await getUserRole(supabase);
+
+    if (!isAdmin(role)) {
+      if (!isSalesRep(role)) {
+        return { success: false, error: "Unauthorized.", fieldErrors: {} };
+      }
+      const targetRepId = formData.get("rep_id") as string;
+      const adminClient = createAdminClient();
+      const { data: edge } = await adminClient
+        .from("rep_hierarchy")
+        .select("child_rep_id")
+        .eq("parent_rep_id", user.id)
+        .eq("child_rep_id", targetRepId)
+        .maybeSingle();
+      if (!edge) {
+        return { success: false, error: "You can only set quotas for your direct sub-reps.", fieldErrors: {} };
+      }
+    }
 
     const raw = {
       rep_id:        formData.get("rep_id") as string,

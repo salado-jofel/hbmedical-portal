@@ -19,7 +19,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-export default function RateManagement({ reps }: { reps: Array<{ id: string; name: string }> }) {
+export default function RateManagement({
+  reps,
+  lockedRepId,
+}: {
+  reps: Array<{ id: string; name: string }>;
+  lockedRepId?: string;
+}) {
   const rates = useAppSelector((s) => s.commissions.rates);
   const role = useAppSelector((s) => s.dashboard.role) as UserRole;
   const userId = useAppSelector((s) => s.dashboard.userId);
@@ -140,26 +146,30 @@ export default function RateManagement({ reps }: { reps: Array<{ id: string; nam
           <form action={formAction}>
             <div className="space-y-4 p-5">
               {/* Rep select */}
-              <div className="space-y-1.5">
-                <Label className="text-[12px]">
-                  Sales Rep <span className="text-red-400">*</span>
-                </Label>
-                <select
-                  name="rep_id"
-                  required
-                  className="h-9 w-full rounded-[7px] border border-[var(--border2)] bg-[var(--surface)] px-2 text-[13px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
-                >
-                  <option value="">Select a rep…</option>
-                  {reps.map((rep) => (
-                    <option key={rep.id} value={rep.id}>
-                      {rep.name}
-                    </option>
-                  ))}
-                </select>
-                {state?.fieldErrors?.rep_id && (
-                  <p className="text-[11px] text-red-500">{state.fieldErrors.rep_id}</p>
-                )}
-              </div>
+              {lockedRepId ? (
+                <input type="hidden" name="rep_id" value={lockedRepId} />
+              ) : (
+                <div className="space-y-1.5">
+                  <Label className="text-[12px]">
+                    Sales Rep <span className="text-red-400">*</span>
+                  </Label>
+                  <select
+                    name="rep_id"
+                    required
+                    className="h-9 w-full rounded-[7px] border border-[var(--border2)] bg-[var(--surface)] px-2 text-[13px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
+                  >
+                    <option value="">Select a rep…</option>
+                    {reps.map((rep) => (
+                      <option key={rep.id} value={rep.id}>
+                        {rep.name}
+                      </option>
+                    ))}
+                  </select>
+                  {state?.fieldErrors?.rep_id && (
+                    <p className="text-[11px] text-red-500">{state.fieldErrors.rep_id}</p>
+                  )}
+                </div>
+              )}
 
               {/* Rate percent */}
               <div className="space-y-1.5">

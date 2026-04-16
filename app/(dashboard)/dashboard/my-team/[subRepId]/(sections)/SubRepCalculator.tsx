@@ -9,7 +9,7 @@ export default function SubRepCalculator() {
 
   return (
     <section className="space-y-3">
-      <h2 className="text-sm font-semibold text-[var(--navy)]">Commission Calculator</h2>
+      <h2 className="text-base font-semibold text-[var(--navy)]">Commission Calculator</h2>
       <CommissionCalculator lockedRepId={detail.id} />
     </section>
   );

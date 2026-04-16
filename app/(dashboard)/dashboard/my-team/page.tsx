@@ -5,43 +5,53 @@ import { getUserRole } from "@/lib/supabase/auth";
 import { isSalesRep, isAdmin } from "@/utils/helpers/role";
 import { PageHeader } from "@/app/(components)/PageHeader";
 import Providers from "./(sections)/Providers";
-import { TeamView } from "./(sections)/TeamView";
-import { RepTree } from "./(sections)/RepTree";
-import { getMySubReps, getRepTree } from "./(services)/actions";
+import { RepListView } from "./(sections)/RepListView";
+import { getRepList, getMyTeamKpis } from "./(services)/actions";
+import type { AccountPeriod } from "@/utils/interfaces/accounts";
+
+type StatusFilter = "all" | "active" | "inactive";
+type ViewFilter = "all_sub_reps" | "direct_only";
 
 export const metadata: Metadata = { title: "My Team" };
 export const dynamic = "force-dynamic";
 
-export default async function MyTeamPage() {
+export default async function MyTeamPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ status?: string; period?: string; view?: string }>;
+}) {
   const supabase = await createClient();
   const role = await getUserRole(supabase);
-
   if (!isSalesRep(role) && !isAdmin(role)) redirect("/dashboard");
 
-  if (isAdmin(role)) {
-    const tree = await getRepTree();
-    return (
-      <div className="p-4 md:p-8 mx-auto space-y-6">
-        <PageHeader
-          title="Sales Reps"
-          subtitle="Review all sales representatives and manage their commission rates"
-          className="pb-4"
-        />
-        <RepTree tree={tree} />
-      </div>
-    );
-  }
+  const params = (await searchParams) ?? {};
+  const status: StatusFilter =
+    params.status === "active" || params.status === "inactive"
+      ? params.status
+      : "all";
+  const period: AccountPeriod =
+    params.period === "last_3_months" || params.period === "all_time"
+      ? params.period
+      : "this_month";
+  const view: ViewFilter =
+    params.view === "direct_only" ? "direct_only" : "all_sub_reps";
 
-  const subReps = await getMySubReps();
+  let rows = await getRepList(period, status);
+  if (isAdmin(role) && view === "direct_only") {
+    rows = rows.filter((r) => r.isDirect);
+  }
+  const kpis = await getMyTeamKpis(period);
+
+  const title = isAdmin(role) ? "Sales Reps" : "My Team";
+  const subtitle = isAdmin(role)
+    ? "Review all sales representatives and manage their commission rates"
+    : "Manage your sub-representatives and their accounts";
+
   return (
-    <Providers subReps={subReps}>
-      <div className="p-4 md:p-8 mx-auto space-y-6">
-        <PageHeader
-          title="My Team"
-          subtitle="Manage your sub-representatives and their accounts"
-          className="pb-4"
-        />
-        <TeamView />
+    <Providers rows={rows} kpis={kpis}>
+      <div className=" max-w-480 mx-auto space-y-6">
+        <PageHeader title={title} subtitle={subtitle} className="pb-4" />
+        <RepListView status={status} period={period} view={view} />
       </div>
     </Providers>
   );

@@ -12,20 +12,39 @@ export interface SubRep {
   commissionRate: number;
   overridePercent: number;
   commissionEarned: number;
+  ordersInPeriod: number;
+  deliveredInPeriod: number;
+  commissionInPeriod: number;
 }
 
-export interface IRepTreeNode {
+export interface IRepListRow {
   id: string;
   first_name: string | null;
   last_name: string | null;
   email: string | null;
   status: string | null;
+  isDirect: boolean;
   accountCount: number;
-  orderCount: number;
-  commissionEarned: number;
+  ordersInPeriod: number;
+  deliveredInPeriod: number;
+  commissionInPeriod: number;
   commissionRate: number;
   overridePercent: number;
-  children: IRepTreeNode[];
+}
+
+export interface IMyTeamKpis {
+  totalReps: number;
+  repsDirect: number;
+  repsIndirect: number;
+  totalAccounts: number;
+  accountsDirect: number;
+  accountsViaTeam: number;
+  totalOrders: number;
+  ordersDelivered: number;
+  deliveredRevenue: number;
+  deliveredOrdersConfirmed: number;
+  activeReps: number;
+  activeRepsTotalDenominator: number;
 }
 
 export interface ICommissionHistoryRow {

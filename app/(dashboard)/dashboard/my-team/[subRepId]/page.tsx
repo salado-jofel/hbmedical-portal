@@ -10,6 +10,7 @@ import {
 } from "@/app/(dashboard)/dashboard/commissions/(services)/actions";
 import Providers from "./(sections)/Providers";
 import SubRepHero from "./(sections)/SubRepHero";
+import SubRepQuotaSection from "./(sections)/SubRepQuotaSection";
 import SubRepKpiRow from "./(sections)/SubRepKpiRow";
 import SubRepRateSection from "./(sections)/SubRepRateSection";
 import SubRepCalculator from "./(sections)/SubRepCalculator";
@@ -39,8 +40,9 @@ export default async function SubRepDetailPage({
 
   return (
     <Providers detail={detail} rates={rates} summary={summary}>
-      <div className="p-4 md:p-8 mx-auto space-y-6">
+      <div className="mx-auto space-y-6">
         <SubRepHero />
+        <SubRepQuotaSection />
         <SubRepKpiRow />
         <SubRepRateSection />
         <SubRepCalculator />

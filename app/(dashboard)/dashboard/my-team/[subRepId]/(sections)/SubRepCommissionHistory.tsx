@@ -19,7 +19,7 @@ export default function SubRepCommissionHistory() {
 
   return (
     <section className="space-y-3">
-      <h2 className="text-sm font-semibold text-[var(--navy)]">Commission History</h2>
+      <h2 className="text-base font-semibold text-[var(--navy)]">Commission History</h2>
       <div className="overflow-hidden rounded-[var(--r)] border border-[var(--border)] bg-[var(--surface)]">
         <table className="w-full text-sm">
           <thead className="bg-[#f8fafc] text-[10px] uppercase tracking-wide text-[var(--text3)]">

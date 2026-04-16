@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { Building2 } from "lucide-react";
 import { useAppSelector } from "@/store/hooks";
 import { DataTable } from "@/app/(components)/DataTable";
@@ -21,10 +20,10 @@ export default function SubRepAccounts() {
       key: "account",
       label: "Account / Provider",
       render: (a) => (
-        <Link href={`/dashboard/accounts/${a.id}`} className="block min-w-0 hover:underline">
+        <div className="min-w-0">
           <p className="text-sm font-medium text-[var(--navy)] truncate">{a.name}</p>
           <p className="text-xs text-[var(--text3)] truncate mt-0.5">{a.city}, {a.state}</p>
-        </Link>
+        </div>
       ),
     },
     {
@@ -55,7 +54,7 @@ export default function SubRepAccounts() {
 
   return (
     <section className="space-y-3">
-      <h2 className="text-sm font-semibold text-[var(--navy)]">Accounts</h2>
+      <h2 className="text-base font-semibold text-[var(--navy)]">Accounts</h2>
       {accounts.length === 0 ? (
         <EmptyState
           icon={<Building2 className="w-10 h-10 stroke-1" />}

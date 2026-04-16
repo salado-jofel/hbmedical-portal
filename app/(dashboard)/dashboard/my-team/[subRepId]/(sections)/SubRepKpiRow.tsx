@@ -25,10 +25,13 @@ export default function SubRepKpiRow() {
   const visible = cards.filter((c) => c.show);
 
   return (
-    <div className="mb-5 grid grid-cols-2 gap-[10px] lg:grid-cols-3">
-      {visible.map((c) => (
-        <KpiCard key={c.label} label={c.label} value={c.value} accentColor={c.accentColor} />
-      ))}
-    </div>
+    <section className="space-y-3">
+      <h2 className="text-base font-semibold text-[var(--navy)]">Performance</h2>
+      <div className="grid grid-cols-2 gap-[10px] lg:grid-cols-3">
+        {visible.map((c) => (
+          <KpiCard key={c.label} label={c.label} value={c.value} accentColor={c.accentColor} />
+        ))}
+      </div>
+    </section>
   );
 }

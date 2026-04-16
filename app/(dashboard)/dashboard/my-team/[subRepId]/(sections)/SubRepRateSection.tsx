@@ -11,8 +11,8 @@ export default function SubRepRateSection() {
 
   return (
     <section className="space-y-3">
-      <h2 className="text-sm font-semibold text-[var(--navy)]">Commission Rate</h2>
-      <RateManagement reps={[{ id: detail.id, name: repName }]} />
+      <h2 className="text-base font-semibold text-[var(--navy)]">Commission Rate</h2>
+      <RateManagement reps={[{ id: detail.id, name: repName }]} lockedRepId={detail.id} />
     </section>
   );
 }
