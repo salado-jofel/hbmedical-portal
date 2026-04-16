@@ -27,10 +27,12 @@ export function TodaysFocus({
   tasks,
   orders,
   onOrderClick,
+  showOrders = false,
 }: {
   tasks: ITask[];
   orders: DashboardOrder[];
   onOrderClick: (orderId: string) => void;
+  showOrders?: boolean;
 }) {
   const router = useRouter();
 
@@ -47,19 +49,17 @@ export function TodaysFocus({
         return d >= now && d < weekAhead;
       })
       .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
-    const attentionOrders = orders.filter((o) =>
-      ATTENTION_STATUSES.includes(o.order_status as OrderStatus),
-    );
+    const attentionOrders = showOrders
+      ? orders.filter((o) => ATTENTION_STATUSES.includes(o.order_status as OrderStatus))
+      : [];
     return { overdue, dueThisWeek, attentionOrders };
-  }, [tasks, orders]);
+  }, [tasks, orders, showOrders]);
 
   const isEmpty =
     overdue.length === 0 && dueThisWeek.length === 0 && attentionOrders.length === 0;
 
   function handleTaskClick(t: ITask) {
-    const facilityId = t.facility_id ?? t.facility?.id ?? null;
-    if (facilityId) router.push(`/dashboard/accounts/${facilityId}`);
-    else router.push(`/dashboard/tasks`);
+    router.push(`/dashboard/tasks?id=${t.id}`);
   }
 
   return (
@@ -76,7 +76,7 @@ export function TodaysFocus({
           <p className="text-[11px] text-[var(--text3)]">Nothing urgent on your plate</p>
         </div>
       ) : (
-        <>
+        <div className="max-h-[520px] overflow-y-auto">
           {overdue.length > 0 && (
             <FocusGroup dotClass="bg-red-500" title="Overdue Tasks" count={overdue.length}>
               {overdue.map((t) => {
@@ -138,7 +138,7 @@ export function TodaysFocus({
               })}
             </FocusGroup>
           )}
-        </>
+        </div>
       )}
     </div>
   );

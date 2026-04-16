@@ -27,8 +27,7 @@ function monthLabel(d: Date): string {
 }
 
 function orderTotal(o: DashboardOrder): number {
-  const items = ((o as any).order_items ?? []) as { total_amount: string | number }[];
-  return items.reduce((s, i) => s + Number(i.total_amount ?? 0), 0);
+  return Number(o.total_amount ?? 0);
 }
 
 const STATUS_HEX: Partial<Record<OrderStatus, string>> = {

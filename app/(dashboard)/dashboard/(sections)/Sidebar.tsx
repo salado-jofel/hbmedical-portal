@@ -102,7 +102,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
         icon: CheckSquare,
         label: "Tasks",
         href: "/dashboard/tasks",
-        visible: isAdmin,
+        visible: (role) => isAdmin(role) || isSalesRep(role),
       },
       {
         icon: Share2,

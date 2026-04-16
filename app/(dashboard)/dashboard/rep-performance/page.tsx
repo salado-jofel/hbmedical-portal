@@ -6,7 +6,6 @@ import { isAdmin, isSalesRep } from "@/utils/helpers/role";
 import { PageHeader } from "@/app/(components)/PageHeader";
 import Providers from "./(sections)/Providers";
 import RepHero from "./(sections)/RepHero";
-import QuickLogBanner from "./(sections)/QuickLogBanner";
 import RepKpiRow from "./(sections)/RepKpiRow";
 import RepTables from "./(sections)/RepTables";
 import AdminQuotaBoard from "./(sections)/AdminQuotaBoard";
@@ -45,7 +44,6 @@ export default async function RepPerformancePage() {
       {repView ? (
         <>
           <RepHero />
-          <QuickLogBanner />
           <RepKpiRow />
           <TierBreakdown />
           <RepTables />

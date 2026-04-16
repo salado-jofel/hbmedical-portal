@@ -70,7 +70,7 @@ export function RepDashboard({
         <PipelineFunnel orders={orders} />
       </div>
 
-      <div className="mb-5 grid grid-cols-1 gap-5 lg:grid-cols-2">
+      <div className="mb-5 grid grid-cols-1 gap-5 lg:grid-cols-2 items-start">
         <TopAccountsCard items={topAccounts} />
         <TodaysFocus tasks={tasks} orders={orders} onOrderClick={handleOrderClick} />
       </div>

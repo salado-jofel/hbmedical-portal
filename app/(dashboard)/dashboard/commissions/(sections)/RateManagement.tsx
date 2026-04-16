@@ -32,7 +32,11 @@ export default function RateManagement({
   const admin = isAdmin(role);
   const isRep = isSalesRep(role);
 
-  const displayRates = isRep ? rates.filter((r) => r.repId !== userId) : rates;
+  const displayRates = lockedRepId
+    ? rates.filter((r) => r.repId === lockedRepId)
+    : isRep
+      ? rates.filter((r) => r.repId !== userId)
+      : rates;
 
   const router = useRouter();
   const [open, setOpen] = useState(false);

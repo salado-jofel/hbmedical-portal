@@ -10,8 +10,7 @@ import type { DashboardOrder } from "@/utils/interfaces/orders";
 import type { TableColumn } from "@/utils/interfaces/table-column";
 
 function orderTotal(o: DashboardOrder): number {
-  const items = ((o as any).order_items ?? []) as { total_amount: string | number }[];
-  return items.reduce((s, i) => s + Number(i.total_amount ?? 0), 0);
+  return Number(o.total_amount ?? 0);
 }
 
 function patientName(o: DashboardOrder): string {

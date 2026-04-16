@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import toast from "react-hot-toast";
 import { motion } from "framer-motion";
 import { CheckSquare } from "lucide-react";
@@ -48,6 +49,18 @@ export function TasksBoard({ accounts, salesReps, isAdmin }: {
 }) {
   const dispatch = useAppDispatch();
   const tasks = useAppSelector((s) => s.tasks.items);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const deepLinkId = searchParams?.get("id") ?? null;
+  const deepLinkTask = useMemo(
+    () => (deepLinkId ? tasks.find((t) => t.id === deepLinkId) ?? null : null),
+    [deepLinkId, tasks],
+  );
+
+  function clearDeepLink() {
+    router.replace(pathname);
+  }
 
   const [statusFilter, setStatusFilter] = useState<TaskStatus | "all">("all");
   const [priorityFilter, setPriorityFilter] = useState<TaskPriority | "all">("all");
@@ -225,6 +238,19 @@ export function TasksBoard({ accounts, salesReps, isAdmin }: {
         title="Delete Task"
         description="This task will be permanently removed."
       />
+
+      {deepLinkTask && (
+        <TaskModal
+          key={deepLinkTask.id}
+          task={deepLinkTask}
+          accounts={accounts}
+          salesReps={salesReps}
+          isAdmin={isAdmin}
+          initialOpen
+          hideTrigger
+          onClosed={clearDeepLink}
+        />
+      )}
     </div>
   );
 }

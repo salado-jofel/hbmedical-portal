@@ -34,8 +34,7 @@ const STATUS_COLOR: Partial<Record<OrderStatus, string>> = {
 };
 
 function orderTotal(o: DashboardOrder): number {
-  const items = ((o as any).order_items ?? []) as { total_amount: string | number }[];
-  return items.reduce((s, i) => s + Number(i.total_amount ?? 0), 0);
+  return Number(o.total_amount ?? 0);
 }
 
 export function PipelineFunnel({ orders }: { orders: DashboardOrder[] }) {
