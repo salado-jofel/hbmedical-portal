@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo } from "react";
-import { useRouter } from "next/navigation";
 import { KpiCard } from "@/app/(components)/KpiCard";
 import { PageHeader } from "@/app/(components)/PageHeader";
 import { formatAmount } from "@/utils/helpers/formatter";
@@ -33,17 +32,11 @@ export function RepDashboard({
   currentQuota: number | null;
   topAccounts: ITopAccount[];
 }) {
-  const router = useRouter();
-
   const openTasks = useMemo(() => tasks.filter((t) => t.status === "open"), [tasks]);
   const activeOrders = useMemo(
     () => orders.filter((o) => o.order_status !== "canceled" && o.order_status !== "draft").length,
     [orders],
   );
-
-  function handleOrderClick(orderId: string) {
-    router.push(`/dashboard/orders?order=${orderId}`);
-  }
 
   return (
     <>
@@ -72,7 +65,7 @@ export function RepDashboard({
 
       <div className="mb-5 grid grid-cols-1 gap-5 lg:grid-cols-2 items-start">
         <TopAccountsCard items={topAccounts} />
-        <TodaysFocus tasks={tasks} orders={orders} onOrderClick={handleOrderClick} />
+        <TodaysFocus tasks={tasks} orders={orders} />
       </div>
     </>
   );
