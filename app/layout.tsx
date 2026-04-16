@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Roboto, DM_Sans, DM_Mono } from "next/font/google";
+import NextTopLoader from "nextjs-toploader";
 import "./globals.css";
 import { StoreProvider } from "@/store/StoreProvider";
 import { Toaster } from "react-hot-toast";
@@ -37,11 +38,21 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${roboto.variable} ${dmSans.variable} ${dmMono.variable}`}>
+    <html
+      lang="en"
+      className={`${roboto.variable} ${dmSans.variable} ${dmMono.variable}`}
+    >
       <body className={`antialiased ${dmSans.className}`}>
         <StoreProvider>
+          <NextTopLoader
+            color="#0f2d4a"
+            shadow="0 0 10px #0f2d4a, 0 0 5px #0f2d4a"
+            height={7}
+            showSpinner={true}
+          />
           <Toaster position="top-center" />
-          {children}</StoreProvider>
+          {children}
+        </StoreProvider>
       </body>
     </html>
   );

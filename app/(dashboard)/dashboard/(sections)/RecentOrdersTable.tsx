@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { StatusBadge } from "@/app/(components)/StatusBadge";
 import { DataTable } from "@/app/(components)/DataTable";
@@ -82,17 +83,16 @@ export default function RecentOrdersTable({
       <div className="divide-y divide-[var(--border)] md:hidden">
         {recent.length > 0 ? (
           recent.map((order) => (
-            <button
+            <Link
               key={order.id}
-              type="button"
+              href="/dashboard/orders"
               onClick={() => {
                 sessionStorage.setItem("pending-order-open", JSON.stringify({ orderId: order.id, tab: "overview" }));
-                router.push("/dashboard/orders");
               }}
               className="block w-full text-left"
             >
               <OrderMobileCard order={order} />
-            </button>
+            </Link>
           ))
         ) : (
           <p className="p-4 text-[13px] text-[var(--text3)]">No orders yet.</p>

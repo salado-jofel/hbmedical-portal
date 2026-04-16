@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { CheckCircle2 } from "lucide-react";
 import { formatDate } from "@/utils/helpers/formatter";
 import { KANBAN_STATUS_CONFIG } from "@/app/(dashboard)/dashboard/orders/(components)/kanban-config";
@@ -26,16 +26,12 @@ function patientName(o: DashboardOrder): string {
 export function TodaysFocus({
   tasks,
   orders,
-  onOrderClick,
   showOrders = false,
 }: {
   tasks: ITask[];
   orders: DashboardOrder[];
-  onOrderClick: (orderId: string) => void;
   showOrders?: boolean;
 }) {
-  const router = useRouter();
-
   const { overdue, dueThisWeek, attentionOrders } = useMemo(() => {
     const now = Date.now();
     const weekAhead = now + 7 * MS_DAY;
@@ -58,10 +54,6 @@ export function TodaysFocus({
   const isEmpty =
     overdue.length === 0 && dueThisWeek.length === 0 && attentionOrders.length === 0;
 
-  function handleTaskClick(t: ITask) {
-    router.push(`/dashboard/tasks?id=${t.id}`);
-  }
-
   return (
     <div className="overflow-hidden rounded-[var(--r)] border border-[var(--border)] bg-[var(--surface)]">
       <div className="border-b border-[var(--border)] px-4 py-[0.8rem]">
@@ -82,15 +74,16 @@ export function TodaysFocus({
               {overdue.map((t) => {
                 const d = daysFrom(t.due_date);
                 return (
-                  <li
-                    key={t.id}
-                    onClick={() => handleTaskClick(t)}
-                    className="cursor-pointer hover:bg-[#f8fafc] px-4 py-2 border-t border-[var(--border)]"
-                  >
-                    <p className="text-sm text-[var(--navy)] truncate">{t.title}</p>
-                    <p className="text-[11px] text-red-600">
-                      Overdue by {d} day{d !== 1 ? "s" : ""} · {t.facility?.name ?? "—"}
-                    </p>
+                  <li key={t.id}>
+                    <Link
+                      href={`/dashboard/tasks?id=${t.id}`}
+                      className="block cursor-pointer hover:bg-[#f8fafc] px-4 py-2 border-t border-[var(--border)]"
+                    >
+                      <p className="text-sm text-[var(--navy)] truncate">{t.title}</p>
+                      <p className="text-[11px] text-red-600">
+                        Overdue by {d} day{d !== 1 ? "s" : ""} · {t.facility?.name ?? "—"}
+                      </p>
+                    </Link>
                   </li>
                 );
               })}
@@ -100,15 +93,16 @@ export function TodaysFocus({
           {dueThisWeek.length > 0 && (
             <FocusGroup dotClass="bg-[var(--gold)]" title="Due This Week" count={dueThisWeek.length}>
               {dueThisWeek.map((t) => (
-                <li
-                  key={t.id}
-                  onClick={() => handleTaskClick(t)}
-                  className="cursor-pointer hover:bg-[#f8fafc] px-4 py-2 border-t border-[var(--border)]"
-                >
-                  <p className="text-sm text-[var(--navy)] truncate">{t.title}</p>
-                  <p className="text-[11px] text-[var(--text3)]">
-                    {formatDate(t.due_date)} · {t.facility?.name ?? "—"}
-                  </p>
+                <li key={t.id}>
+                  <Link
+                    href={`/dashboard/tasks?id=${t.id}`}
+                    className="block cursor-pointer hover:bg-[#f8fafc] px-4 py-2 border-t border-[var(--border)]"
+                  >
+                    <p className="text-sm text-[var(--navy)] truncate">{t.title}</p>
+                    <p className="text-[11px] text-[var(--text3)]">
+                      {formatDate(t.due_date)} · {t.facility?.name ?? "—"}
+                    </p>
+                  </Link>
                 </li>
               ))}
             </FocusGroup>
@@ -119,20 +113,21 @@ export function TodaysFocus({
               {attentionOrders.map((o) => {
                 const cfg = KANBAN_STATUS_CONFIG[o.order_status as OrderStatus];
                 return (
-                  <li
-                    key={o.id}
-                    onClick={() => onOrderClick(o.id)}
-                    className="cursor-pointer hover:bg-[#f8fafc] px-4 py-2 border-t border-[var(--border)] flex items-center gap-2"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-[var(--navy)] truncate">
-                        {o.order_number ?? o.id.slice(0, 8)} · {patientName(o)}
-                      </p>
-                    </div>
-                    <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border shrink-0", cfg?.badge ?? "")}>
-                      <span className={cn("w-1.5 h-1.5 rounded-full", cfg?.dot ?? "bg-gray-400")} />
-                      {cfg?.label ?? o.order_status}
-                    </span>
+                  <li key={o.id}>
+                    <Link
+                      href={`/dashboard/orders?order=${o.id}`}
+                      className="cursor-pointer hover:bg-[#f8fafc] px-4 py-2 border-t border-[var(--border)] flex items-center gap-2"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-[var(--navy)] truncate">
+                          {o.order_number ?? o.id.slice(0, 8)} · {patientName(o)}
+                        </p>
+                      </div>
+                      <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border shrink-0", cfg?.badge ?? "")}>
+                        <span className={cn("w-1.5 h-1.5 rounded-full", cfg?.dot ?? "bg-gray-400")} />
+                        {cfg?.label ?? o.order_status}
+                      </span>
+                    </Link>
                   </li>
                 );
               })}

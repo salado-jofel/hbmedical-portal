@@ -1,6 +1,5 @@
 import { TopBar } from "./(sections)/TopBar";
 import { TabNav } from "./(sections)/TabNav";
-import NextTopLoader from "nextjs-toploader";
 import { getUserData } from "./(services)/actions";
 import Providers from "./(sections)/Providers";
 
@@ -15,13 +14,6 @@ export default async function DashboardLayout({
 
   return (
     <Providers userData={userData}>
-      <NextTopLoader
-        color="#0f2d4a"
-        shadow="0 0 10px #0f2d4a, 0 0 5px #0f2d4a"
-        height={2}
-        showSpinner={false}
-      />
-
       <div className="min-h-screen" style={{ background: "var(--bg)" }}>
         {/* ── Sticky header: TopBar + TabNav ── */}
         <header

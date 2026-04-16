@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ClipboardCheck, Users, Package } from "lucide-react";
 import { KpiCard } from "@/app/(components)/KpiCard";
@@ -126,16 +127,16 @@ export function AdminDashboard({
         </div>
         <div className="grid grid-cols-7 gap-2 p-4">
           {PIPELINE.map(({ key, label, variant }) => (
-            <button
+            <Link
               key={key}
-              onClick={() => router.push("/dashboard/orders")}
+              href="/dashboard/orders"
               className="flex flex-col items-center justify-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--bg)] px-2 py-2.5 transition hover:border-[var(--navy)]"
             >
               <span className="text-[15px] font-semibold text-[var(--navy)]">
                 {orders.filter((o) => o.order_status === key).length}
               </span>
               <PillBadge label={label} variant={variant} />
-            </button>
+            </Link>
           ))}
         </div>
       </div>
@@ -166,10 +167,10 @@ export function AdminDashboard({
             </div>
             <div className="flex flex-col gap-2 p-3">
               {QUICK_ACTIONS.map(({ label, icon: Icon, href }) => (
-                <button key={href} onClick={() => router.push(href)} className="flex items-center gap-3 rounded-[var(--r)] border border-[var(--border)] px-4 py-3 text-left transition hover:border-[var(--navy)] hover:shadow-sm">
+                <Link key={href} href={href} className="flex items-center gap-3 rounded-[var(--r)] border border-[var(--border)] px-4 py-3 text-left transition hover:border-[var(--navy)] hover:shadow-sm">
                   <Icon className="h-4 w-4 shrink-0 text-[var(--navy)]" />
                   <span className="text-[13px] font-medium text-[var(--navy)]">{label}</span>
-                </button>
+                </Link>
               ))}
             </div>
           </div>

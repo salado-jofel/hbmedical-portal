@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ClipboardCheck } from "lucide-react";
 import { KpiCard } from "@/app/(components)/KpiCard";
@@ -67,10 +68,10 @@ export function SupportDashboard({ orders }: { orders: DashboardOrder[] }) {
             <p className="text-[13px] font-semibold text-[var(--navy)]">Quick Actions</p>
           </div>
           <div className="flex flex-col gap-2 p-3">
-            <button onClick={() => router.push("/dashboard/orders")} className="flex items-center gap-3 rounded-[var(--r)] border border-[var(--border)] px-4 py-3 text-left transition hover:border-[var(--navy)] hover:shadow-sm">
+            <Link href="/dashboard/orders" className="flex items-center gap-3 rounded-[var(--r)] border border-[var(--border)] px-4 py-3 text-left transition hover:border-[var(--navy)] hover:shadow-sm">
               <ClipboardCheck className="h-4 w-4 shrink-0 text-[var(--navy)]" />
               <span className="text-[13px] font-medium text-[var(--navy)]">Review Orders</span>
-            </button>
+            </Link>
           </div>
         </div>
       </div>
