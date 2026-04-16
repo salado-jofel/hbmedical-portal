@@ -69,7 +69,7 @@ export async function sendNet30InvoiceCreatedEmail({
   const subject = `Net 30 invoice ready for order #${orderNumber || orderId}`;
 
   const logoUrl =
-    "https://eyrefohymvvabazvmemq.supabase.co/storage/v1/object/public/spearhead-assets/assets/email/hb-logo-name-2.png";
+    "https://ersdsmuybpfvgvaiwcgl.supabase.co/storage/v1/object/public/hbmedical-bucket-public/assets/hb-logo-name-2%20(1).png";
 
   const html = `
 <!DOCTYPE html>

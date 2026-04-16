@@ -405,18 +405,6 @@ export function OnboardingDashboard({
         </section>
       )} */}
 
-        {/* ── Existing Invite Links ── */}
-        <InviteTokensSection
-          tokens={tokens}
-          isAdmin={isAdmin}
-          isDeletingToken={isDeletingToken}
-          deleteTokenId={deleteTokenId}
-          onDeleteClick={(tokenId) => {
-            setDeleteTokenId(tokenId);
-            setTokenConfirmOpen(true);
-          }}
-        />
-
         {/* ── Deactivate Sub-Rep Confirm ── */}
         <ConfirmModal
           open={disableConfirmId !== null}

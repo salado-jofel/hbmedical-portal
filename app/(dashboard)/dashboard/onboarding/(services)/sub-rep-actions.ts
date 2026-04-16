@@ -157,7 +157,7 @@ p{margin:0 0 14px;font-size:14px;}
     }
 
     revalidatePath("/dashboard/onboarding");
-    return { success: true, error: null };
+    return { success: true, error: null, invitedEmail: email };
   } catch (err) {
     console.error("[inviteSubRep] Unexpected error:", err);
     return { error: "An unexpected error occurred.", success: false };
