@@ -52,10 +52,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
     }
 
-    if (formType === "ivr" && !ivr) {
-      console.error("[generate-pdf] IVR record not found for order:", orderId, "| DB error:", ivrRes.error?.message ?? "no row");
-      return NextResponse.json({ error: "IVR record not found" }, { status: 404 });
-    }
+    // IVR record may not exist yet (manual orders, or before AI extraction completes).
+    // The PDF template handles null gracefully by rendering blank fields.
 
     // Resolve physician name for IVR PDF (assigned_provider_id → created_by fallback)
     let pdfPhysicianName: string | null = null;

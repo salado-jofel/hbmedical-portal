@@ -252,7 +252,7 @@ export function CreateOrderModal() {
   const [woundType, setWoundType] = useState<"chronic" | "post_surgical">(
     "chronic",
   );
-  const [orderType, setOrderType] = useState<"non_omeza" | "omeza">("non_omeza");
+  const [orderType, setOrderType] = useState<"non_omeza" | "omeza" | null>(null);
   const [dateOfService, setDateOfService] = useState(
     new Date().toISOString().split("T")[0],
   );
@@ -264,6 +264,7 @@ export function CreateOrderModal() {
 
   function reset() {
     setWoundType("chronic");
+    setOrderType(null);
     setDateOfService(new Date().toISOString().split("T")[0]);
     setNotes("");
     setDocs([]);
@@ -307,6 +308,7 @@ export function CreateOrderModal() {
         wound_type: woundType,
         date_of_service: dateOfService,
         notes: notes.trim() || null,
+        order_type: orderType,
       });
 
       if (!result.success || !result.orderId) {
@@ -423,10 +425,10 @@ export function CreateOrderModal() {
                 </div>
               </div>
 
-              {/* Order Type */}
+              {/* Order Type (optional — selecting skips AI extraction) */}
               <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium text-slate-700">
-                  Order Type <span className="text-red-500">*</span>
+                  Order Type
                 </label>
                 <div className="flex gap-3">
                   {(
@@ -438,7 +440,9 @@ export function CreateOrderModal() {
                     <button
                       key={ot.value}
                       type="button"
-                      onClick={() => setOrderType(ot.value)}
+                      onClick={() =>
+                        setOrderType((prev) => (prev === ot.value ? null : ot.value))
+                      }
                       className={cn(
                         "flex-1 py-2.5 px-3 rounded-xl border-2 text-sm font-medium transition-all",
                         orderType === ot.value
@@ -450,6 +454,11 @@ export function CreateOrderModal() {
                     </button>
                   ))}
                 </div>
+                {orderType && (
+                  <p className="text-[11px] text-amber-600">
+                    IVR Form and HCFA/1500 must be filled manually for this order type.
+                  </p>
+                )}
               </div>
 
               {/* Date of Service */}

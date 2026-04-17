@@ -34,6 +34,7 @@ export async function createOrder(data: {
   wound_type: "chronic" | "post_surgical";
   date_of_service: string;
   notes?: string | null;
+  order_type?: "non_omeza" | "omeza" | null;
 }): Promise<IOrderFormState> {
   try {
     const { userId, facilityId } = await requireClinicRole();
@@ -67,6 +68,7 @@ export async function createOrder(data: {
         assigned_provider_id: null,
         ai_extracted: false,
         order_form_locked: false,
+        order_type: data.order_type ?? null,
       })
       .select("id")
       .single();
@@ -78,6 +80,14 @@ export async function createOrder(data: {
 
     const orderId = orderRow.id;
     await insertOrderHistory(adminClient, orderId, "Order created as draft", null, "draft", userId);
+
+    // For Omeza/Non-Omeza orders, generate blank IVR + HCFA PDFs immediately
+    // (IVR and HCFA are manual-only; order_form PDF comes after AI extraction)
+    if (data.order_type) {
+      generateOrderPDFs(orderId, ["ivr", "hcfa_1500"]).catch((err) =>
+        console.error("[createOrder] PDF generation:", err),
+      );
+    }
 
     revalidatePath(ORDERS_PATH);
     return { success: true, error: null, orderId };
