@@ -641,58 +641,66 @@ async function handleCombinedExtraction(
   const aiOf = sanitizeOrderFormFields(extractedFields);
   const icd10 = aiOf.icd10_code as string | null | undefined;
 
-  /* ── STEP 6: Upsert order_ivr ── */
-  const ivrPayload = {
-    order_id: orderId,
-    ai_extracted: true,
-    ai_extracted_at: new Date().toISOString(),
-    ...aiIvr,
-    facility_name:    (aiIvr.facility_name as string | null)    || facility?.name      || null,
-    facility_npi:     (aiIvr.facility_npi as string | null)     || enr?.facility_npi   || null,
-    facility_tin:     (aiIvr.facility_tin as string | null)     || enr?.facility_tin   || null,
-    facility_ptan:    (aiIvr.facility_ptan as string | null)    || enr?.facility_ptan  || null,
-    facility_fax:     (aiIvr.facility_fax as string | null)     || enr?.billing_fax    || null,
-    facility_address: (aiIvr.facility_address as string | null) || addr                || null,
-    facility_phone:   (aiIvr.facility_phone as string | null)   || enr?.billing_phone  || facility?.phone || null,
-    facility_contact: (aiIvr.facility_contact as string | null) || enr?.ap_contact_name || facility?.contact || null,
-    physician_name:   (aiIvr.physician_name as string | null)   || physicianName       || null,
-    physician_npi:    (aiIvr.physician_npi as string | null)    || creds?.npi_number   || null,
-    physician_tin:    (aiIvr.physician_tin as string | null)    || enr?.facility_tin   || null,
-    physician_fax:    (aiIvr.physician_fax as string | null)    || enr?.billing_fax    || null,
-    physician_address: (aiIvr.physician_address as string | null) || addr              || null,
-    physician_phone:  (aiIvr.physician_phone as string | null)  || physician?.phone    || null,
-    patient_name:     (aiIvr.patient_name as string | null)     || patientName         || null,
-    patient_dob:      (aiIvr.patient_dob as string | null)      || patient?.date_of_birth || null,
-    sales_rep_name:   repName                                                            || null,
-  };
+  /* ── STEP 6: Upsert order_ivr (skip for Omeza/Non-Omeza — manual input) ── */
+  if (!orderCtx.order_type) {
+    const ivrPayload = {
+      order_id: orderId,
+      ai_extracted: true,
+      ai_extracted_at: new Date().toISOString(),
+      ...aiIvr,
+      facility_name:    (aiIvr.facility_name as string | null)    || facility?.name      || null,
+      facility_npi:     (aiIvr.facility_npi as string | null)     || enr?.facility_npi   || null,
+      facility_tin:     (aiIvr.facility_tin as string | null)     || enr?.facility_tin   || null,
+      facility_ptan:    (aiIvr.facility_ptan as string | null)    || enr?.facility_ptan  || null,
+      facility_fax:     (aiIvr.facility_fax as string | null)     || enr?.billing_fax    || null,
+      facility_address: (aiIvr.facility_address as string | null) || addr                || null,
+      facility_phone:   (aiIvr.facility_phone as string | null)   || enr?.billing_phone  || facility?.phone || null,
+      facility_contact: (aiIvr.facility_contact as string | null) || enr?.ap_contact_name || facility?.contact || null,
+      physician_name:   (aiIvr.physician_name as string | null)   || physicianName       || null,
+      physician_npi:    (aiIvr.physician_npi as string | null)    || creds?.npi_number   || null,
+      physician_tin:    (aiIvr.physician_tin as string | null)    || enr?.facility_tin   || null,
+      physician_fax:    (aiIvr.physician_fax as string | null)    || enr?.billing_fax    || null,
+      physician_address: (aiIvr.physician_address as string | null) || addr              || null,
+      physician_phone:  (aiIvr.physician_phone as string | null)  || physician?.phone    || null,
+      patient_name:     (aiIvr.patient_name as string | null)     || patientName         || null,
+      patient_dob:      (aiIvr.patient_dob as string | null)      || patient?.date_of_birth || null,
+      sales_rep_name:   repName                                                            || null,
+    };
 
-  const { error: ivrErr } = await adminClient
-    .from("order_ivr")
-    .upsert(ivrPayload, { onConflict: "order_id" });
-  if (ivrErr) console.error("[extract-combined] order_ivr FAILED:", JSON.stringify(ivrErr));
+    const { error: ivrErr } = await adminClient
+      .from("order_ivr")
+      .upsert(ivrPayload, { onConflict: "order_id" });
+    if (ivrErr) console.error("[extract-combined] order_ivr FAILED:", JSON.stringify(ivrErr));
+  } else {
+    console.log("[extract-combined] Skipping order_ivr — order_type:", orderCtx.order_type);
+  }
 
-  /* ── STEP 7: Upsert order_form_1500 ── */
-  const form1500Payload = {
-    order_id: orderId,
-    ...ai1500,
-    ...(icd10 ? { diagnosis_a: icd10 } : {}),
-    service_facility_name:    (ai1500.service_facility_name as string | null)    || facility?.name        || null,
-    service_facility_address: (ai1500.service_facility_address as string | null) || addr                  || null,
-    service_facility_npi:     (ai1500.service_facility_npi as string | null)     || enr?.facility_npi     || null,
-    billing_provider_name:    (ai1500.billing_provider_name as string | null)    || facility?.name        || null,
-    billing_provider_address: (ai1500.billing_provider_address as string | null) || addr                  || null,
-    billing_provider_phone:   (ai1500.billing_provider_phone as string | null)   || enr?.billing_phone    || facility?.phone || null,
-    billing_provider_npi:     (ai1500.billing_provider_npi as string | null)     || enr?.facility_npi     || null,
-    billing_provider_tax_id:  (ai1500.billing_provider_tax_id as string | null)  || enr?.facility_tin     || null,
-    federal_tax_id:           (ai1500.federal_tax_id as string | null)           || enr?.facility_tin     || null,
-    referring_provider_name:  (ai1500.referring_provider_name as string | null)  || physicianName         || null,
-    referring_provider_npi:   (ai1500.referring_provider_npi as string | null)   || creds?.npi_number     || null,
-  };
+  /* ── STEP 7: Upsert order_form_1500 (skip for Omeza/Non-Omeza — manual input) ── */
+  if (!orderCtx.order_type) {
+    const form1500Payload = {
+      order_id: orderId,
+      ...ai1500,
+      ...(icd10 ? { diagnosis_a: icd10 } : {}),
+      service_facility_name:    (ai1500.service_facility_name as string | null)    || facility?.name        || null,
+      service_facility_address: (ai1500.service_facility_address as string | null) || addr                  || null,
+      service_facility_npi:     (ai1500.service_facility_npi as string | null)     || enr?.facility_npi     || null,
+      billing_provider_name:    (ai1500.billing_provider_name as string | null)    || facility?.name        || null,
+      billing_provider_address: (ai1500.billing_provider_address as string | null) || addr                  || null,
+      billing_provider_phone:   (ai1500.billing_provider_phone as string | null)   || enr?.billing_phone    || facility?.phone || null,
+      billing_provider_npi:     (ai1500.billing_provider_npi as string | null)     || enr?.facility_npi     || null,
+      billing_provider_tax_id:  (ai1500.billing_provider_tax_id as string | null)  || enr?.facility_tin     || null,
+      federal_tax_id:           (ai1500.federal_tax_id as string | null)           || enr?.facility_tin     || null,
+      referring_provider_name:  (ai1500.referring_provider_name as string | null)  || physicianName         || null,
+      referring_provider_npi:   (ai1500.referring_provider_npi as string | null)   || creds?.npi_number     || null,
+    };
 
-  const { error: f15Err } = await adminClient
-    .from("order_form_1500")
-    .upsert(form1500Payload, { onConflict: "order_id" });
-  if (f15Err) console.error("[extract-combined] order_form_1500 FAILED:", JSON.stringify(f15Err));
+    const { error: f15Err } = await adminClient
+      .from("order_form_1500")
+      .upsert(form1500Payload, { onConflict: "order_id" });
+    if (f15Err) console.error("[extract-combined] order_form_1500 FAILED:", JSON.stringify(f15Err));
+  } else {
+    console.log("[extract-combined] Skipping order_form_1500 — order_type:", orderCtx.order_type);
+  }
 
   /* ── STEP 8: Upsert order_form ── */
   const orderFormPayload = {
@@ -1057,132 +1065,122 @@ export async function POST(req: NextRequest) {
         : {};
     const icd10 = aiOf.icd10_code as string | null | undefined;
 
-    /* ── STEP 7: Upsert order_ivr — AI insurance fields + enrollment fallbacks ── */
-    const ivrPayload = {
-      order_id: orderId,
-      ai_extracted: true,
-      ai_extracted_at: new Date().toISOString(),
-      ...aiIvr,
-      facility_name:
-        (aiIvr.facility_name as string | null) || facility?.name || null,
-      facility_npi:
-        (aiIvr.facility_npi as string | null) || enr?.facility_npi || null,
-      facility_tin:
-        (aiIvr.facility_tin as string | null) || enr?.facility_tin || null,
-      facility_ptan:
-        (aiIvr.facility_ptan as string | null) || enr?.facility_ptan || null,
-      facility_fax:
-        (aiIvr.facility_fax as string | null) || enr?.billing_fax || null,
-      facility_address:
-        (aiIvr.facility_address as string | null) || addr || null,
-      facility_phone:
-        (aiIvr.facility_phone as string | null) ||
-        enr?.billing_phone ||
-        facility?.phone ||
-        null,
-      facility_contact:
-        (aiIvr.facility_contact as string | null) ||
-        enr?.ap_contact_name ||
-        facility?.contact ||
-        null,
-      physician_name:
-        (aiIvr.physician_name as string | null) || physicianName || null,
-      physician_npi:
-        (aiIvr.physician_npi as string | null) || creds?.npi_number || null,
-      physician_tin:
-        (aiIvr.physician_tin as string | null) || enr?.facility_tin || null,
-      physician_fax:
-        (aiIvr.physician_fax as string | null) || enr?.billing_fax || null,
-      physician_address:
-        (aiIvr.physician_address as string | null) || addr || null,
-      physician_phone:
-        (aiIvr.physician_phone as string | null) || physician?.phone || null,
-      patient_name:
-        (aiIvr.patient_name as string | null) || patientName || null,
-      patient_dob:
-        (aiIvr.patient_dob as string | null) || patient?.date_of_birth || null,
-      sales_rep_name: repName || null,
-    };
+    /* ── STEP 7: Upsert order_ivr (skip for Omeza/Non-Omeza — manual input) ── */
+    if (!orderCtx.order_type) {
+      const ivrPayload = {
+        order_id: orderId,
+        ai_extracted: true,
+        ai_extracted_at: new Date().toISOString(),
+        ...aiIvr,
+        facility_name:
+          (aiIvr.facility_name as string | null) || facility?.name || null,
+        facility_npi:
+          (aiIvr.facility_npi as string | null) || enr?.facility_npi || null,
+        facility_tin:
+          (aiIvr.facility_tin as string | null) || enr?.facility_tin || null,
+        facility_ptan:
+          (aiIvr.facility_ptan as string | null) || enr?.facility_ptan || null,
+        facility_fax:
+          (aiIvr.facility_fax as string | null) || enr?.billing_fax || null,
+        facility_address:
+          (aiIvr.facility_address as string | null) || addr || null,
+        facility_phone:
+          (aiIvr.facility_phone as string | null) ||
+          enr?.billing_phone ||
+          facility?.phone ||
+          null,
+        facility_contact:
+          (aiIvr.facility_contact as string | null) ||
+          enr?.ap_contact_name ||
+          facility?.contact ||
+          null,
+        physician_name:
+          (aiIvr.physician_name as string | null) || physicianName || null,
+        physician_npi:
+          (aiIvr.physician_npi as string | null) || creds?.npi_number || null,
+        physician_tin:
+          (aiIvr.physician_tin as string | null) || enr?.facility_tin || null,
+        physician_fax:
+          (aiIvr.physician_fax as string | null) || enr?.billing_fax || null,
+        physician_address:
+          (aiIvr.physician_address as string | null) || addr || null,
+        physician_phone:
+          (aiIvr.physician_phone as string | null) || physician?.phone || null,
+        patient_name:
+          (aiIvr.patient_name as string | null) || patientName || null,
+        patient_dob:
+          (aiIvr.patient_dob as string | null) || patient?.date_of_birth || null,
+        sales_rep_name: repName || null,
+      };
 
-    const { error: ivrErr } = await adminClient
-      .from("order_ivr")
-      .upsert(ivrPayload, { onConflict: "order_id" });
-    if (ivrErr) {
-      console.error("[extract] order_ivr FAILED:", JSON.stringify(ivrErr));
+      const { error: ivrErr } = await adminClient
+        .from("order_ivr")
+        .upsert(ivrPayload, { onConflict: "order_id" });
+      if (ivrErr) {
+        console.error("[extract] order_ivr FAILED:", JSON.stringify(ivrErr));
+      }
     } else {
-      console.log(
-        "[extract] order_ivr saved — facility_name:",
-        ivrPayload.facility_name,
-        "| facility_npi:",
-        ivrPayload.facility_npi,
-        "| physician:",
-        ivrPayload.physician_name,
-        "| patient:",
-        ivrPayload.patient_name,
-      );
+      console.log("[extract] Skipping order_ivr — order_type:", orderCtx.order_type);
     }
 
-    /* ── STEP 8: Upsert order_form_1500 — AI patient/insurance fields + enrollment fallbacks ── */
-    const form1500Payload = {
-      order_id: orderId,
-      ...ai1500,
-      ...(icd10 ? { diagnosis_a: icd10 } : {}),
-      service_facility_name:
-        (ai1500.service_facility_name as string | null) ||
-        facility?.name ||
-        null,
-      service_facility_address:
-        (ai1500.service_facility_address as string | null) || addr || null,
-      service_facility_npi:
-        (ai1500.service_facility_npi as string | null) ||
-        enr?.facility_npi ||
-        null,
-      billing_provider_name:
-        (ai1500.billing_provider_name as string | null) ||
-        facility?.name ||
-        null,
-      billing_provider_address:
-        (ai1500.billing_provider_address as string | null) || addr || null,
-      billing_provider_phone:
-        (ai1500.billing_provider_phone as string | null) ||
-        enr?.billing_phone ||
-        facility?.phone ||
-        null,
-      billing_provider_npi:
-        (ai1500.billing_provider_npi as string | null) ||
-        enr?.facility_npi ||
-        null,
-      billing_provider_tax_id:
-        (ai1500.billing_provider_tax_id as string | null) ||
-        enr?.facility_tin ||
-        null,
-      federal_tax_id:
-        (ai1500.federal_tax_id as string | null) || enr?.facility_tin || null,
-      referring_provider_name:
-        (ai1500.referring_provider_name as string | null) ||
-        physicianName ||
-        null,
-      referring_provider_npi:
-        (ai1500.referring_provider_npi as string | null) ||
-        creds?.npi_number ||
-        null,
-    };
+    /* ── STEP 8: Upsert order_form_1500 (skip for Omeza/Non-Omeza — manual input) ── */
+    if (!orderCtx.order_type) {
+      const form1500Payload = {
+        order_id: orderId,
+        ...ai1500,
+        ...(icd10 ? { diagnosis_a: icd10 } : {}),
+        service_facility_name:
+          (ai1500.service_facility_name as string | null) ||
+          facility?.name ||
+          null,
+        service_facility_address:
+          (ai1500.service_facility_address as string | null) || addr || null,
+        service_facility_npi:
+          (ai1500.service_facility_npi as string | null) ||
+          enr?.facility_npi ||
+          null,
+        billing_provider_name:
+          (ai1500.billing_provider_name as string | null) ||
+          facility?.name ||
+          null,
+        billing_provider_address:
+          (ai1500.billing_provider_address as string | null) || addr || null,
+        billing_provider_phone:
+          (ai1500.billing_provider_phone as string | null) ||
+          enr?.billing_phone ||
+          facility?.phone ||
+          null,
+        billing_provider_npi:
+          (ai1500.billing_provider_npi as string | null) ||
+          enr?.facility_npi ||
+          null,
+        billing_provider_tax_id:
+          (ai1500.billing_provider_tax_id as string | null) ||
+          enr?.facility_tin ||
+          null,
+        federal_tax_id:
+          (ai1500.federal_tax_id as string | null) || enr?.facility_tin || null,
+        referring_provider_name:
+          (ai1500.referring_provider_name as string | null) ||
+          physicianName ||
+          null,
+        referring_provider_npi:
+          (ai1500.referring_provider_npi as string | null) ||
+          creds?.npi_number ||
+          null,
+      };
 
-    const { error: f15Err } = await adminClient
-      .from("order_form_1500")
-      .upsert(form1500Payload, { onConflict: "order_id" });
-    if (f15Err) {
-      console.error(
-        "[extract] order_form_1500 FAILED:",
-        JSON.stringify(f15Err),
-      );
+      const { error: f15Err } = await adminClient
+        .from("order_form_1500")
+        .upsert(form1500Payload, { onConflict: "order_id" });
+      if (f15Err) {
+        console.error(
+          "[extract] order_form_1500 FAILED:",
+          JSON.stringify(f15Err),
+        );
+      }
     } else {
-      console.log(
-        "[extract] order_form_1500 saved — billing_provider_name:",
-        form1500Payload.billing_provider_name,
-        "| federal_tax_id:",
-        form1500Payload.federal_tax_id,
-      );
+      console.log("[extract] Skipping order_form_1500 — order_type:", orderCtx.order_type);
     }
 
     /* ── STEP 9: Upsert order_form — AI clinical fields + physician/patient context ── */

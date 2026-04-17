@@ -629,6 +629,7 @@ export type RawOrderRecord = {
   signed_at: string | null;
   wound_type: string | null;
   date_of_service: string | null;
+  order_type: string | null;
   patient_id: string | null;
   assigned_provider_id: string | null;
   // AI extraction
@@ -836,6 +837,7 @@ export type DashboardOrder = {
   signed_at: string | null;
   wound_type: WoundType | null;
   date_of_service: string | null;
+  order_type: string | null;
   patient_id: string | null;
   assigned_provider_id: string | null;
   // AI extraction
@@ -936,6 +938,7 @@ export function mapOrder(raw: RawOrderRecord): DashboardOrder {
     signed_at: raw.signed_at,
     wound_type: (raw.wound_type as WoundType) ?? null,
     date_of_service: raw.date_of_service,
+    order_type: raw.order_type ?? null,
     patient_id: raw.patient_id,
     assigned_provider_id: raw.assigned_provider_id,
     // AI extraction
