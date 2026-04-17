@@ -202,7 +202,7 @@ export async function getForm1500(orderId: string) {
   await getCurrentUserOrThrow(supabase);
   const adminClient = createAdminClient();
 
-  // Fetch form row and order context (facility + enrollment) in parallel
+  // Fetch form row and order context (facility + enrollment + order_type) in parallel
   const [formRes, orderCtxRes] = await Promise.all([
     adminClient
       .from("order_form_1500")
@@ -212,6 +212,7 @@ export async function getForm1500(orderId: string) {
     adminClient
       .from("orders")
       .select(`
+        order_type,
         facilities!orders_facility_id_fkey(
           name, phone, address_line_1,
           facility_enrollment(
@@ -224,6 +225,12 @@ export async function getForm1500(orderId: string) {
       .eq("id", orderId)
       .maybeSingle(),
   ]);
+
+  // Omeza/Non-Omeza orders: return existing row only, no auto-init from enrollment
+  const orderType = (orderCtxRes.data as any)?.order_type as string | null;
+  if (orderType) {
+    return (formRes.data as Record<string, unknown>) ?? null;
+  }
 
   // Resolve facility and enrollment from join
   const facilityRaw = orderCtxRes.data?.facilities as unknown;
