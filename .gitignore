@@ -50,3 +50,6 @@ next-env.d.ts
 AUDIT-REPORT.md
 CLAUDE.md
 design-reference.html
+
+# Dev-only Supabase seed data — never commit (contains test credentials)
+supabase/seeds/
