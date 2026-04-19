@@ -212,7 +212,7 @@ export async function getForm1500(orderId: string) {
     adminClient
       .from("orders")
       .select(`
-        order_type,
+        manual_input,
         facilities!orders_facility_id_fkey(
           name, phone, address_line_1,
           facility_enrollment(
@@ -226,9 +226,11 @@ export async function getForm1500(orderId: string) {
       .maybeSingle(),
   ]);
 
-  // Omeza/Non-Omeza orders: return existing row only, no auto-init from enrollment
-  const orderType = (orderCtxRes.data as any)?.order_type as string | null;
-  if (orderType) {
+  // Manual-input orders: return existing row only. No auto-init from enrollment
+  // — every field stays blank until the user fills it. order_type no longer
+  // affects form behavior; it's purely a product classification.
+  const manualInput = Boolean((orderCtxRes.data as any)?.manual_input);
+  if (manualInput) {
     return (formRes.data as Record<string, unknown>) ?? null;
   }
 
@@ -318,6 +320,17 @@ export async function triggerDocumentExtraction(
   documentType: string,
   filePath: string,
 ): Promise<{ success: boolean; error: string | null }> {
+  // Defense-in-depth: never run AI extraction on manual-input orders.
+  const adminClient = createAdminClient();
+  const { data: order } = await adminClient
+    .from("orders")
+    .select("manual_input")
+    .eq("id", orderId)
+    .maybeSingle();
+  if ((order as { manual_input?: boolean } | null)?.manual_input) {
+    return { success: true, error: null };
+  }
+
   triggerAiExtraction(orderId, documentType, filePath).catch((err) =>
     console.error("[triggerDocumentExtraction]", err),
   );
@@ -332,6 +345,18 @@ export async function triggerOrderExtraction(
   orderId: string,
   documents: Array<{ documentType: string; filePath: string }>,
 ): Promise<{ success: boolean; error: string | null }> {
+  // Defense-in-depth: never run AI extraction on orders flagged as manual input,
+  // even if a client somewhere dispatches this after creation.
+  const adminClient = createAdminClient();
+  const { data: order } = await adminClient
+    .from("orders")
+    .select("manual_input")
+    .eq("id", orderId)
+    .maybeSingle();
+  if ((order as { manual_input?: boolean } | null)?.manual_input) {
+    return { success: true, error: null };
+  }
+
   triggerCombinedExtraction(orderId, documents).catch((err) =>
     console.error("[triggerOrderExtraction]", err),
   );

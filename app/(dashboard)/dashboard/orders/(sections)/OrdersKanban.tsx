@@ -394,6 +394,10 @@ export function OrdersKanban({
         onOrderClick={handleOrderClick}
         clinicView={isClinic ? clinicView : undefined}
         onClinicViewChange={isClinic ? setClinicView : undefined}
+        search={search}
+        onSearchChange={setSearch}
+        statusFilter={statusFilter}
+        onStatusFilterChange={setStatusFilter}
       />
       {modal}
     </>

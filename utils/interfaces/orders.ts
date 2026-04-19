@@ -644,6 +644,7 @@ export type RawOrderRecord = {
   ai_extracted: boolean | null;
   ai_extracted_at: string | null;
   order_form_locked: boolean | null;
+  manual_input: boolean | null;
   // joined
   patients: MaybeRelation<{
     id: string;
@@ -844,6 +845,7 @@ export type DashboardOrder = {
   ai_extracted: boolean;
   ai_extracted_at: string | null;
   order_form_locked: boolean;
+  manual_input: boolean;
   wound_visit_number: number | null;
   chief_complaint: string | null;
   has_vasculitis_or_burns: boolean;
@@ -945,6 +947,7 @@ export function mapOrder(raw: RawOrderRecord): DashboardOrder {
     ai_extracted: raw.ai_extracted ?? false,
     ai_extracted_at: raw.ai_extracted_at ?? null,
     order_form_locked: raw.order_form_locked ?? false,
+    manual_input: raw.manual_input ?? false,
     wound_visit_number: raw.wound_visit_number ?? null,
     chief_complaint: raw.chief_complaint ?? null,
     has_vasculitis_or_burns: raw.has_vasculitis_or_burns ?? false,
