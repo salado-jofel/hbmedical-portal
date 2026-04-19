@@ -10,6 +10,8 @@ import {
 } from "../(components)/kanban-config";
 import { EmptyState } from "@/app/(components)/EmptyState";
 import { PageHeader } from "@/app/(components)/PageHeader";
+import { TableToolbar } from "@/app/(components)/TableToolbar";
+import { ORDER_STATUS_FILTER_OPTIONS } from "@/utils/constants/orders";
 import { Package, List, LayoutGrid } from "lucide-react";
 import { cn } from "@/utils/utils";
 
@@ -30,6 +32,10 @@ export function OrdersKanbanView({
   onOrderClick,
   clinicView,
   onClinicViewChange,
+  search,
+  onSearchChange,
+  statusFilter,
+  onStatusFilterChange,
 }: {
   orders: DashboardOrder[];
   grouped: Record<string, DashboardOrder[]>;
@@ -47,6 +53,10 @@ export function OrdersKanbanView({
   onOrderClick: (order: DashboardOrder) => void;
   clinicView?: "table" | "kanban";
   onClinicViewChange?: (v: "table" | "kanban") => void;
+  search: string;
+  onSearchChange: (v: string) => void;
+  statusFilter: OrderStatus | "all";
+  onStatusFilterChange: (v: OrderStatus | "all") => void;
 }) {
   return (
     <div className="space-y-5">
@@ -116,6 +126,26 @@ export function OrdersKanbanView({
             {canCreate && <CreateOrderModal />}
           </div>
         }
+      />
+
+      <TableToolbar
+        searchValue={search}
+        onSearchChange={onSearchChange}
+        searchPlaceholder={
+          isAdmin || isSupport
+            ? "Search by order #, patient, facility..."
+            : "Search by order #, patient..."
+        }
+        className="flex-col sm:flex-row"
+        filters={[
+          {
+            value: statusFilter,
+            onChange: (v) => onStatusFilterChange(v as OrderStatus | "all"),
+            options: ORDER_STATUS_FILTER_OPTIONS,
+            placeholder: "All Statuses",
+            className: "w-full sm:w-44",
+          },
+        ]}
       />
 
       {orders.length === 0 ? (

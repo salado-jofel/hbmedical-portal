@@ -503,6 +503,12 @@ async function handleCombinedExtraction(
     return NextResponse.json({ error: "Order not found" }, { status: 404 });
   }
 
+  // Manual-input orders must never receive AI extraction — all forms stay blank.
+  if ((orderCtx as { manual_input?: boolean }).manual_input) {
+    console.log("[extract-combined] Skipping — order.manual_input is true:", orderId);
+    return NextResponse.json({ skipped: "manual_input" });
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const facility = orderCtx.facility as any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -641,8 +647,8 @@ async function handleCombinedExtraction(
   const aiOf = sanitizeOrderFormFields(extractedFields);
   const icd10 = aiOf.icd10_code as string | null | undefined;
 
-  /* ── STEP 6: Upsert order_ivr (skip for Omeza/Non-Omeza — manual input) ── */
-  if (!orderCtx.order_type) {
+  /* ── STEP 6: Upsert order_ivr ── */
+  {
     const ivrPayload = {
       order_id: orderId,
       ai_extracted: true,
@@ -671,12 +677,10 @@ async function handleCombinedExtraction(
       .from("order_ivr")
       .upsert(ivrPayload, { onConflict: "order_id" });
     if (ivrErr) console.error("[extract-combined] order_ivr FAILED:", JSON.stringify(ivrErr));
-  } else {
-    console.log("[extract-combined] Skipping order_ivr — order_type:", orderCtx.order_type);
   }
 
-  /* ── STEP 7: Upsert order_form_1500 (skip for Omeza/Non-Omeza — manual input) ── */
-  if (!orderCtx.order_type) {
+  /* ── STEP 7: Upsert order_form_1500 ── */
+  {
     const form1500Payload = {
       order_id: orderId,
       ...ai1500,
@@ -698,8 +702,6 @@ async function handleCombinedExtraction(
       .from("order_form_1500")
       .upsert(form1500Payload, { onConflict: "order_id" });
     if (f15Err) console.error("[extract-combined] order_form_1500 FAILED:", JSON.stringify(f15Err));
-  } else {
-    console.log("[extract-combined] Skipping order_form_1500 — order_type:", orderCtx.order_type);
   }
 
   /* ── STEP 8: Upsert order_form ── */
@@ -857,6 +859,12 @@ export async function POST(req: NextRequest) {
     if (orderCtxErr || !orderCtx) {
       console.error("[extract] Failed to fetch order:", orderCtxErr?.message);
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
+    }
+
+    // Manual-input orders must never receive AI extraction — all forms stay blank.
+    if ((orderCtx as { manual_input?: boolean }).manual_input) {
+      console.log("[extract] Skipping — order.manual_input is true:", orderId);
+      return NextResponse.json({ skipped: "manual_input" });
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1065,8 +1073,8 @@ export async function POST(req: NextRequest) {
         : {};
     const icd10 = aiOf.icd10_code as string | null | undefined;
 
-    /* ── STEP 7: Upsert order_ivr (skip for Omeza/Non-Omeza — manual input) ── */
-    if (!orderCtx.order_type) {
+    /* ── STEP 7: Upsert order_ivr ── */
+    {
       const ivrPayload = {
         order_id: orderId,
         ai_extracted: true,
@@ -1119,12 +1127,10 @@ export async function POST(req: NextRequest) {
       if (ivrErr) {
         console.error("[extract] order_ivr FAILED:", JSON.stringify(ivrErr));
       }
-    } else {
-      console.log("[extract] Skipping order_ivr — order_type:", orderCtx.order_type);
     }
 
-    /* ── STEP 8: Upsert order_form_1500 (skip for Omeza/Non-Omeza — manual input) ── */
-    if (!orderCtx.order_type) {
+    /* ── STEP 8: Upsert order_form_1500 ── */
+    {
       const form1500Payload = {
         order_id: orderId,
         ...ai1500,
@@ -1179,8 +1185,6 @@ export async function POST(req: NextRequest) {
           JSON.stringify(f15Err),
         );
       }
-    } else {
-      console.log("[extract] Skipping order_form_1500 — order_type:", orderCtx.order_type);
     }
 
     /* ── STEP 9: Upsert order_form — AI clinical fields + physician/patient context ── */
