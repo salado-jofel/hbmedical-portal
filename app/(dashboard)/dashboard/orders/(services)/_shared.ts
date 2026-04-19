@@ -22,7 +22,7 @@ export const ORDER_WITH_RELATIONS_SELECT = `
   wound_visit_number, chief_complaint,
   has_vasculitis_or_burns, is_receiving_home_health,
   is_patient_at_snf, icd10_code, followup_days, symptoms,
-  ai_extracted, ai_extracted_at, order_form_locked, order_type,
+  ai_extracted, ai_extracted_at, order_form_locked, manual_input, order_type,
   patients (id, facility_id, first_name, last_name, date_of_birth, patient_ref, notes, is_active, created_at, updated_at),
   order_items (id, order_id, product_id, product_name, product_sku, unit_price, quantity, shipping_amount, tax_amount, subtotal, total_amount, created_at, updated_at),
   order_documents (id, document_type, file_name, file_path, mime_type, file_size, uploaded_by, created_at),

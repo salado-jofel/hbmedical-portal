@@ -252,7 +252,10 @@ export function CreateOrderModal() {
   const [woundType, setWoundType] = useState<"chronic" | "post_surgical">(
     "chronic",
   );
-  const [orderType, setOrderType] = useState<"non_omeza" | "omeza" | null>(null);
+  const [orderType, setOrderType] = useState<"surgical_collagen" | "omeza" | null>(null);
+  const [manualInput, setManualInput] = useState(false);
+  const [patientFirstName, setPatientFirstName] = useState("");
+  const [patientLastName, setPatientLastName] = useState("");
   const [dateOfService, setDateOfService] = useState(
     new Date().toISOString().split("T")[0],
   );
@@ -265,6 +268,9 @@ export function CreateOrderModal() {
   function reset() {
     setWoundType("chronic");
     setOrderType(null);
+    setManualInput(false);
+    setPatientFirstName("");
+    setPatientLastName("");
     setDateOfService(new Date().toISOString().split("T")[0]);
     setNotes("");
     setDocs([]);
@@ -282,15 +288,18 @@ export function CreateOrderModal() {
 
   const hasFacesheet = docs.some((d) => d.type === "facesheet");
   const hasClinicalDocs = docs.some((d) => d.type === "clinical_docs");
-  const needsWoundPics = woundType === "chronic";
-  const hasWoundPics = docs.some((d) => d.type === "wound_pictures");
+
+  // Manual input skips AI extraction entirely; every document upload becomes
+  // optional, and the order/IVR/HCFA forms stay blank for manual completion.
+  const docsRequired = !manualInput;
+  const patientNameProvided =
+    patientFirstName.trim().length > 0 && patientLastName.trim().length > 0;
 
   const canSubmit =
     !!woundType &&
     !!dateOfService &&
-    hasFacesheet &&
-    hasClinicalDocs &&
-    (!needsWoundPics || hasWoundPics);
+    (!docsRequired || (hasFacesheet && hasClinicalDocs)) &&
+    (!manualInput || patientNameProvided);
 
   function handleClose() {
     if (!isPending) {
@@ -309,6 +318,9 @@ export function CreateOrderModal() {
         date_of_service: dateOfService,
         notes: notes.trim() || null,
         order_type: orderType,
+        manual_input: manualInput,
+        patient_first_name: manualInput ? patientFirstName.trim() : null,
+        patient_last_name: manualInput ? patientLastName.trim() : null,
       });
 
       if (!result.success || !result.orderId) {
@@ -343,8 +355,9 @@ export function CreateOrderModal() {
         }
       }
 
-      // Trigger a single combined AI extraction after all uploads complete
-      if (extractableDocs.length > 0) {
+      // Trigger a single combined AI extraction after all uploads complete.
+      // Skip entirely when the user chose manual input — forms must stay blank.
+      if (!manualInput && extractableDocs.length > 0) {
         triggerOrderExtraction(orderId, extractableDocs).catch((err) =>
           console.error("[CreateOrderModal] AI trigger:", err),
         );
@@ -368,9 +381,12 @@ export function CreateOrderModal() {
     });
   }
 
-  const facesheetError = submitted && !hasFacesheet;
-  const clinicalDocsError = submitted && !hasClinicalDocs;
-  const woundPicsError = submitted && needsWoundPics && !hasWoundPics;
+  const facesheetError = submitted && docsRequired && !hasFacesheet;
+  const clinicalDocsError = submitted && docsRequired && !hasClinicalDocs;
+  const patientFirstNameError =
+    submitted && manualInput && patientFirstName.trim().length === 0;
+  const patientLastNameError =
+    submitted && manualInput && patientLastName.trim().length === 0;
 
   return (
     <>
@@ -425,7 +441,7 @@ export function CreateOrderModal() {
                 </div>
               </div>
 
-              {/* Order Type (optional — selecting skips AI extraction) */}
+              {/* Order Type (optional — product classification) */}
               <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium text-slate-700">
                   Order Type
@@ -433,8 +449,8 @@ export function CreateOrderModal() {
                 <div className="flex gap-3">
                   {(
                     [
-                      { value: "non_omeza", label: "Non-Omeza" },
-                      { value: "omeza",     label: "Omeza" },
+                      { value: "surgical_collagen", label: "Surgical Collagen" },
+                      { value: "omeza",             label: "Omeza" },
                     ] as const
                   ).map((ot) => (
                     <button
@@ -454,11 +470,6 @@ export function CreateOrderModal() {
                     </button>
                   ))}
                 </div>
-                {orderType && (
-                  <p className="text-[11px] text-amber-600">
-                    IVR Form and HCFA/1500 must be filled manually for this order type.
-                  </p>
-                )}
               </div>
 
               {/* Date of Service */}
@@ -503,10 +514,82 @@ export function CreateOrderModal() {
               </div>
             </div>
 
+            {/* Manual Input toggle — sits above Documents so the user sees the
+                change in document requirements as soon as they toggle it on. */}
+            <label
+              className={cn(
+                "flex items-start gap-3 rounded-xl border-2 p-3 cursor-pointer transition-all",
+                manualInput
+                  ? "border-[var(--navy)] bg-blue-50"
+                  : "border-slate-200 hover:border-slate-300",
+              )}
+            >
+              <input
+                type="checkbox"
+                checked={manualInput}
+                onChange={(e) => setManualInput(e.target.checked)}
+                className="mt-0.5 h-4 w-4 accent-[var(--navy)] cursor-pointer"
+              />
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-slate-700">
+                  Manual input — fill all forms myself
+                </div>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Skips AI extraction. Order Form, IVR, and HCFA/1500 stay blank
+                  for you to complete manually. Document uploads become optional.
+                </p>
+              </div>
+            </label>
+
+            {/* Patient name — required only when manual input is active, since
+                the AI flow otherwise extracts the patient from the facesheet. */}
+            {manualInput && (
+              <div className="space-y-2">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  Patient
+                </h3>
+                <div className="flex gap-3">
+                  <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+                    <label className="text-sm font-medium text-slate-700">
+                      First Name <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={patientFirstName}
+                      onChange={(e) => setPatientFirstName(e.target.value)}
+                      className={cn(
+                        "border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--navy)]/20 focus:border-[var(--navy)]",
+                        patientFirstNameError ? "border-red-300 bg-red-50" : "border-slate-200",
+                      )}
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+                    <label className="text-sm font-medium text-slate-700">
+                      Last Name <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={patientLastName}
+                      onChange={(e) => setPatientLastName(e.target.value)}
+                      className={cn(
+                        "border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--navy)]/20 focus:border-[var(--navy)]",
+                        patientLastNameError ? "border-red-300 bg-red-50" : "border-slate-200",
+                      )}
+                    />
+                  </div>
+                </div>
+                {(patientFirstNameError || patientLastNameError) && (
+                  <p className="text-xs text-red-500">
+                    Patient first and last name are required for manual input.
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Section 2 — Documents */}
             <div className="space-y-3">
               <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                Documents
+                Documents {manualInput && <span className="text-slate-400 normal-case font-normal tracking-normal">(optional)</span>}
               </h3>
 
               {/* Facesheet + Clinical Docs side by side */}
@@ -515,7 +598,7 @@ export function CreateOrderModal() {
                   label="Patient Facesheet"
                   description="Insurance & demographics"
                   docType="facesheet"
-                  required
+                  required={docsRequired}
                   files={docs}
                   onAdd={addDocs}
                   onRemove={removeDoc}
@@ -527,7 +610,7 @@ export function CreateOrderModal() {
                   label="Clinical Documentation"
                   description="Doctor's notes, records"
                   docType="clinical_docs"
-                  required={true}
+                  required={docsRequired}
                   multiple
                   files={docs}
                   onAdd={addDocs}
@@ -549,25 +632,19 @@ export function CreateOrderModal() {
                 </p>
               )}
 
-              {/* Wound Pictures */}
+              {/* Wound Pictures — always optional */}
               <UploadZone
                 label="Wound Pictures"
                 description="Multiple images allowed"
                 docType="wound_pictures"
-                required={needsWoundPics}
+                required={false}
                 multiple
                 files={docs}
                 onAdd={addDocs}
                 onRemove={removeDoc}
-                error={woundPicsError}
                 accept={ACCEPT_IMAGES}
                 fileType="image"
               />
-              {woundPicsError && (
-                <p className="text-xs text-red-500">
-                  Wound pictures are required for chronic wounds.
-                </p>
-              )}
             </div>
 
             {/* Upload progress */}

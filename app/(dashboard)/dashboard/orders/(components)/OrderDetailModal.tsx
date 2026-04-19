@@ -426,8 +426,9 @@ export function OrderDetailModal({
         });
       }
 
-      // AI polling check — only for recently created orders that haven't been extracted yet
-      if (!order.ai_extracted) {
+      // AI polling check — only for recently created orders that haven't been extracted yet.
+      // Manual-input orders never receive AI extraction, so skip polling entirely.
+      if (!order.ai_extracted && !order.manual_input) {
         const ageMs = Date.now() - new Date(order.created_at).getTime();
         const isRecentOrder = ageMs < 10 * 60 * 1000;
         const hasTriggerDoc = docs.some((d) =>
@@ -440,6 +441,8 @@ export function OrderDetailModal({
           // Old order or no extractable docs — show form as-is
           setAiStatus("idle");
         }
+      } else if (order.manual_input) {
+        setAiStatus("idle");
       }
     });
   }, [open, order.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -499,11 +502,12 @@ export function OrderDetailModal({
     if (aiCompletedRef.current) return;
 
     setOrderForm(null);
-    // Only treat as "processing" if the order was created very recently (within 10 min).
+    // Only treat as "processing" if the order was created very recently (within 10 min)
+    // AND it's not a manual-input order (those never receive AI extraction by design).
     // Older orders with ai_extracted=false had a failed/skipped extraction — show form as-is.
     const ageMs = Date.now() - new Date(order.created_at).getTime();
     const isRecentOrder = ageMs < 10 * 60 * 1000;
-    setAiStatus(isRecentOrder ? "processing" : "idle");
+    setAiStatus(isRecentOrder && !order.manual_input ? "processing" : "idle");
 
     return () => {
       if (pollingIntervalRef.current) {
@@ -925,9 +929,10 @@ export function OrderDetailModal({
     if (result.success && result.document) {
       setDocuments((prev) => [result.document!, ...prev]);
       toast.success("Document uploaded.");
-      // Start AI polling and explicitly trigger extraction for extractable doc types
+      // Start AI polling and explicitly trigger extraction for extractable doc types.
+      // Manual-input orders never receive AI extraction — skip both the spinner and the trigger.
       // (auto-trigger was removed from uploadOrderDocument to prevent races on new orders)
-      if (["facesheet", "clinical_docs"].includes(docType)) {
+      if (["facesheet", "clinical_docs"].includes(docType) && !order.manual_input) {
         setAiStatus("processing");
         pollCompletedRef.current = false;
         beginPolling();

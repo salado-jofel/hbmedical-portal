@@ -34,7 +34,10 @@ export async function createOrder(data: {
   wound_type: "chronic" | "post_surgical";
   date_of_service: string;
   notes?: string | null;
-  order_type?: "non_omeza" | "omeza" | null;
+  order_type?: "surgical_collagen" | "omeza" | null;
+  manual_input?: boolean;
+  patient_first_name?: string | null;
+  patient_last_name?: string | null;
 }): Promise<IOrderFormState> {
   try {
     const { userId, facilityId } = await requireClinicRole();
@@ -44,6 +47,32 @@ export async function createOrder(data: {
 
     const adminClient = createAdminClient();
     const orderNumber = generateOrderNumber();
+
+    // Manual-input orders collect a patient name up-front (AI would otherwise
+    // populate this). Create a new patients row and link it to the order.
+    // Duplicates are intentional — we always insert, no find-or-create lookup.
+    let patientId: string | null = null;
+    if (data.manual_input) {
+      const firstName = data.patient_first_name?.trim();
+      const lastName = data.patient_last_name?.trim();
+      if (!firstName || !lastName) {
+        return { success: false, error: "Patient first and last name are required for manual input." };
+      }
+      const { data: patientRow, error: patientErr } = await adminClient
+        .from("patients")
+        .insert({
+          facility_id: facilityId,
+          first_name: firstName,
+          last_name: lastName,
+        })
+        .select("id")
+        .single();
+      if (patientErr || !patientRow) {
+        console.error("[createOrder] patient insert:", JSON.stringify(patientErr));
+        return { success: false, error: "Failed to save patient information." };
+      }
+      patientId = patientRow.id;
+    }
 
     const { data: orderRow, error: orderErr } = await adminClient
       .from("orders")
@@ -64,11 +93,12 @@ export async function createOrder(data: {
         created_by: userId,
         wound_type: data.wound_type,
         date_of_service: data.date_of_service,
-        patient_id: null,
+        patient_id: patientId,
         assigned_provider_id: null,
         ai_extracted: false,
         order_form_locked: false,
         order_type: data.order_type ?? null,
+        manual_input: data.manual_input ?? false,
       })
       .select("id")
       .single();
@@ -81,11 +111,13 @@ export async function createOrder(data: {
     const orderId = orderRow.id;
     await insertOrderHistory(adminClient, orderId, "Order created as draft", null, "draft", userId);
 
-    // For Omeza/Non-Omeza orders, generate blank IVR + HCFA PDFs immediately
-    // (IVR and HCFA are manual-only; order_form PDF comes after AI extraction)
-    if (data.order_type) {
-      generateOrderPDFs(orderId, ["ivr", "hcfa_1500"]).catch((err) =>
-        console.error("[createOrder] PDF generation:", err),
+    // PDF generation strategy:
+    //   manual_input = true → all three forms stay blank; generate all three PDFs up-front.
+    //   otherwise           → AI extraction populates everything post-upload.
+    // order_type is now purely a product classification with no effect on form behavior.
+    if (data.manual_input) {
+      generateOrderPDFs(orderId, ["order_form", "ivr", "hcfa_1500"]).catch((err) =>
+        console.error("[createOrder] PDF generation (manual):", err),
       );
     }
 
