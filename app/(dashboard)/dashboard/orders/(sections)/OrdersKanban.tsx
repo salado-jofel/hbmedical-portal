@@ -234,8 +234,10 @@ export function OrdersKanban({
     localStorage.setItem("orders-view", clinicView);
   }, [clinicView, isClinic]);
 
-  // Reps get table-only; admin/support default to kanban with toggle
-  const shouldShowTable = isRep || tableMode;
+  // Reps get table-only; admin/support default to kanban with toggle.
+  // Clinic users are routed entirely through the clinicView branches below,
+  // so they must never fall into the admin OrdersTable branch.
+  const shouldShowTable = !isClinic && (isRep || tableMode);
 
   const CLINIC_VISIBLE_STATUSES: OrderStatus[] = [
     "draft",
