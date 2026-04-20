@@ -13,8 +13,8 @@ function toPayload(state: ReturnType<typeof buildState>): Omit<FacilityEnrollmen
   return {
     facility_ein:               state.facilityEin || null,
     facility_npi:               state.facilityNpi || null,
-    facility_tin:               state.facilityTin || null,
     facility_ptan:              state.facilityPtan || null,
+    medicare_mac:               state.medicareMac || null,
     ap_contact_name:            state.apContactName || null,
     ap_contact_email:           state.apContactEmail || null,
     billing_address:            state.billingAddress || null,
@@ -22,7 +22,6 @@ function toPayload(state: ReturnType<typeof buildState>): Omit<FacilityEnrollmen
     billing_state:              state.billingState || null,
     billing_zip:                state.billingZip || null,
     billing_phone:              state.billingPhone || null,
-    billing_fax:                state.billingFax || null,
     dpa_contact:                state.dpaContact || null,
     dpa_contact_email:          state.dpaContactEmail || null,
     additional_provider_1_name: state.additionalProvider1Name || null,
@@ -31,28 +30,11 @@ function toPayload(state: ReturnType<typeof buildState>): Omit<FacilityEnrollmen
     additional_provider_2_npi:  state.additionalProvider2Npi || null,
     shipping_facility_name:     state.shippingFacilityName || null,
     shipping_facility_npi:      state.shippingFacilityNpi || null,
-    shipping_facility_tin:      state.shippingFacilityTin || null,
     shipping_facility_ptan:     state.shippingFacilityPtan || null,
     shipping_contact_name:      state.shippingContactName || null,
     shipping_contact_email:     state.shippingContactEmail || null,
     shipping_address:           state.shippingAddress || null,
-    shipping_days_times:        state.shippingDaysTimes || null,
     shipping_phone:             state.shippingPhone || null,
-    shipping_fax:               state.shippingFax || null,
-    shipping2_facility_name:    state.shipping2FacilityName || null,
-    shipping2_facility_npi:     state.shipping2FacilityNpi || null,
-    shipping2_facility_tin:     state.shipping2FacilityTin || null,
-    shipping2_facility_ptan:    state.shipping2FacilityPtan || null,
-    shipping2_contact_name:     state.shipping2ContactName || null,
-    shipping2_contact_email:    state.shipping2ContactEmail || null,
-    shipping2_address:          state.shipping2Address || null,
-    shipping2_days_times:       state.shipping2DaysTimes || null,
-    shipping2_phone:            state.shipping2Phone || null,
-    shipping2_fax:              state.shipping2Fax || null,
-    claims_contact_name:        state.claimsContactName || null,
-    claims_contact_phone:       state.claimsContactPhone || null,
-    claims_contact_email:       state.claimsContactEmail || null,
-    claims_third_party:         state.claimsThirdParty || null,
   };
 }
 
@@ -60,8 +42,8 @@ function buildState(d: FacilityEnrollmentData | null) {
   return {
     facilityEin:              s(d?.facility_ein),
     facilityNpi:              s(d?.facility_npi),
-    facilityTin:              s(d?.facility_tin),
     facilityPtan:             s(d?.facility_ptan),
+    medicareMac:              s(d?.medicare_mac),
     apContactName:            s(d?.ap_contact_name),
     apContactEmail:           s(d?.ap_contact_email),
     billingAddress:           s(d?.billing_address),
@@ -69,7 +51,6 @@ function buildState(d: FacilityEnrollmentData | null) {
     billingState:             s(d?.billing_state),
     billingZip:               s(d?.billing_zip),
     billingPhone:             s(d?.billing_phone),
-    billingFax:               s(d?.billing_fax),
     dpaContact:               s(d?.dpa_contact),
     dpaContactEmail:          s(d?.dpa_contact_email),
     additionalProvider1Name:  s(d?.additional_provider_1_name),
@@ -78,28 +59,11 @@ function buildState(d: FacilityEnrollmentData | null) {
     additionalProvider2Npi:   s(d?.additional_provider_2_npi),
     shippingFacilityName:     s(d?.shipping_facility_name),
     shippingFacilityNpi:      s(d?.shipping_facility_npi),
-    shippingFacilityTin:      s(d?.shipping_facility_tin),
     shippingFacilityPtan:     s(d?.shipping_facility_ptan),
     shippingContactName:      s(d?.shipping_contact_name),
     shippingContactEmail:     s(d?.shipping_contact_email),
     shippingAddress:          s(d?.shipping_address),
-    shippingDaysTimes:        s(d?.shipping_days_times),
     shippingPhone:            s(d?.shipping_phone),
-    shippingFax:              s(d?.shipping_fax),
-    shipping2FacilityName:    s(d?.shipping2_facility_name),
-    shipping2FacilityNpi:     s(d?.shipping2_facility_npi),
-    shipping2FacilityTin:     s(d?.shipping2_facility_tin),
-    shipping2FacilityPtan:    s(d?.shipping2_facility_ptan),
-    shipping2ContactName:     s(d?.shipping2_contact_name),
-    shipping2ContactEmail:    s(d?.shipping2_contact_email),
-    shipping2Address:         s(d?.shipping2_address),
-    shipping2DaysTimes:       s(d?.shipping2_days_times),
-    shipping2Phone:           s(d?.shipping2_phone),
-    shipping2Fax:             s(d?.shipping2_fax),
-    claimsContactName:        s(d?.claims_contact_name),
-    claimsContactPhone:       s(d?.claims_contact_phone),
-    claimsContactEmail:       s(d?.claims_contact_email),
-    claimsThirdParty:         s(d?.claims_third_party),
   };
 }
 
@@ -130,43 +94,19 @@ export function EnrollmentTab({
   const [fields, setFields] = useState(initial);
   const [isDirty, setIsDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [missingFields, setMissingFields] = useState<Set<string>>(new Set());
 
   const set = useCallback((key: keyof typeof initial) => (v: string) => {
     setFields((prev) => ({ ...prev, [key]: v }));
     setIsDirty(true);
-    setMissingFields((prev) => { const next = new Set(prev); next.delete(key); return next; });
   }, []);
 
   function discard() {
     setFields(initial);
     setIsDirty(false);
-    setMissingFields(new Set());
   }
 
   async function handleSave() {
-    // Validate required fields
-    const requiredKeys: (keyof typeof initial)[] = [
-      "facilityEin", "facilityNpi", "facilityTin", "facilityPtan",
-      "apContactName", "apContactEmail", "billingFax", "dpaContact", "dpaContactEmail",
-      "additionalProvider1Name", "additionalProvider1Npi",
-      "additionalProvider2Name", "additionalProvider2Npi",
-      "shippingFacilityName", "shippingFacilityNpi", "shippingFacilityTin", "shippingFacilityPtan",
-      "shippingContactName", "shippingContactEmail", "shippingAddress", "shippingDaysTimes",
-      "shippingPhone", "shippingFax",
-      "shipping2FacilityName", "shipping2FacilityNpi", "shipping2FacilityTin", "shipping2FacilityPtan",
-      "shipping2ContactName", "shipping2ContactEmail", "shipping2Address", "shipping2DaysTimes",
-      "shipping2Phone", "shipping2Fax",
-      "claimsContactName", "claimsContactPhone", "claimsContactEmail", "claimsThirdParty",
-    ];
-
-    const empty = new Set(requiredKeys.filter((k) => !fields[k].trim()));
-    if (empty.size > 0) {
-      setMissingFields(empty);
-      toast.error("Please complete all highlighted fields.");
-      return;
-    }
-
+    // All enrollment fields are optional — save whatever's filled.
     setIsSaving(true);
     const result = await saveEnrollmentData(toPayload(fields));
     setIsSaving(false);
@@ -175,7 +115,6 @@ export function EnrollmentTab({
       toast.error(result.error);
     } else {
       setIsDirty(false);
-      setMissingFields(new Set());
       toast.success("Enrollment data saved.");
     }
   }
@@ -226,15 +165,12 @@ export function EnrollmentTab({
         billingState={billingState}
         billingZip={billingZip}
         billingPhone={billingPhone}
-        missingFields={missingFields}
-        onClearMissing={(name) => setMissingFields((prev) => { const next = new Set(prev); next.delete(name); return next; })}
         facilityEin={fields.facilityEin}               onFacilityEinChange={set("facilityEin")}
         facilityNpi={fields.facilityNpi}               onFacilityNpiChange={set("facilityNpi")}
-        facilityTin={fields.facilityTin}               onFacilityTinChange={set("facilityTin")}
         facilityPtan={fields.facilityPtan}             onFacilityPtanChange={set("facilityPtan")}
+        medicareMac={fields.medicareMac}               onMedicareMacChange={set("medicareMac")}
         apContactName={fields.apContactName}           onApContactNameChange={set("apContactName")}
         apContactEmail={fields.apContactEmail}         onApContactEmailChange={set("apContactEmail")}
-        billingFax={fields.billingFax}                 onBillingFaxChange={set("billingFax")}
         dpaContact={fields.dpaContact}                 onDpaContactChange={set("dpaContact")}
         dpaContactEmail={fields.dpaContactEmail}       onDpaContactEmailChange={set("dpaContactEmail")}
         additionalProvider1Name={fields.additionalProvider1Name} onAdditionalProvider1NameChange={set("additionalProvider1Name")}
@@ -243,28 +179,11 @@ export function EnrollmentTab({
         additionalProvider2Npi={fields.additionalProvider2Npi}   onAdditionalProvider2NpiChange={set("additionalProvider2Npi")}
         shippingFacilityName={fields.shippingFacilityName}     onShippingFacilityNameChange={set("shippingFacilityName")}
         shippingFacilityNpi={fields.shippingFacilityNpi}       onShippingFacilityNpiChange={set("shippingFacilityNpi")}
-        shippingFacilityTin={fields.shippingFacilityTin}       onShippingFacilityTinChange={set("shippingFacilityTin")}
         shippingFacilityPtan={fields.shippingFacilityPtan}     onShippingFacilityPtanChange={set("shippingFacilityPtan")}
         shippingContactName={fields.shippingContactName}       onShippingContactNameChange={set("shippingContactName")}
         shippingContactEmail={fields.shippingContactEmail}     onShippingContactEmailChange={set("shippingContactEmail")}
         shippingAddress={fields.shippingAddress}               onShippingAddressChange={set("shippingAddress")}
-        shippingDaysTimes={fields.shippingDaysTimes}           onShippingDaysTimesChange={set("shippingDaysTimes")}
         shippingPhone={fields.shippingPhone}                   onShippingPhoneChange={set("shippingPhone")}
-        shippingFax={fields.shippingFax}                       onShippingFaxChange={set("shippingFax")}
-        shipping2FacilityName={fields.shipping2FacilityName}   onShipping2FacilityNameChange={set("shipping2FacilityName")}
-        shipping2FacilityNpi={fields.shipping2FacilityNpi}     onShipping2FacilityNpiChange={set("shipping2FacilityNpi")}
-        shipping2FacilityTin={fields.shipping2FacilityTin}     onShipping2FacilityTinChange={set("shipping2FacilityTin")}
-        shipping2FacilityPtan={fields.shipping2FacilityPtan}   onShipping2FacilityPtanChange={set("shipping2FacilityPtan")}
-        shipping2ContactName={fields.shipping2ContactName}     onShipping2ContactNameChange={set("shipping2ContactName")}
-        shipping2ContactEmail={fields.shipping2ContactEmail}   onShipping2ContactEmailChange={set("shipping2ContactEmail")}
-        shipping2Address={fields.shipping2Address}             onShipping2AddressChange={set("shipping2Address")}
-        shipping2DaysTimes={fields.shipping2DaysTimes}         onShipping2DaysTimesChange={set("shipping2DaysTimes")}
-        shipping2Phone={fields.shipping2Phone}                 onShipping2PhoneChange={set("shipping2Phone")}
-        shipping2Fax={fields.shipping2Fax}                     onShipping2FaxChange={set("shipping2Fax")}
-        claimsContactName={fields.claimsContactName}           onClaimsContactNameChange={set("claimsContactName")}
-        claimsContactPhone={fields.claimsContactPhone}         onClaimsContactPhoneChange={set("claimsContactPhone")}
-        claimsContactEmail={fields.claimsContactEmail}         onClaimsContactEmailChange={set("claimsContactEmail")}
-        claimsThirdParty={fields.claimsThirdParty}             onClaimsThirdPartyChange={set("claimsThirdParty")}
       />
 
       {/* Bottom save button (always visible for convenience) */}

@@ -75,10 +75,15 @@ export async function updateSession(request: NextRequest) {
   // ── Normal session logic ──────────────────────────────────────────────────
 
   // Login/registration pages — redirect logged-in users away from these.
+  // /verify-email is special: logged-in users with an UNCONFIRMED email
+  // legitimately need to see it (they just signed up). Only redirect them
+  // away once their email is confirmed — otherwise the freshly-created user
+  // gets bounced back to the invite signup page and sees "Invite already used".
+  const emailConfirmed = Boolean(user?.email_confirmed_at);
   const isLoginPage =
     currentPath === "/sign-in" ||
     currentPath === "/sign-up" ||
-    currentPath === "/verify-email";
+    (currentPath === "/verify-email" && emailConfirmed);
 
   // /forgot-password and /reset-password are public — accessible to anyone.
   // They are intentionally excluded from isLoginPage so that a logged-in user
