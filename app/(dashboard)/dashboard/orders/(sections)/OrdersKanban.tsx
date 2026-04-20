@@ -56,11 +56,15 @@ export function OrdersKanban({
     if (!selectedOrder || !modalOpen) return;
     const latest = orders.find((o) => o.id === selectedOrder.id);
     if (!latest) return;
+    const itemsSig = (o: DashboardOrder) =>
+      (o.all_items ?? []).map((i) => `${i.id}:${i.quantity}`).join(",");
     const meaningful =
       latest.order_status !== selectedOrder.order_status ||
       latest.ai_extracted !== selectedOrder.ai_extracted ||
       latest.patient_full_name !== selectedOrder.patient_full_name ||
-      (latest.documents?.length ?? 0) !== (selectedOrder.documents?.length ?? 0);
+      (latest.documents?.length ?? 0) !== (selectedOrder.documents?.length ?? 0) ||
+      (latest.notes ?? "") !== (selectedOrder.notes ?? "") ||
+      itemsSig(latest) !== itemsSig(selectedOrder);
     if (meaningful) setSelectedOrder(latest);
   }, [orders, modalOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 

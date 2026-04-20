@@ -330,6 +330,7 @@ export function OrderDetailModal({
   /* -- Dirty tracking for child tabs -- */
   const [isIvrDirty, setIsIvrDirty] = useState(false);
   const [isHcfaDirty, setIsHcfaDirty] = useState(false);
+  const [isOrderFormDirty, setIsOrderFormDirty] = useState(false);
 
   /* -- Reset keys to remount child tabs on discard -- */
   const [resetIvrKey, setResetIvrKey] = useState(0);
@@ -997,12 +998,14 @@ export function OrderDetailModal({
         { duration: 5000 },
       );
       if (isOverviewDirty) setTab("overview");
+      else if (isOrderFormDirty) setTab("order-form");
       else if (isIvrDirty) setTab("ivr");
       else if (isHcfaDirty) setTab("hcfa");
       return;
     }
     const hasFacesheet = documents.some((d) => d.documentType === "facesheet");
-    if (!hasFacesheet || !order.date_of_service || !order.wound_type) {
+    const facesheetOk = order.manual_input || hasFacesheet;
+    if (!facesheetOk || !order.date_of_service || !order.wound_type) {
       setCompletionOpen(true);
       return;
     }
@@ -1027,12 +1030,14 @@ export function OrderDetailModal({
         { duration: 5000 },
       );
       if (isOverviewDirty) setTab("overview");
+      else if (isOrderFormDirty) setTab("order-form");
       else if (isIvrDirty) setTab("ivr");
       else if (isHcfaDirty) setTab("hcfa");
       return;
     }
     const hasFacesheet = documents.some((d) => d.documentType === "facesheet");
-    if (!hasFacesheet || !order.date_of_service || !order.wound_type) {
+    const facesheetOk = order.manual_input || hasFacesheet;
+    if (!facesheetOk || !order.date_of_service || !order.wound_type) {
       setCompletionOpen(true);
       return;
     }
@@ -1283,14 +1288,17 @@ export function OrderDetailModal({
     }) ||
     savedItems.some((s) => !draftItems.find((d) => d.id === s.id)) ||
     draftNotes !== savedNotes;
-  const hasAnyUnsavedChanges = isOverviewDirty || isIvrDirty || isHcfaDirty;
+  const hasAnyUnsavedChanges =
+    isOverviewDirty || isOrderFormDirty || isIvrDirty || isHcfaDirty;
   const dirtyTabs = [
     ...(isOverviewDirty ? ["Overview"] : []),
+    ...(isOrderFormDirty ? ["Order Form"] : []),
     ...(isIvrDirty ? ["IVR Form"] : []),
     ...(isHcfaDirty ? ["HCFA/1500"] : []),
   ];
   const tabDirtyMap: Record<string, boolean> = {
     overview: isOverviewDirty,
+    "order-form": isOrderFormDirty,
     ivr: isIvrDirty,
     hcfa: isHcfaDirty,
   };
@@ -1363,6 +1371,7 @@ export function OrderDetailModal({
           handleDiscardOverview();
           setIsIvrDirty(false);
           setIsHcfaDirty(false);
+          setIsOrderFormDirty(false);
           setResetIvrKey((k) => k + 1);
           setResetHcfaKey((k) => k + 1);
           setCloseWarningOpen(false);
@@ -1548,7 +1557,11 @@ export function OrderDetailModal({
                       canSign={canSign}
                       currentUserName={currentUserName ?? null}
                       patientName={patientName}
-                      onSaved={(updated) => setOrderForm(updated)}
+                      onSaved={(updated) => {
+                        setOrderForm(updated);
+                        setIsOrderFormDirty(false);
+                      }}
+                      onDirtyChange={setIsOrderFormDirty}
                     />
                     <IVRTab
                       isActive={tab === "ivr"}

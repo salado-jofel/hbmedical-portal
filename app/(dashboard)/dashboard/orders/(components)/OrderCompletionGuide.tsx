@@ -1,6 +1,6 @@
 "use client";
 
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import type { DashboardOrder, IOrderDocument } from "@/utils/interfaces/orders";
 
@@ -34,11 +34,15 @@ export function OrderCompletionGuide({
       label: "Date of service set",
       done: !!order.date_of_service,
     },
-    {
-      label: "Patient facesheet uploaded",
-      done: documents.some((d) => d.documentType === "facesheet"),
-      tab: "documents",
-    },
+    ...(order.manual_input
+      ? []
+      : [
+          {
+            label: "Patient facesheet uploaded",
+            done: documents.some((d) => d.documentType === "facesheet"),
+            tab: "documents",
+          },
+        ]),
     {
       label: "At least one product added",
       done: (order.all_items?.length ?? 0) > 0,
@@ -68,9 +72,9 @@ export function OrderCompletionGuide({
       <DialogContent className="max-w-sm w-[calc(100%-2rem)] rounded-2xl p-0 border-[var(--border)] shadow-2xl">
         <div className="p-6 space-y-4">
           <div>
-            <h3 className="font-semibold text-sm text-slate-800">
+            <DialogTitle className="font-semibold text-sm text-slate-800">
               Order Completion Guide
-            </h3>
+            </DialogTitle>
             <p className="text-xs text-slate-500 mt-1">
               Complete the following to submit for signature:
             </p>

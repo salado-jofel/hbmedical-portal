@@ -18,6 +18,7 @@ interface OrderFormTabProps {
   currentUserName: string | null;
   patientName: string | null;
   onSaved?: (updated: IOrderForm) => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 /* Shown only while AI extraction is actively running (new orders) */
@@ -71,6 +72,7 @@ export function OrderFormTab({
   currentUserName,
   patientName,
   onSaved,
+  onDirtyChange,
 }: OrderFormTabProps) {
   // New order: AI actively extracting
   if (aiStatus === "processing") {
@@ -115,6 +117,7 @@ export function OrderFormTab({
         aiStatus={aiStatus}
         patientName={patientName}
         onSaved={onSaved}
+        onDirtyChange={onDirtyChange}
       />
     </div>
   );
