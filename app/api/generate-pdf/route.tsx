@@ -1,146 +1,29 @@
 /** @jsxImportSource react */
 import { NextRequest, NextResponse } from "next/server";
-import { renderToBuffer } from "@react-pdf/renderer";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { OrderFormPDF } from "@/app/(dashboard)/dashboard/orders/(pdf)/OrderFormPDF";
-import { IVRFormPDF } from "@/app/(dashboard)/dashboard/orders/(pdf)/IVRFormPDF";
-import { generateFilledCMS1500 } from "@/lib/pdf/generate-cms1500";
+import { generateOrderPdf, type OrderPdfFormType } from "@/lib/pdf/generate-order-pdfs";
 
 export const maxDuration = 30;
 
 export async function POST(req: NextRequest) {
   try {
-    const { orderId, formType } = await req.json();
-    console.log("[generate-pdf] Called with:", JSON.stringify({ orderId, formType }));
+    const { orderId, formType } = (await req.json()) as {
+      orderId: string;
+      formType: OrderPdfFormType;
+    };
 
-    const adminClient = createAdminClient();
+    const result = await generateOrderPdf(orderId, formType);
 
-    const [orderRes, formRes, ivrRes, hcfaRes] = await Promise.all([
-      adminClient
-        .from("orders")
-        .select(`
-          id, order_number, wound_type, date_of_service,
-          created_by, assigned_provider_id, signed_by, signed_at,
-          facility:facilities!orders_facility_id_fkey(name),
-          patient:patients!orders_patient_id_fkey(
-            first_name, last_name, date_of_birth
-          ),
-          order_items(id, product_sku, product_name, quantity, unit_price)
-        `)
-        .eq("id", orderId)
-        .single(),
-      adminClient.from("order_form").select("*").eq("order_id", orderId).maybeSingle(),
-      adminClient.from("order_ivr").select("*").eq("order_id", orderId).maybeSingle(),
-      adminClient.from("order_form_1500").select("*").eq("order_id", orderId).maybeSingle(),
-    ]);
-
-    const order = orderRes.data;
-    const form  = formRes.data;
-    const ivr   = ivrRes.data;
-    const hcfa  = hcfaRes.data;
-
-    console.log("[generate-pdf] order_form data:", JSON.stringify(form));
-    console.log("[generate-pdf] IVR record found:", !!ivr, "| error:", ivrRes.error?.message ?? null);
-    if (ivr) {
-      console.log("[generate-pdf] IVR facility_name:", ivr.facility_name);
-      console.log("[generate-pdf] IVR physician_name:", ivr.physician_name);
-      console.log("[generate-pdf] IVR patient_name:", ivr.patient_name);
-      console.log("[generate-pdf] IVR sales_rep_name:", ivr.sales_rep_name);
+    if (!result.success) {
+      const status = result.error === "Order not found" ? 404 : 500;
+      return NextResponse.json({ error: result.error }, { status });
     }
 
-    if (!order) {
-      return NextResponse.json({ error: "Order not found" }, { status: 404 });
-    }
-
-    // IVR record may not exist yet (manual orders, or before AI extraction completes).
-    // The PDF template handles null gracefully by rendering blank fields.
-
-    // Resolve physician name for IVR PDF (assigned_provider_id → created_by fallback)
-    let pdfPhysicianName: string | null = null;
-    if (formType === "ivr") {
-      const providerId = order.assigned_provider_id || order.created_by;
-      if (providerId) {
-        const { data: profile } = await adminClient
-          .from("profiles")
-          .select("first_name, last_name")
-          .eq("id", providerId)
-          .maybeSingle();
-        if (profile) {
-          pdfPhysicianName = `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() || null;
-        }
-      }
-    }
-
-    let pdfBuffer: Buffer;
-    let fileName: string;
-    let documentType: string;
-
-    if (formType === "order_form") {
-      pdfBuffer = await renderToBuffer(
-        <OrderFormPDF order={order} form={form} />
-      );
-      fileName     = `order-form-${order.order_number}.pdf`;
-      documentType = "order_form";
-
-    } else if (formType === "ivr") {
-      pdfBuffer = await renderToBuffer(
-        <IVRFormPDF order={order} ivr={ivr} form={form} physicianName={pdfPhysicianName} />
-      );
-      fileName     = `ivr-form-${order.order_number}.pdf`;
-      documentType = "additional_ivr";
-
-    } else if (formType === "hcfa_1500") {
-      const filled = await generateFilledCMS1500(hcfa ?? {});
-      pdfBuffer    = Buffer.from(filled);
-      fileName     = `hcfa-1500-${order.order_number}.pdf`;
-      documentType = "form_1500";
-
-    } else {
-      return NextResponse.json({ error: "Invalid formType" }, { status: 400 });
-    }
-
-    const filePath = `order-documents/${orderId}/generated/${fileName}`;
-
-    const { error: uploadError } = await adminClient.storage
-      .from("hbmedical-bucket-private")
-      .upload(filePath, pdfBuffer, {
-        contentType: "application/pdf",
-        upsert: true,
-      });
-
-    if (uploadError) {
-      return NextResponse.json(
-        { error: `Upload failed: ${uploadError.message}` },
-        { status: 500 },
-      );
-    }
-
-    const { data: existing } = await adminClient
-      .from("order_documents")
-      .select("id")
-      .eq("order_id", orderId)
-      .eq("file_path", filePath)
-      .maybeSingle();
-
-    if (existing) {
-      await adminClient
-        .from("order_documents")
-        .update({ file_size: pdfBuffer.length })
-        .eq("id", existing.id);
-    } else {
-      await adminClient.from("order_documents").insert({
-        order_id:      orderId,
-        document_type: documentType,
-        bucket:        "hbmedical-bucket-private",
-        file_path:     filePath,
-        file_name:     fileName,
-        mime_type:     "application/pdf",
-        file_size:     pdfBuffer.length,
-      });
-    }
-
-    return NextResponse.json({ success: true, formType, filePath, fileName });
-
+    return NextResponse.json({
+      success: true,
+      formType: result.formType,
+      filePath: result.filePath,
+      fileName: result.fileName,
+    });
   } catch (err) {
     console.error("[generate-pdf]", err);
     return NextResponse.json({ error: String(err) }, { status: 500 });
