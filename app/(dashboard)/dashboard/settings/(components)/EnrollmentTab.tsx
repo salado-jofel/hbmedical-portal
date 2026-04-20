@@ -14,6 +14,7 @@ function toPayload(state: ReturnType<typeof buildState>): Omit<FacilityEnrollmen
     facility_ein:               state.facilityEin || null,
     facility_npi:               state.facilityNpi || null,
     facility_ptan:              state.facilityPtan || null,
+    medicare_mac:               state.medicareMac || null,
     ap_contact_name:            state.apContactName || null,
     ap_contact_email:           state.apContactEmail || null,
     billing_address:            state.billingAddress || null,
@@ -42,6 +43,7 @@ function buildState(d: FacilityEnrollmentData | null) {
     facilityEin:              s(d?.facility_ein),
     facilityNpi:              s(d?.facility_npi),
     facilityPtan:             s(d?.facility_ptan),
+    medicareMac:              s(d?.medicare_mac),
     apContactName:            s(d?.ap_contact_name),
     apContactEmail:           s(d?.ap_contact_email),
     billingAddress:           s(d?.billing_address),
@@ -166,6 +168,7 @@ export function EnrollmentTab({
         facilityEin={fields.facilityEin}               onFacilityEinChange={set("facilityEin")}
         facilityNpi={fields.facilityNpi}               onFacilityNpiChange={set("facilityNpi")}
         facilityPtan={fields.facilityPtan}             onFacilityPtanChange={set("facilityPtan")}
+        medicareMac={fields.medicareMac}               onMedicareMacChange={set("medicareMac")}
         apContactName={fields.apContactName}           onApContactNameChange={set("apContactName")}
         apContactEmail={fields.apContactEmail}         onApContactEmailChange={set("apContactEmail")}
         dpaContact={fields.dpaContact}                 onDpaContactChange={set("dpaContact")}

@@ -108,6 +108,7 @@ export default function InviteSignUpForm({
   const [facilityEin, setFacilityEin] = useState("");
   const [facilityNpi, setFacilityNpi] = useState("");
   const [facilityPtan, setFacilityPtan] = useState("");
+  const [medicareMac, setMedicareMac] = useState("");
   const [apContactName, setApContactName] = useState("");
   const [apContactEmail, setApContactEmail] = useState("");
   const [dpaContact, setDpaContact] = useState("");
@@ -327,6 +328,7 @@ export default function InviteSignUpForm({
           facilityEin={facilityEin} onFacilityEinChange={setFacilityEin}
           facilityNpi={facilityNpi} onFacilityNpiChange={setFacilityNpi}
           facilityPtan={facilityPtan} onFacilityPtanChange={setFacilityPtan}
+          medicareMac={medicareMac} onMedicareMacChange={setMedicareMac}
           apContactName={apContactName} onApContactNameChange={setApContactName}
           apContactEmail={apContactEmail} onApContactEmailChange={setApContactEmail}
           dpaContact={dpaContact} onDpaContactChange={setDpaContact}
@@ -828,6 +830,7 @@ export default function InviteSignUpForm({
               <input type="hidden" name="facility_ein" value={facilityEin} />
               <input type="hidden" name="facility_npi" value={facilityNpi} />
               <input type="hidden" name="facility_ptan" value={facilityPtan} />
+              <input type="hidden" name="medicare_mac" value={medicareMac} />
               <input type="hidden" name="ap_contact_name" value={apContactName} />
               <input type="hidden" name="ap_contact_email" value={apContactEmail} />
               <input type="hidden" name="billing_address" value={officeAddress} />

@@ -2,6 +2,7 @@
 
 import type { InputHTMLAttributes } from "react";
 import { cn } from "@/utils/utils";
+import { MEDICARE_MAC_OPTIONS } from "@/utils/constants/medicare-mac";
 
 const SUPPORT_EMAIL = "Support@MeridianSurgical.com";
 const COMPANY_ADDRESS = "Meridian Surgical Partners · 123 Commerce Drive · Suite 100 · Nashville, TN 37201";
@@ -82,6 +83,48 @@ function Field({
   );
 }
 
+function SelectField({
+  label,
+  value,
+  onChange,
+  options,
+  readOnly,
+  className,
+}: {
+  label: string;
+  value: string;
+  onChange?: (v: string) => void;
+  options: readonly { value: string; label: string }[];
+  readOnly?: boolean;
+  className?: string;
+}) {
+  return (
+    <div className={cn("flex flex-col gap-0.5", className)}>
+      <FL>{label}</FL>
+      <select
+        value={value}
+        disabled={readOnly}
+        onChange={readOnly || !onChange ? undefined : (e) => onChange(e.target.value)}
+        className={cn(
+          "border-0 border-b text-[13px] outline-none bg-transparent",
+          "px-1 py-0.5 leading-tight text-[#222] w-full cursor-pointer",
+          "border-[#333] focus:border-[var(--navy)]",
+          readOnly && "cursor-default select-text border-[#aaa] text-[#555]",
+        )}
+      >
+        <option value="" disabled hidden>
+          Select…
+        </option>
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 function SectionBody({ children }: { children: React.ReactNode }) {
   return (
     <div className="border border-t-0 border-[#ddd] p-3 space-y-3">
@@ -110,6 +153,8 @@ export function EnrollmentFormDocument({
   onFacilityNpiChange,
   facilityPtan,
   onFacilityPtanChange,
+  medicareMac,
+  onMedicareMacChange,
   apContactName,
   onApContactNameChange,
   apContactEmail,
@@ -158,6 +203,8 @@ export function EnrollmentFormDocument({
   onFacilityNpiChange?: (v: string) => void;
   facilityPtan: string;
   onFacilityPtanChange?: (v: string) => void;
+  medicareMac: string;
+  onMedicareMacChange?: (v: string) => void;
   apContactName: string;
   onApContactNameChange?: (v: string) => void;
   apContactEmail: string;
@@ -224,7 +271,16 @@ export function EnrollmentFormDocument({
           <Field label="Facility NPI" value={facilityNpi} onChange={ro ? undefined : onFacilityNpiChange} readOnly={ro} />
         </div>
 
-        <Field label="Facility PTAN" value={facilityPtan} onChange={ro ? undefined : onFacilityPtanChange} readOnly={ro} />
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Facility PTAN" value={facilityPtan} onChange={ro ? undefined : onFacilityPtanChange} readOnly={ro} />
+          <SelectField
+            label="GMAC"
+            value={medicareMac}
+            onChange={ro ? undefined : onMedicareMacChange}
+            options={MEDICARE_MAC_OPTIONS}
+            readOnly={ro}
+          />
+        </div>
 
         <Field label="Billing Address" value={billingAddress} readOnly className="w-full" />
 

@@ -268,6 +268,7 @@ export async function inviteSignUp(
             facility_npi:               (formData.get("facility_npi") as string)?.trim() || null,
             facility_ein:               (formData.get("facility_ein") as string)?.trim() || null,
             facility_ptan:              (formData.get("facility_ptan") as string)?.trim() || null,
+            medicare_mac:               (formData.get("medicare_mac") as string)?.trim() || null,
             ap_contact_name:            (formData.get("ap_contact_name") as string)?.trim() || null,
             ap_contact_email:           (formData.get("ap_contact_email") as string)?.trim() || null,
             billing_address:            (formData.get("billing_address") as string)?.trim() || null,

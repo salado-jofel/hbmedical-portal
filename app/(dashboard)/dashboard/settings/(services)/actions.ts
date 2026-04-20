@@ -353,6 +353,7 @@ export type FacilityEnrollmentData = {
   facility_ein: string | null;
   facility_npi: string | null;
   facility_ptan: string | null;
+  medicare_mac: string | null;
   ap_contact_name: string | null;
   ap_contact_email: string | null;
   billing_address: string | null;
