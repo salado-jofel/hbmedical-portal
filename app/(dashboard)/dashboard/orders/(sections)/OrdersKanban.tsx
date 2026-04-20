@@ -331,6 +331,7 @@ export function OrdersKanban({
       canEdit={canCreate}
       isRep={isRep}
       isSupport={isSupport}
+      isProvider={canSign}
       currentUserId={currentUserId}
       currentUserName={currentUserName}
       unreadCount={unreadCounts[selectedOrder.id] ?? 0}
