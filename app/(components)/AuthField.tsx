@@ -16,6 +16,7 @@ interface AuthFieldProps {
   rightElement?: ReactNode;
   height?: string;
   required?: boolean;
+  readOnly?: boolean;
 }
 
 export function AuthField({
@@ -30,6 +31,7 @@ export function AuthField({
   rightElement,
   height = "h-12",
   required,
+  readOnly,
 }: AuthFieldProps) {
   return (
     <div className="space-y-1.5">
@@ -47,9 +49,10 @@ export function AuthField({
           type={type}
           placeholder={placeholder}
           required={required}
+          readOnly={readOnly}
           {...(value !== undefined && { value })}
           {...(onChange !== undefined && { onChange })}
-          className={`${height} h-9 text-sm text-[var(--navy)] placeholder:text-[var(--text3)] border border-[var(--border)] bg-white rounded-lg px-3 focus-visible:ring-2 focus-visible:ring-[var(--navy)]/10 focus-visible:border-[var(--navy)] transition-colors`}
+          className={`${height} h-9 text-sm text-[var(--navy)] placeholder:text-[var(--text3)] border border-[var(--border)] bg-white rounded-lg px-3 focus-visible:ring-2 focus-visible:ring-[var(--navy)]/10 focus-visible:border-[var(--navy)] transition-colors ${readOnly ? "bg-slate-50 text-[var(--text2)] cursor-not-allowed" : ""}`}
           style={{
             paddingRight: rightElement ? "2.5rem" : undefined,
           }}

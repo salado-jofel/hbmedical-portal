@@ -46,7 +46,12 @@ export async function inviteSignUp(
 
     const firstName = (formData.get("first_name") as string)?.trim();
     const lastName = (formData.get("last_name") as string)?.trim();
-    const email = (formData.get("email") as string)?.trim().toLowerCase();
+    // Always prefer the email captured on the invite token — it's the source of
+    // truth (admin entered it when the invite was issued). Fall back to the
+    // submitted email only for legacy tokens without invited_email set.
+    const tokenEmail = inviteToken.invited_email?.trim().toLowerCase();
+    const submittedEmail = (formData.get("email") as string)?.trim().toLowerCase();
+    const email = tokenEmail || submittedEmail;
     const phone = toE164((formData.get("phone") as string) ?? "");
     const password = (formData.get("password") as string)?.trim();
     const agreed = formData.get("agreed") === "true";

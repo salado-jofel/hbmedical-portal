@@ -28,6 +28,7 @@ interface InviteSignUpFormProps {
   facilityId: string | null;
   facilityName: string | null;
   invitedBy: string;
+  invitedEmail: string | null;
   baaUrl: string | null;
   productServicesUrl: string | null;
   contractsError: string | null;
@@ -51,6 +52,7 @@ export default function InviteSignUpForm({
   facilityId,
   facilityName,
   invitedBy,
+  invitedEmail,
   baaUrl: initialBaaUrl,
   productServicesUrl: initialProductServicesUrl,
   contractsError: initialContractsError,
@@ -67,7 +69,11 @@ export default function InviteSignUpForm({
   // Personal info state
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [email, setEmail] = useState("");
+  // Email is prefilled and locked when the invite token carries one — admin
+  // already captured it when the invite was created. Only falls back to an
+  // editable field when the token has no email (legacy / rep-generated invites).
+  const emailLocked = Boolean(invitedEmail);
+  const [email, setEmail] = useState(invitedEmail ?? "");
   const [phone, setPhone] = useState("");
   // Office info state — only used for clinical_provider (never for sales_rep or clinical_staff)
   const [officeName, setOfficeName] = useState("");
@@ -585,9 +591,18 @@ export default function InviteSignUpForm({
                   name="email_display"
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    if (!emailLocked) setEmail(e.target.value);
+                  }}
                   placeholder="jane@clinic.com"
+                  readOnly={emailLocked}
                 />
+                {emailLocked && (
+                  <p className="text-[11px] text-[#64748B] -mt-2">
+                    Email is set from your invite and cannot be changed here.
+                    Contact your administrator if it needs to be corrected.
+                  </p>
+                )}
                 <PhoneInputField
                   value={phone}
                   onChange={(val) => setPhone(val)}
