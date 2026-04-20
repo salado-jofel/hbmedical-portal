@@ -65,11 +65,21 @@ export async function inviteSignUp(
     const supabase = await createClient();
     const supabaseAdmin = createAdminClient();
 
-    // Create auth user
+    // Create auth user.
+    // emailRedirectTo controls where Supabase's confirmation-email link lands
+    // after the user clicks it. We route to /sign-in so they're dropped right
+    // at the login page instead of the marketing site (the project's default
+    // Site URL). This URL must be in Authentication → URL Configuration →
+    // Redirect URLs on the Supabase dashboard (wildcarded /** on all envs).
+    const appUrl =
+      process.env.NEXT_PUBLIC_APP_URL ??
+      process.env.NEXT_PUBLIC_SITE_URL ??
+      "http://localhost:3000";
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email,
       password,
       options: {
+        emailRedirectTo: `${appUrl}/sign-in`,
         data: {
           first_name: firstName,
           last_name: lastName,
@@ -247,14 +257,16 @@ export async function inviteSignUp(
           invitedBy: inviteToken.created_by,
         });
 
-        // Insert facility_enrollment — fatal; roll back auth user on failure
+        // Insert facility_enrollment — all fields optional. Dropped fields
+        // (facility_tin, *_fax, shipping_days_times, shipping2_*, claims_*)
+        // stay NULL on new rows; the DB columns remain for backward
+        // compatibility with existing production data.
         const { error: enrollError } = await supabaseAdmin
           .from("facility_enrollment")
           .insert({
             facility_id: clinicId,
             facility_npi:               (formData.get("facility_npi") as string)?.trim() || null,
             facility_ein:               (formData.get("facility_ein") as string)?.trim() || null,
-            facility_tin:               (formData.get("facility_tin") as string)?.trim() || null,
             facility_ptan:              (formData.get("facility_ptan") as string)?.trim() || null,
             ap_contact_name:            (formData.get("ap_contact_name") as string)?.trim() || null,
             ap_contact_email:           (formData.get("ap_contact_email") as string)?.trim() || null,
@@ -263,7 +275,6 @@ export async function inviteSignUp(
             billing_state:              (formData.get("billing_state") as string)?.trim() || null,
             billing_zip:                (formData.get("billing_zip") as string)?.trim() || null,
             billing_phone:              (formData.get("billing_phone") as string)?.trim() || null,
-            billing_fax:                (formData.get("billing_fax") as string)?.trim() || null,
             dpa_contact:                (formData.get("dpa_contact") as string)?.trim() || null,
             dpa_contact_email:          (formData.get("dpa_contact_email") as string)?.trim() || null,
             additional_provider_1_name: (formData.get("additional_provider_1_name") as string)?.trim() || null,
@@ -272,28 +283,11 @@ export async function inviteSignUp(
             additional_provider_2_npi:  (formData.get("additional_provider_2_npi") as string)?.trim() || null,
             shipping_facility_name:     (formData.get("shipping_facility_name") as string)?.trim() || null,
             shipping_facility_npi:      (formData.get("shipping_facility_npi") as string)?.trim() || null,
-            shipping_facility_tin:      (formData.get("shipping_facility_tin") as string)?.trim() || null,
             shipping_facility_ptan:     (formData.get("shipping_facility_ptan") as string)?.trim() || null,
             shipping_contact_name:      (formData.get("shipping_contact_name") as string)?.trim() || null,
             shipping_contact_email:     (formData.get("shipping_contact_email") as string)?.trim() || null,
             shipping_address:           (formData.get("shipping_address") as string)?.trim() || null,
-            shipping_days_times:        (formData.get("shipping_days_times") as string)?.trim() || null,
             shipping_phone:             (formData.get("shipping_phone") as string)?.trim() || null,
-            shipping_fax:               (formData.get("shipping_fax") as string)?.trim() || null,
-            shipping2_facility_name:    (formData.get("shipping2_facility_name") as string)?.trim() || null,
-            shipping2_facility_npi:     (formData.get("shipping2_facility_npi") as string)?.trim() || null,
-            shipping2_facility_tin:     (formData.get("shipping2_facility_tin") as string)?.trim() || null,
-            shipping2_facility_ptan:    (formData.get("shipping2_facility_ptan") as string)?.trim() || null,
-            shipping2_contact_name:     (formData.get("shipping2_contact_name") as string)?.trim() || null,
-            shipping2_contact_email:    (formData.get("shipping2_contact_email") as string)?.trim() || null,
-            shipping2_address:          (formData.get("shipping2_address") as string)?.trim() || null,
-            shipping2_days_times:       (formData.get("shipping2_days_times") as string)?.trim() || null,
-            shipping2_phone:            (formData.get("shipping2_phone") as string)?.trim() || null,
-            shipping2_fax:              (formData.get("shipping2_fax") as string)?.trim() || null,
-            claims_contact_name:        (formData.get("claims_contact_name") as string)?.trim() || null,
-            claims_contact_phone:       (formData.get("claims_contact_phone") as string)?.trim() || null,
-            claims_contact_email:       (formData.get("claims_contact_email") as string)?.trim() || null,
-            claims_third_party:         (formData.get("claims_third_party") as string)?.trim() || null,
             completed_at:               new Date().toISOString(),
           });
 
@@ -341,6 +335,14 @@ export async function inviteSignUp(
 
       await consumeInviteToken(token, createdUserId);
     }
+
+    // Pick the right landing page:
+    //   - email_confirmed_at is null → Supabase sent a verification email; user
+    //     must see the "Check your email" page and click the link to confirm.
+    //   - email_confirmed_at is set → the "Confirm email" toggle is OFF in auth
+    //     settings, so Supabase auto-confirmed on signUp. Skip /verify-email
+    //     and drop the user straight into the dashboard.
+    var emailAlreadyConfirmed = Boolean(authData.user.email_confirmed_at);
   } catch (err) {
     if (createdFacilityId) {
       try {
@@ -366,7 +368,7 @@ export async function inviteSignUp(
     };
   }
 
-  redirect("/verify-email");
+  redirect(emailAlreadyConfirmed ? "/dashboard" : "/verify-email");
 }
 
 /* ── Signed URLs for provider contract PDFs ── */

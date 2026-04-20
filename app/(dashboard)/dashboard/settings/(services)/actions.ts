@@ -345,11 +345,13 @@ export async function getMyClinicMembers(): Promise<IFacilityMember[]> {
 /* Enrollment                                                                  */
 /* -------------------------------------------------------------------------- */
 
+// Only lists fields the app still reads/writes. Dropped columns
+// (facility_tin, *_fax, shipping_days_times, shipping2_*, claims_*) still
+// exist on the facility_enrollment table but are no longer accessed by code.
 export type FacilityEnrollmentData = {
   facility_id: string;
   facility_ein: string | null;
   facility_npi: string | null;
-  facility_tin: string | null;
   facility_ptan: string | null;
   ap_contact_name: string | null;
   ap_contact_email: string | null;
@@ -358,7 +360,6 @@ export type FacilityEnrollmentData = {
   billing_state: string | null;
   billing_zip: string | null;
   billing_phone: string | null;
-  billing_fax: string | null;
   dpa_contact: string | null;
   dpa_contact_email: string | null;
   additional_provider_1_name: string | null;
@@ -367,28 +368,11 @@ export type FacilityEnrollmentData = {
   additional_provider_2_npi: string | null;
   shipping_facility_name: string | null;
   shipping_facility_npi: string | null;
-  shipping_facility_tin: string | null;
   shipping_facility_ptan: string | null;
   shipping_contact_name: string | null;
   shipping_contact_email: string | null;
   shipping_address: string | null;
-  shipping_days_times: string | null;
   shipping_phone: string | null;
-  shipping_fax: string | null;
-  shipping2_facility_name: string | null;
-  shipping2_facility_npi: string | null;
-  shipping2_facility_tin: string | null;
-  shipping2_facility_ptan: string | null;
-  shipping2_contact_name: string | null;
-  shipping2_contact_email: string | null;
-  shipping2_address: string | null;
-  shipping2_days_times: string | null;
-  shipping2_phone: string | null;
-  shipping2_fax: string | null;
-  claims_contact_name: string | null;
-  claims_contact_phone: string | null;
-  claims_contact_email: string | null;
-  claims_third_party: string | null;
 };
 
 export async function getMyEnrollment(): Promise<FacilityEnrollmentData | null> {
