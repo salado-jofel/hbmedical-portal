@@ -53,3 +53,6 @@ design-reference.html
 
 # Dev-only Supabase seed data — never commit (contains test credentials)
 supabase/seeds/
+
+# Supabase CLI local link state — machine-local, changes every `supabase link`
+supabase/.temp/
