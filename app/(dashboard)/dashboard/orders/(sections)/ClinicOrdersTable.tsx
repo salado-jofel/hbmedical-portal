@@ -1,6 +1,7 @@
 "use client";
 
 import type { DashboardOrder, OrderStatus } from "@/utils/interfaces/orders";
+import { getDisplayOrderStatus } from "@/utils/helpers/orders";
 import { OrderStatusBadge } from "../(components)/OrderStatusBadge";
 import { CreateOrderModal } from "../(components)/CreateOrderModal";
 import { EmptyState } from "@/app/(components)/EmptyState";
@@ -138,7 +139,7 @@ export function ClinicOrdersTable({
                     {order.date_of_service ?? "—"}
                   </td>
                   <td className="px-4 py-[10px]">
-                    <OrderStatusBadge status={order.order_status} />
+                    <OrderStatusBadge status={getDisplayOrderStatus(order)} />
                   </td>
                   <td className="px-4 py-[10px] text-[12px] text-[var(--text3)] hidden xl:table-cell">
                     {order.all_items?.length > 0

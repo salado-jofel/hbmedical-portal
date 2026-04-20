@@ -1,6 +1,7 @@
 "use client";
 
 import type { DashboardOrder } from "@/utils/interfaces/orders";
+import { getDisplayOrderStatus } from "@/utils/helpers/orders";
 import {
   User,
   Package,
@@ -61,7 +62,7 @@ export function OrderCard({
             }
           />
         ) : (
-          <OrderStatusBadge status={order.order_status} />
+          <OrderStatusBadge status={getDisplayOrderStatus(order)} />
         )}
       </div>
 
