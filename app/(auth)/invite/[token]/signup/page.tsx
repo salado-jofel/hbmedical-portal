@@ -121,6 +121,7 @@ export default async function InviteSignUpPage({ params }: PageProps) {
           facilityId={formFacilityId}
           facilityName={formFacilityName}
           invitedBy={invitedBy}
+          invitedEmail={inviteToken.invited_email ?? null}
           baaUrl={contractUrls.baaUrl}
           productServicesUrl={contractUrls.productServicesUrl}
           contractsError={contractUrls.error}
