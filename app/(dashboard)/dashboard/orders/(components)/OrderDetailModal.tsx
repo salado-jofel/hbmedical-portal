@@ -112,6 +112,7 @@ import { OrderHistoryTab } from "./OrderHistoryTab";
 import toast from "react-hot-toast";
 import { cn } from "@/utils/utils";
 import { REQUIRED_DOC_TYPES, ALL_DOC_TYPES } from "@/utils/constants/orders";
+import { getDisplayOrderStatus } from "@/utils/helpers/orders";
 
 const TABS = [
   { value: "overview", label: "Overview" },
@@ -1277,8 +1278,7 @@ export function OrderDetailModal({
 
   /* ── Derived ── */
   const status = liveOrder.order_status;
-  const displayStatus: OrderStatus | "processed" =
-    status === "approved" && liveOrder.payment_method ? "processed" : status;
+  const displayStatus = getDisplayOrderStatus(liveOrder);
   const isOverviewDirty =
     draftItems.some((i) => i.isNew) ||
     draftItems.some((draft) => {

@@ -18,12 +18,21 @@ import {
   OrderDeliveryStatus,
   OrderInvoiceStatus,
   OrderPaymentStatus,
+  OrderStatus,
   RawOrderRecord,
   UpdateOrderStatusInput,
   updateOrderStatusSchema,
   mapOrder,
   mapOrders,
 } from "../interfaces/orders";
+
+export function getDisplayOrderStatus(
+  order: Pick<DashboardOrder, "order_status" | "payment_method">,
+): OrderStatus | "processed" {
+  return order.order_status === "approved" && order.payment_method
+    ? "processed"
+    : order.order_status;
+}
 
 export { mapOrder as mapDashboardOrder, mapOrders as mapDashboardOrders };
 

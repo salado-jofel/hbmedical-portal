@@ -1,6 +1,7 @@
 "use client";
 
 import type { DashboardOrder, OrderStatus } from "@/utils/interfaces/orders";
+import { getDisplayOrderStatus } from "@/utils/helpers/orders";
 import { OrderStatusBadge } from "../(components)/OrderStatusBadge";
 import { PillBadge } from "@/app/(components)/PillBadge";
 import { EmptyState } from "@/app/(components)/EmptyState";
@@ -139,7 +140,7 @@ export function OrdersTable({
                     {order.date_of_service ?? "—"}
                   </td>
                   <td className="px-4 py-[10px]">
-                    <OrderStatusBadge status={order.order_status} />
+                    <OrderStatusBadge status={getDisplayOrderStatus(order)} />
                   </td>
                   <td className="px-4 py-[10px] hidden xl:table-cell">
                     {order.payment_method ? (
