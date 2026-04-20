@@ -376,6 +376,7 @@ interface OrderFormDocumentProps {
   aiStatus: AiStatus;
   patientName: string | null;
   onSaved?: (updated: IOrderForm) => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 export function OrderFormDocument({
@@ -388,6 +389,7 @@ export function OrderFormDocument({
   aiStatus,
   patientName,
   onSaved,
+  onDirtyChange,
 }: OrderFormDocumentProps) {
   // Stable fallbacks derived from order props (never change during component lifetime)
   const formFallbacks = {
@@ -426,6 +428,10 @@ export function OrderFormDocument({
     () => JSON.stringify(formData) !== JSON.stringify(baseline),
     [formData, baseline],
   );
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty && !isReadOnly);
+  }, [isDirty, isReadOnly]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Deficiency count: every empty field after AI extraction
   const deficiencyCount = useMemo(() => {
