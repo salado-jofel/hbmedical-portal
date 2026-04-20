@@ -406,20 +406,18 @@ export async function getUnsignedForms(
   try {
     const adminClient = createAdminClient();
 
-    const [{ data: orderForm }, { data: ivrForm }, { data: hcfaForm }] = await Promise.all([
-      adminClient.from("order_form").select("physician_signed_at").eq("order_id", orderId).maybeSingle(),
-      adminClient.from("order_ivr").select("physician_signed_at").eq("order_id", orderId).maybeSingle(),
-      adminClient.from("order_form_1500").select("physician_signed_at").eq("order_id", orderId).maybeSingle(),
-    ]);
+    const { data: orderForm } = await adminClient
+      .from("order_form")
+      .select("physician_signed_at")
+      .eq("order_id", orderId)
+      .maybeSingle();
 
     const unsigned: string[] = [];
     if (!orderForm?.physician_signed_at) unsigned.push("Order Form");
-    if (!ivrForm?.physician_signed_at)   unsigned.push("IVR Form");
-    if (!hcfaForm?.physician_signed_at)  unsigned.push("CMS-1500 Form");
 
     return { unsignedForms: unsigned };
   } catch {
-    return { unsignedForms: ["Order Form", "IVR Form", "CMS-1500 Form"] };
+    return { unsignedForms: ["Order Form"] };
   }
 }
 
@@ -446,20 +444,15 @@ export async function submitSignedOrder(
 
     const adminClient = createAdminClient();
 
-    // Re-validate all 3 form signatures server-side
-    const [{ data: orderForm }, { data: ivrForm }, { data: hcfaForm }] = await Promise.all([
-      adminClient.from("order_form").select("physician_signed_at").eq("order_id", orderId).maybeSingle(),
-      adminClient.from("order_ivr").select("physician_signed_at").eq("order_id", orderId).maybeSingle(),
-      adminClient.from("order_form_1500").select("physician_signed_at").eq("order_id", orderId).maybeSingle(),
-    ]);
+    // Re-validate Order Form signature server-side
+    const { data: orderForm } = await adminClient
+      .from("order_form")
+      .select("physician_signed_at")
+      .eq("order_id", orderId)
+      .maybeSingle();
 
-    const unsigned: string[] = [];
-    if (!orderForm?.physician_signed_at) unsigned.push("Order Form");
-    if (!ivrForm?.physician_signed_at)   unsigned.push("IVR Form");
-    if (!hcfaForm?.physician_signed_at)  unsigned.push("CMS-1500 Form");
-
-    if (unsigned.length > 0) {
-      return { success: false, error: `The following forms are not signed: ${unsigned.join(", ")}.` };
+    if (!orderForm?.physician_signed_at) {
+      return { success: false, error: "Order Form is not signed." };
     }
 
     const { data: order } = await adminClient

@@ -137,6 +137,7 @@ interface OrderDetailModalProps {
   canEdit: boolean;
   isRep?: boolean;
   isSupport?: boolean;
+  isProvider?: boolean;
   currentUserName?: string;
   currentUserId?: string;
   unreadCount?: number;
@@ -157,6 +158,7 @@ export function OrderDetailModal({
   canEdit,
   isRep = false,
   isSupport = false,
+  isProvider = false,
   currentUserName,
   currentUserId,
   unreadCount = 0,
@@ -1279,6 +1281,18 @@ export function OrderDetailModal({
   /* ── Derived ── */
   const status = liveOrder.order_status;
   const displayStatus = getDisplayOrderStatus(liveOrder);
+  const visibleTabs = isProvider
+    ? TABS.filter((t) => t.value !== "ivr" && t.value !== "hcfa")
+    : TABS;
+  const visibleRequiredDocTypes = isProvider
+    ? REQUIRED_DOC_TYPES.filter((d) => {
+        if (d.type === "additional_ivr" || d.type === "form_1500") return false;
+        if (d.type === "facesheet" || d.type === "clinical_docs") {
+          return localDocuments.some((ld) => ld.documentType === d.type);
+        }
+        return true;
+      })
+    : REQUIRED_DOC_TYPES;
   const isOverviewDirty =
     draftItems.some((i) => i.isNew) ||
     draftItems.some((draft) => {
@@ -1496,7 +1510,7 @@ export function OrderDetailModal({
                       className="flex gap-[3px] overflow-x-auto rounded-[var(--r)] border border-[var(--border)] bg-[var(--surface)] p-1"
                       style={{ scrollbarWidth: "none" }}
                     >
-                      {TABS.map((t) => {
+                      {visibleTabs.map((t) => {
                         const isChat = t.value === "conversation";
                         const badge =
                           isChat && unreadCount > 0 ? unreadCount : 0;
@@ -1823,7 +1837,7 @@ export function OrderDetailModal({
                       </h3>
                       {loadingDocs ? (
                         <div className="grid grid-cols-2 gap-2">
-                          {REQUIRED_DOC_TYPES.map((d) => (
+                          {visibleRequiredDocTypes.map((d) => (
                             <div
                               key={d.type}
                               className="h-10 rounded-[9px] bg-[var(--border)] animate-pulse"
@@ -1832,7 +1846,7 @@ export function OrderDetailModal({
                         </div>
                       ) : (
                         <div className="grid grid-cols-2 gap-2">
-                          {REQUIRED_DOC_TYPES.map((doc) => {
+                          {visibleRequiredDocTypes.map((doc) => {
                             const typeDocs = localDocuments.filter(
                               (d) => d.documentType === doc.type,
                             );

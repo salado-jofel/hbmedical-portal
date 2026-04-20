@@ -12,6 +12,7 @@ const aiModel = createAnthropic({
 
 import { generateText } from "ai";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { generateOrderPdf, type OrderPdfFormType } from "@/lib/pdf/generate-order-pdfs";
 import { NextRequest, NextResponse } from "next/server";
 
 export const maxDuration = 60;
@@ -310,38 +311,22 @@ function sanitizeIvrFields(
 
 /* ── PDF generation helper ── */
 
-async function generatePDFWithRetry(
-  baseUrl: string,
-  orderId: string,
-  formType: string,
-): Promise<void> {
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      if (attempt > 0) await new Promise((r) => setTimeout(r, 1000));
-      const res = await fetch(`${baseUrl}/api/generate-pdf`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId, formType }),
-      });
-      const data = await res.json();
-      if (!res.ok || data.error) {
-        console.error(
-          `[PDF auto-gen] ${formType} attempt ${attempt + 1} failed:`,
-          data.error ?? res.status,
-        );
-        continue;
-      }
-      return; // success
-    } catch (err) {
-      console.error(
-        `[PDF auto-gen] ${formType} attempt ${attempt + 1} network error:`,
-        err,
-      );
-    }
-  }
-  console.error(
-    `[PDF auto-gen] ${formType} failed after 2 attempts for order ${orderId}`,
+const PDF_FORM_TYPES: OrderPdfFormType[] = ["order_form", "ivr", "hcfa_1500"];
+
+async function generateAllPdfsInParallel(orderId: string): Promise<void> {
+  const results = await Promise.allSettled(
+    PDF_FORM_TYPES.map((formType) => generateOrderPdf(orderId, formType)),
   );
+  results.forEach((r, i) => {
+    const formType = PDF_FORM_TYPES[i];
+    if (r.status === "rejected") {
+      console.error(`[extract] ${formType} PDF rejected:`, r.reason);
+    } else if (!r.value.success) {
+      console.error(`[extract] ${formType} PDF failed:`, r.value.error);
+    } else {
+      console.log(`[extract] ${formType} PDF ok:`, r.value.filePath);
+    }
+  });
 }
 
 /* ── Combined prompt ── */
@@ -757,24 +742,9 @@ async function handleCombinedExtraction(
     }
   }
 
-  /* ── STEP 10: Generate all 3 PDFs ── */
+  /* ── STEP 10: Generate all 3 PDFs (in-process, parallel) ── */
   console.log("[extract-combined] generating PDFs for order:", orderId);
-  await new Promise((r) => setTimeout(r, 500));
-  for (const formType of ["order_form", "ivr", "hcfa_1500"] as const) {
-    try {
-      const res = await fetch(`${baseUrl}/api/generate-pdf`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId, formType }),
-      });
-      const pdfData = await res.json();
-      if (!res.ok || pdfData.error) {
-        console.error(`[extract-combined] ${formType} PDF failed:`, pdfData.error ?? res.status);
-      }
-    } catch (err) {
-      console.error(`[extract-combined] ${formType} PDF error:`, err);
-    }
-  }
+  await generateAllPdfsInParallel(orderId);
 
   /* ── STEP 11: Mark order AI-extracted (single write — no races) ── */
   await adminClient
@@ -1258,29 +1228,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    /* ── STEP 11: Generate all 3 PDFs first — must exist before poll detects completion ── */
+    /* ── STEP 11: Generate all 3 PDFs (in-process, parallel) ── */
     console.log("[extract] generating PDFs for order:", orderId);
-    await new Promise((r) => setTimeout(r, 500));
-    for (const formType of ["order_form", "ivr", "hcfa_1500"] as const) {
-      try {
-        const res = await fetch(`${baseUrl}/api/generate-pdf`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ orderId, formType }),
-        });
-        const pdfData = await res.json();
-        if (!res.ok || pdfData.error) {
-          console.error(
-            `[extract] ${formType} PDF failed:`,
-            pdfData.error ?? res.status,
-          );
-        } else {
-          console.log(`[extract] ${formType} PDF ok:`, pdfData.filePath);
-        }
-      } catch (err) {
-        console.error(`[extract] ${formType} PDF error:`, err);
-      }
-    }
+    await generateAllPdfsInParallel(orderId);
 
     /* ── STEP 12: Mark order AI-extracted AFTER PDFs are ready (this triggers frontend poll) ── */
     await adminClient
