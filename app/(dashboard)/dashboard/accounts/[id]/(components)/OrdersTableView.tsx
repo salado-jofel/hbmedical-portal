@@ -14,10 +14,10 @@ function orderTotal(o: DashboardOrder): number {
 }
 
 function patientName(o: DashboardOrder): string {
-  const p: any = (o as any).patients ?? (o as any).patient ?? null;
-  if (!p) return "—";
-  const row = Array.isArray(p) ? p[0] : p;
-  return `${row?.first_name ?? ""} ${row?.last_name ?? ""}`.trim() || "—";
+  if (o.patient_full_name) return o.patient_full_name;
+  const first = o.patient_first_name ?? "";
+  const last = o.patient_last_name ?? "";
+  return `${first} ${last}`.trim() || "—";
 }
 
 export function OrdersTableView({

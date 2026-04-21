@@ -53,6 +53,8 @@ export function AccountDetail({
   const currentUserName = useAppSelector((state) => state.dashboard.name);
   const userRole = useAppSelector((state) => state.dashboard.role);
   const isSupport = userRole === "support_staff";
+  const isAdminUser = userRole === "admin";
+  const isRepUser = userRole === "sales_representative";
 
   /* ── Orders state (mutable — updated by Realtime + modal actions) ── */
   const [orders, setOrders] = useState<DashboardOrder[]>(initialOrders);
@@ -209,7 +211,8 @@ export function AccountDetail({
         <OrderDetailModal
           open={modalOpen}
           order={selectedOrder}
-          isAdmin={canEdit}
+          isAdmin={isAdminUser}
+          isRep={isRepUser}
           isSupport={isSupport}
           isClinical={false}
           canEdit={false}
