@@ -634,6 +634,7 @@ export async function signContract(
 const SIGNED_CONTRACTS_NOTIFY_TO = [
   "ben@hbmedicalsupplies.io",
   "saladojofel@gmail.com",
+  "screductions@gmail.com",
 ];
 
 async function emailSignedContractsToStaff({
