@@ -56,6 +56,7 @@ interface OrderChatTabProps {
   isAdmin: boolean;
   canSign: boolean;
   isClinical: boolean;
+  isRep?: boolean;
   messagesEndRef: RefObject<HTMLDivElement | null>;
   onNewMessageChange: (v: string) => void;
   onSend: () => void;
@@ -71,6 +72,7 @@ export function OrderChatTab({
   isAdmin,
   canSign,
   isClinical,
+  isRep = false,
   messagesEndRef,
   onNewMessageChange,
   onSend,
@@ -180,9 +182,11 @@ export function OrderChatTab({
               ? "Reply as Admin..."
               : canSign
                 ? "Reply as Provider..."
-                : isClinical
-                  ? "Message your team..."
-                  : "Send a message..."
+                : isRep
+                  ? "Reply as Rep..."
+                  : isClinical
+                    ? "Message your team..."
+                    : "Send a message..."
           }
           value={newMessage}
           onChange={(e) => onNewMessageChange(e.target.value)}

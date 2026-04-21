@@ -91,6 +91,8 @@ import {
   addOrderItems,
   updateOrderItemQuantity,
   deleteOrderItem,
+  getOrderShipment,
+  type OrderShipmentInfo,
 } from "../(services)/order-misc-actions";
 import { createClient } from "@/lib/supabase/client";
 import type { IOrderIVR, OrderStatus } from "@/utils/interfaces/orders";
@@ -194,6 +196,7 @@ export function OrderDetailModal({
   /* -- Payment + invoice data -- */
   const [paymentData, setPaymentData] = useState<IPayment | null>(null);
   const [invoiceData, setInvoiceData] = useState<IInvoice | null>(null);
+  const [shipmentData, setShipmentData] = useState<OrderShipmentInfo | null>(null);
   const [initiatingPayment, setInitiatingPayment] = useState<
     false | "pay_now" | "net_30"
   >(false);
@@ -381,6 +384,7 @@ export function OrderDetailModal({
       setDocuments([]);
       setPaymentData(null);
       setInvoiceData(null);
+      setShipmentData(null);
       setMessages([]);
       setHistory([]);
       // Reset poll state so stale counters don't affect the next open
@@ -406,12 +410,14 @@ export function OrderDetailModal({
       getOrderDocuments(order.id),
       getOrderPayment(order.id),
       getOrderInvoice(order.id),
-    ]).then(([docs, payment, invoice]) => {
+      getOrderShipment(order.id),
+    ]).then(([docs, payment, invoice, shipment]) => {
       setDocuments(docs);
       setLocalDocuments(docs);
       setLoadingDocs(false);
       setPaymentData(payment);
       setInvoiceData(invoice);
+      setShipmentData(shipment);
 
       // Wound photos — non-blocking, resolves independently
       const photos = docs.filter((d) => d.documentType === "wound_pictures");
@@ -629,13 +635,15 @@ export function OrderDetailModal({
           dispatch(updateOrderInStore(fullOrder));
           onOrderUpdated?.(fullOrder);
 
-          // Refresh payment + invoice data whenever the order row changes
-          const [newPayment, newInvoice] = await Promise.all([
+          // Refresh payment + invoice + shipment data whenever the order row changes
+          const [newPayment, newInvoice, newShipment] = await Promise.all([
             getOrderPayment(order.id),
             getOrderInvoice(order.id),
+            getOrderShipment(order.id),
           ]);
           setPaymentData(newPayment);
           setInvoiceData(newInvoice);
+          setShipmentData(newShipment);
 
           // Toast: payment became paid
           if (
@@ -1016,7 +1024,7 @@ export function OrderDetailModal({
     const result = await submitForSignature(order.id);
     if (result.success) {
       toast.success("Order submitted for signature.");
-      onClose();
+      await refreshOrder();
     } else toast.error(result.error ?? "Failed to submit.");
     setSubmitting(false);
   }
@@ -1057,7 +1065,7 @@ export function OrderDetailModal({
     if (result.success) {
       toast.success("Order submitted for review.");
       dispatch(updateOrderInStore({ ...liveOrder, order_status: "manufacturer_review" }));
-      onClose();
+      await refreshOrder();
     } else {
       toast.error(result.error ?? "Failed to submit order.");
     }
@@ -1619,6 +1627,7 @@ export function OrderDetailModal({
                       isAdmin={isAdmin}
                       canSign={canSign}
                       isClinical={isClinical}
+                      isRep={isRep}
                       messagesEndRef={messagesEndRef}
                       onNewMessageChange={setNewMessage}
                       onSend={handleSendMessage}
@@ -2152,6 +2161,65 @@ export function OrderDetailModal({
                               )}
                           </div>
                         )}
+                      </div>
+                    )}
+
+                    {/* ── Shipping Section — visible to all roles once an order
+                        is shipped or delivered ── */}
+                    {(status === "shipped" || status === "delivered") && (
+                      <div className="border-t border-[var(--border)] pt-4 space-y-2">
+                        <h3 className="text-[10px] font-semibold uppercase tracking-[0.6px] text-[var(--text3)]">
+                          Shipping
+                        </h3>
+                        <div className="space-y-1.5 text-[12px] text-[var(--text2)]">
+                          {shipmentData?.carrier && (
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[var(--text3)]">Carrier</span>
+                              <span className="font-medium text-[var(--text)]">
+                                {shipmentData.carrier}
+                              </span>
+                            </div>
+                          )}
+                          {(shipmentData?.tracking_number || liveOrder.tracking_number) && (
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[var(--text3)]">Tracking #</span>
+                              <span className="font-medium text-[var(--text)] break-all text-right">
+                                {shipmentData?.tracking_number ?? liveOrder.tracking_number}
+                              </span>
+                            </div>
+                          )}
+                          {shipmentData?.shipped_at && (
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[var(--text3)]">Shipped on</span>
+                              <span className="font-medium text-[var(--text)]">
+                                {new Date(shipmentData.shipped_at).toLocaleDateString()}
+                              </span>
+                            </div>
+                          )}
+                          {status === "shipped" && shipmentData?.estimated_delivery_at && (
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[var(--text3)]">Est. delivery</span>
+                              <span className="font-medium text-[var(--text)]">
+                                {new Date(shipmentData.estimated_delivery_at).toLocaleDateString()}
+                              </span>
+                            </div>
+                          )}
+                          {(liveOrder.delivered_at || shipmentData?.delivered_at) && (
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[var(--text3)]">Delivered on</span>
+                              <span className="font-medium text-[var(--green)]">
+                                {new Date(
+                                  liveOrder.delivered_at ?? shipmentData?.delivered_at ?? "",
+                                ).toLocaleDateString()}
+                              </span>
+                            </div>
+                          )}
+                          {!shipmentData && !liveOrder.tracking_number && (
+                            <p className="text-[12px] text-[var(--text3)]">
+                              Shipping details not recorded.
+                            </p>
+                          )}
+                        </div>
                       </div>
                     )}
 

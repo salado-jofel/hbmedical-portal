@@ -204,7 +204,7 @@ export default function InviteSignUpForm({
     e.preventDefault();
     setIsRetrying(true);
     setContractsError(null);
-    const result = await getContractSignedUrls();
+    const result = await getContractSignedUrls(token);
     setBaaUrl(result.baaUrl);
     setProductServicesUrl(result.productServicesUrl);
     setContractsError(result.error);
@@ -219,7 +219,7 @@ export default function InviteSignUpForm({
     if (role !== "clinical_provider") return;
     let cancelled = false;
     (async () => {
-      const result = await getContractSignedUrls();
+      const result = await getContractSignedUrls(token);
       if (cancelled) return;
       setBaaUrl(result.baaUrl);
       setProductServicesUrl(result.productServicesUrl);

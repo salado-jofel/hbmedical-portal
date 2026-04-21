@@ -458,3 +458,40 @@ export async function getUserFacility() {
     return null;
   }
 }
+
+/* -------------------------------------------------------------------------- */
+/* getOrderShipment                                                           */
+/*                                                                            */
+/* Returns the most recent shipment record for an order (carrier, tracking,   */
+/* shipped_at, delivered_at, estimated_delivery_at). Orders that haven't been */
+/* shipped yet return null.                                                   */
+/* -------------------------------------------------------------------------- */
+
+export interface OrderShipmentInfo {
+  carrier: string | null;
+  tracking_number: string | null;
+  status: string | null;
+  shipped_at: string | null;
+  delivered_at: string | null;
+  estimated_delivery_at: string | null;
+}
+
+export async function getOrderShipment(
+  orderId: string,
+): Promise<OrderShipmentInfo | null> {
+  try {
+    const adminClient = createAdminClient();
+    const { data } = await adminClient
+      .from("shipments")
+      .select(
+        "carrier, tracking_number, status, shipped_at, delivered_at, estimated_delivery_at",
+      )
+      .eq("order_id", orderId)
+      .order("shipped_at", { ascending: false, nullsFirst: false })
+      .limit(1)
+      .maybeSingle();
+    return (data as OrderShipmentInfo | null) ?? null;
+  } catch {
+    return null;
+  }
+}

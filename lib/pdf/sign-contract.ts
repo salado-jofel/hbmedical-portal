@@ -1,4 +1,5 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import sharp from "sharp";
 
 /* ──────────────────────────────────────────────────────────────────────────
  *  Contract stamping — DocuSign-style inline signing.
@@ -28,8 +29,8 @@ export interface SignContractInput {
   sourcePdf: Uint8Array;
   /** Which contract — selects the layout + target page */
   contractType: ContractType;
-  /** The provider filling in the CLIENT block */
-  client: StampSignerInput;
+  /** The provider filling in the CLIENT block. Omit for MERIDIAN-only previews. */
+  client?: StampSignerInput;
   /** Counter-signatory (Dr John Pienkos / CEO). Signature image is optional. */
   meridian: StampSignerInput;
 }
@@ -86,6 +87,12 @@ const VALUE_COLOR = rgb(0.06, 0.18, 0.29);
 /** Signature image is sized to visually match the body text beside it. */
 const SIGNATURE_BOX_WIDTH = 110;
 const SIGNATURE_BOX_HEIGHT = 22;
+/** Meridian (counter-signatory) signature. The source PNG is auto-trimmed of
+ *  any white/near-white border via sharp before embedding, so the box height
+ *  can stay tight against the "Date:" row above (~25pt gap) while still
+ *  rendering the ink at a readable size. */
+const MERIDIAN_SIGNATURE_BOX_WIDTH = 170;
+const MERIDIAN_SIGNATURE_BOX_HEIGHT = 22;
 /** Image BOTTOM sits this many pts below the "Signature:" label baseline — leaves
  *  room for cursive descenders while keeping the signature on the same line. */
 const SIGNATURE_BOTTOM_BELOW_BASELINE = 4;
@@ -112,6 +119,22 @@ async function embedSignature(
   }
 }
 
+/** Trim near-white border from a signature PNG so the ink fills its bounding
+ *  box. Returns the original bytes unchanged on any sharp error so a bad image
+ *  never breaks the contract stamping flow. */
+async function trimSignaturePng(input: Uint8Array): Promise<Uint8Array> {
+  try {
+    const trimmed = await sharp(Buffer.from(input))
+      .trim({ threshold: 15 })
+      .png()
+      .toBuffer();
+    return new Uint8Array(trimmed);
+  } catch (err) {
+    console.error("[trimSignaturePng]", err);
+    return input;
+  }
+}
+
 export async function stampContractPdf({
   sourcePdf,
   contractType,
@@ -130,8 +153,13 @@ export async function stampContractPdf({
     );
   }
 
-  const clientSig = await embedSignature(pdf, client.signaturePng);
-  const meridianSig = await embedSignature(pdf, meridian.signaturePng);
+  const clientSig = client ? await embedSignature(pdf, client.signaturePng) : null;
+  // Meridian signature is typically a scan/export with white padding — trim it
+  // so scaleToFit maxes out the visible ink in the target box.
+  const meridianPng = meridian.signaturePng
+    ? await trimSignaturePng(meridian.signaturePng)
+    : null;
+  const meridianSig = await embedSignature(pdf, meridianPng);
 
   const drawValue = (text: string, x: number, y: number) => {
     page.drawText(text, {
@@ -144,12 +172,25 @@ export async function stampContractPdf({
     });
   };
 
-  const drawSig = (png: Awaited<ReturnType<typeof embedSignature>>, x: number) => {
+  const drawSig = (
+    png: Awaited<ReturnType<typeof embedSignature>>,
+    x: number,
+    opts: { boxW: number; boxH: number; whiteBackground?: boolean },
+  ) => {
     if (!png) return;
-    const scaled = png.scaleToFit(SIGNATURE_BOX_WIDTH, SIGNATURE_BOX_HEIGHT);
+    const scaled = png.scaleToFit(opts.boxW, opts.boxH);
     // Anchor bottom of image just below the "Signature:" label baseline so the
     // signature appears on the same line as the label, to its right.
     const imageBottom = layout.signatureLabelY - SIGNATURE_BOTTOM_BELOW_BASELINE;
+    if (opts.whiteBackground) {
+      page.drawRectangle({
+        x,
+        y: imageBottom,
+        width: scaled.width,
+        height: scaled.height,
+        color: rgb(1, 1, 1),
+      });
+    }
     page.drawImage(png, {
       x,
       y: imageBottom,
@@ -162,13 +203,22 @@ export async function stampContractPdf({
   drawValue(meridian.name, layout.meridianX, layout.rowYName);
   drawValue(meridian.title, layout.meridianX, layout.rowYTitle);
   drawValue(formatDate(meridian.date), layout.meridianX, layout.rowYDate);
-  drawSig(meridianSig, layout.meridianSigX);
+  drawSig(meridianSig, layout.meridianSigX, {
+    boxW: MERIDIAN_SIGNATURE_BOX_WIDTH,
+    boxH: MERIDIAN_SIGNATURE_BOX_HEIGHT,
+    whiteBackground: true,
+  });
 
-  // ── CLIENT block (right column) ──
-  drawValue(client.name, layout.clientX, layout.rowYName);
-  drawValue(client.title, layout.clientX, layout.rowYTitle);
-  drawValue(formatDate(client.date), layout.clientX, layout.rowYDate);
-  drawSig(clientSig, layout.clientSigX);
+  // ── CLIENT block (right column) — skipped for MERIDIAN-only previews ──
+  if (client) {
+    drawValue(client.name, layout.clientX, layout.rowYName);
+    drawValue(client.title, layout.clientX, layout.rowYTitle);
+    drawValue(formatDate(client.date), layout.clientX, layout.rowYDate);
+    drawSig(clientSig, layout.clientSigX, {
+      boxW: SIGNATURE_BOX_WIDTH,
+      boxH: SIGNATURE_BOX_HEIGHT,
+    });
+  }
 
   return await pdf.save();
 }
@@ -179,7 +229,7 @@ export const MERIDIAN_SIGNER = {
   name: "Dr John Pienkos",
   title: "CEO",
   /** Fixed storage path where the Pienkos signature image will live when supplied. */
-  signaturePath: "provider-contracts/signatures/john-pienkos.png",
+  signaturePath: "signatures/john-pienkos-white.png",
 } as const;
 
 /* ── Source contract metadata ── */
@@ -200,4 +250,11 @@ export function signedContractPath(
   contractType: ContractType,
 ): string {
   return `provider-contracts-signed/${inviteToken}/${contractType}.pdf`;
+}
+
+export function previewContractPath(
+  inviteToken: string,
+  contractType: ContractType,
+): string {
+  return `provider-contracts-previews/${inviteToken}/${contractType}.pdf`;
 }

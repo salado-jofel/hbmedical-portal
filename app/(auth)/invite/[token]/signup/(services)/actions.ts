@@ -15,6 +15,7 @@ import type { InviteTokenRole } from "@/utils/interfaces/invite-tokens";
 import {
   stampContractPdf,
   signedContractPath,
+  previewContractPath,
   CONTRACT_SOURCES,
   MERIDIAN_SIGNER,
   type ContractType,
@@ -415,35 +416,93 @@ export async function inviteSignUp(
 
 /* ── Signed URLs for provider contract PDFs ── */
 
-export async function getContractSignedUrls(): Promise<{
+/**
+ * Returns preview URLs for the BAA and Product & Services contracts with the
+ * MERIDIAN block pre-stamped (Dr John Pienkos / CEO / today's date). The CLIENT
+ * block stays blank until the user signs via ContractSignModal. Previews are
+ * cached per-token at `provider-contracts-previews/{token}/*.pdf`.
+ */
+export async function getContractSignedUrls(token: string): Promise<{
   baaUrl: string | null;
   productServicesUrl: string | null;
   error: string | null;
 }> {
   try {
     const adminClient = createAdminClient();
-    const BUCKET = "hbmedical-bucket-private";
-    const EXPIRES_IN = 3600; // 1 hour
+    const EXPIRES_IN = 3600;
 
-    const [baaResult, psResult] = await Promise.all([
-      adminClient.storage
+    // Try to download Dr Pienkos's signature once; both previews reuse it.
+    let meridianSigPng: Uint8Array | null = null;
+    try {
+      const { data: sigBlob } = await adminClient.storage
         .from(BUCKET)
-        .createSignedUrl("provider-contracts/Business Associates Agreement.pdf", EXPIRES_IN),
-      adminClient.storage
-        .from(BUCKET)
-        .createSignedUrl("provider-contracts/Product and Services.pdf", EXPIRES_IN),
-    ]);
-
-    if (baaResult.error || psResult.error) {
-      console.error("[getContractSignedUrls]", baaResult.error, psResult.error);
-      return { baaUrl: null, productServicesUrl: null, error: "Failed to load contract documents." };
+        .download(MERIDIAN_SIGNER.signaturePath);
+      if (sigBlob) {
+        meridianSigPng = new Uint8Array(await sigBlob.arrayBuffer());
+      }
+    } catch {
+      meridianSigPng = null;
     }
 
-    return {
-      baaUrl: baaResult.data.signedUrl,
-      productServicesUrl: psResult.data.signedUrl,
-      error: null,
+    const today = new Date();
+    const buildPreview = async (contractType: ContractType): Promise<string | null> => {
+      const source = CONTRACT_SOURCES[contractType];
+      const { data: sourceBlob, error: sourceErr } = await adminClient.storage
+        .from(BUCKET)
+        .download(source.path);
+      if (sourceErr || !sourceBlob) {
+        console.error(
+          `[getContractSignedUrls] source download failed for ${contractType}:`,
+          sourceErr?.message,
+        );
+        return null;
+      }
+      const sourceBytes = new Uint8Array(await sourceBlob.arrayBuffer());
+      const stamped = await stampContractPdf({
+        sourcePdf: sourceBytes,
+        contractType,
+        meridian: {
+          name: MERIDIAN_SIGNER.name,
+          title: MERIDIAN_SIGNER.title,
+          date: today,
+          signaturePng: meridianSigPng,
+        },
+        // client omitted — leaves CLIENT block blank for the user to sign
+      });
+      const previewPath = previewContractPath(token, contractType);
+      const { error: uploadErr } = await adminClient.storage
+        .from(BUCKET)
+        .upload(previewPath, stamped, {
+          contentType: "application/pdf",
+          upsert: true,
+        });
+      if (uploadErr) {
+        console.error(
+          `[getContractSignedUrls] upload failed for ${contractType}:`,
+          uploadErr.message,
+        );
+        return null;
+      }
+      const { data: urlData } = await adminClient.storage
+        .from(BUCKET)
+        .createSignedUrl(previewPath, EXPIRES_IN);
+      return urlData?.signedUrl ?? null;
     };
+
+    const [baaUrl, productServicesUrl] = await Promise.all([
+      buildPreview("baa"),
+      buildPreview("product_services"),
+    ]);
+
+    if (!baaUrl || !productServicesUrl) {
+      return {
+        baaUrl,
+        productServicesUrl,
+        error: "Failed to load contract documents.",
+      };
+    }
+
+    return { baaUrl, productServicesUrl, error: null };
   } catch (err) {
     console.error("[getContractSignedUrls] Unexpected:", err);
     return { baaUrl: null, productServicesUrl: null, error: "Failed to load contract documents." };
