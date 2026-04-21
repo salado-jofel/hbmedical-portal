@@ -56,3 +56,4 @@ supabase/seeds/
 
 # Supabase CLI local link state — machine-local, changes every `supabase link`
 supabase/.temp/
+tmp-calibrate/

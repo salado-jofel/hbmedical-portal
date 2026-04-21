@@ -114,7 +114,7 @@ export default async function InviteSignUpPage({ params }: PageProps) {
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-[#F0F7FF] to-[#F8FAFC] flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
+      <div className="w-full flex justify-center">
         <InviteSignUpForm
           token={token}
           role={inviteToken.role_type}

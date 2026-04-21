@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import type { InviteSignUpState } from "@/utils/interfaces/invite";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -11,6 +12,14 @@ import {
 import { addFacilityMember } from "@/app/(dashboard)/dashboard/(services)/facility-members/actions";
 import { formatMessage } from "@/utils/helpers/signup";
 import type { InviteTokenRole } from "@/utils/interfaces/invite-tokens";
+import {
+  stampContractPdf,
+  signedContractPath,
+  CONTRACT_SOURCES,
+  MERIDIAN_SIGNER,
+  type ContractType,
+} from "@/lib/pdf/sign-contract";
+import { sendProviderContractsSignedEmail } from "@/lib/emails/send-provider-contracts-signed";
 
 const initialInviteSignUpState: InviteSignUpState = { error: null };
 
@@ -335,6 +344,38 @@ export async function inviteSignUp(
       }
 
       await consumeInviteToken(token, createdUserId);
+
+      // Adopt any contract signatures that were captured under this invite
+      // token (signed before the auth user existed). One row per contract type.
+      if (inviteToken.role_type === "clinical_provider") {
+        const { error: adoptErr } = await supabaseAdmin
+          .from("provider_contract_signatures")
+          .update({ user_id: createdUserId })
+          .eq("invite_token", token)
+          .is("user_id", null);
+        if (adoptErr) {
+          console.error(
+            "[inviteSignUp] provider_contract_signatures adopt error:",
+            JSON.stringify(adoptErr),
+          );
+          // Non-fatal — signatures remain keyed by invite_token for audit.
+        }
+
+        // Fire-and-forget: email the signed contracts to internal recipients.
+        // Failures are logged; account creation is already committed so we
+        // never block the redirect on email.
+        const providerEmail = authData.user.email ?? "";
+        const providerName = `${firstName} ${lastName}`.trim();
+        const clinicNameRaw = (formData.get("office_name") as string | null)?.trim() || null;
+        emailSignedContractsToStaff({
+          token,
+          providerName,
+          providerEmail,
+          clinicName: clinicNameRaw,
+        }).catch((err) =>
+          console.error("[inviteSignUp] contracts email error:", err),
+        );
+      }
     }
 
     // Pick the right landing page:
@@ -406,5 +447,251 @@ export async function getContractSignedUrls(): Promise<{
   } catch (err) {
     console.error("[getContractSignedUrls] Unexpected:", err);
     return { baaUrl: null, productServicesUrl: null, error: "Failed to load contract documents." };
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  signContract — DocuSign-style inline signing during invite signup.        */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+export interface SignContractInput {
+  token: string;
+  contractType: ContractType;
+  typedName: string;
+  typedTitle: string;
+  signatureMethod: "type" | "draw" | "upload";
+  /** data: URL from the signature canvas / typed renderer / uploaded image */
+  signatureDataUrl: string;
+}
+
+export interface SignContractResult {
+  success: boolean;
+  signedUrl?: string;
+  error?: string;
+}
+
+const BUCKET = "hbmedical-bucket-private";
+const MAX_SIGNATURE_BYTES = 2 * 1024 * 1024; // 2MB
+
+function decodeDataUrl(dataUrl: string): Uint8Array | null {
+  const match = /^data:image\/(png|jpeg|jpg);base64,(.+)$/i.exec(dataUrl);
+  if (!match) return null;
+  try {
+    return Buffer.from(match[2], "base64");
+  } catch {
+    return null;
+  }
+}
+
+export async function signContract(
+  input: SignContractInput,
+): Promise<SignContractResult> {
+  try {
+    const {
+      token,
+      contractType,
+      typedName,
+      typedTitle,
+      signatureMethod,
+      signatureDataUrl,
+    } = input;
+
+    if (!token || !typedName?.trim() || !typedTitle?.trim()) {
+      return { success: false, error: "Name, title, and signature are required." };
+    }
+
+    if (!["baa", "product_services"].includes(contractType)) {
+      return { success: false, error: "Invalid contract type." };
+    }
+
+    if (!["type", "draw", "upload"].includes(signatureMethod)) {
+      return { success: false, error: "Invalid signature method." };
+    }
+
+    const inviteToken = await validateInviteToken(token);
+    if (!inviteToken) {
+      return { success: false, error: "This invite link is no longer valid." };
+    }
+    if (inviteToken.role_type !== "clinical_provider") {
+      return { success: false, error: "Only provider invites can sign contracts." };
+    }
+
+    const signatureBytes = decodeDataUrl(signatureDataUrl);
+    if (!signatureBytes) {
+      return { success: false, error: "Invalid signature image." };
+    }
+    if (signatureBytes.length > MAX_SIGNATURE_BYTES) {
+      return { success: false, error: "Signature image is too large (max 2 MB)." };
+    }
+
+    const admin = createAdminClient();
+    const source = CONTRACT_SOURCES[contractType];
+
+    // ── Fetch source PDF ──
+    const { data: sourceBlob, error: sourceErr } = await admin.storage
+      .from(BUCKET)
+      .download(source.path);
+    if (sourceErr || !sourceBlob) {
+      console.error("[signContract] source download failed:", sourceErr?.message);
+      return { success: false, error: "Failed to load contract template." };
+    }
+    const sourceBytes = new Uint8Array(await sourceBlob.arrayBuffer());
+
+    // ── Optional: fetch Pienkos signature (swallow errors) ──
+    let meridianSigPng: Uint8Array | null = null;
+    try {
+      const { data: sigBlob } = await admin.storage
+        .from(BUCKET)
+        .download(MERIDIAN_SIGNER.signaturePath);
+      if (sigBlob) {
+        meridianSigPng = new Uint8Array(await sigBlob.arrayBuffer());
+      }
+    } catch {
+      meridianSigPng = null;
+    }
+
+    const today = new Date();
+
+    // ── Stamp PDF ──
+    const stamped = await stampContractPdf({
+      sourcePdf: sourceBytes,
+      contractType,
+      client: {
+        name: typedName.trim(),
+        title: typedTitle.trim(),
+        date: today,
+        signaturePng: signatureBytes,
+      },
+      meridian: {
+        name: MERIDIAN_SIGNER.name,
+        title: MERIDIAN_SIGNER.title,
+        date: today,
+        signaturePng: meridianSigPng,
+      },
+    });
+
+    // ── Upload signed PDF ──
+    const signedPath = signedContractPath(token, contractType);
+    const { error: uploadErr } = await admin.storage
+      .from(BUCKET)
+      .upload(signedPath, stamped, {
+        contentType: "application/pdf",
+        upsert: true,
+      });
+    if (uploadErr) {
+      console.error("[signContract] upload failed:", uploadErr.message);
+      return { success: false, error: "Failed to save signed contract." };
+    }
+
+    // ── Audit metadata from request headers ──
+    const h = await headers();
+    const forwardedFor = h.get("x-forwarded-for") ?? "";
+    const ipAddress = forwardedFor.split(",")[0]?.trim() || h.get("x-real-ip") || null;
+    const userAgent = h.get("user-agent") || null;
+
+    // ── Upsert signature row (unique on invite_token + contract_type) ──
+    const { error: rowErr } = await admin
+      .from("provider_contract_signatures")
+      .upsert(
+        {
+          invite_token: token,
+          contract_type: contractType,
+          source_path: source.path,
+          signed_path: signedPath,
+          typed_name: typedName.trim(),
+          typed_title: typedTitle.trim(),
+          signature_method: signatureMethod,
+          signed_at: today.toISOString(),
+          ip_address: ipAddress,
+          user_agent: userAgent,
+        },
+        { onConflict: "invite_token,contract_type" },
+      );
+    if (rowErr) {
+      console.error("[signContract] row insert failed:", JSON.stringify(rowErr));
+      return { success: false, error: "Failed to record signature." };
+    }
+
+    // ── Return a short-lived signed URL so the UI can show the result ──
+    const { data: urlData } = await admin.storage
+      .from(BUCKET)
+      .createSignedUrl(signedPath, 3600);
+
+    return { success: true, signedUrl: urlData?.signedUrl };
+  } catch (err) {
+    console.error("[signContract] unexpected:", err);
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to sign contract.",
+    };
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  emailSignedContractsToStaff — notify internal recipients with PDFs.       */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+const SIGNED_CONTRACTS_NOTIFY_TO = [
+  "ben@hbmedicalsupplies.io",
+  "saladojofel@gmail.com",
+];
+
+async function emailSignedContractsToStaff({
+  token,
+  providerName,
+  providerEmail,
+  clinicName,
+}: {
+  token: string;
+  providerName: string;
+  providerEmail: string;
+  clinicName: string | null;
+}): Promise<void> {
+  const admin = createAdminClient();
+
+  // Download both signed PDFs in parallel.
+  const contracts: Array<{ type: ContractType; filename: string }> = [
+    { type: "baa", filename: `BAA - ${providerName}.pdf` },
+    { type: "product_services", filename: `Product & Services - ${providerName}.pdf` },
+  ];
+
+  const downloaded = await Promise.all(
+    contracts.map(async (c) => {
+      const path = signedContractPath(token, c.type);
+      const { data, error } = await admin.storage.from(BUCKET).download(path);
+      if (error || !data) {
+        console.error(
+          `[emailSignedContractsToStaff] download failed for ${c.type}:`,
+          error?.message,
+        );
+        return null;
+      }
+      const buf = Buffer.from(await data.arrayBuffer());
+      return { filename: c.filename, content: buf };
+    }),
+  );
+
+  const attachments = downloaded.filter((a) => a !== null) as Array<{
+    filename: string;
+    content: Buffer;
+  }>;
+
+  if (attachments.length === 0) {
+    console.error(
+      "[emailSignedContractsToStaff] no signed PDFs available; skipping email",
+    );
+    return;
+  }
+
+  const { error: sendErr } = await sendProviderContractsSignedEmail({
+    to: SIGNED_CONTRACTS_NOTIFY_TO,
+    providerName,
+    providerEmail,
+    clinicName,
+    signedAt: new Date(),
+    attachments,
+  });
+  if (sendErr) {
+    console.error("[emailSignedContractsToStaff] send error:", sendErr);
   }
 }

@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select";
 import { inviteSignUp, getContractSignedUrls } from "../(services)/actions";
 import { EnrollmentFormDocument } from "../(components)/EnrollmentFormDocument";
+import { ContractSignModal } from "../(components)/ContractSignModal";
 import type { InviteSignUpState } from "@/utils/interfaces/invite";
 import { CREDENTIAL_OPTIONS } from "@/utils/constants/auth";
 import type { InviteTokenRole } from "@/utils/interfaces/invite-tokens";
@@ -93,9 +94,15 @@ export default function InviteSignUpForm({
   const [credential, setCredential] = useState("");
   // Agreement state
   const [agreed, setAgreed] = useState(false);
-  // PDF agreement state — clinical_provider only
-  const [baaAgreed, setBaaAgreed] = useState(false);
-  const [termsAgreed, setTermsAgreed] = useState(false);
+  // Contract signature state — clinical_provider only. Tracks whether each
+  // contract has been signed via the DocuSign-style ContractSignModal.
+  const [baaSignedUrl, setBaaSignedUrl] = useState<string | null>(null);
+  const [psSignedUrl, setPsSignedUrl] = useState<string | null>(null);
+  const [signingContract, setSigningContract] = useState<
+    "baa" | "product_services" | null
+  >(null);
+  const baaAgreed = Boolean(baaSignedUrl);
+  const termsAgreed = Boolean(psSignedUrl);
   // Signed URL state — initialized from server props, refreshable via retry
   const [baaUrl, setBaaUrl] = useState<string | null>(initialBaaUrl);
   const [productServicesUrl, setProductServicesUrl] = useState<string | null>(initialProductServicesUrl);
@@ -204,6 +211,25 @@ export default function InviteSignUpForm({
     setIsRetrying(false);
   }
 
+  // Supabase signed URLs have a 1-hour expiry. Refresh them whenever the user
+  // lands on the agree step so a slow signup doesn't render Supabase's raw
+  // "InvalidJWT: exp claim timestamp check failed" JSON in the iframe.
+  useEffect(() => {
+    if (step !== agreeStepIndex) return;
+    if (role !== "clinical_provider") return;
+    let cancelled = false;
+    (async () => {
+      const result = await getContractSignedUrls();
+      if (cancelled) return;
+      setBaaUrl(result.baaUrl);
+      setProductServicesUrl(result.productServicesUrl);
+      setContractsError(result.error);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [step, agreeStepIndex, role]);
+
   function goNext() {
     setClientError("");
 
@@ -254,11 +280,11 @@ export default function InviteSignUpForm({
       }
     }
 
-    // Reset agreement checkboxes on the way into the agree step so returning
-    // users have to re-check each agreement after editing earlier fields.
+    // Reset agreement state on the way into the agree step so returning
+    // users have to re-sign each contract after editing earlier fields.
     if (step + 1 === agreeStepIndex) {
-      setBaaAgreed(false);
-      setTermsAgreed(false);
+      setBaaSignedUrl(null);
+      setPsSignedUrl(null);
       setAgreed(false);
     }
 
@@ -362,7 +388,9 @@ export default function InviteSignUpForm({
   }
 
   return (
-    <AuthCard className="space-y-6">
+    <AuthCard
+      className={`space-y-6 ${step === agreeStepIndex ? "!max-w-4xl lg:!max-w-6xl xl:!max-w-7xl" : ""}`}
+    >
       {/* Logo */}
       <div className="flex justify-center">
         <HBLogo variant="light" size="sm" />
@@ -672,22 +700,22 @@ export default function InviteSignUpForm({
                           </a>
                         </div>
                       ) : !baaUrl ? (
-                        <div className="h-[280px] md:h-[340px] rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] flex items-center justify-center">
+                        <div className="h-[380px] md:h-[620px] rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] flex items-center justify-center">
                           <Loader2 className="w-5 h-5 animate-spin text-[#94A3B8]" />
                         </div>
                       ) : (
                         <div className="rounded-lg border border-[#E2E8F0] overflow-hidden">
                           <iframe
-                            src={baaUrl}
-                            className="w-full h-[280px] md:h-[340px]"
+                            src={baaSignedUrl || baaUrl}
+                            className="w-full h-[380px] md:h-[620px]"
                             title="Business Associates Agreement"
                           />
                         </div>
                       )}
 
-                      {baaUrl && (
+                      {(baaSignedUrl || baaUrl) && (
                         <a
-                          href={baaUrl}
+                          href={baaSignedUrl || baaUrl || "#"}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="block text-xs text-[var(--navy)] underline"
@@ -696,18 +724,32 @@ export default function InviteSignUpForm({
                         </a>
                       )}
 
-                      <label className="flex items-start gap-2.5 cursor-pointer select-none">
-                        <input
-                          type="checkbox"
-                          checked={baaAgreed}
-                          onChange={(e) => setBaaAgreed(e.target.checked)}
+                      {baaSignedUrl ? (
+                        <div className="flex items-center justify-between gap-3 rounded-lg border border-[#BBF7D0] bg-[#F0FDF4] px-3 py-2.5">
+                          <span className="flex items-center gap-2 text-sm text-[#15803D] font-medium">
+                            <Check className="w-4 h-4" /> Signed
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setBaaSignedUrl(null);
+                              setSigningContract("baa");
+                            }}
+                            className="text-xs text-[#64748B] hover:text-[#0F172A] underline"
+                          >
+                            Clear &amp; re-sign
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setSigningContract("baa")}
                           disabled={!baaUrl}
-                          className="mt-0.5 h-4 w-4 rounded border-[#E2E8F0] accent-[var(--navy)] disabled:opacity-40 cursor-pointer"
-                        />
-                        <span className="text-sm text-[#64748B]">
-                          I have read and agree to the <strong>Business Associates Agreement</strong>
-                        </span>
-                      </label>
+                          className="w-full rounded-lg bg-[var(--navy)] hover:bg-[var(--navy)]/80 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium py-2.5 transition-colors"
+                        >
+                          Review &amp; Sign Business Associates Agreement
+                        </button>
+                      )}
                     </div>
 
                     <div className="border-t border-[#E2E8F0]" />
@@ -719,22 +761,22 @@ export default function InviteSignUpForm({
                       </h3>
 
                       {!productServicesUrl ? (
-                        <div className="h-[280px] md:h-[340px] rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] flex items-center justify-center">
+                        <div className="h-[380px] md:h-[620px] rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] flex items-center justify-center">
                           <Loader2 className="w-5 h-5 animate-spin text-[#94A3B8]" />
                         </div>
                       ) : (
                         <div className="rounded-lg border border-[#E2E8F0] overflow-hidden">
                           <iframe
-                            src={productServicesUrl}
-                            className="w-full h-[280px] md:h-[340px]"
+                            src={psSignedUrl || productServicesUrl}
+                            className="w-full h-[380px] md:h-[620px]"
                             title="Product and Services Agreement"
                           />
                         </div>
                       )}
 
-                      {productServicesUrl && (
+                      {(psSignedUrl || productServicesUrl) && (
                         <a
-                          href={productServicesUrl}
+                          href={psSignedUrl || productServicesUrl || "#"}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="block text-xs text-[var(--navy)] underline"
@@ -743,18 +785,32 @@ export default function InviteSignUpForm({
                         </a>
                       )}
 
-                      <label className="flex items-start gap-2.5 cursor-pointer select-none">
-                        <input
-                          type="checkbox"
-                          checked={termsAgreed}
-                          onChange={(e) => setTermsAgreed(e.target.checked)}
+                      {psSignedUrl ? (
+                        <div className="flex items-center justify-between gap-3 rounded-lg border border-[#BBF7D0] bg-[#F0FDF4] px-3 py-2.5">
+                          <span className="flex items-center gap-2 text-sm text-[#15803D] font-medium">
+                            <Check className="w-4 h-4" /> Signed
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPsSignedUrl(null);
+                              setSigningContract("product_services");
+                            }}
+                            className="text-xs text-[#64748B] hover:text-[#0F172A] underline"
+                          >
+                            Clear &amp; re-sign
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setSigningContract("product_services")}
                           disabled={!productServicesUrl}
-                          className="mt-0.5 h-4 w-4 rounded border-[#E2E8F0] accent-[var(--navy)] disabled:opacity-40 cursor-pointer"
-                        />
-                        <span className="text-sm text-[#64748B]">
-                          I have read and agree to the <strong>Product &amp; Services Agreement</strong>
-                        </span>
-                      </label>
+                          className="w-full rounded-lg bg-[var(--navy)] hover:bg-[var(--navy)]/80 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium py-2.5 transition-colors"
+                        >
+                          Review &amp; Sign Product &amp; Services Agreement
+                        </button>
+                      )}
                     </div>
                   </div>
                 ) : (
@@ -898,6 +954,27 @@ export default function InviteSignUpForm({
           </button>
         )}
       </div>
+
+      {/* DocuSign-style contract sign modal (clinical_provider only) */}
+      {role === "clinical_provider" && signingContract && (
+        <ContractSignModal
+          open={true}
+          onClose={() => setSigningContract(null)}
+          token={token}
+          contractType={signingContract}
+          contractLabel={
+            signingContract === "baa"
+              ? "Business Associates Agreement"
+              : "Product & Services Agreement"
+          }
+          defaultName={`${firstName} ${lastName}`.trim()}
+          defaultTitle={credential}
+          onSigned={(signedUrl) => {
+            if (signingContract === "baa") setBaaSignedUrl(signedUrl ?? "");
+            else setPsSignedUrl(signedUrl ?? "");
+          }}
+        />
+      )}
     </AuthCard>
   );
 }
