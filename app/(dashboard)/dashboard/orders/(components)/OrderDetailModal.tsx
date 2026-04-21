@@ -1986,15 +1986,18 @@ export function OrderDetailModal({
                       )}
                     </div>
 
-                    {/* ── Payment Section ── */}
-                    {status === "approved" && (
+                    {/* ── Payment Section — persists through approved → shipped → delivered ── */}
+                    {(status === "approved" ||
+                      status === "shipped" ||
+                      status === "delivered") && (
                       <div className="border-t border-[var(--border)] pt-4 space-y-3">
                         <h3 className="text-[10px] font-semibold uppercase tracking-[0.6px] text-[var(--text3)]">
                           Payment
                         </h3>
 
-                        {/* TWO BUTTONS — show when no payment yet */}
-                        {!paymentData &&
+                        {/* TWO BUTTONS — only while order is approved AND no payment yet */}
+                        {status === "approved" &&
+                          !paymentData &&
                           liveOrder.payment_status !== "paid" && (
                             <div className="grid grid-cols-2 gap-2">
                               {/* Pay Now */}
