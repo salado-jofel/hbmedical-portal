@@ -97,15 +97,27 @@ export async function generateInviteToken(
     let resolvedFacilityId: string | null = null;
 
     if (isAdmin(role as UserRole)) {
-      // Admin can only invite clinical_provider via link.
-      // Admin/rep/support accounts are managed via the Users page.
-      if (parsed.data.role_type !== "clinical_provider") {
-        return { error: "Admin can only invite Clinical Providers via link.", success: false };
+      // Admin can invite clinical_provider (must be assigned to a rep/facility)
+      // or sales_representative (creates their own rep_office on signup).
+      // admin/support accounts are still managed via the Users page.
+      if (
+        parsed.data.role_type !== "clinical_provider" &&
+        parsed.data.role_type !== "sales_representative"
+      ) {
+        return {
+          error: "Admin can only invite Clinical Providers or Sales Reps via link.",
+          success: false,
+        };
       }
-      // facility_id = selected rep's facility (required — provider is assigned to a rep)
-      resolvedFacilityId = parsed.data.facility_id ?? null;
-      if (!resolvedFacilityId) {
-        return { error: "Please select a sales rep to assign.", success: false };
+      if (parsed.data.role_type === "clinical_provider") {
+        // facility_id = selected rep's facility (required — provider is assigned to a rep)
+        resolvedFacilityId = parsed.data.facility_id ?? null;
+        if (!resolvedFacilityId) {
+          return { error: "Please select a sales rep to assign.", success: false };
+        }
+      } else {
+        // sales_representative → facility_id stays NULL (rep creates their own office)
+        resolvedFacilityId = null;
       }
     } else if (isSalesRep(role as UserRole)) {
       // Reps can invite clinical_provider or sales_representative (sub-rep).

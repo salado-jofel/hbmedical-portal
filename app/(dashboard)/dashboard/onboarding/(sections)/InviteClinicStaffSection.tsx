@@ -4,8 +4,17 @@ import { useState, useActionState, useEffect } from "react";
 import { UserPlus, Loader2, CheckCircle, Send } from "lucide-react";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { generateClinicMemberInvite } from "../(services)/invite-actions";
 import type { IInviteTokenFormState } from "@/utils/interfaces/invite-tokens";
+import { EXPIRY_OPTIONS } from "@/utils/constants/onboarding";
 
 interface InviteClinicStaffSectionProps {
   showSection: boolean;
@@ -59,7 +68,6 @@ export function InviteClinicStaffSection({
         </div>
       ) : (
         <form action={clinicInviteAction} className="space-y-4">
-          <input type="hidden" name="expires_in_days" value="30" />
           <div className="space-y-1.5">
             <label htmlFor="staff_invite_email" className="text-xs font-medium text-[var(--navy)]">
               Email <span className="text-red-400">*</span>
@@ -76,6 +84,21 @@ export function InviteClinicStaffSection({
               <p className="text-xs text-red-500">{clinicInviteState.fieldErrors.email}</p>
             )}
           </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Link expires in</Label>
+            <Select name="expires_in_days" defaultValue="30">
+              <SelectTrigger className="h-9 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {EXPIRY_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value} className="text-sm">
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           {clinicInviteState?.error && (
             <p className="text-xs text-red-500 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
               {clinicInviteState.error}
@@ -85,7 +108,7 @@ export function InviteClinicStaffSection({
             type="submit"
             size="sm"
             disabled={isClinicInvitePending}
-            className="h-9 bg-[var(--navy)] hover:bg-[var(--navy)]/80 text-white gap-1.5 rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors"
+            className="w-full h-9 bg-[var(--navy)] hover:bg-[var(--navy)]/80 text-white gap-1.5 rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors"
           >
             {isClinicInvitePending ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin" />

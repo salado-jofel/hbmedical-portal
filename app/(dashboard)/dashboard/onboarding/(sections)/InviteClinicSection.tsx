@@ -25,12 +25,12 @@ export function InviteClinicSection({
       <div className="flex items-center gap-2">
         <Users className="w-4 h-4 text-[var(--navy)]" />
         <h2 className="text-base font-semibold text-[var(--navy)]">
-          Invite Clinic User
+          Invite Clinic Provider
         </h2>
       </div>
       <p className="text-sm text-[var(--text2)]">
-        Generate a one-time link to onboard a Clinical Provider or
-        Clinical Staff member to the portal.
+        Generate a one-time link to onboard a Clinic Provider member to the
+        portal.
       </p>
       <div suppressHydrationWarning>
         {!hasCompletedSetup ? (
@@ -38,8 +38,8 @@ export function InviteClinicSection({
             <div className="flex items-start gap-2.5">
               <Info className="w-4 h-4 text-amber-700 mt-0.5 shrink-0" />
               <p className="text-sm text-amber-700">
-                You need to complete your office setup before inviting
-                clinic users. Please complete your profile first.
+                You need to complete your office setup before inviting clinic
+                users. Please complete your profile first.
               </p>
             </div>
             <Button

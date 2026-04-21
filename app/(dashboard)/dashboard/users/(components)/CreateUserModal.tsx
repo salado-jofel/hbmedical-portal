@@ -31,7 +31,6 @@ interface CreateUserModalProps {
 
 const ROLE_OPTIONS = [
   { value: "admin", label: "Admin" },
-  { value: "sales_representative", label: "Sales Rep" },
   { value: "support_staff", label: "Support Staff" },
 ];
 
@@ -43,13 +42,19 @@ export function CreateUserModal({ open, onClose }: CreateUserModalProps) {
     FormData
   >(createUser, null);
 
-  const [roleValue, setRoleValue] = useState("sales_representative");
+  const [roleValue, setRoleValue] = useState("admin");
 
   useEffect(() => {
     if (!state) return;
     if (state.success) {
-      if (state.user) dispatch(addUserToStore(state.user));
-      toast.success("User created and invite sent.");
+      if (state.user) {
+        dispatch(addUserToStore(state.user));
+        toast.success("User created and invite sent.");
+      } else {
+        // Sales rep invites go through the /invite/:token flow — no user row
+        // is created until the invitee completes signup.
+        toast.success("Invite sent. Rep will appear here once they sign up.");
+      }
       onClose();
     } else if (state.error) {
       toast.error(state.error);

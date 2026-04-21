@@ -63,7 +63,11 @@ export interface IInviteTokenFormState {
 export const generateInviteTokenSchema = z.object({
   email: z.string().email("Enter a valid email address.").min(1, "Email is required."),
   facility_id: z.string().uuid("Invalid account.").nullable().optional(),
-  role_type: z.enum(["clinical_provider", "clinical_staff"]),
+  role_type: z.enum([
+    "clinical_provider",
+    "clinical_staff",
+    "sales_representative",
+  ]),
   expires_in_days: z.coerce.number().int().min(1).max(365).default(30),
 });
 

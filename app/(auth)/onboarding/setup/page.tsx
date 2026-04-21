@@ -4,7 +4,7 @@ import RepSetupForm from "./(sections)/RepSetupForm";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Practice Setup",
+  title: "Sales Rep Account",
 };
 
 export default function RepSetupPage() {

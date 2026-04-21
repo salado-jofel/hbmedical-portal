@@ -9,6 +9,12 @@ import { getMarketingMaterials } from "../marketing/(services)/actions";
 import { getContractMaterials } from "../contracts/(services)/actions";
 import { getTrainingMaterials } from "../trainings/(services)/actions";
 import { getHospitalOnboardingMaterials } from "../hospital-onboarding/(services)/actions";
+import {
+  getMySignedSalesRepContracts,
+  getAllSignedSalesRepContracts,
+  getRepOfficesForFilter,
+  getSalesRepsForFilter,
+} from "./(services)/signed-contracts-actions";
 import Providers from "./(sections)/Providers";
 import ResourcesView from "./(sections)/ResourcesView";
 
@@ -27,6 +33,16 @@ export default async function ResourcesPage() {
       getHospitalOnboardingMaterials(),
     ]);
 
+  const [signedContracts, repOffices, salesReps] = await Promise.all([
+    isAdmin(role)
+      ? getAllSignedSalesRepContracts()
+      : isSalesRep(role)
+        ? getMySignedSalesRepContracts()
+        : Promise.resolve([]),
+    isAdmin(role) ? getRepOfficesForFilter() : Promise.resolve([]),
+    isAdmin(role) ? getSalesRepsForFilter() : Promise.resolve([]),
+  ]);
+
   return (
     <Providers
       marketing={marketing}
@@ -34,7 +50,11 @@ export default async function ResourcesPage() {
       trainings={trainings}
       hospitalOnboarding={hospitalOnboarding}
     >
-      <ResourcesView />
+      <ResourcesView
+        signedContracts={signedContracts}
+        repOffices={repOffices}
+        salesReps={salesReps}
+      />
     </Providers>
   );
 }

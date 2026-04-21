@@ -24,13 +24,17 @@ import {
 } from "../(services)/sub-rep-actions";
 import { deleteInviteToken } from "../(services)/invite-actions";
 import type { UserRole } from "@/utils/helpers/role";
-import type { RepWithFacility, SubRepStatus } from "@/utils/interfaces/onboarding";
+import type {
+  RepWithFacility,
+  SubRepStatus,
+} from "@/utils/interfaces/onboarding";
 import type { ISubRep } from "@/utils/interfaces/sub-reps";
 import type { TableColumn } from "@/utils/interfaces/table-column";
 import type { IInviteTokenFormState } from "@/utils/interfaces/invite-tokens";
 import { InviteClinicSection } from "./InviteClinicSection";
 import { InviteClinicStaffSection } from "./InviteClinicStaffSection";
 import { InviteSubRepSection } from "./InviteSubRepSection";
+import { InviteSalesRepSection } from "./InviteSalesRepSection";
 import { InviteTokensSection } from "./InviteTokensSection";
 
 const STATUS_CONFIG: Record<
@@ -186,9 +190,10 @@ export function OnboardingDashboard({
       key: "name",
       label: "Name",
       render: (rep) => {
-        const isPendingSetup = rep.first_name === "Pending" && rep.last_name === "Setup";
+        const isPendingSetup =
+          rep.first_name === "Pending" && rep.last_name === "Setup";
         const displayName = isPendingSetup
-          ? rep.email ?? "Pending setup"
+          ? (rep.email ?? "Pending setup")
           : `${rep.first_name} ${rep.last_name}`;
         return (
           <div className="min-w-0">
@@ -349,39 +354,42 @@ export function OnboardingDashboard({
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-        {/* ── Admin note ── */}
-        {isAdmin && (
-          <div className="flex items-start gap-2.5 bg-[#EFF6FF] border border-[var(--navy)]/20 rounded-xl px-4 py-3">
-            <Info className="w-4 h-4 text-[var(--navy)] mt-0.5 shrink-0" />
-            <p className="text-sm text-[var(--navy)]">
-              Admin, Sales Rep, and Support Staff accounts are managed from the{" "}
-              <a
-                href="/dashboard/users"
-                className="font-semibold underline underline-offset-2"
-              >
-                Users page
-              </a>
-              . Use the section below to invite clinical users.
-            </p>
-          </div>
-        )}
+      {/* ── Admin note ── */}
+      {isAdmin && (
+        <div className="flex items-start gap-2.5 bg-[#EFF6FF] border border-[var(--navy)]/20 rounded-xl px-4 py-3">
+          <Info className="w-4 h-4 text-[var(--navy)] mt-0.5 shrink-0" />
+          <p className="text-sm text-[var(--navy)]">
+            Admin and Support Staff accounts are managed from the{" "}
+            <a
+              href="/dashboard/users"
+              className="font-semibold underline underline-offset-2"
+            >
+              Users page
+            </a>
+            . Use the section below to onboard Clinic Provider and a Sales Rep.
+          </p>
+        </div>
+      )}
 
-        {/* ── Section A — Invite Clinic User (admin + sales rep only) ── */}
-        <InviteClinicSection
-          isAdmin={isAdmin}
-          showSection={isAdmin || showSubRepSection}
-          hasCompletedSetup={hasCompletedSetup}
-          repsWithFacilities={repsWithFacilities}
-        />
+      {/* ── Section A — Invite Clinic User (admin + sales rep only) ── */}
+      <InviteClinicSection
+        isAdmin={isAdmin}
+        showSection={isAdmin || showSubRepSection}
+        hasCompletedSetup={hasCompletedSetup}
+        repsWithFacilities={repsWithFacilities}
+      />
 
-        {/* ── Section B — Invite Clinic Staff (clinical_provider only) ── */}
-        <InviteClinicStaffSection showSection={showClinicStaffSection} />
+      {/* ── Section B — Invite Clinic Staff (clinical_provider only) ── */}
+      <InviteClinicStaffSection showSection={showClinicStaffSection} />
 
-        {/* ── Section D — Invite Sub-Rep ── */}
-        <InviteSubRepSection showSection={showSubRepSection} />
+      {/* ── Section C — Invite Sales Rep (admin only) ── */}
+      <InviteSalesRepSection showSection={isAdmin} />
 
-        {/* ── Section E — My Sub-Reps ── */}
-        {/* {showSubRepSection && (
+      {/* ── Section D — Invite Sub-Rep ── */}
+      <InviteSubRepSection showSection={showSubRepSection} />
+
+      {/* ── Section E — My Sub-Reps ── */}
+      {/* {showSubRepSection && (
         <section className="space-y-3">
           <div className="flex items-center gap-2">
             <Users className="w-4 h-4 text-[var(--text2)]" />
@@ -405,53 +413,53 @@ export function OnboardingDashboard({
         </section>
       )} */}
 
-        {/* ── Deactivate Sub-Rep Confirm ── */}
-        <ConfirmModal
-          open={disableConfirmId !== null}
-          onOpenChange={(open) => {
-            if (!open) setDisableConfirmId(null);
-          }}
-          title="Deactivate Sub-Rep?"
-          description="This sub-rep will lose portal access immediately. You can reactivate them at any time."
-          confirmLabel="Deactivate Sub-Rep"
-          isLoading={isUpdating && actionId === disableConfirmId}
-          onConfirm={() => {
-            if (disableConfirmId)
-              handleStatusChange(disableConfirmId, "inactive");
-          }}
-        />
+      {/* ── Deactivate Sub-Rep Confirm ── */}
+      <ConfirmModal
+        open={disableConfirmId !== null}
+        onOpenChange={(open) => {
+          if (!open) setDisableConfirmId(null);
+        }}
+        title="Deactivate Sub-Rep?"
+        description="This sub-rep will lose portal access immediately. You can reactivate them at any time."
+        confirmLabel="Deactivate Sub-Rep"
+        isLoading={isUpdating && actionId === disableConfirmId}
+        onConfirm={() => {
+          if (disableConfirmId)
+            handleStatusChange(disableConfirmId, "inactive");
+        }}
+      />
 
-        {/* ── Delete Sub-Rep Confirm ── */}
-        <ConfirmModal
-          open={deleteSubRepConfirmOpen}
-          onOpenChange={(v) => {
-            if (!isDeletingSubRep) {
-              setDeleteSubRepConfirmOpen(v);
-              if (!v) setDeleteSubRepId(null);
-            }
-          }}
-          title="Delete Sub-Rep?"
-          description="This will permanently remove the sub-rep and revoke their access. This action cannot be undone."
-          confirmLabel="Delete Sub-Rep"
-          isLoading={isDeletingSubRep}
-          onConfirm={handleDeleteSubRepConfirm}
-        />
+      {/* ── Delete Sub-Rep Confirm ── */}
+      <ConfirmModal
+        open={deleteSubRepConfirmOpen}
+        onOpenChange={(v) => {
+          if (!isDeletingSubRep) {
+            setDeleteSubRepConfirmOpen(v);
+            if (!v) setDeleteSubRepId(null);
+          }
+        }}
+        title="Delete Sub-Rep?"
+        description="This will permanently remove the sub-rep and revoke their access. This action cannot be undone."
+        confirmLabel="Delete Sub-Rep"
+        isLoading={isDeletingSubRep}
+        onConfirm={handleDeleteSubRepConfirm}
+      />
 
-        {/* ── Delete Invite Token Confirm ── */}
-        <ConfirmModal
-          open={tokenConfirmOpen}
-          onOpenChange={(v) => {
-            if (!isDeletingToken) {
-              setTokenConfirmOpen(v);
-              if (!v) setDeleteTokenId(null);
-            }
-          }}
-          title="Delete Invite Link?"
-          description="This invite link will be permanently deleted and can no longer be used."
-          confirmLabel="Delete"
-          isLoading={isDeletingToken}
-          onConfirm={handleDeleteTokenConfirm}
-        />
+      {/* ── Delete Invite Token Confirm ── */}
+      <ConfirmModal
+        open={tokenConfirmOpen}
+        onOpenChange={(v) => {
+          if (!isDeletingToken) {
+            setTokenConfirmOpen(v);
+            if (!v) setDeleteTokenId(null);
+          }
+        }}
+        title="Delete Invite Link?"
+        description="This invite link will be permanently deleted and can no longer be used."
+        confirmLabel="Delete"
+        isLoading={isDeletingToken}
+        onConfirm={handleDeleteTokenConfirm}
+      />
     </div>
   );
 }

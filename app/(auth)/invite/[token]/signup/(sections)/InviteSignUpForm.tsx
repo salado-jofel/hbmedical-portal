@@ -16,12 +16,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { inviteSignUp, getContractSignedUrls } from "../(services)/actions";
+import { inviteSignUp, getContractSignedUrls, getSalesRepContractUrls } from "../(services)/actions";
 import { EnrollmentFormDocument } from "../(components)/EnrollmentFormDocument";
 import { ContractSignModal } from "../(components)/ContractSignModal";
+import { SalesRepContractSignModal } from "../(components)/SalesRepContractSignModal";
 import type { InviteSignUpState } from "@/utils/interfaces/invite";
 import { CREDENTIAL_OPTIONS } from "@/utils/constants/auth";
 import type { InviteTokenRole } from "@/utils/interfaces/invite-tokens";
+import { SALES_REP_CONTRACTS, type SalesRepContractKey } from "@/lib/pdf/sales-rep-contracts";
 
 interface InviteSignUpFormProps {
   token: string;
@@ -103,6 +105,25 @@ export default function InviteSignUpForm({
   >(null);
   const baaAgreed = Boolean(baaSignedUrl);
   const termsAgreed = Boolean(psSignedUrl);
+  // Sales-rep onboarding contracts: one signed URL per doc key.
+  const [salesRepSigned, setSalesRepSigned] = useState<Record<SalesRepContractKey, string | null>>(
+    () =>
+      SALES_REP_CONTRACTS.reduce(
+        (acc, def) => ({ ...acc, [def.key]: null }),
+        {} as Record<SalesRepContractKey, string | null>,
+      ),
+  );
+  const [signingSalesRep, setSigningSalesRep] = useState<SalesRepContractKey | null>(null);
+  const [salesRepSourceUrls, setSalesRepSourceUrls] = useState<Record<SalesRepContractKey, string | null>>(
+    () =>
+      SALES_REP_CONTRACTS.reduce(
+        (acc, def) => ({ ...acc, [def.key]: null }),
+        {} as Record<SalesRepContractKey, string | null>,
+      ),
+  );
+  const allSalesRepSigned = SALES_REP_CONTRACTS.every(
+    (d) => Boolean(salesRepSigned[d.key]),
+  );
   // Signed URL state — initialized from server props, refreshable via retry
   const [baaUrl, setBaaUrl] = useState<string | null>(initialBaaUrl);
   const [productServicesUrl, setProductServicesUrl] = useState<string | null>(initialProductServicesUrl);
@@ -137,9 +158,13 @@ export default function InviteSignUpForm({
   // and their edits won't be overwritten by later billing changes.
   const shippingPrefilledRef = useRef(false);
 
-  // Office step only for clinical_provider WITHOUT a pre-assigned facility
-  // (sales_rep and clinical_staff never get an office step here)
-  const needsOfficeStep = role === "clinical_provider" && !facilityId;
+  // Office step for clinical_provider (captures clinic details) AND
+  // sales_representative (captures rep_office account details) — both need
+  // to create their own facility on signup. clinical_staff never gets this
+  // step; they join an existing facility.
+  const needsOfficeStep =
+    (role === "clinical_provider" || role === "sales_representative") &&
+    !facilityId;
 
   // Step order: Enrollment comes before Terms so the user signs/agrees as the
   // very last action. Enrollment is optional — user can breeze through it.
@@ -230,6 +255,26 @@ export default function InviteSignUpForm({
     };
   }, [step, agreeStepIndex, role]);
 
+  // Load signed URLs for all 6 sales-rep contract templates so the modal can
+  // render each document inline next to the signing form.
+  useEffect(() => {
+    if (step !== agreeStepIndex) return;
+    if (role !== "sales_representative") return;
+    let cancelled = false;
+    (async () => {
+      const result = await getSalesRepContractUrls(token);
+      if (cancelled) return;
+      const urls = result.contracts.reduce(
+        (acc, c) => ({ ...acc, [c.key]: c.sourceUrl }),
+        {} as Record<SalesRepContractKey, string | null>,
+      );
+      setSalesRepSourceUrls(urls);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [step, agreeStepIndex, role, token]);
+
   function goNext() {
     setClientError("");
 
@@ -245,8 +290,18 @@ export default function InviteSignUpForm({
     }
 
     if (officeStepIndex !== null && step === officeStepIndex) {
+      const nameLabel =
+        role === "sales_representative" ? "Account name" : "Practice name";
       if (!officeName.trim()) {
-        setClientError("Practice name is required.");
+        setClientError(`${nameLabel} is required.`);
+        return;
+      }
+      if (!officePhone.trim()) {
+        setClientError(
+          role === "sales_representative"
+            ? "Account phone is required."
+            : "Office phone is required.",
+        );
         return;
       }
       if (!officeAddress.trim() || !officeCity.trim() || !officeState.trim() || !officePostalCode.trim()) {
@@ -389,7 +444,12 @@ export default function InviteSignUpForm({
 
   return (
     <AuthCard
-      className={`space-y-6 ${step === agreeStepIndex ? "!max-w-4xl lg:!max-w-6xl xl:!max-w-7xl" : ""}`}
+      className={`space-y-6 ${
+        step === agreeStepIndex &&
+        (role === "clinical_provider" || role === "sales_representative")
+          ? "!max-w-4xl lg:!max-w-6xl xl:!max-w-7xl"
+          : ""
+      }`}
     >
       {/* Logo */}
       <div className="flex justify-center">
@@ -500,10 +560,14 @@ export default function InviteSignUpForm({
 
             {officeStepIndex !== null && step === officeStepIndex && (
               <div className="space-y-4">
-                <h2 className="text-lg font-semibold text-[#0F172A] text-center">Practice information</h2>
+                <h2 className="text-lg font-semibold text-[#0F172A] text-center">
+                  {role === "sales_representative"
+                    ? "Sales Rep Account"
+                    : "Practice information"}
+                </h2>
                 <AuthField
                   id="office_name"
-                  label="Practice name"
+                  label={role === "sales_representative" ? "Account name" : "Practice name"}
                   name="office_name_display"
                   type="text"
                   value={officeName}
@@ -513,7 +577,7 @@ export default function InviteSignUpForm({
                 <PhoneInputField
                   value={officePhone}
                   onChange={(val) => setOfficePhone(val)}
-                  label="Office phone"
+                  label={role === "sales_representative" ? "Account phone" : "Office phone"}
                   required
                   theme="light"
                 />
@@ -813,6 +877,79 @@ export default function InviteSignUpForm({
                       )}
                     </div>
                   </div>
+                ) : role === "sales_representative" ? (
+                  <div className="space-y-5">
+                    <p className="text-xs text-[#64748B] leading-relaxed">
+                      Please review and sign each of the following onboarding documents.
+                      All are required to complete your account.
+                    </p>
+                    {SALES_REP_CONTRACTS.map((def, idx) => {
+                      const signed = Boolean(salesRepSigned[def.key]);
+                      const signedUrl = salesRepSigned[def.key];
+                      const sourceUrl = salesRepSourceUrls[def.key];
+                      const previewUrl = signedUrl || sourceUrl;
+                      return (
+                        <div key={def.key} className="space-y-3">
+                          {idx > 0 && <div className="border-t border-[#E2E8F0]" />}
+                          <h3 className="text-sm font-medium text-[#0F172A]">
+                            {def.label} <span className="text-red-400">*</span>
+                          </h3>
+
+                          {!previewUrl ? (
+                            <div className="h-[380px] md:h-[620px] rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] flex items-center justify-center">
+                              <Loader2 className="w-5 h-5 animate-spin text-[#94A3B8]" />
+                            </div>
+                          ) : (
+                            <div className="rounded-lg border border-[#E2E8F0] overflow-hidden">
+                              <iframe
+                                src={previewUrl}
+                                className="w-full h-[380px] md:h-[620px]"
+                                title={def.label}
+                              />
+                            </div>
+                          )}
+
+                          {previewUrl && (
+                            <a
+                              href={previewUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="block text-xs text-[var(--navy)] underline"
+                            >
+                              Open in new tab ↗
+                            </a>
+                          )}
+
+                          {signed ? (
+                            <div className="flex items-center justify-between gap-3 rounded-lg border border-[#BBF7D0] bg-[#F0FDF4] px-3 py-2.5">
+                              <span className="flex items-center gap-2 text-sm text-[#15803D] font-medium">
+                                <Check className="w-4 h-4" /> Signed
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSalesRepSigned((p) => ({ ...p, [def.key]: null }));
+                                  setSigningSalesRep(def.key);
+                                }}
+                                className="text-xs text-[#64748B] hover:text-[#0F172A] underline"
+                              >
+                                Clear &amp; re-sign
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setSigningSalesRep(def.key)}
+                              disabled={!sourceUrl}
+                              className="w-full rounded-lg bg-[var(--navy)] hover:bg-[var(--navy)]/80 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium py-2.5 transition-colors"
+                            >
+                              Review &amp; Sign {def.label}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 ) : (
                   <>
                     <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 max-h-36 overflow-y-auto text-xs text-[#64748B] leading-relaxed">
@@ -864,7 +1001,9 @@ export default function InviteSignUpForm({
             value={
               role === "clinical_provider"
                 ? baaAgreed && termsAgreed ? "true" : "false"
-                : agreed ? "true" : "false"
+                : role === "sales_representative"
+                  ? allSalesRepSigned ? "true" : "false"
+                  : agreed ? "true" : "false"
             }
           />
           {needsPin && <input type="hidden" name="pin" value={pin} />}
@@ -916,7 +1055,9 @@ export default function InviteSignUpForm({
               isPending ||
               (role === "clinical_provider"
                 ? !baaAgreed || !termsAgreed
-                : !agreed)
+                : role === "sales_representative"
+                  ? !allSalesRepSigned
+                  : !agreed)
             }
             className="w-full rounded-lg bg-[var(--navy)] hover:bg-[var(--navy)]/80 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium h-9 text-sm transition-colors flex items-center justify-center gap-2 shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
           >
@@ -975,6 +1116,41 @@ export default function InviteSignUpForm({
           }}
         />
       )}
+      {role === "sales_representative" && signingSalesRep && (() => {
+        const def = SALES_REP_CONTRACTS.find((d) => d.key === signingSalesRep);
+        if (!def) return null;
+        const addressParts = [officeAddress, officeCity, officeState, officePostalCode]
+          .filter(Boolean)
+          .join(", ");
+        const defaults: Record<string, string> = {
+          staff_member: `${firstName} ${lastName}`.trim(),
+          name: `${firstName} ${lastName}`.trim(),
+          first_name: firstName,
+          last_name: lastName,
+          business_name: officeName,
+          contact_address: addressParts,
+          address: officeAddress,
+          address_street: officeAddress,
+          address_city: officeCity,
+          address_state: officeState,
+          address_zip: officePostalCode,
+          city_state_zip: [officeCity, officeState, officePostalCode].filter(Boolean).join(", "),
+          email,
+          phone,
+        };
+        return (
+          <SalesRepContractSignModal
+            open={true}
+            onClose={() => setSigningSalesRep(null)}
+            token={token}
+            contract={def}
+            defaults={defaults}
+            onSigned={(signedUrl) => {
+              setSalesRepSigned((p) => ({ ...p, [def.key]: signedUrl ?? "" }));
+            }}
+          />
+        );
+      })()}
     </AuthCard>
   );
 }
