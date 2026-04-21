@@ -36,6 +36,15 @@ import {
 import {
   deleteHospitalOnboardingMaterial, bulkDeleteHospitalOnboardingMaterials,
 } from "../../hospital-onboarding/(services)/actions";
+import type {
+  SignedContractRow,
+  RepOfficeOption,
+  SalesRepOption,
+} from "../(services)/signed-contracts-actions";
+import {
+  MySignedContractsView,
+  AdminSignedContractsView,
+} from "./SignedContracts";
 
 type Category = "marketing" | "contracts" | "training" | "onboarding";
 
@@ -92,12 +101,21 @@ const TAB_CATEGORY: Record<string, Category | null> = {
   Onboarding: "onboarding",
 };
 
+const SIGNED_TAB_MY = "My Documents";
+const SIGNED_TAB_ADMIN = "Rep Signatures";
+
 export default function ResourcesContent({
   activeTab,
   onTabChange,
+  signedContracts,
+  repOffices,
+  salesReps,
 }: {
   activeTab: string;
   onTabChange: (tab: string) => void;
+  signedContracts: SignedContractRow[];
+  repOffices: RepOfficeOption[];
+  salesReps: SalesRepOption[];
 }) {
   const dispatch = useAppDispatch();
   const [search, setSearch] = useState("");
@@ -113,7 +131,19 @@ export default function ResourcesContent({
   const onboardingSelected = useAppSelector((s) => s.hospitalOnboarding.selectedIds);
   const totalSelected = marketingSelected.length + contractsSelected.length + trainingsSelected.length + onboardingSelected.length;
 
-  const isAdmin = checkIsAdmin(useAppSelector((s) => s.dashboard.role));
+  const role = useAppSelector((s) => s.dashboard.role);
+  const isAdmin = checkIsAdmin(role);
+  const isSalesRep = role === "sales_representative";
+
+  const tabs = [
+    "All",
+    "Marketing",
+    "Contracts",
+    "Training",
+    "Onboarding",
+    ...(isSalesRep ? [SIGNED_TAB_MY] : []),
+    ...(isAdmin ? [SIGNED_TAB_ADMIN] : []),
+  ];
 
   const allItems: ResourceItem[] = [
     ...marketingItems.map((i) => ({ ...i, category: "marketing" as Category })),
@@ -122,11 +152,13 @@ export default function ResourcesContent({
     ...onboardingItems.map((i) => ({ ...i, category: "onboarding" as Category })),
   ];
 
-  const counts = {
+  const counts: Record<string, number> = {
     Marketing: marketingItems.length,
     Contracts: contractItems.length,
     Training: trainingItems.length,
     Onboarding: onboardingItems.length,
+    [SIGNED_TAB_MY]: signedContracts.length,
+    [SIGNED_TAB_ADMIN]: signedContracts.length,
   };
 
   const q = search.trim().toLowerCase();
@@ -223,9 +255,36 @@ export default function ResourcesContent({
     );
   }
 
+  if (activeTab === SIGNED_TAB_MY || activeTab === SIGNED_TAB_ADMIN) {
+    return (
+      <div className="space-y-4">
+        <ResourceSubTabs
+          activeTab={activeTab}
+          onTabChange={onTabChange}
+          counts={counts}
+          tabs={tabs}
+        />
+        {activeTab === SIGNED_TAB_MY ? (
+          <MySignedContractsView rows={signedContracts} />
+        ) : (
+          <AdminSignedContractsView
+            rows={signedContracts}
+            repOffices={repOffices}
+            salesReps={salesReps}
+          />
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
-      <ResourceSubTabs activeTab={activeTab} onTabChange={onTabChange} counts={counts} />
+      <ResourceSubTabs
+        activeTab={activeTab}
+        onTabChange={onTabChange}
+        counts={counts}
+        tabs={tabs}
+      />
 
       <ActionBar
         searchValue={search}

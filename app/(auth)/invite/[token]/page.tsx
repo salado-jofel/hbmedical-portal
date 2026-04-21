@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { CheckCircle, Building2, UserCheck, XCircle, Clock } from "lucide-react";
+import { CheckCircle, UserCheck, XCircle, Clock } from "lucide-react";
 import { getInviteTokenStatus } from "@/app/(dashboard)/dashboard/(services)/invite-tokens/actions";
 import { HBLogo } from "@/app/(components)/HBLogo";
 import { ROLE_LABELS } from "@/utils/helpers/role";
@@ -93,18 +93,6 @@ export default async function InviteLandingPage({ params }: PageProps) {
 
           {/* Details */}
           <div className="space-y-3">
-            {inviteToken.facility && (
-              <div className="flex items-center gap-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-4 py-3">
-                <Building2 className="w-4 h-4 text-[#94A3B8] shrink-0" />
-                <div>
-                  <p className="text-[10px] text-[#94A3B8] uppercase tracking-widest font-semibold">
-                    Practice
-                  </p>
-                  <p className="text-sm text-[#0F172A] font-medium">{inviteToken.facility.name}</p>
-                </div>
-              </div>
-            )}
-
             <div className="flex items-center gap-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-4 py-3">
               <UserCheck className="w-4 h-4 text-[#94A3B8] shrink-0" />
               <div>

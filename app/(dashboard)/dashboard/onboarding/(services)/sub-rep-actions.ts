@@ -8,10 +8,9 @@ import { getCurrentUserOrThrow, getUserRole } from "@/lib/supabase/auth";
 import { isSalesRep } from "@/utils/helpers/role";
 import type { UserRole } from "@/utils/helpers/role";
 import type { ISubRep } from "@/utils/interfaces/sub-reps";
-import { resend, ACCOUNTS_FROM_EMAIL } from "@/lib/emails/resend";
 import { sendInviteEmail } from "@/lib/emails/send-invite-email";
 import type { IInviteTokenFormState } from "@/utils/interfaces/invite-tokens";
-import { INVITE_TOKENS_TABLE, LOGO_URL } from "./_onboarding-shared";
+import { INVITE_TOKENS_TABLE, getBaseUrl } from "./_onboarding-shared";
 
 /* -------------------------------------------------------------------------- */
 /* inviteSubRep                                                                */
@@ -32,6 +31,7 @@ export async function inviteSubRep(
 
     const raw = {
       email: formData.get("email") as string,
+      expires_in_days: formData.get("expires_in_days") ?? "30",
     };
 
     const parsed = inviteSubRepSchema.safeParse(raw);
@@ -43,117 +43,79 @@ export async function inviteSubRep(
       return { error: parsed.error.issues[0]?.message ?? "Invalid input.", success: false };
     }
 
-    const { email } = parsed.data;
-
+    const { email, expires_in_days } = parsed.data;
     const adminClient = createAdminClient();
 
-    // Generate invite link
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL
-      ?? process.env.NEXT_PUBLIC_SITE_URL
-      ?? "http://localhost:3000";
-
-    const { data: linkData, error: linkError } =
-      await adminClient.auth.admin.generateLink({
-        type: "invite",
-        email,
-        options: {
-          data: { first_name: "Pending", last_name: "Setup", invited_by: user.id },
-          redirectTo: `${appUrl}/set-password`,
-        },
-      });
-
-    if (linkError || !linkData?.user) {
-      console.error("[inviteSubRep] generateLink error:", linkError);
-      // Supabase returns "User already registered" when the email already exists
-      if (linkError?.message?.toLowerCase().includes("already registered") ||
-          linkError?.message?.toLowerCase().includes("already exists")) {
-        return { error: "An account with this email already exists.", success: false };
-      }
-      return { error: linkError?.message ?? "Failed to create invite.", success: false };
+    // Block if the email already has an account.
+    const { data: existingProfile } = await adminClient
+      .from("profiles")
+      .select("id")
+      .eq("email", email)
+      .maybeSingle();
+    if (existingProfile) {
+      return { error: "An account with this email already exists.", success: false };
     }
 
-    const userId = linkData.user.id;
-    const actionLink = linkData.properties?.action_link ?? "";
+    // Block if there's already an active (unused, unexpired) invite for this email.
+    const { data: pendingInvite } = await supabase
+      .from(INVITE_TOKENS_TABLE)
+      .select("id")
+      .eq("invited_email", email)
+      .eq("role_type", "sales_representative")
+      .is("used_at", null)
+      .gt("expires_at", new Date().toISOString())
+      .maybeSingle();
+    if (pendingInvite) {
+      return { error: "A pending invite already exists for this email.", success: false };
+    }
 
-    // Create profile with placeholder name — sub-rep provides real name during setup
-    await adminClient.from("profiles").upsert({
-      id: userId,
-      first_name: "Pending",
-      last_name: "Setup",
-      email,
-      role: "sales_representative",
-    });
+    const expiresAt = new Date(
+      Date.now() + expires_in_days * 24 * 60 * 60 * 1000,
+    ).toISOString();
 
-    // Link parent → child in rep_hierarchy
-    const { error: hierarchyError } = await adminClient
-      .from("rep_hierarchy")
+    // Create the invite token — consumed later at /invite/:token/signup where the
+    // auth user, profile, and rep_hierarchy are created as one atomic step.
+    const { data: inserted, error: insertErr } = await supabase
+      .from(INVITE_TOKENS_TABLE)
       .insert({
-        parent_rep_id: user.id,
-        child_rep_id: userId,
         created_by: user.id,
-      });
+        facility_id: null,
+        role_type: "sales_representative",
+        expires_at: expiresAt,
+        invited_email: email,
+      })
+      .select("id, token")
+      .single();
 
-    if (hierarchyError) {
-      await adminClient.auth.admin.deleteUser(userId);
-      console.error("[inviteSubRep] rep_hierarchy insert failed:", JSON.stringify(hierarchyError));
-      return {
-        error: "Failed to link sub-rep hierarchy. Please try again.",
-        success: false,
-      };
+    if (insertErr || !inserted) {
+      console.error("[inviteSubRep] token insert error:", JSON.stringify(insertErr));
+      return { error: "Failed to generate invite link. Please try again.", success: false };
     }
 
-    // Record invite token for tracking — mark as used immediately since the
-    // sub-rep account was created directly (not via /invite/:token link).
-    // used_by lets the card resolve has_completed_setup and the rep's facility.
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-    await supabase.from(INVITE_TOKENS_TABLE).insert({
-      created_by: user.id,
-      facility_id: null,
-      role_type: "sales_representative",
-      expires_at: expiresAt,
-      invited_email: email,
-      used_by: userId,
-      used_at: new Date().toISOString(),
+    const { data: parentProfile } = await supabase
+      .from("profiles")
+      .select("first_name, last_name")
+      .eq("id", user.id)
+      .maybeSingle();
+    const parentName = parentProfile
+      ? `${parentProfile.first_name ?? ""} ${parentProfile.last_name ?? ""}`.trim() ||
+        "HB Medical"
+      : "HB Medical";
+
+    const inviteUrl = `${getBaseUrl()}/invite/${inserted.token}`;
+
+    const { error: emailError } = await sendInviteEmail({
+      to: email,
+      inviteUrl,
+      roleType: "sales_representative",
+      inviterName: parentName,
     });
 
-    // Send invite email via Resend
-    if (actionLink) {
-      await resend.emails.send({
-        from: ACCOUNTS_FROM_EMAIL,
-        to: email,
-        subject: "You've been invited to join HB Medical as a Sales Rep",
-        html: `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8" /><style>
-body{font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background-color:#f4f7f9;margin:0;padding:0;}
-.wrapper{background-color:#f4f7f9;padding:32px 16px;}
-.container{max-width:600px;margin:0 auto;background-color:#ffffff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden;}
-.header{padding:22px 28px 16px;text-align:center;border-bottom:1px solid #f1f5f9;}
-.logo-img{display:block;margin:0 auto;width:176px;height:auto;border:0;}
-.content{padding:28px 32px 34px;line-height:1.6;color:#334155;}
-.h1{font-size:22px;font-weight:700;color:#0f172a;margin:0 0 12px;}
-p{margin:0 0 14px;font-size:14px;}
-.btn-row{text-align:center;margin:24px 0 22px;}
-.btn{background-color:#e8821a;color:#ffffff !important;padding:13px 28px;text-decoration:none;border-radius:8px;font-weight:600;font-size:15px;display:inline-block;}
-.muted{margin-top:20px;font-size:13px;color:#94a3b8;}
-.footer{background-color:#f8fafc;padding:20px 24px;text-align:center;font-size:12px;color:#64748b;border-top:1px solid #f1f5f9;}
-</style></head>
-<body>
-<div class="wrapper"><div class="container">
-<div class="header"><img src="${LOGO_URL}" alt="HB Medical" width="176" class="logo-img" /></div>
-<div class="content">
-<h1 class="h1">You're invited to HB Medical Portal</h1>
-<p>You've been invited to join the <strong>HB Medical Portal</strong> as a <strong>Sales Representative</strong>. Click below to set your password and get started.</p>
-<div class="btn-row"><a href="${actionLink}" class="btn" target="_blank" rel="noopener noreferrer">Set Password &amp; Sign In</a></div>
-<p>This invitation expires in 7 days. If you did not expect this, you can safely ignore it.</p>
-<p class="muted">Questions? Contact your HB Medical admin.</p>
-</div>
-<div class="footer">&copy; 2026 HB Medical Portal.</div>
-</div></div>
-</body></html>
-        `.trim(),
-      });
+    if (emailError) {
+      // Rollback the token so the caller can retry cleanly.
+      await supabase.from(INVITE_TOKENS_TABLE).delete().eq("id", inserted.id);
+      console.error("[inviteSubRep] sendInviteEmail:", emailError);
+      return { error: "Failed to send invite email. Please try again.", success: false };
     }
 
     revalidatePath("/dashboard/onboarding");

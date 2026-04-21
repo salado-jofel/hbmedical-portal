@@ -406,18 +406,26 @@ export async function getUnsignedForms(
   try {
     const adminClient = createAdminClient();
 
-    const { data: orderForm } = await adminClient
-      .from("order_form")
-      .select("physician_signed_at")
-      .eq("order_id", orderId)
-      .maybeSingle();
+    const [{ data: orderForm }, { data: ivr }] = await Promise.all([
+      adminClient
+        .from("order_form")
+        .select("physician_signed_at")
+        .eq("order_id", orderId)
+        .maybeSingle(),
+      adminClient
+        .from("order_ivr")
+        .select("physician_signed_at")
+        .eq("order_id", orderId)
+        .maybeSingle(),
+    ]);
 
     const unsigned: string[] = [];
     if (!orderForm?.physician_signed_at) unsigned.push("Order Form");
+    if (!ivr?.physician_signed_at) unsigned.push("IVR Form");
 
     return { unsignedForms: unsigned };
   } catch {
-    return { unsignedForms: ["Order Form"] };
+    return { unsignedForms: ["Order Form", "IVR Form"] };
   }
 }
 
@@ -444,15 +452,25 @@ export async function submitSignedOrder(
 
     const adminClient = createAdminClient();
 
-    // Re-validate Order Form signature server-side
-    const { data: orderForm } = await adminClient
-      .from("order_form")
-      .select("physician_signed_at")
-      .eq("order_id", orderId)
-      .maybeSingle();
+    // Re-validate all required form signatures server-side
+    const [{ data: orderForm }, { data: ivr }] = await Promise.all([
+      adminClient
+        .from("order_form")
+        .select("physician_signed_at")
+        .eq("order_id", orderId)
+        .maybeSingle(),
+      adminClient
+        .from("order_ivr")
+        .select("physician_signed_at")
+        .eq("order_id", orderId)
+        .maybeSingle(),
+    ]);
 
     if (!orderForm?.physician_signed_at) {
       return { success: false, error: "Order Form is not signed." };
+    }
+    if (!ivr?.physician_signed_at) {
+      return { success: false, error: "IVR Form is not signed." };
     }
 
     const { data: order } = await adminClient

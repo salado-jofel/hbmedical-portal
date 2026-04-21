@@ -34,7 +34,7 @@ export interface IUser {
 export interface IUserFormState {
   error?: string | null;
   success?: boolean;
-  user?: IUser;
+  user?: IUser | null;
   fieldErrors?: {
     first_name?: string;
     last_name?: string;
