@@ -5,7 +5,6 @@ import { getInviteTokenStatus } from "@/app/(dashboard)/dashboard/(services)/inv
 import { HBLogo } from "@/app/(components)/HBLogo";
 import { BackgroundDots } from "@/app/(components)/BackgroundDots";
 import InviteSignUpForm from "./(sections)/InviteSignUpForm";
-import { getContractSignedUrls } from "./(services)/actions";
 
 interface PageProps {
   params: Promise<{ token: string }>;
@@ -100,11 +99,9 @@ export default async function InviteSignUpPage({ params }: PageProps) {
     ? `${inviteToken.created_by_profile.first_name} ${inviteToken.created_by_profile.last_name}`
     : "HB Medical";
 
-  // Fetch signed PDF URLs for clinical_provider terms step
-  const contractUrls = inviteToken.role_type === "clinical_provider"
-    ? await getContractSignedUrls()
-    : { baaUrl: null, productServicesUrl: null, error: null };
-
+  // Contract preview URLs are fetched client-side on entering step 6, so the
+  // user sees one loading state while MERIDIAN-prestamped PDFs are generated
+  // rather than a stale SSR preview that flashes + reloads.
   // clinical_provider always creates their own clinic on signup.
   // The token's facility_id (when set) is the inviting rep's facility used only to
   // resolve assigned_rep on the server — never shown to the user or used to skip the Office step.
@@ -114,7 +111,7 @@ export default async function InviteSignUpPage({ params }: PageProps) {
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-[#F0F7FF] to-[#F8FAFC] flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
+      <div className="w-full flex justify-center">
         <InviteSignUpForm
           token={token}
           role={inviteToken.role_type}
@@ -122,9 +119,9 @@ export default async function InviteSignUpPage({ params }: PageProps) {
           facilityName={formFacilityName}
           invitedBy={invitedBy}
           invitedEmail={inviteToken.invited_email ?? null}
-          baaUrl={contractUrls.baaUrl}
-          productServicesUrl={contractUrls.productServicesUrl}
-          contractsError={contractUrls.error}
+          baaUrl={null}
+          productServicesUrl={null}
+          contractsError={null}
         />
       </div>
     </main>
