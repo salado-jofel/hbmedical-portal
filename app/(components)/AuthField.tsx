@@ -17,6 +17,9 @@ interface AuthFieldProps {
   height?: string;
   required?: boolean;
   readOnly?: boolean;
+  /** Field-level error message. When set: label + icon + border go red and the
+   *  message renders directly beneath the input. */
+  error?: string | null;
 }
 
 export function AuthField({
@@ -32,14 +35,22 @@ export function AuthField({
   height = "h-12",
   required,
   readOnly,
+  error,
 }: AuthFieldProps) {
+  const hasError = Boolean(error);
   return (
     <div className="space-y-1.5">
       <Label
         htmlFor={id}
-        className="flex items-center gap-2 text-xs font-medium text-[#374151] mb-1.5"
+        className={`flex items-center gap-2 text-xs font-medium mb-1.5 ${
+          hasError ? "text-[var(--red)]" : "text-[#374151]"
+        }`}
       >
-        {icon && <span className="text-[var(--navy)]">{icon}</span>}
+        {icon && (
+          <span className={hasError ? "text-[var(--red)]" : "text-[var(--navy)]"}>
+            {icon}
+          </span>
+        )}
         {label}
       </Label>
       <div className="relative">
@@ -50,9 +61,14 @@ export function AuthField({
           placeholder={placeholder}
           required={required}
           readOnly={readOnly}
+          aria-invalid={hasError || undefined}
           {...(value !== undefined && { value })}
           {...(onChange !== undefined && { onChange })}
-          className={`${height} h-9 text-sm text-[var(--navy)] placeholder:text-[var(--text3)] border border-[var(--border)] bg-white rounded-lg px-3 focus-visible:ring-2 focus-visible:ring-[var(--navy)]/10 focus-visible:border-[var(--navy)] transition-colors ${readOnly ? "bg-slate-50 text-[var(--text2)] cursor-not-allowed" : ""}`}
+          className={`${height} h-9 text-sm text-[var(--navy)] placeholder:text-[var(--text3)] bg-white rounded-lg px-3 transition-colors ${
+            hasError
+              ? "border border-[var(--red)] focus-visible:ring-2 focus-visible:ring-[var(--red)]/20 focus-visible:border-[var(--red)]"
+              : "border border-[var(--border)] focus-visible:ring-2 focus-visible:ring-[var(--navy)]/10 focus-visible:border-[var(--navy)]"
+          } ${readOnly ? "bg-slate-50 text-[var(--text2)] cursor-not-allowed" : ""}`}
           style={{
             paddingRight: rightElement ? "2.5rem" : undefined,
           }}
@@ -63,6 +79,7 @@ export function AuthField({
           </div>
         )}
       </div>
+      {hasError && <p className="text-xs text-[var(--red)]">{error}</p>}
     </div>
   );
 }

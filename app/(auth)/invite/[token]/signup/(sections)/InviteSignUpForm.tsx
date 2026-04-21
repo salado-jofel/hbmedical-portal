@@ -137,9 +137,13 @@ export default function InviteSignUpForm({
   // and their edits won't be overwritten by later billing changes.
   const shippingPrefilledRef = useRef(false);
 
-  // Office step only for clinical_provider WITHOUT a pre-assigned facility
-  // (sales_rep and clinical_staff never get an office step here)
-  const needsOfficeStep = role === "clinical_provider" && !facilityId;
+  // Office step for clinical_provider (captures clinic details) AND
+  // sales_representative (captures rep_office account details) — both need
+  // to create their own facility on signup. clinical_staff never gets this
+  // step; they join an existing facility.
+  const needsOfficeStep =
+    (role === "clinical_provider" || role === "sales_representative") &&
+    !facilityId;
 
   // Step order: Enrollment comes before Terms so the user signs/agrees as the
   // very last action. Enrollment is optional — user can breeze through it.
@@ -245,8 +249,18 @@ export default function InviteSignUpForm({
     }
 
     if (officeStepIndex !== null && step === officeStepIndex) {
+      const nameLabel =
+        role === "sales_representative" ? "Account name" : "Practice name";
       if (!officeName.trim()) {
-        setClientError("Practice name is required.");
+        setClientError(`${nameLabel} is required.`);
+        return;
+      }
+      if (!officePhone.trim()) {
+        setClientError(
+          role === "sales_representative"
+            ? "Account phone is required."
+            : "Office phone is required.",
+        );
         return;
       }
       if (!officeAddress.trim() || !officeCity.trim() || !officeState.trim() || !officePostalCode.trim()) {
@@ -500,10 +514,14 @@ export default function InviteSignUpForm({
 
             {officeStepIndex !== null && step === officeStepIndex && (
               <div className="space-y-4">
-                <h2 className="text-lg font-semibold text-[#0F172A] text-center">Practice information</h2>
+                <h2 className="text-lg font-semibold text-[#0F172A] text-center">
+                  {role === "sales_representative"
+                    ? "Sales Rep Account"
+                    : "Practice information"}
+                </h2>
                 <AuthField
                   id="office_name"
-                  label="Practice name"
+                  label={role === "sales_representative" ? "Account name" : "Practice name"}
                   name="office_name_display"
                   type="text"
                   value={officeName}
@@ -513,7 +531,7 @@ export default function InviteSignUpForm({
                 <PhoneInputField
                   value={officePhone}
                   onChange={(val) => setOfficePhone(val)}
-                  label="Office phone"
+                  label={role === "sales_representative" ? "Account phone" : "Office phone"}
                   required
                   theme="light"
                 />

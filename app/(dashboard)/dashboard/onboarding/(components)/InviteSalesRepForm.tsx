@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import { CheckCircle, Loader2, UserPlus } from "lucide-react";
+import { Loader2, Send, CheckCircle } from "lucide-react";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -13,15 +13,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { inviteSubRep } from "@/app/(dashboard)/dashboard/onboarding/(services)/sub-rep-actions";
+import { generateInviteToken } from "@/app/(dashboard)/dashboard/onboarding/(services)/invite-actions";
 import type { IInviteTokenFormState } from "@/utils/interfaces/invite-tokens";
 import { EXPIRY_OPTIONS } from "@/utils/constants/onboarding";
 
-export function InviteSubRepForm() {
+export function InviteSalesRepForm() {
   const [state, formAction, isPending] = useActionState<
     IInviteTokenFormState | null,
     FormData
-  >(inviteSubRep, null);
+  >(generateInviteToken, null);
 
   const [sentEmail, setSentEmail] = useState<string | null>(null);
 
@@ -57,17 +57,26 @@ export function InviteSubRepForm() {
 
   return (
     <form action={formAction} className="space-y-4">
+      <input type="hidden" name="role_type" value="sales_representative" />
+
       <div className="space-y-1.5">
-        <Label htmlFor="subrep_email" className="text-xs">
+        <Label className="text-xs text-[var(--text2)]">Inviting as</Label>
+        <p className="text-sm h-9 flex items-center px-3 rounded-md bg-[var(--bg)] border border-[var(--border)] text-[var(--navy)] font-medium">
+          Sales Rep
+        </p>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="sales_rep_invite_email" className="text-xs">
           Email <span className="text-red-400">*</span>
         </Label>
         <Input
-          id="subrep_email"
-          name="email"
+          id="sales_rep_invite_email"
           type="email"
-          placeholder="john@example.com"
-          className="h-9 text-sm"
+          name="email"
+          placeholder="rep@company.com"
           required
+          className="h-9 text-sm"
         />
         {state?.fieldErrors?.email && (
           <p className="text-xs text-red-500">{state.fieldErrors.email}</p>
@@ -100,19 +109,15 @@ export function InviteSubRepForm() {
         type="submit"
         size="sm"
         disabled={isPending}
-        className="w-full h-9 bg-[#E8821A] hover:bg-[#d4741a] text-white gap-1.5 rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors"
+        className="w-full h-9 bg-[var(--navy)] hover:bg-[var(--navy)]/80 text-white gap-1.5 rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors"
       >
         {isPending ? (
           <Loader2 className="w-3.5 h-3.5 animate-spin" />
         ) : (
-          <UserPlus className="w-3.5 h-3.5" />
+          <Send className="w-3.5 h-3.5" />
         )}
-        Send Invite
+        Send invite
       </Button>
-
-      <p className="text-xs text-[var(--text3)]">
-        Sub-reps you invite will be linked to your account.
-      </p>
     </form>
   );
 }

@@ -128,24 +128,72 @@ export async function inviteSignUp(
 
     // ── CASE B — Sales representative (sub-rep) ───────────────────────────────
     if (inviteToken.role_type === "sales_representative") {
-      // Record the parent-child rep relationship
-      const { error: hierarchyError } = await supabaseAdmin
-        .from("rep_hierarchy")
-        .insert({
-          parent_rep_id: inviteToken.created_by,
-          child_rep_id: createdUserId,
-        });
+      // Read the rep's account (rep_office) details captured in the office step.
+      const officeName = (formData.get("office_name") as string)?.trim();
+      const officePhone = toE164((formData.get("office_phone") as string) ?? "");
+      const officeAddress = (formData.get("office_address") as string)?.trim();
+      const officeCity = (formData.get("office_city") as string)?.trim();
+      const officeState = (formData.get("office_state") as string)?.trim();
+      const officePostalCode = (formData.get("office_postal_code") as string)?.trim();
 
-      if (hierarchyError) {
-        console.error("[inviteSignUp] rep_hierarchy error:", JSON.stringify(hierarchyError));
+      if (!officeName || !officeAddress || !officeCity || !officeState || !officePostalCode) {
         await supabaseAdmin.auth.admin.deleteUser(createdUserId);
-        return { error: "Failed to link rep hierarchy. Please try again." };
+        return { error: "Account name and full address are required." };
       }
 
-      // Sub-reps need to set up their own practice after sign-in
+      // Create the rep's account/office facility.
+      const { error: facilityError } = await supabaseAdmin
+        .from("facilities")
+        .insert({
+          user_id: createdUserId,
+          name: officeName,
+          contact: `${firstName} ${lastName}`.trim(),
+          phone: officePhone,
+          address_line_1: officeAddress,
+          city: officeCity,
+          state: officeState,
+          postal_code: officePostalCode,
+          country: "US",
+          status: "active",
+          facility_type: "rep_office",
+        });
+
+      if (facilityError) {
+        console.error("[inviteSignUp] facilities insert error:", JSON.stringify(facilityError));
+        await supabaseAdmin.auth.admin.deleteUser(createdUserId);
+        return { error: "Failed to save account information. Please try again." };
+      }
+
+      // rep_hierarchy links a sub-rep to their parent rep. When the invite was
+      // created by an admin (admin-onboarded main rep), there's no parent — skip.
+      // When created by another sales_rep, link them as parent.
+      const { data: creatorProfile } = await supabaseAdmin
+        .from("profiles")
+        .select("role")
+        .eq("id", inviteToken.created_by)
+        .maybeSingle();
+      const creatorRole = (creatorProfile as { role?: string } | null)?.role ?? null;
+
+      if (creatorRole === "sales_representative") {
+        const { error: hierarchyError } = await supabaseAdmin
+          .from("rep_hierarchy")
+          .insert({
+            parent_rep_id: inviteToken.created_by,
+            child_rep_id: createdUserId,
+            created_by: inviteToken.created_by,
+          });
+
+        if (hierarchyError) {
+          console.error("[inviteSignUp] rep_hierarchy error:", JSON.stringify(hierarchyError));
+          await supabaseAdmin.auth.admin.deleteUser(createdUserId);
+          return { error: "Failed to link rep hierarchy. Please try again." };
+        }
+      }
+
+      // Account details captured inline — rep can skip /onboarding/setup.
       await supabaseAdmin
         .from("profiles")
-        .update({ has_completed_setup: false })
+        .update({ has_completed_setup: true })
         .eq("id", createdUserId);
 
       await consumeInviteToken(token, createdUserId);
