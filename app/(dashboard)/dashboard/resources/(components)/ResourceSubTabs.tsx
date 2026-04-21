@@ -2,25 +2,32 @@
 
 import { cn } from "@/utils/utils";
 
-const TABS = ["All", "Marketing", "Contracts", "Training", "Onboarding"] as const;
+const ROLLUP_TABS = new Set(["All"]);
+
+const DEFAULT_TABS = ["All", "Marketing", "Contracts", "Training", "Onboarding"];
 
 export function ResourceSubTabs({
   activeTab,
   onTabChange,
   counts,
+  tabs = DEFAULT_TABS,
 }: {
   activeTab: string;
   onTabChange: (tab: string) => void;
   counts: Record<string, number>;
+  tabs?: readonly string[];
 }) {
   return (
     <div
       className="flex gap-6 overflow-x-auto border-b border-slate-200"
       style={{ scrollbarWidth: "none" }}
     >
-      {TABS.map((tab) => {
-        const count = tab === "All"
-          ? Object.values(counts).reduce((s, n) => s + n, 0)
+      {tabs.map((tab) => {
+        const count = ROLLUP_TABS.has(tab)
+          ? (counts.Marketing ?? 0) +
+            (counts.Contracts ?? 0) +
+            (counts.Training ?? 0) +
+            (counts.Onboarding ?? 0)
           : counts[tab] ?? 0;
         const active = activeTab === tab;
         return (

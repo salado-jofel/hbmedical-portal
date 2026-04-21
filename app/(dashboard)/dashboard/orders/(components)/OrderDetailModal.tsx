@@ -1290,11 +1290,11 @@ export function OrderDetailModal({
   const status = liveOrder.order_status;
   const displayStatus = getDisplayOrderStatus(liveOrder);
   const visibleTabs = isProvider
-    ? TABS.filter((t) => t.value !== "ivr" && t.value !== "hcfa")
+    ? TABS.filter((t) => t.value !== "hcfa")
     : TABS;
   const visibleRequiredDocTypes = isProvider
     ? REQUIRED_DOC_TYPES.filter((d) => {
-        if (d.type === "additional_ivr" || d.type === "form_1500") return false;
+        if (d.type === "form_1500") return false;
         if (d.type === "facesheet" || d.type === "clinical_docs") {
           return localDocuments.some((ld) => ld.documentType === d.type);
         }

@@ -21,6 +21,14 @@ import {
   type ContractType,
 } from "@/lib/pdf/sign-contract";
 import { sendProviderContractsSignedEmail } from "@/lib/emails/send-provider-contracts-signed";
+import {
+  SALES_REP_CONTRACTS,
+  getContractDef,
+  salesRepContractSignedPath,
+  type SalesRepContractKey,
+} from "@/lib/pdf/sales-rep-contracts";
+import { stampSalesRepContract } from "@/lib/pdf/sign-sales-rep-contract";
+import { sendSalesRepContractsSignedEmail } from "@/lib/emails/send-sales-rep-contracts-signed";
 
 const initialInviteSignUpState: InviteSignUpState = { error: null };
 
@@ -197,6 +205,36 @@ export async function inviteSignUp(
         .eq("id", createdUserId);
 
       await consumeInviteToken(token, createdUserId);
+
+      // Adopt any onboarding contract signatures captured under this invite
+      // token (signed before the auth user existed). One row per contract type.
+      const { error: adoptErr } = await supabaseAdmin
+        .from("sales_rep_contract_signatures")
+        .update({ user_id: createdUserId })
+        .eq("invite_token", token)
+        .is("user_id", null);
+      if (adoptErr) {
+        console.error(
+          "[inviteSignUp] sales_rep_contract_signatures adopt error:",
+          JSON.stringify(adoptErr),
+        );
+        // Non-fatal — signatures remain keyed by invite_token for audit.
+      }
+
+      // Fire-and-forget: email the signed contracts to internal recipients.
+      // Account creation is already committed; never block redirect on email.
+      const repEmail = authData.user.email ?? "";
+      const repName = `${firstName} ${lastName}`.trim();
+      const accountName =
+        (formData.get("office_name") as string | null)?.trim() || null;
+      emailSignedSalesRepContractsToStaff({
+        token,
+        repName,
+        repEmail,
+        accountName,
+      }).catch((err) =>
+        console.error("[inviteSignUp] sales-rep contracts email error:", err),
+      );
     } else {
       // ── Clinical roles (clinical_provider or clinical_staff) ──────────────
 
@@ -801,5 +839,249 @@ async function emailSignedContractsToStaff({
   });
   if (sendErr) {
     console.error("[emailSignedContractsToStaff] send error:", sendErr);
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Sales-rep onboarding contracts (6 documents)                              */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+export interface SalesRepContractMeta {
+  key: SalesRepContractKey;
+  label: string;
+  sourceUrl: string | null;
+  signedUrl: string | null;
+}
+
+export async function getSalesRepContractUrls(
+  token: string,
+): Promise<{ contracts: SalesRepContractMeta[]; error: string | null }> {
+  try {
+    const admin = createAdminClient();
+    const EXPIRES_IN = 3600;
+
+    const contracts: SalesRepContractMeta[] = [];
+    for (const def of SALES_REP_CONTRACTS) {
+      const { data: srcUrl } = await admin.storage
+        .from(BUCKET)
+        .createSignedUrl(def.storagePath, EXPIRES_IN);
+      // Check if there's an already-signed copy for this token+contract
+      const signedPath = salesRepContractSignedPath(token, def.key);
+      const { data: signedList } = await admin.storage
+        .from(BUCKET)
+        .list(`sales-rep-contracts-signed/${token}`, { search: `${def.key}.pdf` });
+      let signedUrl: string | null = null;
+      if (signedList && signedList.some((f) => f.name === `${def.key}.pdf`)) {
+        const { data } = await admin.storage
+          .from(BUCKET)
+          .createSignedUrl(signedPath, EXPIRES_IN);
+        signedUrl = data?.signedUrl ?? null;
+      }
+      contracts.push({
+        key: def.key,
+        label: def.label,
+        sourceUrl: srcUrl?.signedUrl ?? null,
+        signedUrl,
+      });
+    }
+    return { contracts, error: null };
+  } catch (err) {
+    console.error("[getSalesRepContractUrls]", err);
+    return { contracts: [], error: "Failed to load contract documents." };
+  }
+}
+
+export interface SignSalesRepContractInput {
+  token: string;
+  contractKey: SalesRepContractKey;
+  typedName: string;
+  typedTitle?: string;
+  signatureMethod: "type" | "draw" | "upload";
+  signatureDataUrl: string;
+  formData: Record<string, unknown>;
+}
+
+export interface SignSalesRepContractResult {
+  success: boolean;
+  signedUrl?: string;
+  error?: string;
+}
+
+export async function signSalesRepContract(
+  input: SignSalesRepContractInput,
+): Promise<SignSalesRepContractResult> {
+  try {
+    const {
+      token,
+      contractKey,
+      typedName,
+      typedTitle,
+      signatureMethod,
+      signatureDataUrl,
+      formData,
+    } = input;
+
+    if (!token || !typedName?.trim()) {
+      return { success: false, error: "Name and signature are required." };
+    }
+    if (!["type", "draw", "upload"].includes(signatureMethod)) {
+      return { success: false, error: "Invalid signature method." };
+    }
+
+    const def = getContractDef(contractKey);
+    if (!def) {
+      return { success: false, error: "Unknown contract type." };
+    }
+
+    const inviteToken = await validateInviteToken(token);
+    if (!inviteToken) {
+      return { success: false, error: "This invite link is no longer valid." };
+    }
+    if (inviteToken.role_type !== "sales_representative") {
+      return { success: false, error: "Only sales-rep invites can sign these documents." };
+    }
+
+    const signatureBytes = decodeDataUrl(signatureDataUrl);
+    if (!signatureBytes) {
+      return { success: false, error: "Invalid signature image." };
+    }
+    if (signatureBytes.length > MAX_SIGNATURE_BYTES) {
+      return { success: false, error: "Signature image is too large (max 2 MB)." };
+    }
+
+    const admin = createAdminClient();
+
+    // Fetch source PDF
+    const { data: sourceBlob, error: sourceErr } = await admin.storage
+      .from(BUCKET)
+      .download(def.storagePath);
+    if (sourceErr || !sourceBlob) {
+      console.error("[signSalesRepContract] source download failed:", sourceErr?.message);
+      return { success: false, error: "Failed to load contract template." };
+    }
+    const sourceBytes = new Uint8Array(await sourceBlob.arrayBuffer());
+
+    // Stamp
+    const today = new Date();
+    const stamped = await stampSalesRepContract({
+      contract: def,
+      sourcePdf: sourceBytes,
+      formData,
+      signaturePng: signatureBytes,
+      signedDate: today,
+    });
+
+    // Upload signed copy
+    const signedPath = salesRepContractSignedPath(token, contractKey);
+    const { error: uploadErr } = await admin.storage
+      .from(BUCKET)
+      .upload(signedPath, stamped, {
+        contentType: "application/pdf",
+        upsert: true,
+      });
+    if (uploadErr) {
+      console.error("[signSalesRepContract] upload failed:", uploadErr.message);
+      return { success: false, error: "Failed to save signed contract." };
+    }
+
+    // Audit row
+    const h = await headers();
+    const forwardedFor = h.get("x-forwarded-for") ?? "";
+    const ipAddress = forwardedFor.split(",")[0]?.trim() || h.get("x-real-ip") || null;
+    const userAgent = h.get("user-agent") || null;
+
+    const { error: rowErr } = await admin
+      .from("sales_rep_contract_signatures")
+      .upsert(
+        {
+          invite_token: token,
+          contract_type: contractKey,
+          source_path: def.storagePath,
+          signed_path: signedPath,
+          typed_name: typedName.trim(),
+          typed_title: typedTitle?.trim() || null,
+          signature_method: signatureMethod,
+          form_data: formData,
+          signed_at: today.toISOString(),
+          ip_address: ipAddress,
+          user_agent: userAgent,
+        },
+        { onConflict: "invite_token,contract_type" },
+      );
+    if (rowErr) {
+      console.error("[signSalesRepContract] row upsert failed:", JSON.stringify(rowErr));
+      return { success: false, error: "Failed to record signature." };
+    }
+
+    const { data: urlData } = await admin.storage
+      .from(BUCKET)
+      .createSignedUrl(signedPath, 3600);
+
+    return { success: true, signedUrl: urlData?.signedUrl };
+  } catch (err) {
+    console.error("[signSalesRepContract] unexpected:", err);
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to sign contract.",
+    };
+  }
+}
+
+/* ── Email all signed sales-rep PDFs to internal recipients ── */
+
+async function emailSignedSalesRepContractsToStaff({
+  token,
+  repName,
+  repEmail,
+  accountName,
+}: {
+  token: string;
+  repName: string;
+  repEmail: string;
+  accountName: string | null;
+}): Promise<void> {
+  const admin = createAdminClient();
+
+  const downloaded = await Promise.all(
+    SALES_REP_CONTRACTS.map(async (def) => {
+      const path = salesRepContractSignedPath(token, def.key);
+      const { data, error } = await admin.storage.from(BUCKET).download(path);
+      if (error || !data) {
+        console.error(
+          `[emailSignedSalesRepContractsToStaff] download failed for ${def.key}:`,
+          error?.message,
+        );
+        return null;
+      }
+      const buf = Buffer.from(await data.arrayBuffer());
+      return {
+        filename: `${def.label.replace(/[\\/:*?"<>|]/g, "")} - ${repName}.pdf`,
+        content: buf,
+      };
+    }),
+  );
+
+  const attachments = downloaded.filter((a) => a !== null) as Array<{
+    filename: string;
+    content: Buffer;
+  }>;
+
+  if (attachments.length === 0) {
+    console.error(
+      "[emailSignedSalesRepContractsToStaff] no signed PDFs available; skipping email",
+    );
+    return;
+  }
+
+  const { error: sendErr } = await sendSalesRepContractsSignedEmail({
+    to: SIGNED_CONTRACTS_NOTIFY_TO,
+    repName,
+    repEmail,
+    accountName,
+    signedAt: new Date(),
+    attachments,
+  });
+  if (sendErr) {
+    console.error("[emailSignedSalesRepContractsToStaff] send error:", sendErr);
   }
 }
