@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { User, Users, ShieldCheck, ClipboardList } from "lucide-react";
+import { User, Users, ShieldCheck, ClipboardList, Banknote } from "lucide-react";
 import { cn } from "@/utils/utils";
 import { ProfileTab } from "../(components)/ProfileTab";
 import { TeamTab } from "../(components)/TeamTab";
 import { CredentialsTab } from "../(components)/CredentialsTab";
 import { EnrollmentTab } from "../(components)/EnrollmentTab";
+import { PayoutsTab } from "../(components)/PayoutsTab";
 import type { Profile } from "@/utils/interfaces/profiles";
 import type { IFacilityMember } from "@/utils/interfaces/facility-members";
 import type { IProviderCredentials } from "@/utils/interfaces/provider-credentials";
@@ -16,8 +17,9 @@ import type {
   FacilityEnrollmentData,
   IAssignedRep,
 } from "@/app/(dashboard)/dashboard/settings/(services)/actions";
+import type { ConnectStatus } from "@/app/(dashboard)/dashboard/settings/(services)/stripe-connect-actions";
 
-type TabKey = "profile" | "team" | "credentials" | "enrollment";
+type TabKey = "profile" | "team" | "credentials" | "enrollment" | "payouts";
 
 interface Tab {
   key: TabKey;
@@ -36,6 +38,9 @@ interface SettingsTabsProps {
   showTeamTab: boolean;
   showCredentials: boolean;
   showEnrollment: boolean;
+  showPayouts: boolean;
+  connectStatus: ConnectStatus | null;
+  initialTab?: TabKey;
   enrollmentData: FacilityEnrollmentData | null;
   facilityName: string;
   providerName: string;
@@ -58,6 +63,9 @@ export function SettingsTabs({
   showTeamTab,
   showCredentials,
   showEnrollment,
+  showPayouts,
+  connectStatus,
+  initialTab,
   enrollmentData,
   facilityName,
   providerName,
@@ -79,9 +87,12 @@ export function SettingsTabs({
     ...(showEnrollment
       ? [{ key: "enrollment" as TabKey, label: "Enrollment", icon: ClipboardList }]
       : []),
+    ...(showPayouts
+      ? [{ key: "payouts" as TabKey, label: "Payouts", icon: Banknote }]
+      : []),
   ];
 
-  const [active, setActive] = useState<TabKey>("profile");
+  const [active, setActive] = useState<TabKey>(initialTab ?? "profile");
 
   return (
     <div className="space-y-6">
@@ -142,6 +153,11 @@ export function SettingsTabs({
               billingZipPrefill={billingZipPrefill}
               billingPhonePrefill={billingPhonePrefill}
             />
+          </div>
+        )}
+        {showPayouts && connectStatus && (
+          <div hidden={active !== "payouts"}>
+            <PayoutsTab status={connectStatus} />
           </div>
         )}
       </div>

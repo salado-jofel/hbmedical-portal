@@ -306,19 +306,18 @@ export default function InviteSignUpForm({
     }
 
     if (officeStepIndex !== null && step === officeStepIndex) {
-      const nameLabel =
-        role === "sales_representative" ? "Account name" : "Practice name";
-      if (!officeName.trim()) {
-        setClientError(`${nameLabel} is required.`);
-        return;
-      }
-      if (!officePhone.trim()) {
-        setClientError(
-          role === "sales_representative"
-            ? "Account phone is required."
-            : "Office phone is required.",
-        );
-        return;
+      // For sales reps, Company name + Company number are optional — some
+      // reps operate as individuals with no company entity. For clinical
+      // providers, Practice name + Office phone remain required.
+      if (role !== "sales_representative") {
+        if (!officeName.trim()) {
+          setClientError("Practice name is required.");
+          return;
+        }
+        if (!officePhone.trim()) {
+          setClientError("Office phone is required.");
+          return;
+        }
       }
       if (!officeAddress.trim() || !officeCity.trim() || !officeState.trim() || !officePostalCode.trim()) {
         setClientError("Address, city, state, and ZIP code are required.");
@@ -583,18 +582,22 @@ export default function InviteSignUpForm({
                 </h2>
                 <AuthField
                   id="office_name"
-                  label={role === "sales_representative" ? "Account name" : "Practice name"}
+                  label={role === "sales_representative" ? "Company name" : "Practice name"}
                   name="office_name_display"
                   type="text"
                   value={officeName}
                   onChange={(e) => setOfficeName(e.target.value)}
-                  placeholder="Sunrise Medical Group"
+                  placeholder={
+                    role === "sales_representative"
+                      ? "Your company (leave blank if none)"
+                      : "Sunrise Medical Group"
+                  }
                 />
                 <PhoneInputField
                   value={officePhone}
                   onChange={(val) => setOfficePhone(val)}
-                  label={role === "sales_representative" ? "Account phone" : "Office phone"}
-                  required
+                  label={role === "sales_representative" ? "Company number" : "Office phone"}
+                  required={role !== "sales_representative"}
                   theme="light"
                 />
                 <AuthField

@@ -141,24 +141,32 @@ export async function inviteSignUp(
     // ── CASE B — Sales representative (sub-rep) ───────────────────────────────
     if (inviteToken.role_type === "sales_representative") {
       // Read the rep's account (rep_office) details captured in the office step.
-      const officeName = (formData.get("office_name") as string)?.trim();
-      const officePhone = toE164((formData.get("office_phone") as string) ?? "");
+      // Company name + Company number are OPTIONAL for sales reps (some operate
+      // as individuals with no company entity). Address fields are still required.
+      const officeName = (formData.get("office_name") as string)?.trim() || "";
+      const officePhoneRaw = (formData.get("office_phone") as string) ?? "";
       const officeAddress = (formData.get("office_address") as string)?.trim();
       const officeCity = (formData.get("office_city") as string)?.trim();
       const officeState = (formData.get("office_state") as string)?.trim();
       const officePostalCode = (formData.get("office_postal_code") as string)?.trim();
 
-      if (!officeName || !officeAddress || !officeCity || !officeState || !officePostalCode) {
+      if (!officeAddress || !officeCity || !officeState || !officePostalCode) {
         await supabaseAdmin.auth.admin.deleteUser(createdUserId);
-        return { error: "Account name and full address are required." };
+        return { error: "Full address is required." };
       }
+
+      // `facilities.name` is NOT NULL — fall back to "N/A" when the rep left
+      // Company name blank (per client spec, 2026-04-23).
+      const facilityName = officeName || "N/A";
+      // Same for phone — skip the +1 default when nothing was typed.
+      const officePhone = officePhoneRaw.trim() ? toE164(officePhoneRaw) : null;
 
       // Create the rep's account/office facility.
       const { error: facilityError } = await supabaseAdmin
         .from("facilities")
         .insert({
           user_id: createdUserId,
-          name: officeName,
+          name: facilityName,
           contact: `${firstName} ${lastName}`.trim(),
           phone: officePhone,
           address_line_1: officeAddress,
