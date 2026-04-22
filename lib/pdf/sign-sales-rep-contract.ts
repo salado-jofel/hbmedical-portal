@@ -62,6 +62,108 @@ function coerceString(v: unknown): string {
 }
 
 /**
+ * For every radio group, draw a crisp X inside the selected widget's rect, then
+ * strip ALL radio widgets from both page /Annots and /AcroForm/Fields so
+ * pdf-lib's flatten() doesn't re-render the Genspark widget appearances (which
+ * don't align cleanly with the template's baked checkbox graphics). The manual
+ * X gives us full control over the visual mark and guarantees alignment.
+ */
+function stampAndStripRadios(pdf: PDFDocument): void {
+  const form = pdf.getForm();
+  const radios = form
+    .getFields()
+    .filter((f) => f.constructor.name === "PDFRadioGroup");
+  if (radios.length === 0) return;
+  const pages = pdf.getPages();
+
+  // Draw X at each selected widget's rect
+  for (const rg of radios) {
+    for (const w of rg.acroField.getWidgets()) {
+      const asEntry = w.dict.get(PDFName.of("AS"));
+      if (!asEntry) continue;
+      const asName = pdf.context.lookup(asEntry);
+      if (asName?.toString?.() === "/Off") continue;
+
+      // Locate the widget's page by matching dict identity
+      let widgetPage = pages[0];
+      for (const p of pages) {
+        const annots = p.node.Annots();
+        if (!annots) continue;
+        const arr = annots.asArray();
+        const match = arr.some((entry) => {
+          try {
+            return pdf.context.lookup(entry) === w.dict;
+          } catch {
+            return false;
+          }
+        });
+        if (match) {
+          widgetPage = p;
+          break;
+        }
+      }
+
+      const r = w.getRectangle();
+      const inset = Math.max(2, r.width * 0.2);
+      const x1 = r.x + inset;
+      const y1 = r.y + inset;
+      const x2 = r.x + r.width - inset;
+      const y2 = r.y + r.height - inset;
+      widgetPage.drawLine({
+        start: { x: x1, y: y1 },
+        end: { x: x2, y: y2 },
+        thickness: 1.5,
+        color: rgb(0, 0, 0),
+      });
+      widgetPage.drawLine({
+        start: { x: x1, y: y2 },
+        end: { x: x2, y: y1 },
+        thickness: 1.5,
+        color: rgb(0, 0, 0),
+      });
+    }
+  }
+
+  // Strip every radio widget from /Annots and every radio field from /AcroForm/Fields
+  const widgetDicts = new Set<PDFDict>();
+  const fieldRefs = new Set<PDFRef>();
+  for (const rg of radios) {
+    fieldRefs.add(rg.ref);
+    for (const w of rg.acroField.getWidgets()) widgetDicts.add(w.dict);
+  }
+  for (const page of pages) {
+    const annots = page.node.Annots();
+    if (!annots) continue;
+    for (let i = annots.size() - 1; i >= 0; i--) {
+      try {
+        const resolved = pdf.context.lookup(annots.get(i));
+        if (resolved instanceof PDFDict && widgetDicts.has(resolved)) {
+          annots.remove(i);
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  const acroEntry = pdf.catalog.get(PDFName.of("AcroForm"));
+  if (acroEntry) {
+    const acroDict = pdf.context.lookup(acroEntry);
+    if (acroDict instanceof PDFDict) {
+      const fe = acroDict.get(PDFName.of("Fields"));
+      if (fe) {
+        const fa = pdf.context.lookup(fe);
+        if (fa instanceof PDFArray) {
+          for (let i = fa.size() - 1; i >= 0; i--) {
+            const e = fa.get(i);
+            if (e instanceof PDFRef && fieldRefs.has(e)) fa.remove(i);
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
  * Remove PDFSignature fields from the form at the low PDF-dict level. We need
  * this because pdf-lib's form.flatten() throws "Unexpected N type: undefined"
  * on signature widgets that have no /AP appearance stream — which includes the
@@ -226,6 +328,7 @@ export async function stampSalesRepContract({
   //       level first lets the remaining text + radio fields flatten into
   //       static page content — output is non-editable in any PDF viewer. ──
   try {
+    stampAndStripRadios(pdf);
     removeSignatureFields(pdf);
     pdf.getForm().flatten();
   } catch (e) {

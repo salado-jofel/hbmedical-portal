@@ -65,7 +65,7 @@ export const SALES_REP_CONTRACTS: readonly ContractDef[] = [
     key: "code_of_conduct",
     label: "Code of Conduct",
     storagePath: "sales-rep-contracts-readonly/code-of-conduct.pdf",
-    steps: ["Review & Sign"],
+    steps: ["Confirm", "Sign"],
     fields: [
       { key: "staff_member", label: "Staff Member (printed name)", type: "text", required: true, step: 0 },
     ],
@@ -95,19 +95,19 @@ export const SALES_REP_CONTRACTS: readonly ContractDef[] = [
   {
     key: "hep_b_consent",
     label: "Hepatitis B Vaccination Consent / Waiver",
-    storagePath: "sales-rep-contracts-readonly/hep-b-consent.pdf",
-    steps: ["Choose & Sign"],
+    storagePath: "sales-rep-contracts-readonly/hep-b-consent-v3.pdf",
+    steps: ["Consent", "Sign"],
     fields: [
       { key: "name", label: "Name (Please Print)", type: "text", required: true, step: 0 },
       {
         key: "vaccine_choice",
-        label: "Your choice",
+        label: "Choose one",
         type: "radio",
         required: true,
         step: 0,
         options: [
           { value: "accept", label: "I would like the Hepatitis B Vaccine" },
-          { value: "decline", label: "I decline the Hepatitis B Vaccine (sign waiver)" },
+          { value: "decline", label: "I would like to Refuse the Hepatitis B Vaccine" },
         ],
       },
     ],
