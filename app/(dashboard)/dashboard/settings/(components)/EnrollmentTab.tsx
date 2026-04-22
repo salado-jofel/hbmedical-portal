@@ -185,19 +185,6 @@ export function EnrollmentTab({
         shippingAddress={fields.shippingAddress}               onShippingAddressChange={set("shippingAddress")}
         shippingPhone={fields.shippingPhone}                   onShippingPhoneChange={set("shippingPhone")}
       />
-
-      {/* Bottom save button (always visible for convenience) */}
-      <div className="flex justify-end pt-2">
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={isSaving || !isDirty}
-          className="flex items-center gap-1.5 rounded-lg bg-[var(--navy)] hover:bg-[var(--navy)]/80 disabled:opacity-40 disabled:cursor-not-allowed text-white text-[13px] font-medium px-4 h-9 transition-colors"
-        >
-          {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-          Save Enrollment
-        </button>
-      </div>
     </div>
   );
 }

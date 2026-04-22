@@ -32,6 +32,8 @@ export async function inviteSubRep(
     const raw = {
       email: formData.get("email") as string,
       expires_in_days: formData.get("expires_in_days") ?? "30",
+      commission_rate: formData.get("commission_rate") as string | null,
+      commission_override: formData.get("commission_override") as string | null,
     };
 
     const parsed = inviteSubRepSchema.safeParse(raw);
@@ -43,7 +45,7 @@ export async function inviteSubRep(
       return { error: parsed.error.issues[0]?.message ?? "Invalid input.", success: false };
     }
 
-    const { email, expires_in_days } = parsed.data;
+    const { email, expires_in_days, commission_rate, commission_override } = parsed.data;
     const adminClient = createAdminClient();
 
     // Block if the email already has an account.
@@ -83,6 +85,8 @@ export async function inviteSubRep(
         role_type: "sales_representative",
         expires_at: expiresAt,
         invited_email: email,
+        commission_rate,
+        commission_override,
       })
       .select("id, token")
       .single();

@@ -54,11 +54,14 @@ export async function saveCredentials(
     const supabase = await createClient();
     const user = await getCurrentUserOrThrow(supabase);
 
+    // The settings UI was trimmed to only collect NPI. Other columns
+    // (`credential`, `ptan_number`, `medical_license_number`) remain in the
+    // DB schema but are no longer written from this form — an upsert that
+    // omits them leaves any existing row's values untouched. If the client
+    // ever wants those fields back, re-add them to CredentialsForm + this
+    // action.
     const raw = {
-      credential: toNullable(formData.get("credential") as string),
       npi_number: toNullable(formData.get("npi_number") as string),
-      ptan_number: toNullable(formData.get("ptan_number") as string),
-      medical_license_number: toNullable(formData.get("medical_license_number") as string),
     };
 
     const parsed = saveCredentialsSchema.safeParse(raw);
@@ -71,10 +74,7 @@ export async function saveCredentials(
       .upsert(
         {
           user_id: user.id,
-          credential: parsed.data.credential ?? null,
           npi_number: parsed.data.npi_number ?? null,
-          ptan_number: parsed.data.ptan_number ?? null,
-          medical_license_number: parsed.data.medical_license_number ?? null,
         },
         { onConflict: "user_id" },
       );

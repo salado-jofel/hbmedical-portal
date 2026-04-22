@@ -12,7 +12,10 @@ import type { IFacilityMember } from "@/utils/interfaces/facility-members";
 import type { IProviderCredentials } from "@/utils/interfaces/provider-credentials";
 import type { ISubRep } from "@/utils/interfaces/sub-reps";
 import type { IClinicAccount } from "@/utils/interfaces/settings";
-import type { FacilityEnrollmentData } from "@/app/(dashboard)/dashboard/settings/(services)/actions";
+import type {
+  FacilityEnrollmentData,
+  IAssignedRep,
+} from "@/app/(dashboard)/dashboard/settings/(services)/actions";
 
 type TabKey = "profile" | "team" | "credentials" | "enrollment";
 
@@ -28,6 +31,7 @@ interface SettingsTabsProps {
   myClinicAccounts: IClinicAccount[];
   mySubReps: ISubRep[];
   myClinicMembers: IFacilityMember[];
+  myAssignedRep: IAssignedRep | null;
   credentials: IProviderCredentials | null;
   showTeamTab: boolean;
   showCredentials: boolean;
@@ -49,6 +53,7 @@ export function SettingsTabs({
   myClinicAccounts,
   mySubReps,
   myClinicMembers,
+  myAssignedRep,
   credentials,
   showTeamTab,
   showCredentials,
@@ -100,32 +105,44 @@ export function SettingsTabs({
         ))}
       </div>
 
-      {/* Tab content */}
+      {/* Tab content — all tabs stay MOUNTED; we only hide the inactive ones.
+          Unmounting on tab-switch would wipe in-memory form state (Enrollment
+          especially — its initial values come from a server-rendered prop that
+          doesn't refresh until a full page reload). */}
       <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[var(--r)] p-5">
-        {active === "profile" && <ProfileTab profile={profile} />}
-        {active === "team" && (
-          <TeamTab
-            isRep={isRep}
-            myClinicAccounts={myClinicAccounts}
-            mySubReps={mySubReps}
-            myClinicMembers={myClinicMembers}
-          />
+        <div hidden={active !== "profile"}>
+          <ProfileTab profile={profile} />
+        </div>
+        {showTeamTab && (
+          <div hidden={active !== "team"}>
+            <TeamTab
+              isRep={isRep}
+              myClinicAccounts={myClinicAccounts}
+              mySubReps={mySubReps}
+              myClinicMembers={myClinicMembers}
+              myAssignedRep={myAssignedRep}
+            />
+          </div>
         )}
-        {active === "credentials" && showCredentials && (
-          <CredentialsTab credentials={credentials} />
+        {showCredentials && (
+          <div hidden={active !== "credentials"}>
+            <CredentialsTab credentials={credentials} />
+          </div>
         )}
-        {active === "enrollment" && showEnrollment && (
-          <EnrollmentTab
-            enrollmentData={enrollmentData}
-            facilityName={facilityName}
-            providerName={providerName}
-            providerNpi={providerNpi}
-            billingAddressPrefill={billingAddressPrefill}
-            billingCityPrefill={billingCityPrefill}
-            billingStatePrefill={billingStatePrefill}
-            billingZipPrefill={billingZipPrefill}
-            billingPhonePrefill={billingPhonePrefill}
-          />
+        {showEnrollment && (
+          <div hidden={active !== "enrollment"}>
+            <EnrollmentTab
+              enrollmentData={enrollmentData}
+              facilityName={facilityName}
+              providerName={providerName}
+              providerNpi={providerNpi}
+              billingAddressPrefill={billingAddressPrefill}
+              billingCityPrefill={billingCityPrefill}
+              billingStatePrefill={billingStatePrefill}
+              billingZipPrefill={billingZipPrefill}
+              billingPhonePrefill={billingPhonePrefill}
+            />
+          </div>
         )}
       </div>
     </div>

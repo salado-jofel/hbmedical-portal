@@ -12,6 +12,7 @@ import {
   getMyClinicAccounts,
   getMySubReps,
   getMyClinicMembers,
+  getMyAssignedRep,
   getMyEnrollment,
 } from "@/app/(dashboard)/dashboard/settings/(services)/actions";
 import { notFound } from "next/navigation";
@@ -34,11 +35,12 @@ export default async function SettingsPage() {
   // Admin manages all users via the Users page — no Team tab in Settings.
   // Support staff and clinical staff have no team management responsibilities.
 
-  const [myClinicAccounts, mySubReps, myClinicMembers, credentials, enrollmentData, facility] =
+  const [myClinicAccounts, mySubReps, myClinicMembers, myAssignedRep, credentials, enrollmentData, facility] =
     await Promise.all([
       repUser ? getMyClinicAccounts() : Promise.resolve([]),
       repUser ? getMySubReps() : Promise.resolve([]),
       providerUser ? getMyClinicMembers() : Promise.resolve([]),
+      providerUser ? getMyAssignedRep() : Promise.resolve(null),
       showCredentials ? getMyCredentials() : Promise.resolve(null),
       providerUser ? getMyEnrollment() : Promise.resolve(null),
       providerUser
@@ -66,6 +68,7 @@ export default async function SettingsPage() {
           myClinicAccounts={myClinicAccounts}
           mySubReps={mySubReps}
           myClinicMembers={myClinicMembers}
+          myAssignedRep={myAssignedRep}
           credentials={credentials}
           showTeamTab={showTeamTab}
           showCredentials={showCredentials}

@@ -26,6 +26,10 @@ export interface IInviteToken {
   expires_at: string | null;
   created_at: string;
   invited_email: string | null;
+  /** Sales-rep commission rate locked at invite time. Null for non-rep roles. */
+  commission_rate: number | null;
+  /** Commission override (for inviter) locked at invite time. Null for non-rep roles. */
+  commission_override: number | null;
   // Joined
   created_by_profile: {
     id: string;
@@ -60,6 +64,13 @@ export interface IInviteTokenFormState {
 /* Zod schema                                                                 */
 /* -------------------------------------------------------------------------- */
 
+const commissionPctField = z.coerce
+  .number()
+  .min(0, "Must be ≥ 0%.")
+  .max(100, "Must be ≤ 100%.")
+  .nullable()
+  .optional();
+
 export const generateInviteTokenSchema = z.object({
   email: z.string().email("Enter a valid email address.").min(1, "Email is required."),
   facility_id: z.string().uuid("Invalid account.").nullable().optional(),
@@ -69,6 +80,12 @@ export const generateInviteTokenSchema = z.object({
     "sales_representative",
   ]),
   expires_in_days: z.coerce.number().int().min(1).max(365).default(30),
+  /** Commission rate (%) the invited rep earns on their own sales.
+   *  Required when `role_type === "sales_representative"`. */
+  commission_rate: commissionPctField,
+  /** Commission override (%) the inviter earns on this rep's sales.
+   *  Required when `role_type === "sales_representative"`. */
+  commission_override: commissionPctField,
 });
 
 export type GenerateInviteTokenInput = z.infer<typeof generateInviteTokenSchema>;
@@ -88,6 +105,10 @@ export type RawInviteTokenRecord = {
   expires_at: string | null;
   created_at: string;
   invited_email: string | null;
+  /** Sales-rep commission rate locked at invite time. Null for non-rep roles. */
+  commission_rate: number | null;
+  /** Commission override (for inviter) locked at invite time. Null for non-rep roles. */
+  commission_override: number | null;
   created_by_profile: {
     id: string;
     first_name: string;
@@ -123,6 +144,10 @@ export function mapInviteToken(raw: RawInviteTokenRecord): IInviteToken {
         : usedByProfile.created_facility ?? null)
     : null;
 
+  const rawAny = raw as unknown as Record<string, unknown>;
+  const commissionRate = rawAny.commission_rate;
+  const commissionOverride = rawAny.commission_override;
+
   return {
     id: raw.id,
     token: raw.token,
@@ -134,6 +159,10 @@ export function mapInviteToken(raw: RawInviteTokenRecord): IInviteToken {
     expires_at: raw.expires_at,
     created_at: raw.created_at,
     invited_email: raw.invited_email ?? null,
+    commission_rate:
+      commissionRate == null ? null : Number(commissionRate),
+    commission_override:
+      commissionOverride == null ? null : Number(commissionOverride),
     created_by_profile: raw.created_by_profile ?? null,
     facility: raw.facility ?? null,
     used_by_name: usedByProfile

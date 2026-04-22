@@ -10,6 +10,7 @@ import { cn } from "@/utils/utils";
 import {
   deleteCredentials,
   verifyAndChangePin,
+  resetPinWithPassword,
 } from "@/app/(dashboard)/dashboard/settings/(services)/actions";
 import type { IProviderCredentials } from "@/utils/interfaces/provider-credentials";
 import ConfirmModal from "@/app/(components)/ConfirmModal";
@@ -31,18 +32,28 @@ function ChangePinModal({
   onSuccess: () => void;
 }) {
   const [currentPin, setCurrentPin] = useState("");
+  const [password,   setPassword]   = useState("");
   const [newPin,     setNewPin]     = useState("");
   const [confirmPin, setConfirmPin] = useState("");
-  const [showCurrent, setShowCurrent] = useState(false);
-  const [showNew,     setShowNew]     = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
+  const [showCurrent,  setShowCurrent]  = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showNew,      setShowNew]      = useState(false);
+  const [showConfirm,  setShowConfirm]  = useState(false);
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState<string | null>(null);
+  /** Forgot-PIN mode: swap the "Current PIN" field for "Account Password",
+   *  which the server re-verifies before allowing the new PIN to be set. */
+  const [forgotMode, setForgotMode] = useState(false);
 
   async function handleSubmit() {
     setError(null);
 
-    if (hasPinSet && !currentPin) {
+    if (forgotMode) {
+      if (!password.trim()) {
+        setError("Please enter your account password.");
+        return;
+      }
+    } else if (hasPinSet && !currentPin) {
       setError("Please enter your current PIN.");
       return;
     }
@@ -58,16 +69,18 @@ function ChangePinModal({
       setError("New PINs do not match.");
       return;
     }
-    if (hasPinSet && newPin === currentPin) {
+    if (!forgotMode && hasPinSet && newPin === currentPin) {
       setError("New PIN must be different from current PIN.");
       return;
     }
 
     setSaving(true);
-    const result = await verifyAndChangePin(
-      hasPinSet ? currentPin : "SKIP_VERIFY",
-      newPin,
-    );
+    const result = forgotMode
+      ? await resetPinWithPassword(password, newPin)
+      : await verifyAndChangePin(
+          hasPinSet ? currentPin : "SKIP_VERIFY",
+          newPin,
+        );
     setSaving(false);
 
     if (!result.success) {
@@ -86,12 +99,14 @@ function ChangePinModal({
         <div className="flex items-center justify-between mb-5">
           <div>
             <h2 className="text-base font-bold text-gray-900">
-              {hasPinSet ? "Change PIN" : "Set PIN"}
+              {forgotMode ? "Reset PIN" : hasPinSet ? "Change PIN" : "Set PIN"}
             </h2>
             <p className="text-xs text-gray-500 mt-0.5">
-              {hasPinSet
-                ? "Enter your current PIN to set a new one."
-                : "Create a 4-digit PIN for signing orders."}
+              {forgotMode
+                ? "Enter your account password to set a new PIN."
+                : hasPinSet
+                  ? "Enter your current PIN to set a new one."
+                  : "Create a 4-digit PIN for signing orders."}
             </p>
           </div>
           <button
@@ -105,12 +120,25 @@ function ChangePinModal({
 
         <div className="space-y-4">
 
-          {/* Current PIN — only if PIN already set */}
-          {hasPinSet && (
+          {/* Current PIN — only if PIN already set AND not in forgot-mode */}
+          {hasPinSet && !forgotMode && (
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                Current PIN
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  Current PIN
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setForgotMode(true);
+                    setCurrentPin("");
+                    setError(null);
+                  }}
+                  className="text-xs text-[var(--navy)] hover:underline font-medium"
+                >
+                  Forgot PIN?
+                </button>
+              </div>
               <div className="relative">
                 <input
                   type={showCurrent ? "text" : "password"}
@@ -129,6 +157,48 @@ function ChangePinModal({
                   {showCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+            </div>
+          )}
+
+          {/* Forgot-mode: Account Password instead of Current PIN */}
+          {forgotMode && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  Account password
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setForgotMode(false);
+                    setPassword("");
+                    setError(null);
+                  }}
+                  className="text-xs text-gray-500 hover:underline"
+                >
+                  Back to Change PIN
+                </button>
+              </div>
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter your account password"
+                  autoComplete="current-password"
+                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--navy)]/20 focus:border-[var(--navy)]"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((p) => !p)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <p className="text-[11px] text-gray-500">
+                We&apos;ll email you a notification after your PIN is reset.
+              </p>
             </div>
           )}
 

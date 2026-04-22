@@ -202,6 +202,33 @@ export async function inviteSignUp(
         }
       }
 
+      // Seed the commission_rates row from the invite (admin or parent rep
+      // locked the values at invite time via CommissionSliders). Non-fatal —
+      // if this insert fails the rep still gets an account; the setter can
+      // manually adjust via the Commissions page.
+      if (
+        inviteToken.commission_rate != null &&
+        inviteToken.commission_override != null
+      ) {
+        const todayISO = new Date().toISOString().slice(0, 10);
+        const { error: rateError } = await supabaseAdmin
+          .from("commission_rates")
+          .insert({
+            rep_id: createdUserId,
+            set_by: inviteToken.created_by,
+            rate_percent: inviteToken.commission_rate,
+            override_percent: inviteToken.commission_override,
+            effective_from: todayISO,
+            effective_to: null,
+          });
+        if (rateError) {
+          console.error(
+            "[inviteSignUp] commission_rates insert error:",
+            JSON.stringify(rateError),
+          );
+        }
+      }
+
       // Account details captured inline — rep can skip /onboarding/setup.
       await supabaseAdmin
         .from("profiles")

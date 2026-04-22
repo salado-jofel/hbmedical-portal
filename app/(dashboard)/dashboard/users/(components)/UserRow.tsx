@@ -1,6 +1,6 @@
 "use client";
 
-import { UserX, UserCheck, Trash2, Mail, Loader2 } from "lucide-react";
+import { UserX, UserCheck, Trash2, Mail, Loader2, KeyRound } from "lucide-react";
 import { ROLE_LABELS } from "@/utils/helpers/role";
 import type { UserRole } from "@/utils/helpers/role";
 import type { IUser, UserStatus } from "@/utils/interfaces/users";
@@ -30,6 +30,8 @@ interface UserRowActionsProps {
   onReactivate: (userId: string) => void;
   onResendInvite: (user: IUser) => void;
   onDeleteClick: (userId: string) => void;
+  /** Admin-only PIN reset. Only rendered for active clinical providers. */
+  onResetPin?: (user: IUser) => void;
 }
 
 export function UserRowActions({
@@ -40,9 +42,12 @@ export function UserRowActions({
   onReactivate,
   onResendInvite,
   onDeleteClick,
+  onResetPin,
 }: UserRowActionsProps) {
   const isActing = pendingId === user.id;
   const isResending = loadingId === user.id;
+  const canResetPin =
+    !!onResetPin && user.role === "clinical_provider" && user.status === "active";
 
   if (user.status === "pending") {
     return (
@@ -75,16 +80,30 @@ export function UserRowActions({
 
   if (user.status === "active") {
     return (
-      <button
-        type="button"
-        onClick={(e) => { e.stopPropagation(); onDeactivate(user.id); }}
-        disabled={isActing}
-        className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded-lg text-xs font-medium text-[var(--text3)] hover:text-red-500 hover:bg-red-50 transition-all disabled:opacity-40 opacity-0 group-hover:opacity-100"
-        title="Deactivate user"
-      >
-        <UserX className="w-3.5 h-3.5" />
-        <span className="hidden sm:inline">Deactivate</span>
-      </button>
+      <div className="inline-flex items-center gap-1 justify-end">
+        {canResetPin && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onResetPin!(user); }}
+            disabled={isActing}
+            className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded-lg text-xs font-medium text-[var(--text3)] hover:text-[var(--navy)] hover:bg-[#EFF6FF] transition-all disabled:opacity-40 opacity-0 group-hover:opacity-100"
+            title="Reset this provider's signing PIN"
+          >
+            <KeyRound className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Reset PIN</span>
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onDeactivate(user.id); }}
+          disabled={isActing}
+          className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded-lg text-xs font-medium text-[var(--text3)] hover:text-red-500 hover:bg-red-50 transition-all disabled:opacity-40 opacity-0 group-hover:opacity-100"
+          title="Deactivate user"
+        >
+          <UserX className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">Deactivate</span>
+        </button>
+      </div>
     );
   }
 

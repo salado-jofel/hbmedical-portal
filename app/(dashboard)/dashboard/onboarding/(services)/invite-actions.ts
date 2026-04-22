@@ -74,6 +74,8 @@ export async function generateInviteToken(
       facility_id: facilityId,
       role_type: formData.get("role_type") as string,
       expires_in_days: formData.get("expires_in_days") ?? "30",
+      commission_rate: formData.get("commission_rate") as string | null,
+      commission_override: formData.get("commission_override") as string | null,
     };
 
     const parsed = generateInviteTokenSchema.safeParse(raw);
@@ -84,6 +86,15 @@ export async function generateInviteToken(
       }
       const msg = parsed.error?.issues?.[0]?.message ?? "Invalid input.";
       return { error: msg, success: false };
+    }
+
+    // Sales-rep invites must carry both commission fields. The sliders default
+    // to valid values so this only trips if someone submits the form without
+    // them (e.g. direct action call).
+    if (parsed.data.role_type === "sales_representative") {
+      if (parsed.data.commission_rate == null || parsed.data.commission_override == null) {
+        return { error: "Commission rate and override are required.", success: false };
+      }
     }
 
     const expiresAt = new Date(
@@ -189,6 +200,16 @@ export async function generateInviteToken(
         role_type: parsed.data.role_type,
         expires_at: expiresAt,
         invited_email: parsed.data.email,
+        // Commission fields — only meaningful for sales-rep invites; null for
+        // other role types.
+        commission_rate:
+          parsed.data.role_type === "sales_representative"
+            ? parsed.data.commission_rate
+            : null,
+        commission_override:
+          parsed.data.role_type === "sales_representative"
+            ? parsed.data.commission_override
+            : null,
       })
       .select("id, token")
       .single();
