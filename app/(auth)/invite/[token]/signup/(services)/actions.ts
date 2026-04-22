@@ -17,8 +17,8 @@ import {
   signedContractPath,
   previewContractPath,
   CONTRACT_SOURCES,
-  MERIDIAN_SIGNER,
   type ContractType,
+  type ContractParagraphFields,
 } from "@/lib/pdf/sign-contract";
 import { sendProviderContractsSignedEmail } from "@/lib/emails/send-provider-contracts-signed";
 import {
@@ -28,6 +28,10 @@ import {
   type SalesRepContractKey,
 } from "@/lib/pdf/sales-rep-contracts";
 import { stampSalesRepContract } from "@/lib/pdf/sign-sales-rep-contract";
+import {
+  isKnownContractTemplate,
+  loadContractTemplate,
+} from "@/lib/pdf/templates";
 import { sendSalesRepContractsSignedEmail } from "@/lib/emails/send-sales-rep-contracts-signed";
 
 const initialInviteSignUpState: InviteSignUpState = { error: null };
@@ -517,42 +521,29 @@ export async function getContractSignedUrls(token: string): Promise<{
     const adminClient = createAdminClient();
     const EXPIRES_IN = 3600;
 
-    // Try to download Dr Pienkos's signature once; both previews reuse it.
-    let meridianSigPng: Uint8Array | null = null;
-    try {
-      const { data: sigBlob } = await adminClient.storage
-        .from(BUCKET)
-        .download(MERIDIAN_SIGNER.signaturePath);
-      if (sigBlob) {
-        meridianSigPng = new Uint8Array(await sigBlob.arrayBuffer());
-      }
-    } catch {
-      meridianSigPng = null;
-    }
-
     const today = new Date();
     const buildPreview = async (contractType: ContractType): Promise<string | null> => {
       const source = CONTRACT_SOURCES[contractType];
-      const { data: sourceBlob, error: sourceErr } = await adminClient.storage
-        .from(BUCKET)
-        .download(source.path);
-      if (sourceErr || !sourceBlob) {
+      let sourceBytes: Uint8Array;
+      try {
+        if (!isKnownContractTemplate(source.templateFile)) {
+          console.error(
+            `[getContractSignedUrls] unknown template for ${contractType}: ${source.templateFile}`,
+          );
+          return null;
+        }
+        sourceBytes = await loadContractTemplate(source.templateFile);
+      } catch (err) {
         console.error(
-          `[getContractSignedUrls] source download failed for ${contractType}:`,
-          sourceErr?.message,
+          `[getContractSignedUrls] template load failed for ${contractType}:`,
+          err,
         );
         return null;
       }
-      const sourceBytes = new Uint8Array(await sourceBlob.arrayBuffer());
       const stamped = await stampContractPdf({
         sourcePdf: sourceBytes,
         contractType,
-        meridian: {
-          name: MERIDIAN_SIGNER.name,
-          title: MERIDIAN_SIGNER.title,
-          date: today,
-          signaturePng: meridianSigPng,
-        },
+        meridianDate: today,
         // client omitted — leaves CLIENT block blank for the user to sign
       });
       const previewPath = previewContractPath(token, contractType);
@@ -607,6 +598,10 @@ export interface SignContractInput {
   signatureMethod: "type" | "draw" | "upload";
   /** data: URL from the signature canvas / typed renderer / uploaded image */
   signatureDataUrl: string;
+  /** BAA + PSA share the same 6 opening-paragraph field shape. Pre-filled
+   *  client-side from the provider's signup state (officeName, officeAddress,
+   *  etc.) plus today's date and the user-typed entity type. */
+  paragraph?: ContractParagraphFields;
 }
 
 export interface SignContractResult {
@@ -672,32 +667,22 @@ export async function signContract(
     const admin = createAdminClient();
     const source = CONTRACT_SOURCES[contractType];
 
-    // ── Fetch source PDF ──
-    const { data: sourceBlob, error: sourceErr } = await admin.storage
-      .from(BUCKET)
-      .download(source.path);
-    if (sourceErr || !sourceBlob) {
-      console.error("[signContract] source download failed:", sourceErr?.message);
-      return { success: false, error: "Failed to load contract template." };
-    }
-    const sourceBytes = new Uint8Array(await sourceBlob.arrayBuffer());
-
-    // ── Optional: fetch Pienkos signature (swallow errors) ──
-    let meridianSigPng: Uint8Array | null = null;
+    // ── Load source PDF from lib/pdf/templates/ (not Supabase Storage — see
+    //    lib/pdf/templates/index.ts) ──
+    let sourceBytes: Uint8Array;
     try {
-      const { data: sigBlob } = await admin.storage
-        .from(BUCKET)
-        .download(MERIDIAN_SIGNER.signaturePath);
-      if (sigBlob) {
-        meridianSigPng = new Uint8Array(await sigBlob.arrayBuffer());
+      if (!isKnownContractTemplate(source.templateFile)) {
+        return { success: false, error: "Unknown contract template." };
       }
-    } catch {
-      meridianSigPng = null;
+      sourceBytes = await loadContractTemplate(source.templateFile);
+    } catch (err) {
+      console.error("[signContract] template load failed:", err);
+      return { success: false, error: "Failed to load contract template." };
     }
 
     const today = new Date();
 
-    // ── Stamp PDF ──
+    // ── Stamp PDF (Meridian name/title/signature already baked into template) ──
     const stamped = await stampContractPdf({
       sourcePdf: sourceBytes,
       contractType,
@@ -707,12 +692,8 @@ export async function signContract(
         date: today,
         signaturePng: signatureBytes,
       },
-      meridian: {
-        name: MERIDIAN_SIGNER.name,
-        title: MERIDIAN_SIGNER.title,
-        date: today,
-        signaturePng: meridianSigPng,
-      },
+      meridianDate: today,
+      paragraph: input.paragraph,
     });
 
     // ── Upload signed PDF ──
@@ -741,7 +722,7 @@ export async function signContract(
         {
           invite_token: token,
           contract_type: contractType,
-          source_path: source.path,
+          source_path: source.templateFile,
           signed_path: signedPath,
           typed_name: typedName.trim(),
           typed_title: typedTitle.trim(),
@@ -862,9 +843,10 @@ export async function getSalesRepContractUrls(
 
     const contracts: SalesRepContractMeta[] = [];
     for (const def of SALES_REP_CONTRACTS) {
-      const { data: srcUrl } = await admin.storage
-        .from(BUCKET)
-        .createSignedUrl(def.storagePath, EXPIRES_IN);
+      // Source previews are now served by our own API route that reads from
+      // lib/pdf/templates/. Token gates the route so the iframe URLs can't be
+      // scraped by anyone without a live invite.
+      const sourceUrl = `/api/contract-template/${def.templateFile}?token=${encodeURIComponent(token)}`;
       // Check if there's an already-signed copy for this token+contract
       const signedPath = salesRepContractSignedPath(token, def.key);
       const { data: signedList } = await admin.storage
@@ -880,7 +862,7 @@ export async function getSalesRepContractUrls(
       contracts.push({
         key: def.key,
         label: def.label,
-        sourceUrl: srcUrl?.signedUrl ?? null,
+        sourceUrl,
         signedUrl,
       });
     }
@@ -888,6 +870,75 @@ export async function getSalesRepContractUrls(
   } catch (err) {
     console.error("[getSalesRepContractUrls]", err);
     return { contracts: [], error: "Failed to load contract documents." };
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ *  Upload a sales-rep contract attachment (e.g. I-9 List A/B/C document
+ *  scans). Called from the sign modal before finalizing a signature so the
+ *  file is in storage by the time `signSalesRepContract` fetches + merges it.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+const ALLOWED_ATTACHMENT_MIMES = new Set([
+  "application/pdf",
+  "image/png",
+  "image/jpeg",
+]);
+
+export interface UploadAttachmentResult {
+  success: boolean;
+  path?: string;
+  error?: string;
+}
+
+export async function uploadSalesRepContractAttachment(
+  formData: FormData,
+): Promise<UploadAttachmentResult> {
+  try {
+    const token = (formData.get("token") as string) ?? "";
+    const contractKey = (formData.get("contractKey") as string) ?? "";
+    const slot = (formData.get("slot") as string) ?? "";
+    const file = formData.get("file") as File | null;
+
+    if (!token || !contractKey || !slot || !file) {
+      return { success: false, error: "Missing required upload fields." };
+    }
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      return { success: false, error: "File exceeds 5 MB limit." };
+    }
+    if (!ALLOWED_ATTACHMENT_MIMES.has(file.type)) {
+      return { success: false, error: "Unsupported file type. Use PDF, PNG, or JPG." };
+    }
+
+    const inviteToken = await validateInviteToken(token);
+    if (!inviteToken) {
+      return { success: false, error: "This invite link is no longer valid." };
+    }
+    if (inviteToken.role_type !== "sales_representative") {
+      return { success: false, error: "Only sales-rep invites can upload attachments." };
+    }
+
+    const admin = createAdminClient();
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80);
+    const path = `sales-rep-contract-uploads/${token}/${contractKey}/${Date.now()}-${slot}-${safeName}`;
+    const bytes = new Uint8Array(await file.arrayBuffer());
+
+    const { error } = await admin.storage.from(BUCKET).upload(path, bytes, {
+      contentType: file.type,
+      upsert: false,
+    });
+    if (error) {
+      console.error("[uploadSalesRepContractAttachment]", error.message);
+      return { success: false, error: "Failed to upload attachment." };
+    }
+    return { success: true, path };
+  } catch (err) {
+    console.error("[uploadSalesRepContractAttachment] unexpected:", err);
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Upload failed.",
+    };
   }
 }
 
@@ -899,6 +950,10 @@ export interface SignSalesRepContractInput {
   signatureMethod: "type" | "draw" | "upload";
   signatureDataUrl: string;
   formData: Record<string, unknown>;
+  /** Storage paths (inside BUCKET) of scanned document attachments to merge
+   *  into the signed PDF. Populated by `uploadSalesRepContractAttachment`
+   *  before this action is called. Currently only used by the I-9 flow. */
+  attachmentPaths?: string[];
 }
 
 export interface SignSalesRepContractResult {
@@ -919,6 +974,7 @@ export async function signSalesRepContract(
       signatureMethod,
       signatureDataUrl,
       formData,
+      attachmentPaths,
     } = input;
 
     if (!token || !typedName?.trim()) {
@@ -951,15 +1007,36 @@ export async function signSalesRepContract(
 
     const admin = createAdminClient();
 
-    // Fetch source PDF
-    const { data: sourceBlob, error: sourceErr } = await admin.storage
-      .from(BUCKET)
-      .download(def.storagePath);
-    if (sourceErr || !sourceBlob) {
-      console.error("[signSalesRepContract] source download failed:", sourceErr?.message);
+    // Load source PDF from the local templates folder (not Supabase Storage —
+    // see `lib/pdf/templates/index.ts` for the why).
+    let sourceBytes: Uint8Array;
+    try {
+      if (!isKnownContractTemplate(def.templateFile)) {
+        return { success: false, error: "Unknown contract template." };
+      }
+      sourceBytes = await loadContractTemplate(def.templateFile);
+    } catch (err) {
+      console.error("[signSalesRepContract] template load failed:", err);
       return { success: false, error: "Failed to load contract template." };
     }
-    const sourceBytes = new Uint8Array(await sourceBlob.arrayBuffer());
+
+    // Fetch any attachment bytes (I-9 uploads the rep's Section 2 document scans)
+    let attachments: Array<{ bytes: Uint8Array; mime: string; filename: string }> | undefined;
+    if (attachmentPaths && attachmentPaths.length > 0) {
+      attachments = [];
+      for (const p of attachmentPaths) {
+        const { data: blob, error: dErr } = await admin.storage.from(BUCKET).download(p);
+        if (dErr || !blob) {
+          console.error("[signSalesRepContract] attachment download failed:", p, dErr?.message);
+          continue;
+        }
+        attachments.push({
+          bytes: new Uint8Array(await blob.arrayBuffer()),
+          mime: blob.type || "application/octet-stream",
+          filename: p.split("/").pop() ?? "attachment",
+        });
+      }
+    }
 
     // Stamp
     const today = new Date();
@@ -969,6 +1046,7 @@ export async function signSalesRepContract(
       formData,
       signaturePng: signatureBytes,
       signedDate: today,
+      attachments,
     });
 
     // Upload signed copy
@@ -996,7 +1074,7 @@ export async function signSalesRepContract(
         {
           invite_token: token,
           contract_type: contractKey,
-          source_path: def.storagePath,
+          source_path: def.templateFile,
           signed_path: signedPath,
           typed_name: typedName.trim(),
           typed_title: typedTitle?.trim() || null,

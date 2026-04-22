@@ -34,6 +34,10 @@ export interface SignContractInput {
   formData: Record<string, unknown>;
   signaturePng: Uint8Array;
   signedDate: Date;
+  /** Additional scanned documents (e.g. I-9 List A/B/C) to merge as extra
+   *  pages AFTER the stamped contract content. PDFs are copied page-by-page;
+   *  PNG/JPG images are embedded as full-page images. */
+  attachments?: Array<{ bytes: Uint8Array; mime: string; filename: string }>;
 }
 
 function formatDate(d: Date): string {
@@ -231,13 +235,15 @@ export async function stampSalesRepContract({
   formData,
   signaturePng,
   signedDate,
+  attachments,
 }: SignContractInput): Promise<Uint8Array> {
   const pdf = await PDFDocument.load(sourcePdf);
   const form = pdf.getForm();
   const font = await pdf.embedFont(StandardFonts.Helvetica);
 
-  // ── 1) Fill every text + radio field declared on the contract ──
+  // ── 1) Fill every text + radio + checkbox field declared on the contract ──
   for (const field of contract.fields) {
+    if (field.virtual) continue;
     const visible = !field.showIf || field.showIf(formData);
     if (!visible) continue;
     const value = coerceString(formData[field.key]);
@@ -255,11 +261,39 @@ export async function stampSalesRepContract({
       continue;
     }
 
+    if (field.type === "checkbox") {
+      try {
+        const cb = form.getCheckBox(field.key);
+        if (value === "true") cb.check();
+        else cb.uncheck();
+      } catch (e) {
+        console.error(`[sign-sales-rep] checkbox set failed for ${field.key}:`, e);
+      }
+      continue;
+    }
+
+    // File fields don't map to AcroForm; they're merged as extra pages later.
+    if (field.type === "file") continue;
+
     // All other types render as text.
     if (!value) continue;
     try {
       const tf = form.getTextField(field.key);
-      tf.setText(value);
+      if (field.comb && field.comb > 0) {
+        // Distribute digits one-per-cell across the widget. setMaxLength +
+        // enableCombing are no-ops if the template already configured them,
+        // but keep them as a safety net for templates Genspark didn't convert
+        // as proper comb fields.
+        const digits = value.replace(/\D/g, "").slice(0, field.comb);
+        tf.setMaxLength(field.comb);
+        tf.enableCombing();
+        tf.setText(digits);
+      } else {
+        tf.setText(value);
+      }
+      // Apply explicit font size if the schema pinned one — this must come
+      // BEFORE updateAppearances so the /AP stream is generated at that size.
+      if (field.fontSize) tf.setFontSize(field.fontSize);
       // Keep the viewer-drawn appearance in sync with the value we just set —
       // belt-and-suspenders for viewers that ignore NeedAppearances.
       tf.updateAppearances(font);
@@ -268,13 +302,19 @@ export async function stampSalesRepContract({
     }
   }
 
-  // ── 2) Date (auto-today) ──
-  try {
-    const dateField = form.getTextField("date");
-    dateField.setText(formatDate(signedDate));
-    dateField.updateAppearances(font);
-  } catch {
-    /* some contracts may not have a date field; ignore */
+  // ── 2) Auto-fill any templated date fields with today's date ──
+  // `date`         — rep's signing date (existing for all contracts)
+  // `employer_date` — I-9 Section 2 employer signing date (same value — the
+  //                   rep self-attests on Kelsey's behalf since she's the
+  //                   baked-in authorized employer representative).
+  for (const dateKey of ["date", "employer_date"] as const) {
+    try {
+      const f = form.getTextField(dateKey);
+      f.setText(formatDate(signedDate));
+      f.updateAppearances(font);
+    } catch {
+      /* field not present on this contract */
+    }
   }
 
   // ── 3) Signature — embed PNG inside the PDFSignature widget rectangle ──
@@ -333,6 +373,44 @@ export async function stampSalesRepContract({
     pdf.getForm().flatten();
   } catch (e) {
     console.error("[sign-sales-rep] flatten failed:", e);
+  }
+
+  // ── 5) Merge any uploaded attachments as additional pages ──
+  if (attachments && attachments.length > 0) {
+    for (const att of attachments) {
+      try {
+        if (att.mime === "application/pdf") {
+          const src = await PDFDocument.load(att.bytes);
+          const copied = await pdf.copyPages(src, src.getPageIndices());
+          for (const p of copied) pdf.addPage(p);
+        } else if (att.mime === "image/png" || att.mime === "image/jpeg") {
+          const img =
+            att.mime === "image/png"
+              ? await pdf.embedPng(att.bytes)
+              : await pdf.embedJpg(att.bytes);
+          // US Letter portrait canvas — fit image inside with 36pt margins.
+          const pageWidth = 612;
+          const pageHeight = 792;
+          const margin = 36;
+          const maxW = pageWidth - margin * 2;
+          const maxH = pageHeight - margin * 2;
+          const scale = Math.min(maxW / img.width, maxH / img.height, 1);
+          const drawW = img.width * scale;
+          const drawH = img.height * scale;
+          const newPage = pdf.addPage([pageWidth, pageHeight]);
+          newPage.drawImage(img, {
+            x: (pageWidth - drawW) / 2,
+            y: (pageHeight - drawH) / 2,
+            width: drawW,
+            height: drawH,
+          });
+        } else {
+          console.warn(`[sign-sales-rep] skipping unsupported attachment mime: ${att.mime}`);
+        }
+      } catch (e) {
+        console.error(`[sign-sales-rep] failed to merge attachment ${att.filename}:`, e);
+      }
+    }
   }
 
   void VALUE_COLOR;

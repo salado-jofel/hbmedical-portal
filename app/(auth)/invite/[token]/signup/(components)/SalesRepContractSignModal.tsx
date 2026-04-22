@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { X, Loader2, Type, PenLine, Upload, Check, ChevronLeft, ChevronRight } from "lucide-react";
+import { X, Loader2, Type, PenLine, Upload, Check, ChevronLeft, ChevronRight, Paperclip, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
-import { signSalesRepContract } from "../(services)/actions";
+import { signSalesRepContract, uploadSalesRepContractAttachment } from "../(services)/actions";
 import type {
   ContractDef,
   FieldDef,
@@ -56,6 +56,7 @@ export function SalesRepContractSignModal({ open, onClose, token, contract, defa
 
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<Record<string, string>>({});
+  const [files, setFiles] = useState<Record<string, File | null>>({});
   const [tab, setTab] = useState<SigTab>("type");
   const [typedSig, setTypedSig] = useState("");
   const [uploadDataUrl, setUploadDataUrl] = useState<string | null>(null);
@@ -67,6 +68,7 @@ export function SalesRepContractSignModal({ open, onClose, token, contract, defa
     if (!open) return;
     setStep(0);
     setForm({ ...(defaults ?? {}) });
+    setFiles({});
     setTab("type");
     setTypedSig(defaults?.name ?? defaults?.last_name ?? "");
     setUploadDataUrl(null);
@@ -91,11 +93,20 @@ export function SalesRepContractSignModal({ open, onClose, token, contract, defa
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
+  function setFile(key: string, file: File | null) {
+    setFiles((prev) => ({ ...prev, [key]: file }));
+  }
+
   function validateCurrent(): string | null {
     for (const f of currentFields) {
       const visible = !f.showIf || f.showIf(form);
       if (!visible) continue;
-      if (f.required && !(form[f.key]?.trim())) {
+      if (!f.required) continue;
+      if (f.type === "file") {
+        if (!files[f.key]) return `${f.label} is required.`;
+      } else if (f.type === "checkbox") {
+        if (form[f.key] !== "true") return `${f.label} must be checked.`;
+      } else if (!(form[f.key]?.trim())) {
         return `${f.label} is required.`;
       }
     }
@@ -226,19 +237,21 @@ export function SalesRepContractSignModal({ open, onClose, token, contract, defa
   }
 
   async function handleSubmit() {
-    // Ensure earlier steps are valid (defensive)
+    // Ensure earlier steps are valid (defensive — mirrors validateCurrent rules)
     for (let i = 0; i < totalSteps - 1; i++) {
       for (const f of fieldsByStep[i] ?? []) {
         const visible = !f.showIf || f.showIf(form);
         if (!visible) continue;
-        if (f.required && !(form[f.key]?.trim())) {
-          setStep(i);
-          toast.error(`${f.label} is required.`);
-          return;
+        if (!f.required) continue;
+        if (f.type === "file") {
+          if (!files[f.key]) { setStep(i); toast.error(`${f.label} is required.`); return; }
+        } else if (f.type === "checkbox") {
+          if (form[f.key] !== "true") { setStep(i); toast.error(`${f.label} must be checked.`); return; }
+        } else if (!(form[f.key]?.trim())) {
+          setStep(i); toast.error(`${f.label} is required.`); return;
         }
       }
     }
-
     let signatureDataUrl: string | null = null;
     if (tab === "type") {
       if (!typedSig.trim()) { toast.error("Type your signature."); return; }
@@ -255,6 +268,25 @@ export function SalesRepContractSignModal({ open, onClose, token, contract, defa
     if (!name) { toast.error("Enter your name first."); return; }
 
     setSubmitting(true);
+
+    // Upload any attachments first so we can pass their storage paths to the sign action
+    const attachmentPaths: string[] = [];
+    for (const [slot, file] of Object.entries(files)) {
+      if (!file) continue;
+      const fd = new FormData();
+      fd.append("token", token);
+      fd.append("contractKey", contract.key);
+      fd.append("slot", slot);
+      fd.append("file", file);
+      const up = await uploadSalesRepContractAttachment(fd);
+      if (!up.success || !up.path) {
+        setSubmitting(false);
+        toast.error(up.error ?? `Failed to upload ${slot}`);
+        return;
+      }
+      attachmentPaths.push(up.path);
+    }
+
     const result = await signSalesRepContract({
       token,
       contractKey: contract.key as SalesRepContractKey,
@@ -262,6 +294,7 @@ export function SalesRepContractSignModal({ open, onClose, token, contract, defa
       signatureMethod: tab,
       signatureDataUrl,
       formData: form,
+      attachmentPaths,
     });
     setSubmitting(false);
 
@@ -315,7 +348,16 @@ export function SalesRepContractSignModal({ open, onClose, token, contract, defa
               {currentFields.map((f) => {
                 const visible = !f.showIf || f.showIf(form);
                 if (!visible) return null;
-                return <FieldInput key={f.key} field={f} value={form[f.key] ?? ""} onChange={(v) => setField(f.key, v)} />;
+                return (
+                  <FieldInput
+                    key={f.key}
+                    field={f}
+                    value={form[f.key] ?? ""}
+                    onChange={(v) => setField(f.key, v)}
+                    file={files[f.key] ?? null}
+                    onFileChange={(file) => setFile(f.key, file)}
+                  />
+                );
               })}
             </div>
           )}
@@ -421,12 +463,100 @@ export function SalesRepContractSignModal({ open, onClose, token, contract, defa
 
 /* ── Field renderer ── */
 
-function FieldInput({ field, value, onChange }: { field: FieldDef; value: string; onChange: (v: string) => void }) {
+function FieldInput({
+  field,
+  value,
+  onChange,
+  file,
+  onFileChange,
+}: {
+  field: FieldDef;
+  value: string;
+  onChange: (v: string) => void;
+  file?: File | null;
+  onFileChange?: (file: File | null) => void;
+}) {
   const common = {
     className:
       "w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--navy)]/20",
     placeholder: field.placeholder,
   };
+
+  if (field.type === "checkbox") {
+    return (
+      <label className="flex items-start gap-2 cursor-pointer text-sm text-[#0F172A]">
+        <input
+          type="checkbox"
+          checked={value === "true"}
+          onChange={(e) => onChange(e.target.checked ? "true" : "false")}
+          className="mt-1 accent-[var(--navy)]"
+        />
+        <span>
+          {field.label}
+          {field.required && <span className="text-red-500 ml-0.5">*</span>}
+        </span>
+      </label>
+    );
+  }
+
+  if (field.type === "file") {
+    const maxBytes = field.maxFileBytes ?? 5 * 1024 * 1024;
+    const handlePick = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const f = e.target.files?.[0] ?? null;
+      if (!f) return onFileChange?.(null);
+      if (f.size > maxBytes) {
+        toast.error(`${field.label}: file must be ≤ ${(maxBytes / 1024 / 1024).toFixed(0)} MB.`);
+        e.target.value = "";
+        return;
+      }
+      const accept = (field.accept ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+      if (accept.length > 0 && !accept.includes(f.type)) {
+        toast.error(`${field.label}: unsupported file type.`);
+        e.target.value = "";
+        return;
+      }
+      onFileChange?.(f);
+    };
+    return (
+      <div>
+        <span className="block text-[11px] font-semibold text-[#64748B] uppercase tracking-wider mb-1.5">
+          {field.label}
+          {field.required && <span className="text-red-500 ml-0.5">*</span>}
+        </span>
+        {file ? (
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2 text-sm">
+            <span className="flex items-center gap-2 text-[#0F172A] min-w-0">
+              <Paperclip className="w-4 h-4 shrink-0 text-[var(--navy)]" />
+              <span className="truncate">{file.name}</span>
+              <span className="shrink-0 text-[11px] text-[#94A3B8]">
+                ({(file.size / 1024).toFixed(0)} KB)
+              </span>
+            </span>
+            <button
+              type="button"
+              onClick={() => onFileChange?.(null)}
+              className="text-[#94A3B8] hover:text-red-500 transition-colors"
+              aria-label="Remove file"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        ) : (
+          <label className="flex items-center gap-2 rounded-lg border border-dashed border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2 text-sm text-[#64748B] cursor-pointer hover:border-[var(--navy)]/40 transition-colors">
+            <Paperclip className="w-4 h-4" />
+            <span>Choose file (PDF, PNG, JPG — up to {((field.maxFileBytes ?? 5 * 1024 * 1024) / 1024 / 1024).toFixed(0)} MB)</span>
+            <input
+              type="file"
+              accept={field.accept}
+              onChange={handlePick}
+              className="hidden"
+            />
+          </label>
+        )}
+        {field.helpText && <p className="mt-1 text-[11px] text-[#94A3B8]">{field.helpText}</p>}
+      </div>
+    );
+  }
 
   if (field.type === "radio") {
     return (

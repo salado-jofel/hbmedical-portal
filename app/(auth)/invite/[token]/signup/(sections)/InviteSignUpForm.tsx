@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronRight, ChevronLeft, UserCheck, User, Lock, FileCheck, Building2, Loader2, AlertCircle, Check, ClipboardList } from "lucide-react";
 import { HBLogo } from "@/app/(components)/HBLogo";
@@ -257,23 +257,39 @@ export default function InviteSignUpForm({
 
   // Load signed URLs for all 6 sales-rep contract templates so the modal can
   // render each document inline next to the signing form.
+  //
+  // Supabase signed URLs have a 1-hour TTL (EXPIRES_IN=3600). If the rep
+  // lingers on this step for >1h, the iframe shows Supabase's raw JSON
+  // "exp claim timestamp check failed" error instead of the PDF. We avoid
+  // that by refreshing the URLs (a) on initial step entry, (b) on a 45-min
+  // interval while on this step, and (c) right after each successful sign.
+  const refreshSalesRepUrls = useCallback(async () => {
+    const result = await getSalesRepContractUrls(token);
+    if (result.error) return;
+    const sourceUrls = result.contracts.reduce(
+      (acc, c) => ({ ...acc, [c.key]: c.sourceUrl }),
+      {} as Record<SalesRepContractKey, string | null>,
+    );
+    setSalesRepSourceUrls(sourceUrls);
+    // Only refresh signed URLs for contracts the rep HAS signed in this
+    // session. Don't auto-populate ones they just cleared — otherwise "Clear
+    // & re-sign" would instantly revert to the old signed file.
+    setSalesRepSigned((prev) => {
+      const updated = { ...prev };
+      for (const c of result.contracts) {
+        if (prev[c.key] && c.signedUrl) updated[c.key] = c.signedUrl;
+      }
+      return updated;
+    });
+  }, [token]);
+
   useEffect(() => {
     if (step !== agreeStepIndex) return;
     if (role !== "sales_representative") return;
-    let cancelled = false;
-    (async () => {
-      const result = await getSalesRepContractUrls(token);
-      if (cancelled) return;
-      const urls = result.contracts.reduce(
-        (acc, c) => ({ ...acc, [c.key]: c.sourceUrl }),
-        {} as Record<SalesRepContractKey, string | null>,
-      );
-      setSalesRepSourceUrls(urls);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [step, agreeStepIndex, role, token]);
+    refreshSalesRepUrls();
+    const id = setInterval(refreshSalesRepUrls, 45 * 60 * 1000); // 45 min
+    return () => clearInterval(id);
+  }, [step, agreeStepIndex, role, refreshSalesRepUrls]);
 
   function goNext() {
     setClientError("");
@@ -1110,6 +1126,17 @@ export default function InviteSignUpForm({
           }
           defaultName={`${firstName} ${lastName}`.trim()}
           defaultTitle={credential}
+          paragraphDefaults={{
+            clientLegalName: officeName,
+            clientAddressStreet: officeAddress,
+            clientAddressCityStateZip: [
+              officeCity,
+              officeState,
+              officePostalCode,
+            ]
+              .filter(Boolean)
+              .join(", "),
+          }}
           onSigned={(signedUrl) => {
             if (signingContract === "baa") setBaaSignedUrl(signedUrl ?? "");
             else setPsSignedUrl(signedUrl ?? "");
@@ -1147,6 +1174,9 @@ export default function InviteSignUpForm({
             defaults={defaults}
             onSigned={(signedUrl) => {
               setSalesRepSigned((p) => ({ ...p, [def.key]: signedUrl ?? "" }));
+              // Keep every other contract's URLs fresh so a rep who takes a
+              // while to sign all 6 doesn't hit JWT-expired iframes mid-flow.
+              refreshSalesRepUrls();
             }}
           />
         );
