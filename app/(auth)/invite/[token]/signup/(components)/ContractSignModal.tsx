@@ -309,7 +309,7 @@ export function ContractSignModal({
                   className="w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--navy)]/20"
                 />
                 <div
-                  className="h-24 rounded-lg border border-dashed border-[#E2E8F0] bg-[#F8FAFC] flex items-center px-4 text-[32px] text-[#0F172A]"
+                  className="h-24 rounded-lg border border-dashed border-[#E2E8F0] bg-[#F8FAFC] flex items-center justify-center px-4 text-[32px] text-[#0F172A]"
                   style={{ fontFamily: CURSIVE_FONT }}
                 >
                   {typedSig || (
