@@ -708,9 +708,11 @@ export async function getRepCommissionSummary(repId?: string): Promise<ICommissi
 
   // Admin with no repId → aggregate all commissions; with repId → filter to that rep.
   // Sales rep → always filter to own commissions only.
+  // Void commissions never count toward totals — they're clawbacks, not earnings.
   let commQuery = adminClient
     .from(COMMISSION_TABLE)
-    .select("status, final_amount, commission_amount, adjustment");
+    .select("status, final_amount, commission_amount, adjustment")
+    .neq("status", "void");
 
   if (adminMode) {
     if (repId) commQuery = commQuery.eq("rep_id", repId);

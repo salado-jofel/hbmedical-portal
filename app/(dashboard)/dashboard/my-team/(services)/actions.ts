@@ -23,10 +23,14 @@ export async function getMySubReps(period: AccountPeriod = "this_month") {
 
   const childIds = hierarchy.map((h) => h.child_rep_id);
 
+  // Only include sub-reps that finished onboarding. "Pending Setup" profiles
+  // have no name/data yet and would appear as confusing empty rows on the
+  // rep's Commissions → Team Earnings and /dashboard/my-team views.
   const { data: subReps } = await adminClient
     .from("profiles")
     .select("id, first_name, last_name, email, phone, status, role")
     .in("id", childIds)
+    .eq("has_completed_setup", true)
     .order("first_name");
 
   if (!subReps) return [];

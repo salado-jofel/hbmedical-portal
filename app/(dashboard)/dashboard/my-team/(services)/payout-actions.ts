@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { randomUUID } from "node:crypto";
 import Stripe from "stripe";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -82,7 +83,28 @@ export async function payRepCommissions(
       return { success: false, error: "Approved total is $0 — nothing to transfer." };
     }
 
-    // Stripe transfer — idempotency key ensures retries are safe.
+    // Double-pay guard. We rely on DB state rather than a deterministic Stripe
+    // idempotency key because Stripe caches failed responses for 24 hours — if
+    // the first attempt hit balance_insufficient, every retry with the same
+    // key would replay that failure even after the balance was topped up.
+    // Instead: check the payouts table for an existing paid row, and use a
+    // fresh UUID idempotency key per attempt so retries are never cached.
+    const { data: existingPaid } = await admin
+      .from(PAYOUTS_TABLE)
+      .select("id, stripe_transfer_id")
+      .eq("rep_id", repId)
+      .eq("period", period)
+      .eq("status", "paid")
+      .maybeSingle();
+    if (existingPaid?.stripe_transfer_id) {
+      return {
+        success: false,
+        error: `This rep has already been paid for ${period} (transfer ${existingPaid.stripe_transfer_id}).`,
+      };
+    }
+
+    // Stripe transfer. Fresh idempotency key per attempt — safe because we
+    // already proved above that no successful payout exists for this rep+period.
     let transfer: Stripe.Transfer;
     try {
       transfer = await stripe.transfers.create(
@@ -99,7 +121,7 @@ export async function payRepCommissions(
           },
         },
         {
-          idempotencyKey: `commission-payout:${repId}:${period}`,
+          idempotencyKey: `commission-payout:${repId}:${period}:${randomUUID()}`,
         },
       );
     } catch (err: any) {
