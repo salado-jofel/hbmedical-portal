@@ -14,6 +14,7 @@ import {
   getMyClinicMembers,
   getMyAssignedRep,
   getMyEnrollment,
+  getMyClinic,
 } from "@/app/(dashboard)/dashboard/settings/(services)/actions";
 import { getMyConnectStatus } from "@/app/(dashboard)/dashboard/settings/(services)/stripe-connect-actions";
 import { notFound } from "next/navigation";
@@ -50,6 +51,7 @@ export default async function SettingsPage({
     enrollmentData,
     facility,
     connectStatus,
+    myClinic,
   ] = await Promise.all([
       repUser ? getMyClinicAccounts() : Promise.resolve([]),
       repUser ? getMySubReps() : Promise.resolve([]),
@@ -66,6 +68,7 @@ export default async function SettingsPage({
             .then((r) => r.data)
         : Promise.resolve(null),
       showPayouts ? getMyConnectStatus() : Promise.resolve(null),
+      providerUser ? getMyClinic() : Promise.resolve(null),
     ]);
 
   const showEnrollment = providerUser;
@@ -85,6 +88,7 @@ export default async function SettingsPage({
       <Providers>
         <SettingsTabs
           profile={profile}
+          myClinic={myClinic}
           isRep={repUser}
           myClinicAccounts={myClinicAccounts}
           mySubReps={mySubReps}

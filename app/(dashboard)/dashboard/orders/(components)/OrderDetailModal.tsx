@@ -2040,6 +2040,30 @@ export function OrderDetailModal({
                             </div>
                           )}
 
+                        {/* Resume Payment — Pay Now method, payment initiated but not paid.
+                            Creates a fresh Stripe checkout session; the abandoned one
+                            expires on Stripe's side on its own. */}
+                        {status === "approved" &&
+                          paymentData &&
+                          liveOrder.payment_method === "pay_now" &&
+                          liveOrder.payment_status !== "paid" && (
+                            <button
+                              type="button"
+                              disabled={initiatingPayment !== false}
+                              onClick={() => handleInitiatePayment("pay_now")}
+                              className="w-full flex items-center justify-center gap-2 px-3 py-3 rounded-[9px] border-[1.5px] border-[var(--blue-lt)] bg-[var(--blue-lt)] hover:opacity-80 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {initiatingPayment === "pay_now" ? (
+                                <div className="w-4 h-4 border-2 border-[var(--blue)] border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                <CreditCard className="w-4 h-4 text-[var(--blue)]" />
+                              )}
+                              <span className="text-[12px] font-semibold text-[var(--blue)]">
+                                {initiatingPayment === "pay_now" ? "Processing..." : "Resume Payment"}
+                              </span>
+                            </button>
+                          )}
+
                         {/* Payment info — show after payment initiated or paid */}
                         {(paymentData ||
                           liveOrder.payment_status === "paid") && (

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { PillBadge } from "@/app/(components)/PillBadge";
 import { useAppSelector, useAppDispatch } from "@/store/hooks";
 import { updateCommissionInStore } from "../(redux)/commissions-slice";
-import { approveCommissions, adjustCommission } from "../(services)/actions";
+import { approveCommissions, adjustCommission, voidCommission } from "../(services)/actions";
 import { formatAmount } from "@/utils/helpers/formatter";
 import { isAdmin } from "@/utils/helpers/role";
 import type { UserRole } from "@/utils/helpers/role";
@@ -72,6 +72,8 @@ export default function CommissionLedger() {
   const [adjustTarget, setAdjustTarget] = useState<ICommission | null>(null);
   const [adjValue, setAdjValue] = useState("");
   const [adjNotes, setAdjNotes] = useState("");
+  const [voidTarget, setVoidTarget] = useState<ICommission | null>(null);
+  const [voidReason, setVoidReason] = useState("");
   const [isPending, startTransition] = useTransition();
   const [mounted, setMounted] = useState(false);
 
@@ -149,6 +151,30 @@ export default function CommissionLedger() {
         toast.success("Adjustment reset.");
       } else {
         toast.error(result.error ?? "Failed to reset adjustment.");
+      }
+    });
+  }
+
+  function openVoid(c: ICommission) {
+    setVoidTarget(c);
+    setVoidReason("");
+  }
+
+  function handleVoid() {
+    if (!voidTarget) return;
+    const reason = voidReason.trim();
+    if (!reason) {
+      toast.error("Please enter a reason for voiding this commission.");
+      return;
+    }
+    startTransition(async () => {
+      const result = await voidCommission(voidTarget.id, reason);
+      if (result.success) {
+        dispatch(updateCommissionInStore({ ...voidTarget, status: "void", notes: reason }));
+        setVoidTarget(null);
+        toast.success("Commission voided.");
+      } else {
+        toast.error(result.error ?? "Failed to void commission.");
       }
     });
   }
@@ -287,13 +313,24 @@ export default function CommissionLedger() {
                     </td>
                     {admin && (
                       <td className="px-4 py-[10px]">
-                        <button
-                          type="button"
-                          onClick={() => openAdjust(row)}
-                          className="rounded-[6px] border border-[var(--border)] px-2 py-1 text-[11px] font-medium text-[var(--text2)] transition hover:border-[var(--navy)] hover:text-[var(--navy)]"
-                        >
-                          Adjust
-                        </button>
+                        <div className="flex gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => openAdjust(row)}
+                            className="rounded-[6px] border border-[var(--border)] px-2 py-1 text-[11px] font-medium text-[var(--text2)] transition hover:border-[var(--navy)] hover:text-[var(--navy)]"
+                          >
+                            Adjust
+                          </button>
+                          {(row.status === "pending" || row.status === "approved") && (
+                            <button
+                              type="button"
+                              onClick={() => openVoid(row)}
+                              className="rounded-[6px] border border-[var(--border)] px-2 py-1 text-[11px] font-medium text-[var(--text2)] transition hover:border-red-300 hover:bg-red-50 hover:text-red-600"
+                            >
+                              Void
+                            </button>
+                          )}
+                        </div>
                       </td>
                     )}
                   </tr>
@@ -349,6 +386,45 @@ export default function CommissionLedger() {
             )}
             <Button size="sm" className="flex-1 bg-[var(--navy)] hover:bg-[#1a3f60]" disabled={isPending} onClick={handleAdjust}>
               Save
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Void modal */}
+      <Dialog open={!!voidTarget} onOpenChange={(v) => { if (!v) setVoidTarget(null); }}>
+        <DialogContent className="max-w-sm gap-0 overflow-hidden rounded-2xl border border-[var(--border)] p-0 shadow-2xl">
+          <div className="border-b border-[var(--border)] px-5 py-4">
+            <DialogTitle className="text-[15px] font-semibold text-[var(--navy)]">Void Commission</DialogTitle>
+            <p className="mt-0.5 text-[11px] text-[var(--text3)]">
+              {voidTarget?.orderNumber} — {voidTarget?.repName} — {voidTarget ? formatAmount(voidTarget.finalAmount ?? voidTarget.commissionAmount + voidTarget.adjustment) : ""}
+            </p>
+          </div>
+          <div className="space-y-4 p-5">
+            <p className="text-[12px] text-[var(--text2)]">
+              Voiding this commission removes it from future payouts. This cannot be undone.
+            </p>
+            <div className="space-y-1.5">
+              <Label className="text-[12px]">Reason <span className="text-red-400">*</span></Label>
+              <Input
+                value={voidReason}
+                onChange={(e) => setVoidReason(e.target.value)}
+                placeholder="e.g. Order refunded, sale reversed..."
+                className="h-9 text-sm"
+              />
+            </div>
+          </div>
+          <div className="flex gap-2 border-t border-[var(--border)] px-5 py-3">
+            <Button variant="outline" size="sm" className="flex-1" onClick={() => setVoidTarget(null)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              disabled={isPending}
+              onClick={handleVoid}
+              className="flex-1 bg-red-500 text-white hover:bg-red-600"
+            >
+              Void
             </Button>
           </div>
         </DialogContent>

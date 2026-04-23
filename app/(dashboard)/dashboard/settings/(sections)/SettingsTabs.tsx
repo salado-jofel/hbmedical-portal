@@ -16,6 +16,7 @@ import type { IClinicAccount } from "@/utils/interfaces/settings";
 import type {
   FacilityEnrollmentData,
   IAssignedRep,
+  IMyClinic,
 } from "@/app/(dashboard)/dashboard/settings/(services)/actions";
 import type { ConnectStatus } from "@/app/(dashboard)/dashboard/settings/(services)/stripe-connect-actions";
 
@@ -29,6 +30,7 @@ interface Tab {
 
 interface SettingsTabsProps {
   profile: Profile;
+  myClinic: IMyClinic | null;
   isRep: boolean;
   myClinicAccounts: IClinicAccount[];
   mySubReps: ISubRep[];
@@ -54,6 +56,7 @@ interface SettingsTabsProps {
 
 export function SettingsTabs({
   profile,
+  myClinic,
   isRep,
   myClinicAccounts,
   mySubReps,
@@ -122,7 +125,7 @@ export function SettingsTabs({
           doesn't refresh until a full page reload). */}
       <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[var(--r)] p-5">
         <div hidden={active !== "profile"}>
-          <ProfileTab profile={profile} />
+          <ProfileTab profile={profile} clinic={myClinic} />
         </div>
         {showTeamTab && (
           <div hidden={active !== "team"}>

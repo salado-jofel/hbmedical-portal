@@ -22,9 +22,11 @@ import {
 export default function RateManagement({
   reps,
   lockedRepId,
+  hideOverride = false,
 }: {
   reps: Array<{ id: string; name: string }>;
   lockedRepId?: string;
+  hideOverride?: boolean;
 }) {
   const rates = useAppSelector((s) => s.commissions.rates);
   const role = useAppSelector((s) => s.dashboard.role) as UserRole;
@@ -81,7 +83,9 @@ export default function RateManagement({
               {isRep ? "Commission rates for your sub-representatives" : "Active rates per rep"}
             </p>
           </div>
-          {(admin || reps.length > 0) && (
+          {/* Header button is hidden on empty state — the inline CTA in the empty
+              state area below is the only button shown, so admins can't miss it. */}
+          {(admin || reps.length > 0) && displayRates.length > 0 && (
             <Button
               variant="outline"
               size="sm"
@@ -89,7 +93,11 @@ export default function RateManagement({
               onClick={() => setOpen(true)}
             >
               <Plus className="h-3.5 w-3.5" />
-              {isRep ? "Set Sub-Rep Rate" : "Set Rate"}
+              {isRep
+                ? "Set Sub-Rep Rate"
+                : lockedRepId
+                  ? "Update Rate"
+                  : "Set Rate"}
             </Button>
           )}
         </div>
@@ -103,15 +111,33 @@ export default function RateManagement({
             <p className="mt-1 text-[11px] text-[var(--text3)]">
               {isRep
                 ? "Set commission rates for your sub-representatives using the button above"
-                : "No commission rates have been set yet"}
+                : lockedRepId
+                  ? "Commission rates are normally set when the rep is invited. Set one now to get this rep earning."
+                  : "No commission rates have been set yet"}
             </p>
+            {(admin || reps.length > 0) && (
+              <Button
+                size="sm"
+                className="mt-4 gap-1.5 bg-[var(--navy)] text-white hover:bg-[var(--navy)]/80"
+                onClick={() => setOpen(true)}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                {isRep ? "Set Sub-Rep Rate" : "Set Rate"}
+              </Button>
+            )}
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-[var(--border)] bg-[var(--bg)]">
-                  {[isRep ? "Sub-Rep" : "Rep Name", "Rate %", "Override %", "Effective From", "Set By"].map((h) => (
+                  {[
+                    isRep ? "Sub-Rep" : "Rep Name",
+                    "Rate %",
+                    ...(hideOverride ? [] : ["Override %"]),
+                    "Effective From",
+                    "Set By",
+                  ].map((h) => (
                     <th
                       key={h}
                       className="px-4 py-[9px] text-[10px] font-semibold uppercase tracking-[0.6px] text-[var(--text3)] whitespace-nowrap"
@@ -126,7 +152,9 @@ export default function RateManagement({
                   <tr key={rate.id} className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--bg)]">
                     <td className="px-4 py-[10px] text-[13px] font-medium text-[var(--navy)]">{rate.repName}</td>
                     <td className="px-4 py-[10px] text-[13px]">{rate.ratePercent}%</td>
-                    <td className="px-4 py-[10px] text-[13px]">{rate.overridePercent}%</td>
+                    {!hideOverride && (
+                      <td className="px-4 py-[10px] text-[13px]">{rate.overridePercent}%</td>
+                    )}
                     <td className="px-4 py-[10px] text-[13px] text-[var(--text2)]">{formatDate(rate.effectiveFrom)}</td>
                     <td className="px-4 py-[10px] text-[13px] text-[var(--text2)]">{rate.setByName}</td>
                   </tr>
@@ -143,7 +171,11 @@ export default function RateManagement({
           <div className="border-b border-[var(--border)] px-5 py-4">
             <DialogTitle className="text-[15px] font-semibold text-[var(--navy)]">Set Commission Rate</DialogTitle>
             <p className="mt-0.5 text-[11px] text-[var(--text3)]">
-              {admin ? "Set rate for any sales rep" : "Set rate for your sub-reps"}
+              {lockedRepId
+                ? `Set rate for ${reps.find((r) => r.id === lockedRepId)?.name ?? "this rep"}`
+                : admin
+                  ? "Set rate for any sales rep"
+                  : "Set rate for your sub-reps"}
             </p>
           </div>
 
@@ -195,23 +227,28 @@ export default function RateManagement({
                 )}
               </div>
 
-              {/* Override percent */}
-              <div className="space-y-1.5">
-                <Label className="text-[12px]">Override %</Label>
-                <Input
-                  name="override_percent"
-                  type="number"
-                  min={0}
-                  max={100}
-                  step={0.5}
-                  placeholder="0"
-                  defaultValue="0"
-                  className="h-9 text-sm"
-                />
-                {state?.fieldErrors?.override_percent && (
-                  <p className="text-[11px] text-red-500">{state.fieldErrors.override_percent}</p>
-                )}
-              </div>
+              {/* Override percent — only meaningful for sub-reps (flows to their parent rep).
+                  Main reps have no parent, so override is always 0 and hidden. */}
+              {hideOverride ? (
+                <input type="hidden" name="override_percent" value="0" />
+              ) : (
+                <div className="space-y-1.5">
+                  <Label className="text-[12px]">Override %</Label>
+                  <Input
+                    name="override_percent"
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={0.5}
+                    placeholder="0"
+                    defaultValue="0"
+                    className="h-9 text-sm"
+                  />
+                  {state?.fieldErrors?.override_percent && (
+                    <p className="text-[11px] text-red-500">{state.fieldErrors.override_percent}</p>
+                  )}
+                </div>
+              )}
 
               {state?.error && (
                 <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-500">

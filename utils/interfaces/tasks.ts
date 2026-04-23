@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { uuidString } from "@/utils/validators/shared";
 
 /* -------------------------------------------------------------------------- */
 /* Enums                                                                      */
@@ -72,9 +73,9 @@ export const createTaskSchema = z.object({
   title: z.string().trim().min(1, "Title is required."),
   due_date: z.string().trim().min(1, "Due date is required."),
   priority: taskPrioritySchema.default("medium"),
-  assigned_to: z.string().uuid().nullable().optional().or(z.literal("")),
-  facility_id: z.string().uuid().nullable().optional().or(z.literal("")),
-  contact_id: z.string().uuid().nullable().optional().or(z.literal("")),
+  assigned_to: uuidString().nullable().optional().or(z.literal("")),
+  facility_id: uuidString().nullable().optional().or(z.literal("")),
+  contact_id: uuidString().nullable().optional().or(z.literal("")),
   notes: z.string().trim().nullable().optional(),
 });
 

@@ -1,6 +1,7 @@
 import { z } from "zod";
+import { uuidString } from "@/utils/validators/shared";
 
-export const uuidSchema = z.string().uuid("Invalid UUID.");
+export const uuidSchema = uuidString("Invalid UUID.");
 export const timestampSchema = z.string().datetime({ offset: true });
 
 const nullableStringSchema = z.string().trim().nullable();

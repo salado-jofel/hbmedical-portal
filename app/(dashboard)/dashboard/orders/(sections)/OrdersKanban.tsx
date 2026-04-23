@@ -109,6 +109,19 @@ export function OrdersKanban({
       }
     }
 
+    // ?open=<id> query param — used by cross-page deep-links (e.g. commission
+    // approval card linking to the related order). Strip the param after use
+    // so a refresh doesn't re-open.
+    const urlParams = new URLSearchParams(window.location.search);
+    const openId = urlParams.get("open");
+    if (openId) {
+      setTimeout(() => openModal(openId, "overview"), 300);
+      urlParams.delete("open");
+      const next = urlParams.toString();
+      const cleanUrl = window.location.pathname + (next ? `?${next}` : "");
+      window.history.replaceState({}, "", cleanUrl);
+    }
+
     window.addEventListener("open-order-modal", handleOpenOrderModal);
     return () =>
       window.removeEventListener("open-order-modal", handleOpenOrderModal);
@@ -297,17 +310,23 @@ export function OrdersKanban({
 
   const grouped = useMemo(() => groupOrdersByStatus(filtered), [filtered]);
 
-  // "Approved" = no payment method set yet
+  // "Processed" = payment has actually succeeded:
+  //   • Pay Now  → payment_status === "paid"
+  //   • Net-30   → invoice_status === "issued" (Stripe accepted the invoice)
+  // Everything else under "approved" — including Pay Now sessions in flight,
+  // abandoned checkouts, and orders with no method — stays in "Approved" so
+  // the provider still sees it as actionable.
+  const isProcessed = (o: DashboardOrder) => {
+    if (o.payment_method === "pay_now" && o.payment_status === "paid") return true;
+    if (o.payment_method === "net_30" && o.invoice_status === "issued") return true;
+    return false;
+  };
   const approvedPending = useMemo(
-    () => (grouped["approved"] ?? []).filter((o) => !o.payment_method),
+    () => (grouped["approved"] ?? []).filter((o) => !isProcessed(o)),
     [grouped],
   );
-  // "Processed" = payment initiated (pay_now OR net_30, any payment_status)
   const approvedProcessed = useMemo(
-    () =>
-      (grouped["approved"] ?? []).filter(
-        (o) => o.payment_method !== null && o.payment_method !== undefined,
-      ),
+    () => (grouped["approved"] ?? []).filter(isProcessed),
     [grouped],
   );
 

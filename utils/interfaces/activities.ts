@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { uuidString } from "@/utils/validators/shared";
 
 /* -------------------------------------------------------------------------- */
 /* Enums                                                                      */
@@ -68,7 +69,7 @@ export interface IActivityFormState {
 export const createActivitySchema = z.object({
   type: activityTypeSchema,
   activity_date: z.string().trim().min(1, "Date is required."),
-  contact_id: z.string().uuid().nullable().optional().or(z.literal("")),
+  contact_id: uuidString().nullable().optional().or(z.literal("")),
   outcome: activityOutcomeSchema,
   notes: z.string().trim().nullable().optional(),
 });

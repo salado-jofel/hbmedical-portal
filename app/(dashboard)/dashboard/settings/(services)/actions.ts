@@ -8,6 +8,7 @@ import {
   updateProfile as _updateProfile,
 } from "@/app/(dashboard)/dashboard/profile/(services)/actions";
 
+import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUserOrThrow, getUserRole } from "@/lib/supabase/auth";
@@ -57,6 +58,114 @@ export async function updateProfile(
   formData: FormData,
 ): Promise<IProfileFormState> {
   return _updateProfile(_prev, formData);
+}
+
+/* -------------------------------------------------------------------------- */
+/* My Clinic — clinical_provider only. 1:1 with the profile via facilities.user_id.
+/* -------------------------------------------------------------------------- */
+
+export interface IMyClinic {
+  id: string;
+  name: string;
+  phone: string;
+  address_line_1: string;
+  address_line_2: string | null;
+  city: string;
+  state: string;
+  postal_code: string;
+  country: string;
+  facility_type: string;
+}
+
+export interface IMyClinicFormState {
+  success: boolean;
+  error: string | null;
+  fieldErrors?: Partial<Record<
+    "name" | "phone" | "address_line_1" | "address_line_2" | "city" | "state" | "postal_code",
+    string
+  >>;
+}
+
+export async function getMyClinic(): Promise<IMyClinic | null> {
+  const supabase = await createClient();
+  const user = await getCurrentUserOrThrow(supabase);
+  const role = await getUserRole(supabase);
+  if (!isClinicalProvider(role as UserRole)) return null;
+
+  const adminClient = createAdminClient();
+  const { data, error } = await adminClient
+    .from("facilities")
+    .select("id, name, phone, address_line_1, address_line_2, city, state, postal_code, country, facility_type")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[getMyClinic] Error:", JSON.stringify(error));
+    return null;
+  }
+  return (data as IMyClinic) ?? null;
+}
+
+export async function updateMyClinic(
+  _prev: IMyClinicFormState | null,
+  formData: FormData,
+): Promise<IMyClinicFormState> {
+  try {
+    const { updateMyClinicSchema } = await import("@/utils/validators/facilities");
+
+    const supabase = await createClient();
+    const user = await getCurrentUserOrThrow(supabase);
+    const role = await getUserRole(supabase);
+    if (!isClinicalProvider(role as UserRole)) {
+      return { success: false, error: "Only clinical providers can edit their clinic." };
+    }
+
+    const raw = {
+      name:           formData.get("name") as string,
+      phone:          formData.get("phone") as string,
+      address_line_1: formData.get("address_line_1") as string,
+      address_line_2: (formData.get("address_line_2") as string) ?? "",
+      city:           formData.get("city") as string,
+      state:          formData.get("state") as string,
+      postal_code:    formData.get("postal_code") as string,
+    };
+
+    const parsed = updateMyClinicSchema.safeParse(raw);
+    if (!parsed.success) {
+      const fieldErrors: IMyClinicFormState["fieldErrors"] = {};
+      for (const issue of parsed.error.issues) {
+        const field = issue.path[0] as keyof NonNullable<IMyClinicFormState["fieldErrors"]>;
+        if (field) fieldErrors[field] = issue.message;
+      }
+      return { success: false, error: null, fieldErrors };
+    }
+
+    const adminClient = createAdminClient();
+    const { error } = await adminClient
+      .from("facilities")
+      .update({
+        name:           parsed.data.name,
+        phone:          parsed.data.phone,
+        address_line_1: parsed.data.address_line_1,
+        // address_line_2 is nullable in DB; null when empty keeps the column clean.
+        address_line_2: parsed.data.address_line_2.trim() || null,
+        city:           parsed.data.city,
+        state:          parsed.data.state,
+        postal_code:    parsed.data.postal_code,
+      })
+      .eq("user_id", user.id);
+
+    if (error) {
+      console.error("[updateMyClinic] Update error:", JSON.stringify(error));
+      return { success: false, error: error.message ?? "Failed to update clinic." };
+    }
+
+    revalidatePath("/dashboard/settings");
+    return { success: true, error: null };
+  } catch (err) {
+    console.error("[updateMyClinic] Unexpected error:", err);
+    return { success: false, error: "An unexpected error occurred." };
+  }
 }
 
 /* -------------------------------------------------------------------------- */

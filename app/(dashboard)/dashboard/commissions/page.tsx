@@ -29,6 +29,8 @@ export default async function CommissionsPage() {
   const role = await getUserRole(supabase);
 
   if (!isAdmin(role) && !isSalesRep(role)) redirect("/dashboard");
+  // Admin commission management lives inside each rep's detail page under
+  // Sales Reps. Redirect admins there so they don't hit a rep-centric UI.
   if (isAdmin(role)) redirect("/dashboard/my-team");
 
   // Each fetch is isolated — one failure must not crash the entire page re-render,

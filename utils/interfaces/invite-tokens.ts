@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { uuidString } from "@/utils/validators/shared";
 
 /* -------------------------------------------------------------------------- */
 /* Enums                                                                      */
@@ -73,7 +74,7 @@ const commissionPctField = z.coerce
 
 export const generateInviteTokenSchema = z.object({
   email: z.string().email("Enter a valid email address.").min(1, "Email is required."),
-  facility_id: z.string().uuid("Invalid account.").nullable().optional(),
+  facility_id: uuidString("Invalid account.").nullable().optional(),
   role_type: z.enum([
     "clinical_provider",
     "clinical_staff",

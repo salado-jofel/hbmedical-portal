@@ -227,23 +227,29 @@ export async function getSubRepDetail(subRepId: string): Promise<ISubRepDetail |
 
   const { data: history } = await adminClient
     .from("commissions")
-    .select("id, payout_period, commission_amount, adjustment, final_amount, status")
+    .select(
+      "id, payout_period, commission_amount, adjustment, final_amount, status, order_id, created_at, order:orders!commissions_order_id_fkey(order_number)",
+    )
     .eq("rep_id", subRepId)
-    .order("payout_period", { ascending: false })
-    .limit(12);
+    .order("created_at", { ascending: false })
+    .limit(50);
   const historyRows: ICommissionHistoryRow[] = (history ?? []).map((h: any) => {
     const gross = Number(h.commission_amount ?? 0);
     const adjustment = Number(h.adjustment ?? 0);
     const final = h.final_amount != null ? Number(h.final_amount) : gross + adjustment;
     const yourOverride = isAdmin(role) ? null : final * (overridePercent / 100);
+    const order = Array.isArray(h.order) ? h.order[0] : h.order;
     return {
       id: h.id,
       period: h.payout_period,
+      order_id: (h.order_id as string) ?? null,
+      order_number: (order?.order_number as string) ?? null,
       commission_amount: gross,
       adjustment,
       final_amount: final,
       your_override_amount: yourOverride,
       status: h.status,
+      created_at: h.created_at as string,
     };
   });
 
@@ -351,10 +357,14 @@ export async function getRepList(
 
   if (inScopeIds.length === 0) return [];
 
+  // Hide reps who were invited but never finished setup — they have no name,
+  // no data, and nothing useful to manage. Admin/sales-rep can still re-send
+  // the invite via the Onboarding page.
   let profilesQuery = adminClient
     .from("profiles")
     .select("id, first_name, last_name, email, status")
     .in("id", inScopeIds)
+    .eq("has_completed_setup", true)
     .order("first_name");
   if (statusFilter !== "all") {
     profilesQuery = profilesQuery.eq("status", statusFilter);
