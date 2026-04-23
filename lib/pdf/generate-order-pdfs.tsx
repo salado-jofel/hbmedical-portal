@@ -4,9 +4,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { OrderFormPDF } from "@/app/(dashboard)/dashboard/orders/(pdf)/OrderFormPDF";
 import { IVRFormPDF } from "@/app/(dashboard)/dashboard/orders/(pdf)/IVRFormPDF";
+import { DeliveryInvoicePDF } from "@/app/(dashboard)/dashboard/orders/(pdf)/DeliveryInvoicePDF";
 import { generateFilledCMS1500 } from "@/lib/pdf/generate-cms1500";
+import { composeDeliveryInvoicePrefill } from "@/lib/invoice/delivery-invoice-prefill";
 
-export type OrderPdfFormType = "order_form" | "ivr" | "hcfa_1500";
+export type OrderPdfFormType = "order_form" | "ivr" | "hcfa_1500" | "delivery_invoice";
 
 export interface GenerateOrderPdfResult {
   success: boolean;
@@ -22,7 +24,7 @@ export async function generateOrderPdf(
   adminClient: SupabaseClient = createAdminClient(),
 ): Promise<GenerateOrderPdfResult> {
   try {
-    const [orderRes, formRes, ivrRes, hcfaRes] = await Promise.all([
+    const [orderRes, formRes, ivrRes, hcfaRes, deliveryInvoiceRes] = await Promise.all([
       adminClient
         .from("orders")
         .select(`
@@ -32,19 +34,21 @@ export async function generateOrderPdf(
           patient:patients!orders_patient_id_fkey(
             first_name, last_name, date_of_birth
           ),
-          order_items(id, product_sku, product_name, quantity, unit_price)
+          order_items(id, product_sku, product_name, hcpcs_code, quantity, unit_price, total_amount)
         `)
         .eq("id", orderId)
         .single(),
       adminClient.from("order_form").select("*").eq("order_id", orderId).maybeSingle(),
       adminClient.from("order_ivr").select("*").eq("order_id", orderId).maybeSingle(),
       adminClient.from("order_form_1500").select("*").eq("order_id", orderId).maybeSingle(),
+      adminClient.from("order_delivery_invoices").select("*").eq("order_id", orderId).maybeSingle(),
     ]);
 
     const order = orderRes.data;
     const form = formRes.data;
     const ivr = ivrRes.data;
     const hcfa = hcfaRes.data;
+    const deliveryInvoice = deliveryInvoiceRes.data;
 
     if (!order) {
       return { success: false, formType, error: "Order not found" };
@@ -85,6 +89,22 @@ export async function generateOrderPdf(
       pdfBuffer = Buffer.from(filled);
       fileName = `hcfa-1500-${order.order_number}.pdf`;
       documentType = "form_1500";
+    } else if (formType === "delivery_invoice") {
+      // If the user hasn't saved the invoice form yet, the row won't exist —
+      // but the on-screen form still renders a prefill from order_items /
+      // order_ivr. Compose the same prefill here so the generated PDF
+      // mirrors what's on screen instead of emitting blanks.
+      const invoicePayload = deliveryInvoice
+        ?? composeDeliveryInvoicePrefill(
+          order as any,
+          ivr as any,
+          ((order as any).order_items ?? []) as any[],
+        );
+      pdfBuffer = await renderToBuffer(
+        <DeliveryInvoicePDF order={order} invoice={invoicePayload} />,
+      );
+      fileName = `invoice-${order.order_number}.pdf`;
+      documentType = "delivery_invoice";
     } else {
       return { success: false, formType, error: "Invalid formType" };
     }
@@ -110,12 +130,18 @@ export async function generateOrderPdf(
       .maybeSingle();
 
     if (existing) {
-      await adminClient
+      const { error: updateErr } = await adminClient
         .from("order_documents")
         .update({ file_size: pdfBuffer.length })
         .eq("id", existing.id);
+      if (updateErr) {
+        // Don't fail the request — PDF is in storage — but surface so we
+        // don't repeat the old bug where a CHECK constraint silently
+        // blocked inserts and the card stayed yellow forever.
+        console.error(`[generateOrderPdf:${formType}] order_documents update:`, updateErr);
+      }
     } else {
-      await adminClient.from("order_documents").insert({
+      const { error: insertErr } = await adminClient.from("order_documents").insert({
         order_id: orderId,
         document_type: documentType,
         bucket: "hbmedical-bucket-private",
@@ -124,6 +150,10 @@ export async function generateOrderPdf(
         mime_type: "application/pdf",
         file_size: pdfBuffer.length,
       });
+      if (insertErr) {
+        console.error(`[generateOrderPdf:${formType}] order_documents insert:`, insertErr);
+        return { success: false, formType, error: `order_documents insert failed: ${insertErr.message}` };
+      }
     }
 
     return { success: true, formType, filePath, fileName };

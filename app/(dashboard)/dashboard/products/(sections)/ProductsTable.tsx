@@ -53,6 +53,7 @@ export default function ProductsTable() {
         sku: product.sku,
         name: product.name,
         category: product.category ?? "",
+        hcpcs_code: product.hcpcs_code ?? "",
         unit_price: String(product.unit_price),
         is_active: product.is_active,
       },
@@ -92,6 +93,7 @@ export default function ProductsTable() {
       formData.set("sku", edit.sku);
       formData.set("name", edit.name);
       formData.set("category", edit.category);
+      formData.set("hcpcs_code", edit.hcpcs_code);
       formData.set("unit_price", edit.unit_price);
       formData.set("is_active", String(edit.is_active));
 
@@ -201,6 +203,32 @@ export default function ProductsTable() {
           <span className="text-sm text-[var(--text2)]">
             {product.category || "—"}
           </span>
+        );
+      },
+    },
+    {
+      key: "hcpcs_code",
+      label: "HCPCS",
+      render: (product) => {
+        const edit = editingRows[product.id];
+        const saving = savingId === product.id;
+
+        return edit ? (
+          <Input
+            value={edit.hcpcs_code}
+            onChange={(e) =>
+              updateField(product.id, "hcpcs_code", e.target.value.toUpperCase())
+            }
+            className="h-8 text-sm w-24"
+            placeholder="A6021"
+            disabled={saving}
+          />
+        ) : product.hcpcs_code ? (
+          <span className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[11px] font-mono font-medium bg-[var(--blue-lt)] text-[var(--blue)]">
+            {product.hcpcs_code}
+          </span>
+        ) : (
+          <span className="text-sm text-[var(--text3)]">—</span>
         );
       },
     },

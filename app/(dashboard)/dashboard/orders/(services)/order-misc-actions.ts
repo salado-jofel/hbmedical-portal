@@ -125,6 +125,7 @@ export async function addOrderItems(
     product_id: string;
     product_name: string;
     product_sku: string;
+    hcpcs_code?: string | null;
     unit_price: number;
     quantity: number;
   }>,
@@ -149,6 +150,9 @@ export async function addOrderItems(
       product_id: item.product_id,
       product_name: item.product_name,
       product_sku: item.product_sku,
+      // Snapshot HCPCS at order time so historical orders survive a product
+      // edit. Mirrors the same pattern used for product_sku/product_name.
+      hcpcs_code: item.hcpcs_code ?? null,
       unit_price: item.unit_price,
       quantity: item.quantity,
       shipping_amount: 0,
@@ -420,7 +424,7 @@ export async function getProducts(): Promise<ProductRecord[]> {
 
   const { data, error } = await supabase
     .from("products")
-    .select("id, sku, name, category, unit_price, is_active, sort_order, created_at, updated_at")
+    .select("id, sku, name, category, hcpcs_code, unit_price, is_active, sort_order, created_at, updated_at")
     .eq("is_active", true)
     .order("sort_order", { ascending: true, nullsFirst: false })
     .order("name", { ascending: true });

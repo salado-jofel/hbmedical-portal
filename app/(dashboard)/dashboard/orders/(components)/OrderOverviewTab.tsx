@@ -12,6 +12,7 @@ export type DraftOrderItem = {
   productId: string;
   productName: string;
   productSku: string;
+  hcpcsCode?: string | null;
   unitPrice: number;
   quantity: number;
   subtotal: number;
@@ -308,11 +309,18 @@ export function OrderOverviewTab({
                       <span className="font-medium text-[var(--navy)] truncate block">
                         {product.name}
                       </span>
-                      {product.category && (
-                        <span className="text-[10px] text-[#94a3b8] bg-[#f1f5f9] rounded px-1.5 py-0.5">
-                          {product.category}
-                        </span>
-                      )}
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        {product.category && (
+                          <span className="text-[10px] text-[#94a3b8] bg-[#f1f5f9] rounded px-1.5 py-0.5">
+                            {product.category}
+                          </span>
+                        )}
+                        {product.hcpcs_code && (
+                          <span className="text-[10px] font-mono font-medium text-[var(--blue)] bg-[var(--blue-lt)] rounded px-1.5 py-0.5">
+                            {product.hcpcs_code}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div className="w-20 text-right font-mono text-sm shrink-0 text-gray-700">
                       ${Number(product.unit_price).toFixed(2)}

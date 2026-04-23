@@ -7,6 +7,7 @@ export interface Product {
   name: string;
   description: string | null;
   category: string | null;
+  hcpcs_code: string | null;
   unit_price: number;
   is_active: boolean;
   sort_order: number;
@@ -26,6 +27,7 @@ export const productSchema = z.object({
   name: z.string().trim().min(1),
   description: z.string().nullable(),
   category: z.string().nullable(),
+  hcpcs_code: z.string().trim().nullable(),
   unit_price: z.coerce.number().finite().nonnegative(),
   is_active: z.boolean(),
   sort_order: z.coerce.number().int().nonnegative(),
@@ -38,6 +40,7 @@ export const createProductSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
   description: z.string().nullable().optional(),
   category: z.string().nullable().optional(),
+  hcpcs_code: z.string().trim().nullable().optional(),
   unit_price: z.coerce.number().finite().nonnegative(),
   is_active: z.boolean().optional(),
   sort_order: z.coerce.number().int().nonnegative().optional(),
@@ -52,6 +55,7 @@ export type RowEdit = {
   sku: string;
   name: string;
   category: string;
+  hcpcs_code: string;
   unit_price: string;
   is_active: boolean;
 };

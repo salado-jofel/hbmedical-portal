@@ -22,6 +22,7 @@ import {
   Tag,
   ArrowUpDown,
   FileText,
+  Stethoscope,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -33,6 +34,7 @@ export function AddProductModal() {
   const [sku, setSku] = useState("");
   const [name, setName] = useState("");
   const [category, setCategory] = useState("");
+  const [hcpcsCode, setHcpcsCode] = useState("");
   const [description, setDescription] = useState("");
   const [unitPrice, setUnitPrice] = useState("");
   const [sortOrder, setSortOrder] = useState("0");
@@ -49,6 +51,7 @@ export function AddProductModal() {
     setSku("");
     setName("");
     setCategory("");
+    setHcpcsCode("");
     setDescription("");
     setUnitPrice("");
     setSortOrder("0");
@@ -74,6 +77,7 @@ export function AddProductModal() {
       formData.set("sku", sku);
       formData.set("name", name);
       formData.set("category", category);
+      formData.set("hcpcs_code", hcpcsCode);
       formData.set("description", description);
       formData.set("unit_price", unitPrice);
       formData.set("sort_order", sortOrder);
@@ -157,7 +161,21 @@ export function AddProductModal() {
                 name="category"
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
-                placeholder="e.g. Medication"
+                placeholder="e.g. Collagen"
+                disabled={isSubmitting}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="flex items-center gap-2 text-sm font-medium text-[#374151]">
+                <Stethoscope className="w-4 h-4 text-[var(--navy)]" />
+                HCPCS Code
+              </label>
+              <Input
+                name="hcpcs_code"
+                value={hcpcsCode}
+                onChange={(e) => setHcpcsCode(e.target.value.toUpperCase())}
+                placeholder="e.g. A6021"
                 disabled={isSubmitting}
               />
             </div>
