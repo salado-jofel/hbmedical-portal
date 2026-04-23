@@ -7,37 +7,49 @@ export function MyTeamKpiRow() {
   const k = useAppSelector((s) => s.myTeam.kpis);
   if (!k) return null;
 
+  // Plainer copy for non-technical users:
+  //  • Drop "direct/indirect" and "via team" jargon — not meaningful for a
+  //    1-level hierarchy.
+  //  • Collapse "Active Reps" + "Total Reps" into a single Sub-Reps card.
+  //  • Only highlight Delivered Revenue in green when there's actually revenue.
+  const inactiveReps = Math.max(0, k.totalReps - k.activeReps);
+  const repsSub =
+    k.totalReps === 0
+      ? "No sub-reps yet"
+      : inactiveReps === 0
+        ? "All active"
+        : `${k.activeReps} active · ${inactiveReps} inactive`;
+
+  const hasRevenue = k.deliveredRevenue > 0;
+
   const cards = [
     {
       value: String(k.totalReps),
-      label: "Total Reps",
-      sub: `${k.repsDirect} direct · ${k.repsIndirect} indirect`,
+      label: "Sub-Reps",
+      sub: repsSub,
     },
     {
       value: String(k.totalAccounts),
-      label: "Total Accounts",
-      sub: `${k.accountsDirect} direct · ${k.accountsViaTeam} via team`,
+      label: "Team Accounts",
+      sub: k.totalAccounts === 0 ? "None yet" : "Clinics on your team",
     },
     {
-      value: String(k.totalOrders),
-      label: "Total Orders",
-      sub: `${k.ordersDelivered} delivered`,
+      value: String(k.ordersDelivered),
+      label: "Delivered Orders",
+      sub: k.totalOrders === 0 ? "None yet" : `of ${k.totalOrders} total`,
     },
     {
       value: formatAmount(k.deliveredRevenue),
-      label: "Delivered Revenue",
-      sub: `${k.deliveredOrdersConfirmed} orders confirmed`,
-      accent: true,
-    },
-    {
-      value: String(k.activeReps),
-      label: "Active Reps",
-      sub: `of ${k.activeRepsTotalDenominator} total`,
+      label: "Team Revenue",
+      sub: hasRevenue
+        ? `${k.deliveredOrdersConfirmed} confirmed`
+        : "No revenue this period",
+      accent: hasRevenue,
     },
   ];
 
   return (
-    <div className="mb-5 grid grid-cols-2 gap-[10px] md:grid-cols-3 lg:grid-cols-5">
+    <div className="mb-5 grid grid-cols-2 gap-[10px] lg:grid-cols-4">
       {cards.map((c) => (
         <div
           key={c.label}

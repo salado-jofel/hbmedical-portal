@@ -507,8 +507,9 @@ export async function getRepPerformanceSummary(): Promise<IRepPerformanceSummary
 /* -------------------------------------------------------------------------- */
 
 export interface IAdminPerformanceExtras {
+  // Keyed by rep ID (unique). `reps` provides the id → display name map.
   monthlyByRep: Array<{ month: string } & Record<string, number | string>>;
-  repNames: string[];
+  reps: Array<{ id: string; name: string }>;
   repRanking: Array<{ id: string; name: string; trailing3moRevenue: number }>;
   quotaAttainment: Array<{ id: string; name: string; actualRevenue: number; quota: number | null; pct: number | null }>;
   teamFunnel: Array<{ status: string; label: string; count: number; revenue: number }>;
@@ -519,7 +520,7 @@ export async function getAdminPerformanceExtras(): Promise<IAdminPerformanceExtr
   await getCurrentUserOrThrow(supabase);
   const role = await getUserRole(supabase);
   if (!isAdmin(role)) {
-    return { monthlyByRep: [], repNames: [], repRanking: [], quotaAttainment: [], teamFunnel: [] };
+    return { monthlyByRep: [], reps: [], repRanking: [], quotaAttainment: [], teamFunnel: [] };
   }
   const adminClient = createAdminClient();
 
@@ -534,7 +535,7 @@ export async function getAdminPerformanceExtras(): Promise<IAdminPerformanceExtr
     name: `${r.first_name ?? ""} ${r.last_name ?? ""}`.trim() || "Rep",
   }));
   if (repList.length === 0) {
-    return { monthlyByRep: [], repNames: [], repRanking: [], quotaAttainment: [], teamFunnel: [] };
+    return { monthlyByRep: [], reps: [], repRanking: [], quotaAttainment: [], teamFunnel: [] };
   }
   const repIds = repList.map((r) => r.id);
 
@@ -596,10 +597,21 @@ export async function getAdminPerformanceExtras(): Promise<IAdminPerformanceExtr
 
   const monthlyByRep = months.map((m) => {
     const row: Record<string, number | string> = { month: m.label };
-    for (const r of repList) row[r.name] = Math.round(monthlyMatrix[m.key][r.id] ?? 0);
+    // Key the per-rep value by rep ID — rep *names* can collide in seed/test
+    // data ("Jofel Salado" × 2), which used to break the chart (merged series
+    // + React duplicate-key warning). IDs are always unique.
+    for (const r of repList) row[r.id] = Math.round(monthlyMatrix[m.key][r.id] ?? 0);
     return row as { month: string } & Record<string, number | string>;
   });
-  const repNames = repList.map((r) => r.name);
+  // Disambiguate display names for the chart legend when duplicates exist.
+  const nameCounts: Record<string, number> = {};
+  for (const r of repList) nameCounts[r.name] = (nameCounts[r.name] ?? 0) + 1;
+  const nameRunning: Record<string, number> = {};
+  const repsForChart = repList.map((r) => {
+    if ((nameCounts[r.name] ?? 0) <= 1) return { id: r.id, name: r.name };
+    nameRunning[r.name] = (nameRunning[r.name] ?? 0) + 1;
+    return { id: r.id, name: `${r.name} (${nameRunning[r.name]})` };
+  });
 
   /* -------------------- repRanking (trailing 3 months) -------------------- */
   const cutoff3mo = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate()).toISOString();
@@ -661,8 +673,8 @@ export async function getAdminPerformanceExtras(): Promise<IAdminPerformanceExtr
   ];
   const FUNNEL_LABELS: Record<string, string> = {
     pending_signature: "Pending Signature",
-    manufacturer_review: "Mfr. Review",
-    additional_info_needed: "Info Needed",
+    manufacturer_review: "Under Review",
+    additional_info_needed: "Needs More Info",
     approved: "Approved",
     shipped: "Shipped",
     delivered: "Delivered",
@@ -689,5 +701,5 @@ export async function getAdminPerformanceExtras(): Promise<IAdminPerformanceExtr
     revenue: Math.round(funnelAcc[s].revenue),
   }));
 
-  return { monthlyByRep, repNames, repRanking, quotaAttainment, teamFunnel };
+  return { monthlyByRep, reps: repsForChart, repRanking, quotaAttainment, teamFunnel };
 }

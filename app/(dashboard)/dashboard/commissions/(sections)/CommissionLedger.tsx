@@ -9,6 +9,7 @@ import { useAppSelector, useAppDispatch } from "@/store/hooks";
 import { updateCommissionInStore } from "../(redux)/commissions-slice";
 import { approveCommissions, adjustCommission, voidCommission } from "../(services)/actions";
 import { formatAmount } from "@/utils/helpers/formatter";
+import OrderQuickView from "@/app/(dashboard)/dashboard/my-team/[subRepId]/(sections)/OrderQuickView";
 import { isAdmin } from "@/utils/helpers/role";
 import type { UserRole } from "@/utils/helpers/role";
 import type { ICommission } from "@/utils/interfaces/commissions";
@@ -74,6 +75,7 @@ export default function CommissionLedger() {
   const [adjNotes, setAdjNotes] = useState("");
   const [voidTarget, setVoidTarget] = useState<ICommission | null>(null);
   const [voidReason, setVoidReason] = useState("");
+  const [quickViewOrderId, setQuickViewOrderId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [mounted, setMounted] = useState(false);
 
@@ -249,7 +251,19 @@ export default function CommissionLedger() {
               <thead>
                 <tr className="border-b border-[var(--border)] bg-[var(--bg)]">
                   {admin && <th className="w-8 px-4 py-[9px]" />}
-                  {["Rep", "Order #", "Sale Amt", "Rate", "Commission", "Adj", "Override", "Status", ...(admin ? [""] : [])].map((h) => (
+                  {[
+                    // Rep column only meaningful to admin — self-view always shows the viewer.
+                    ...(admin ? ["Rep"] : []),
+                    "Order #",
+                    "Period",
+                    "Sale Amt",
+                    "Rate",
+                    "Commission",
+                    "Adj",
+                    "Override",
+                    "Status",
+                    ...(admin ? [""] : []),
+                  ].map((h) => (
                     <th
                       key={h}
                       className="px-4 py-[9px] text-[10px] font-semibold uppercase tracking-[0.6px] text-[var(--text3)] whitespace-nowrap"
@@ -274,17 +288,32 @@ export default function CommissionLedger() {
                         )}
                       </td>
                     )}
-                    {/* Rep avatar + name */}
-                    <td className="px-4 py-[10px]">
-                      <div className="flex items-center gap-2">
-                        <div className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full bg-[var(--teal-lt)] text-[10px] font-semibold text-[var(--teal)]">
-                          {initials(row.repName)}
+                    {/* Rep avatar + name — admin only */}
+                    {admin && (
+                      <td className="px-4 py-[10px]">
+                        <div className="flex items-center gap-2">
+                          <div className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full bg-[var(--teal-lt)] text-[10px] font-semibold text-[var(--teal)]">
+                            {initials(row.repName)}
+                          </div>
+                          <span className="text-[13px] font-medium text-[var(--navy)]">{row.repName}</span>
                         </div>
-                        <span className="text-[13px] font-medium text-[var(--navy)]">{row.repName}</span>
-                      </div>
+                      </td>
+                    )}
+                    <td className="px-4 py-[10px]" style={{ fontFamily: "var(--font-dm-mono), monospace" }}>
+                      {row.orderId ? (
+                        <button
+                          type="button"
+                          onClick={() => setQuickViewOrderId(row.orderId)}
+                          className="text-[12px] font-medium text-[var(--navy)] hover:underline underline-offset-2"
+                        >
+                          {row.orderNumber}
+                        </button>
+                      ) : (
+                        <span className="text-[12px] text-[var(--text2)]">{row.orderNumber}</span>
+                      )}
                     </td>
-                    <td className="px-4 py-[10px] text-[12px] text-[var(--text2)]" style={{ fontFamily: "var(--font-dm-mono), monospace" }}>
-                      {row.orderNumber}
+                    <td className="px-4 py-[10px] text-[12px] text-[var(--text2)]">
+                      {row.payoutPeriod ?? "—"}
                     </td>
                     <td className="px-4 py-[10px] text-[13px]" style={{ fontFamily: "var(--font-dm-mono), monospace" }}>
                       {formatAmount(row.orderAmount)}
@@ -429,6 +458,12 @@ export default function CommissionLedger() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Order quick-view — opens inline so the rep doesn't lose their ledger position */}
+      <OrderQuickView
+        orderId={quickViewOrderId}
+        onClose={() => setQuickViewOrderId(null)}
+      />
     </>
   );
 }

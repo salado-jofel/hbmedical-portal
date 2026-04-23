@@ -98,43 +98,26 @@ export function AccountsList({ salesReps, isAdmin, period }: {
       label: "Signed",
       headerClassName: "text-right",
       cellClassName: "text-right",
-      render: (a) => <span className="text-sm text-[var(--navy)]">{a.signed_count}</span>,
+      render: (a) => {
+        const n = a.signed_count ?? 0;
+        return n > 0
+          ? <span className="text-sm text-[var(--navy)]">{n}</span>
+          : <span className="text-sm text-[var(--text3)]">—</span>;
+      },
     },
-    {
-      key: "avg_day",
-      label: "Avg/Day",
-      headerClassName: "hidden md:table-cell text-right",
-      cellClassName: "hidden md:table-cell text-right",
-      render: (a) => <span className="text-sm text-[var(--text2)]">{(a.avg_day ?? 0).toFixed(1)}</span>,
-    },
-    {
-      key: "avg_week",
-      label: "Avg/Week",
-      headerClassName: "hidden md:table-cell text-right",
-      cellClassName: "hidden md:table-cell text-right",
-      render: (a) => <span className="text-sm text-[var(--text2)]">{(a.avg_week ?? 0).toFixed(1)}</span>,
-    },
-    {
-      key: "one_year_est",
-      label: "1 Year Est.",
-      headerClassName: "hidden lg:table-cell text-right",
-      cellClassName: "hidden lg:table-cell text-right",
-      render: (a) => (
-        <span className="text-sm font-medium text-[var(--navy)]">
-          {(a.one_year_est ?? 0) > 0 ? a.one_year_est : "—"}
-        </span>
-      ),
-    },
+    // Avg/Day, Avg/Week, 1 Year Est. columns removed — they were statistician
+    // noise (mostly zeros with no actionable insight for a sales rep).
     {
       key: "delivered",
       label: "Delivered",
       headerClassName: "text-right",
       cellClassName: "text-right",
-      render: (a) => (
-        <span className={cn("text-sm font-medium", (a.delivered_count ?? 0) > 0 ? "text-[var(--green)]" : "text-[var(--text3)]")}>
-          {a.delivered_count ?? 0}
-        </span>
-      ),
+      render: (a) => {
+        const n = a.delivered_count ?? 0;
+        return n > 0
+          ? <span className="text-sm font-medium text-[var(--green)]">{n}</span>
+          : <span className="text-sm text-[var(--text3)]">—</span>;
+      },
     },
     {
       key: "invited_by",
