@@ -74,13 +74,18 @@ export async function completeRepSetup(
       // Create facility owned by this rep.
       // facility_type is always "rep_office" for sales representatives —
       // never taken from form input and never allowed to be "clinic".
+      //
+      // Company name + phone are OPTIONAL (some reps operate as individuals).
+      // `facilities.name` is NOT NULL → fall back to "N/A" per client spec.
+      const facilityName = (practice_name ?? "").trim() || "N/A";
+      const facilityPhone = (phone ?? "").trim() ? phone : null;
       const { error: facilityError } = await adminClient
         .from("facilities")
         .insert({
           user_id: user.id,
-          name: practice_name,
+          name: facilityName,
           contact: contactName,
-          phone,
+          phone: facilityPhone,
           address_line_1,
           city,
           state,

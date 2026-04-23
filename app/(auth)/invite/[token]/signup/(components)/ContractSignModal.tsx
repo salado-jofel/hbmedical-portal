@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { X, Loader2, Type, PenLine, Upload, Check } from "lucide-react";
 import toast from "react-hot-toast";
 import { signContract } from "../(services)/actions";
+import type { ContractParagraphFields } from "@/lib/pdf/sign-contract";
 
 type Tab = "type" | "draw" | "upload";
 
@@ -15,6 +16,15 @@ interface ContractSignModalProps {
   contractLabel: string;
   defaultName: string;
   defaultTitle: string;
+  /** Pre-fills for the opening-paragraph blanks on BAA + PSA (already
+   *  captured from the provider's Office step). `clientLegalName` →
+   *  `officeName`, `clientAddressStreet` → `officeAddress`, city/state/zip →
+   *  combined. */
+  paragraphDefaults?: {
+    clientLegalName: string;
+    clientAddressStreet: string;
+    clientAddressCityStateZip: string;
+  };
   onSigned: (signedUrl: string | undefined) => void;
 }
 
@@ -28,6 +38,7 @@ export function ContractSignModal({
   contractLabel,
   defaultName,
   defaultTitle,
+  paragraphDefaults,
   onSigned,
 }: ContractSignModalProps) {
   const [tab, setTab] = useState<Tab>("type");
@@ -35,6 +46,7 @@ export function ContractSignModal({
   const [title, setTitle] = useState(defaultTitle);
   const [typedSig, setTypedSig] = useState(defaultName);
   const [uploadDataUrl, setUploadDataUrl] = useState<string | null>(null);
+  const [entityType, setEntityType] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const drawCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const drawDirtyRef = useRef(false);
@@ -47,6 +59,7 @@ export function ContractSignModal({
       setTitle(defaultTitle);
       setTypedSig(defaultName);
       setUploadDataUrl(null);
+      setEntityType("");
       drawDirtyRef.current = false;
       const c = drawCanvasRef.current;
       if (c) c.getContext("2d")?.clearRect(0, 0, c.width, c.height);
@@ -191,6 +204,10 @@ export function ContractSignModal({
       toast.error("Name and title are required.");
       return;
     }
+    if (!entityType.trim()) {
+      toast.error("Entity type is required (e.g. \"a California professional corporation\").");
+      return;
+    }
     let signatureDataUrl: string | null = null;
     if (tab === "type") {
       if (!typedSig.trim()) {
@@ -212,6 +229,22 @@ export function ContractSignModal({
       signatureDataUrl = uploadDataUrl;
     }
 
+    // Build opening-paragraph pre-fills from signup state + today's date +
+    // user-typed entity string. Applies to both BAA and PSA.
+    let paragraph: ContractParagraphFields | undefined;
+    if (paragraphDefaults) {
+      const today = new Date();
+      const month = today.toLocaleString("en-US", { month: "long" });
+      paragraph = {
+        contract_date_full: `${month} ${today.getDate()}`,
+        contract_date_year: String(today.getFullYear()),
+        client_legal_name: paragraphDefaults.clientLegalName,
+        client_entity_type: entityType.trim(),
+        client_address_street: paragraphDefaults.clientAddressStreet,
+        client_address_city_state_zip: paragraphDefaults.clientAddressCityStateZip,
+      };
+    }
+
     setSubmitting(true);
     const result = await signContract({
       token,
@@ -220,6 +253,7 @@ export function ContractSignModal({
       typedTitle: title.trim(),
       signatureMethod: tab,
       signatureDataUrl,
+      paragraph,
     });
     setSubmitting(false);
 
@@ -291,6 +325,22 @@ export function ContractSignModal({
             </label>
           </div>
 
+          <label className="block">
+            <span className="text-[11px] font-semibold text-[#64748B] uppercase tracking-wider">
+              Entity type <span className="text-red-500">*</span>
+            </span>
+            <input
+              type="text"
+              value={entityType}
+              onChange={(e) => setEntityType(e.target.value)}
+              placeholder='e.g. "a California professional corporation"'
+              className="mt-1 w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--navy)]/20"
+            />
+            <p className="mt-1 text-[11px] text-[#94A3B8]">
+              Fills the blank in &quot;and [your practice name], [this entity type] (&quot;Client&quot;)&quot; on page 1.
+            </p>
+          </label>
+
           <div>
             <span className="text-[11px] font-semibold text-[#64748B] uppercase tracking-wider block mb-2">Signature</span>
             <div className="flex gap-2 mb-3">
@@ -309,7 +359,7 @@ export function ContractSignModal({
                   className="w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--navy)]/20"
                 />
                 <div
-                  className="h-24 rounded-lg border border-dashed border-[#E2E8F0] bg-[#F8FAFC] flex items-center px-4 text-[32px] text-[#0F172A]"
+                  className="h-24 rounded-lg border border-dashed border-[#E2E8F0] bg-[#F8FAFC] flex items-center justify-center px-4 text-[32px] text-[#0F172A]"
                   style={{ fontFamily: CURSIVE_FONT }}
                 >
                   {typedSig || (

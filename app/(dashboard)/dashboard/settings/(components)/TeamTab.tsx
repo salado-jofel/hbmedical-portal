@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Building2, Users } from "lucide-react";
+import { Building2, Users, Briefcase } from "lucide-react";
 import toast from "react-hot-toast";
 import ConfirmModal from "@/app/(components)/ConfirmModal";
 import { EmptyState } from "@/app/(components)/EmptyState";
@@ -10,12 +10,14 @@ import { TeamMemberRow } from "./TeamMemberRow";
 import type { IFacilityMember } from "@/utils/interfaces/facility-members";
 import type { ISubRep } from "@/utils/interfaces/sub-reps";
 import type { IClinicAccount } from "@/utils/interfaces/settings";
+import type { IAssignedRep } from "@/app/(dashboard)/dashboard/settings/(services)/actions";
 
 interface TeamTabProps {
   isRep: boolean;
   myClinicAccounts: IClinicAccount[];
   mySubReps: ISubRep[];
   myClinicMembers: IFacilityMember[];
+  myAssignedRep: IAssignedRep | null;
 }
 
 /* ── Status badge ── */
@@ -133,7 +135,13 @@ function RepTeamTab({
 }
 
 /* ── Provider view ── */
-function ProviderTeamTab({ myClinicMembers }: { myClinicMembers: IFacilityMember[] }) {
+function ProviderTeamTab({
+  myClinicMembers,
+  myAssignedRep,
+}: {
+  myClinicMembers: IFacilityMember[];
+  myAssignedRep: IAssignedRep | null;
+}) {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -154,27 +162,58 @@ function ProviderTeamTab({ myClinicMembers }: { myClinicMembers: IFacilityMember
   }
 
   return (
-    <div>
-      <SectionHeading title="My Clinic Members" count={myClinicMembers.length} />
-      {myClinicMembers.length === 0 ? (
-        <EmptyState
-          icon={<Users className="w-10 h-10 stroke-1" />}
-          message="No clinic members yet"
-          description="Invite clinical staff from the Onboarding page."
-          className="py-8"
-        />
-      ) : (
-        <div className="space-y-2">
-          {myClinicMembers.map((member) => (
-            <TeamMemberRow
-              key={member.id}
-              member={member}
-              isDeleting={isDeleting && deleteId === member.id}
-              onDeleteClick={(id) => { setDeleteId(id); setConfirmOpen(true); }}
-            />
-          ))}
-        </div>
-      )}
+    <div className="space-y-8">
+      {/* Assigned sales rep (if the clinic was onboarded via a rep invite) */}
+      <div>
+        <SectionHeading title="My Sales Rep" count={myAssignedRep ? 1 : 0} />
+        {myAssignedRep ? (
+          <div className="flex items-center gap-3 bg-[var(--bg)] border border-[var(--border)] rounded-xl px-4 py-3">
+            <div className="w-8 h-8 rounded-full bg-[var(--teal-lt)] flex items-center justify-center shrink-0">
+              <span className="text-xs font-bold text-[var(--teal)]">
+                {myAssignedRep.first_name.charAt(0).toUpperCase()}
+              </span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-[var(--navy)] truncate">
+                {myAssignedRep.first_name} {myAssignedRep.last_name}
+              </p>
+              <p className="text-xs text-[var(--text3)] truncate">{myAssignedRep.email}</p>
+            </div>
+            <StatusBadge status={myAssignedRep.status} />
+          </div>
+        ) : (
+          <EmptyState
+            icon={<Briefcase className="w-10 h-10 stroke-1" />}
+            message="No sales rep assigned"
+            description="Your clinic isn't linked to a sales rep yet. Contact HB Medical support if you were expecting one."
+            className="py-8"
+          />
+        )}
+      </div>
+
+      {/* Clinic members */}
+      <div>
+        <SectionHeading title="My Clinic Members" count={myClinicMembers.length} />
+        {myClinicMembers.length === 0 ? (
+          <EmptyState
+            icon={<Users className="w-10 h-10 stroke-1" />}
+            message="No clinic members yet"
+            description="Invite clinical staff from the Onboarding page."
+            className="py-8"
+          />
+        ) : (
+          <div className="space-y-2">
+            {myClinicMembers.map((member) => (
+              <TeamMemberRow
+                key={member.id}
+                member={member}
+                isDeleting={isDeleting && deleteId === member.id}
+                onDeleteClick={(id) => { setDeleteId(id); setConfirmOpen(true); }}
+              />
+            ))}
+          </div>
+        )}
+      </div>
 
       <ConfirmModal
         open={confirmOpen}
@@ -189,9 +228,20 @@ function ProviderTeamTab({ myClinicMembers }: { myClinicMembers: IFacilityMember
 }
 
 /* ── Main export ── */
-export function TeamTab({ isRep, myClinicAccounts, mySubReps, myClinicMembers }: TeamTabProps) {
+export function TeamTab({
+  isRep,
+  myClinicAccounts,
+  mySubReps,
+  myClinicMembers,
+  myAssignedRep,
+}: TeamTabProps) {
   if (isRep) {
     return <RepTeamTab myClinicAccounts={myClinicAccounts} mySubReps={mySubReps} />;
   }
-  return <ProviderTeamTab myClinicMembers={myClinicMembers} />;
+  return (
+    <ProviderTeamTab
+      myClinicMembers={myClinicMembers}
+      myAssignedRep={myAssignedRep}
+    />
+  );
 }

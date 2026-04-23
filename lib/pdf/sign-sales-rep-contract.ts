@@ -34,6 +34,10 @@ export interface SignContractInput {
   formData: Record<string, unknown>;
   signaturePng: Uint8Array;
   signedDate: Date;
+  /** Additional scanned documents (e.g. I-9 List A/B/C) to merge as extra
+   *  pages AFTER the stamped contract content. PDFs are copied page-by-page;
+   *  PNG/JPG images are embedded as full-page images. */
+  attachments?: Array<{ bytes: Uint8Array; mime: string; filename: string }>;
 }
 
 function formatDate(d: Date): string {
@@ -59,6 +63,108 @@ async function trimSignature(input: Uint8Array): Promise<Uint8Array> {
 function coerceString(v: unknown): string {
   if (v == null) return "";
   return typeof v === "string" ? v : String(v);
+}
+
+/**
+ * For every radio group, draw a crisp X inside the selected widget's rect, then
+ * strip ALL radio widgets from both page /Annots and /AcroForm/Fields so
+ * pdf-lib's flatten() doesn't re-render the Genspark widget appearances (which
+ * don't align cleanly with the template's baked checkbox graphics). The manual
+ * X gives us full control over the visual mark and guarantees alignment.
+ */
+function stampAndStripRadios(pdf: PDFDocument): void {
+  const form = pdf.getForm();
+  const radios = form
+    .getFields()
+    .filter((f) => f.constructor.name === "PDFRadioGroup");
+  if (radios.length === 0) return;
+  const pages = pdf.getPages();
+
+  // Draw X at each selected widget's rect
+  for (const rg of radios) {
+    for (const w of rg.acroField.getWidgets()) {
+      const asEntry = w.dict.get(PDFName.of("AS"));
+      if (!asEntry) continue;
+      const asName = pdf.context.lookup(asEntry);
+      if (asName?.toString?.() === "/Off") continue;
+
+      // Locate the widget's page by matching dict identity
+      let widgetPage = pages[0];
+      for (const p of pages) {
+        const annots = p.node.Annots();
+        if (!annots) continue;
+        const arr = annots.asArray();
+        const match = arr.some((entry) => {
+          try {
+            return pdf.context.lookup(entry) === w.dict;
+          } catch {
+            return false;
+          }
+        });
+        if (match) {
+          widgetPage = p;
+          break;
+        }
+      }
+
+      const r = w.getRectangle();
+      const inset = Math.max(2, r.width * 0.2);
+      const x1 = r.x + inset;
+      const y1 = r.y + inset;
+      const x2 = r.x + r.width - inset;
+      const y2 = r.y + r.height - inset;
+      widgetPage.drawLine({
+        start: { x: x1, y: y1 },
+        end: { x: x2, y: y2 },
+        thickness: 1.5,
+        color: rgb(0, 0, 0),
+      });
+      widgetPage.drawLine({
+        start: { x: x1, y: y2 },
+        end: { x: x2, y: y1 },
+        thickness: 1.5,
+        color: rgb(0, 0, 0),
+      });
+    }
+  }
+
+  // Strip every radio widget from /Annots and every radio field from /AcroForm/Fields
+  const widgetDicts = new Set<PDFDict>();
+  const fieldRefs = new Set<PDFRef>();
+  for (const rg of radios) {
+    fieldRefs.add(rg.ref);
+    for (const w of rg.acroField.getWidgets()) widgetDicts.add(w.dict);
+  }
+  for (const page of pages) {
+    const annots = page.node.Annots();
+    if (!annots) continue;
+    for (let i = annots.size() - 1; i >= 0; i--) {
+      try {
+        const resolved = pdf.context.lookup(annots.get(i));
+        if (resolved instanceof PDFDict && widgetDicts.has(resolved)) {
+          annots.remove(i);
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  const acroEntry = pdf.catalog.get(PDFName.of("AcroForm"));
+  if (acroEntry) {
+    const acroDict = pdf.context.lookup(acroEntry);
+    if (acroDict instanceof PDFDict) {
+      const fe = acroDict.get(PDFName.of("Fields"));
+      if (fe) {
+        const fa = pdf.context.lookup(fe);
+        if (fa instanceof PDFArray) {
+          for (let i = fa.size() - 1; i >= 0; i--) {
+            const e = fa.get(i);
+            if (e instanceof PDFRef && fieldRefs.has(e)) fa.remove(i);
+          }
+        }
+      }
+    }
+  }
 }
 
 /**
@@ -129,13 +235,15 @@ export async function stampSalesRepContract({
   formData,
   signaturePng,
   signedDate,
+  attachments,
 }: SignContractInput): Promise<Uint8Array> {
   const pdf = await PDFDocument.load(sourcePdf);
   const form = pdf.getForm();
   const font = await pdf.embedFont(StandardFonts.Helvetica);
 
-  // ── 1) Fill every text + radio field declared on the contract ──
+  // ── 1) Fill every text + radio + checkbox field declared on the contract ──
   for (const field of contract.fields) {
+    if (field.virtual) continue;
     const visible = !field.showIf || field.showIf(formData);
     if (!visible) continue;
     const value = coerceString(formData[field.key]);
@@ -153,11 +261,39 @@ export async function stampSalesRepContract({
       continue;
     }
 
+    if (field.type === "checkbox") {
+      try {
+        const cb = form.getCheckBox(field.key);
+        if (value === "true") cb.check();
+        else cb.uncheck();
+      } catch (e) {
+        console.error(`[sign-sales-rep] checkbox set failed for ${field.key}:`, e);
+      }
+      continue;
+    }
+
+    // File fields don't map to AcroForm; they're merged as extra pages later.
+    if (field.type === "file") continue;
+
     // All other types render as text.
     if (!value) continue;
     try {
       const tf = form.getTextField(field.key);
-      tf.setText(value);
+      if (field.comb && field.comb > 0) {
+        // Distribute digits one-per-cell across the widget. setMaxLength +
+        // enableCombing are no-ops if the template already configured them,
+        // but keep them as a safety net for templates Genspark didn't convert
+        // as proper comb fields.
+        const digits = value.replace(/\D/g, "").slice(0, field.comb);
+        tf.setMaxLength(field.comb);
+        tf.enableCombing();
+        tf.setText(digits);
+      } else {
+        tf.setText(value);
+      }
+      // Apply explicit font size if the schema pinned one — this must come
+      // BEFORE updateAppearances so the /AP stream is generated at that size.
+      if (field.fontSize) tf.setFontSize(field.fontSize);
       // Keep the viewer-drawn appearance in sync with the value we just set —
       // belt-and-suspenders for viewers that ignore NeedAppearances.
       tf.updateAppearances(font);
@@ -166,13 +302,19 @@ export async function stampSalesRepContract({
     }
   }
 
-  // ── 2) Date (auto-today) ──
-  try {
-    const dateField = form.getTextField("date");
-    dateField.setText(formatDate(signedDate));
-    dateField.updateAppearances(font);
-  } catch {
-    /* some contracts may not have a date field; ignore */
+  // ── 2) Auto-fill any templated date fields with today's date ──
+  // `date`         — rep's signing date (existing for all contracts)
+  // `employer_date` — I-9 Section 2 employer signing date (same value — the
+  //                   rep self-attests on Kelsey's behalf since she's the
+  //                   baked-in authorized employer representative).
+  for (const dateKey of ["date", "employer_date"] as const) {
+    try {
+      const f = form.getTextField(dateKey);
+      f.setText(formatDate(signedDate));
+      f.updateAppearances(font);
+    } catch {
+      /* field not present on this contract */
+    }
   }
 
   // ── 3) Signature — embed PNG inside the PDFSignature widget rectangle ──
@@ -226,10 +368,49 @@ export async function stampSalesRepContract({
   //       level first lets the remaining text + radio fields flatten into
   //       static page content — output is non-editable in any PDF viewer. ──
   try {
+    stampAndStripRadios(pdf);
     removeSignatureFields(pdf);
     pdf.getForm().flatten();
   } catch (e) {
     console.error("[sign-sales-rep] flatten failed:", e);
+  }
+
+  // ── 5) Merge any uploaded attachments as additional pages ──
+  if (attachments && attachments.length > 0) {
+    for (const att of attachments) {
+      try {
+        if (att.mime === "application/pdf") {
+          const src = await PDFDocument.load(att.bytes);
+          const copied = await pdf.copyPages(src, src.getPageIndices());
+          for (const p of copied) pdf.addPage(p);
+        } else if (att.mime === "image/png" || att.mime === "image/jpeg") {
+          const img =
+            att.mime === "image/png"
+              ? await pdf.embedPng(att.bytes)
+              : await pdf.embedJpg(att.bytes);
+          // US Letter portrait canvas — fit image inside with 36pt margins.
+          const pageWidth = 612;
+          const pageHeight = 792;
+          const margin = 36;
+          const maxW = pageWidth - margin * 2;
+          const maxH = pageHeight - margin * 2;
+          const scale = Math.min(maxW / img.width, maxH / img.height, 1);
+          const drawW = img.width * scale;
+          const drawH = img.height * scale;
+          const newPage = pdf.addPage([pageWidth, pageHeight]);
+          newPage.drawImage(img, {
+            x: (pageWidth - drawW) / 2,
+            y: (pageHeight - drawH) / 2,
+            width: drawW,
+            height: drawH,
+          });
+        } else {
+          console.warn(`[sign-sales-rep] skipping unsupported attachment mime: ${att.mime}`);
+        }
+      } catch (e) {
+        console.error(`[sign-sales-rep] failed to merge attachment ${att.filename}:`, e);
+      }
+    }
   }
 
   void VALUE_COLOR;

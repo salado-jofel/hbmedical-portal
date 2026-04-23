@@ -12,15 +12,21 @@ import {
   getMyClinicAccounts,
   getMySubReps,
   getMyClinicMembers,
+  getMyAssignedRep,
   getMyEnrollment,
 } from "@/app/(dashboard)/dashboard/settings/(services)/actions";
+import { getMyConnectStatus } from "@/app/(dashboard)/dashboard/settings/(services)/stripe-connect-actions";
 import { notFound } from "next/navigation";
 import Providers from "./(sections)/Providers";
 import { SettingsTabs } from "./(sections)/SettingsTabs";
 
 export const dynamic = "force-dynamic";
 
-export default async function SettingsPage() {
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
   const supabase = await createClient();
   const role = await getUserRole(supabase);
 
@@ -31,14 +37,24 @@ export default async function SettingsPage() {
   const providerUser = isClinicalProvider(role as UserRole);
   const showCredentials = providerUser;
   const showTeamTab = repUser || providerUser;
+  const showPayouts = repUser;
   // Admin manages all users via the Users page — no Team tab in Settings.
   // Support staff and clinical staff have no team management responsibilities.
 
-  const [myClinicAccounts, mySubReps, myClinicMembers, credentials, enrollmentData, facility] =
-    await Promise.all([
+  const [
+    myClinicAccounts,
+    mySubReps,
+    myClinicMembers,
+    myAssignedRep,
+    credentials,
+    enrollmentData,
+    facility,
+    connectStatus,
+  ] = await Promise.all([
       repUser ? getMyClinicAccounts() : Promise.resolve([]),
       repUser ? getMySubReps() : Promise.resolve([]),
       providerUser ? getMyClinicMembers() : Promise.resolve([]),
+      providerUser ? getMyAssignedRep() : Promise.resolve(null),
       showCredentials ? getMyCredentials() : Promise.resolve(null),
       providerUser ? getMyEnrollment() : Promise.resolve(null),
       providerUser
@@ -49,12 +65,19 @@ export default async function SettingsPage() {
             .maybeSingle()
             .then((r) => r.data)
         : Promise.resolve(null),
+      showPayouts ? getMyConnectStatus() : Promise.resolve(null),
     ]);
 
   const showEnrollment = providerUser;
   const facilityName = facility?.name ?? "";
   const providerName = `${profile.first_name} ${profile.last_name}`.trim();
   const providerNpi = credentials?.npi_number ?? "";
+
+  const { tab } = await searchParams;
+  const validTabs = ["profile", "team", "credentials", "enrollment", "payouts"] as const;
+  const initialTab = validTabs.includes(tab as (typeof validTabs)[number])
+    ? (tab as (typeof validTabs)[number])
+    : undefined;
 
   return (
     <>
@@ -66,10 +89,14 @@ export default async function SettingsPage() {
           myClinicAccounts={myClinicAccounts}
           mySubReps={mySubReps}
           myClinicMembers={myClinicMembers}
+          myAssignedRep={myAssignedRep}
           credentials={credentials}
           showTeamTab={showTeamTab}
           showCredentials={showCredentials}
           showEnrollment={showEnrollment}
+          showPayouts={showPayouts}
+          connectStatus={connectStatus}
+          initialTab={initialTab}
           enrollmentData={enrollmentData}
           facilityName={facilityName}
           providerName={providerName}

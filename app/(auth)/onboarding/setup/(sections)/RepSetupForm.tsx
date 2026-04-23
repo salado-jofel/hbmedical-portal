@@ -43,9 +43,9 @@ export default function RepSetupForm() {
     const e: FieldErrors = {};
     if (!firstName.trim()) e.first_name = "First name is required.";
     if (!lastName.trim()) e.last_name = "Last name is required.";
-    if (!practiceName.trim()) e.practice_name = "Account name is required.";
-    if (!phone.trim()) e.phone = "Account phone is required.";
-    else if (!E164_REGEX.test(phone.trim()))
+    // Company name + Company number are OPTIONAL for sales reps — only
+    // validate the phone format if they DID type something.
+    if (phone.trim() && !E164_REGEX.test(phone.trim()))
       e.phone = "Enter a valid phone number.";
     if (!addressLine1.trim()) e.address_line_1 = "Street address is required.";
     if (!city.trim()) e.city = "City is required.";
@@ -180,13 +180,12 @@ export default function RepSetupForm() {
         <AuthField
           id="practice_name"
           name="practice_name"
-          label="Account Name"
+          label="Company name"
           icon={<Building2 className="w-4 h-4" />}
           type="text"
-          placeholder="e.g. Sunrise Medical Group"
+          placeholder="Your company (leave blank if none)"
           value={practiceName}
           onChange={(e) => setPracticeName(e.target.value)}
-          required
           error={errors.practice_name ?? null}
         />
 
@@ -194,8 +193,7 @@ export default function RepSetupForm() {
           <PhoneInputField
             value={phone}
             onChange={(val) => setPhone(val)}
-            label="Account Phone"
-            required
+            label="Company number"
             theme="light"
           />
           {errors.phone && (

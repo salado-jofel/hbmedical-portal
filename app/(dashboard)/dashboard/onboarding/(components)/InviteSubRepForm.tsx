@@ -16,6 +16,7 @@ import {
 import { inviteSubRep } from "@/app/(dashboard)/dashboard/onboarding/(services)/sub-rep-actions";
 import type { IInviteTokenFormState } from "@/utils/interfaces/invite-tokens";
 import { EXPIRY_OPTIONS } from "@/utils/constants/onboarding";
+import { CommissionSliders } from "./CommissionSliders";
 
 export function InviteSubRepForm() {
   const [state, formAction, isPending] = useActionState<
@@ -73,6 +74,8 @@ export function InviteSubRepForm() {
           <p className="text-xs text-red-500">{state.fieldErrors.email}</p>
         )}
       </div>
+
+      <CommissionSliders defaultRate={10} defaultOverride={2} showOverrideHint />
 
       <div className="space-y-1.5">
         <Label className="text-xs">Link expires in</Label>

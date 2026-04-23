@@ -1,5 +1,12 @@
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import sharp from "sharp";
+import {
+  PDFDocument,
+  StandardFonts,
+  rgb,
+  PDFName,
+  PDFDict,
+  PDFArray,
+  PDFRef,
+} from "pdf-lib";
 
 /* ──────────────────────────────────────────────────────────────────────────
  *  Contract stamping — DocuSign-style inline signing.
@@ -31,8 +38,31 @@ export interface SignContractInput {
   contractType: ContractType;
   /** The provider filling in the CLIENT block. Omit for MERIDIAN-only previews. */
   client?: StampSignerInput;
-  /** Counter-signatory (Dr John Pienkos / CEO). Signature image is optional. */
-  meridian: StampSignerInput;
+  /** Today's date for the Meridian (baked-in) signature row. Pienkos's name,
+   *  title, and signature image are now permanently baked into the template
+   *  — only the date stays dynamic so it reflects the actual sign day. */
+  meridianDate: Date | string;
+  /** Opening-paragraph AcroForm field values. Both the BAA and PSA share the
+   *  same 6-field shape now that Genspark added paragraph fields to both. */
+  paragraph?: ContractParagraphFields;
+}
+
+/** Values for the 6 AcroForm fields in the BAA/PSA opening paragraph. Provider
+ *  signup already captures most of these; entity type is entered in the sign
+ *  modal. */
+export interface ContractParagraphFields {
+  /** e.g. "April 23" */
+  contract_date_full: string;
+  /** e.g. "2026" */
+  contract_date_year: string;
+  /** Client's legal business name — `officeName` from signup */
+  client_legal_name: string;
+  /** e.g. "a California professional corporation" — provider-typed */
+  client_entity_type: string;
+  /** Street number and name — `officeAddress` from signup */
+  client_address_street: string;
+  /** City, state, ZIP — combined from signup fields */
+  client_address_city_state_zip: string;
 }
 
 /* ── Per-contract layout (measured from source PDFs) ── */
@@ -87,12 +117,6 @@ const VALUE_COLOR = rgb(0.06, 0.18, 0.29);
 /** Signature image is sized to visually match the body text beside it. */
 const SIGNATURE_BOX_WIDTH = 110;
 const SIGNATURE_BOX_HEIGHT = 22;
-/** Meridian (counter-signatory) signature. The source PNG is auto-trimmed of
- *  any white/near-white border via sharp before embedding, so the box height
- *  can stay tight against the "Date:" row above (~25pt gap) while still
- *  rendering the ink at a readable size. */
-const MERIDIAN_SIGNATURE_BOX_WIDTH = 170;
-const MERIDIAN_SIGNATURE_BOX_HEIGHT = 22;
 /** Image BOTTOM sits this many pts below the "Signature:" label baseline — leaves
  *  room for cursive descenders while keeping the signature on the same line. */
 const SIGNATURE_BOTTOM_BELOW_BASELINE = 4;
@@ -119,27 +143,12 @@ async function embedSignature(
   }
 }
 
-/** Trim near-white border from a signature PNG so the ink fills its bounding
- *  box. Returns the original bytes unchanged on any sharp error so a bad image
- *  never breaks the contract stamping flow. */
-async function trimSignaturePng(input: Uint8Array): Promise<Uint8Array> {
-  try {
-    const trimmed = await sharp(Buffer.from(input))
-      .trim({ threshold: 15 })
-      .png()
-      .toBuffer();
-    return new Uint8Array(trimmed);
-  } catch (err) {
-    console.error("[trimSignaturePng]", err);
-    return input;
-  }
-}
-
 export async function stampContractPdf({
   sourcePdf,
   contractType,
   client,
-  meridian,
+  meridianDate,
+  paragraph,
 }: SignContractInput): Promise<Uint8Array> {
   const pdf = await PDFDocument.load(sourcePdf);
   const font = await pdf.embedFont(StandardFonts.Helvetica);
@@ -154,12 +163,6 @@ export async function stampContractPdf({
   }
 
   const clientSig = client ? await embedSignature(pdf, client.signaturePng) : null;
-  // Meridian signature is typically a scan/export with white padding — trim it
-  // so scaleToFit maxes out the visible ink in the target box.
-  const meridianPng = meridian.signaturePng
-    ? await trimSignaturePng(meridian.signaturePng)
-    : null;
-  const meridianSig = await embedSignature(pdf, meridianPng);
 
   const drawValue = (text: string, x: number, y: number) => {
     page.drawText(text, {
@@ -199,15 +202,10 @@ export async function stampContractPdf({
     });
   };
 
-  // ── MERIDIAN block (left column) ──
-  drawValue(meridian.name, layout.meridianX, layout.rowYName);
-  drawValue(meridian.title, layout.meridianX, layout.rowYTitle);
-  drawValue(formatDate(meridian.date), layout.meridianX, layout.rowYDate);
-  drawSig(meridianSig, layout.meridianSigX, {
-    boxW: MERIDIAN_SIGNATURE_BOX_WIDTH,
-    boxH: MERIDIAN_SIGNATURE_BOX_HEIGHT,
-    whiteBackground: true,
-  });
+  // ── MERIDIAN block — only DATE is stamped at sign time; name/title/signature
+  //    are permanently baked into the template (see tmp-calibrate/bake-pienkos-
+  //    into-templates.mjs) ──
+  drawValue(formatDate(meridianDate), layout.meridianX, layout.rowYDate);
 
   // ── CLIENT block (right column) — skipped for MERIDIAN-only previews ──
   if (client) {
@@ -220,27 +218,98 @@ export async function stampContractPdf({
     });
   }
 
+  // ── Fill the 6 opening-paragraph AcroForm fields. Both BAA and PSA carry
+  //    the same shape now, so this branches purely on whether the caller
+  //    supplied values. ──
+  if (paragraph) {
+    const form = pdf.getForm();
+    for (const [key, value] of Object.entries(paragraph)) {
+      if (!value) continue;
+      try {
+        const tf = form.getTextField(key);
+        tf.setText(value);
+        tf.updateAppearances(font);
+      } catch (err) {
+        console.error(`[stampContractPdf] setText failed for ${key}:`, err);
+      }
+    }
+    // Flatten so the output is non-editable in viewers. Safe here — the new
+    // paragraph fields are plain text widgets with /AP streams. The DocuSign
+    // envelope PDFSignature artifact is stripped first to avoid the familiar
+    // "Unexpected N type: undefined" flatten error.
+    try {
+      removeSignatureFields(pdf);
+      pdf.getForm().flatten();
+    } catch (err) {
+      console.error("[stampContractPdf] flatten failed:", err);
+    }
+  }
+
   return await pdf.save();
 }
 
-/* ── Static counter-signatory metadata ── */
+/** Strip every PDFSignature field (DocuSign envelope + any leftover sig
+ *  widgets) at the dict level so pdf-lib's form.flatten() doesn't choke on
+ *  their missing /AP streams. */
+function removeSignatureFields(pdf: PDFDocument): void {
+  const form = pdf.getForm();
+  const sigs = form.getFields().filter((f) => f.constructor.name === "PDFSignature");
+  if (sigs.length === 0) return;
+  const sigFieldRefs = new Set<PDFRef>();
+  const sigWidgetDicts = new Set<PDFDict>();
+  for (const sig of sigs) {
+    sigFieldRefs.add(sig.ref);
+    for (const w of sig.acroField.getWidgets()) sigWidgetDicts.add(w.dict);
+  }
+  for (const page of pdf.getPages()) {
+    const annots = page.node.Annots();
+    if (!annots) continue;
+    for (let i = annots.size() - 1; i >= 0; i--) {
+      try {
+        const r = pdf.context.lookup(annots.get(i));
+        if (r instanceof PDFDict && sigWidgetDicts.has(r)) annots.remove(i);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  const acroEntry = pdf.catalog.get(PDFName.of("AcroForm"));
+  if (!acroEntry) return;
+  const acroDict = pdf.context.lookup(acroEntry);
+  if (!(acroDict instanceof PDFDict)) return;
+  const fe = acroDict.get(PDFName.of("Fields"));
+  if (!fe) return;
+  const fa = pdf.context.lookup(fe);
+  if (!(fa instanceof PDFArray)) return;
+  for (let i = fa.size() - 1; i >= 0; i--) {
+    const e = fa.get(i);
+    if (e instanceof PDFRef && sigFieldRefs.has(e)) fa.remove(i);
+  }
+}
+
+/* ── Static counter-signatory metadata — kept for historical reference.
+ *  Pienkos's name, title, and signature are now baked into the template PDFs
+ *  at `lib/pdf/templates/baa.pdf` and `psa.pdf` (see
+ *  `tmp-calibrate/bake-pienkos-into-templates.mjs`). Nothing is fetched from
+ *  Supabase for Meridian at sign time anymore. ── */
 
 export const MERIDIAN_SIGNER = {
   name: "Dr John Pienkos",
   title: "CEO",
-  /** Fixed storage path where the Pienkos signature image will live when supplied. */
-  signaturePath: "signatures/john-pienkos-white.png",
 } as const;
 
 /* ── Source contract metadata ── */
 
-export const CONTRACT_SOURCES: Record<ContractType, { path: string; label: string }> = {
+export const CONTRACT_SOURCES: Record<
+  ContractType,
+  { templateFile: string; label: string }
+> = {
   baa: {
-    path: "provider-contracts/Business Associates Agreement.pdf",
+    templateFile: "baa.pdf",
     label: "Business Associates Agreement",
   },
   product_services: {
-    path: "provider-contracts/Product and Services.pdf",
+    templateFile: "psa.pdf",
     label: "Product & Services Agreement",
   },
 };
