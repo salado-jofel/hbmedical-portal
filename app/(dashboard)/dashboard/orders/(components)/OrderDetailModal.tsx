@@ -1197,6 +1197,43 @@ export function OrderDetailModal({
       } else {
         toast.success("Changes saved");
         setSavedNotes(draftNotes);
+
+        // Product changes alter what prints on the Order Form and the
+        // Delivery Invoice — both draw their line items from order_items.
+        // Regenerate fire-and-forget so the right-side cards show the
+        // spinner via the pdf-regenerating listener, then flip green via
+        // the regen-done refreshDocuments call. Skipped for notes-only
+        // saves since neither PDF renders notes.
+        const hasItemChanges =
+          newItems.length > 0 || qtyChanges.length > 0 || deletedIds.length > 0;
+        if (hasItemChanges) {
+          for (const [cardType, formType] of [
+            ["order_form", "order_form"],
+            ["delivery_invoice", "delivery_invoice"],
+          ] as const) {
+            window.dispatchEvent(
+              new CustomEvent("pdf-regenerating", {
+                detail: { type: cardType, status: "start" },
+              }),
+            );
+            fetch("/api/generate-pdf", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ orderId: order.id, formType }),
+            })
+              .catch((err) =>
+                console.error(`[Overview] ${formType} PDF regen failed:`, err),
+              )
+              .finally(() => {
+                window.dispatchEvent(
+                  new CustomEvent("pdf-regenerating", {
+                    detail: { type: cardType, status: "done" },
+                  }),
+                );
+              });
+          }
+        }
+
         await refreshOrder();
         // refreshOrder → updateOrderInStore → useEffect → setSavedItems + setDraftItems
         // (temp draft IDs replaced by real IDs from DB)

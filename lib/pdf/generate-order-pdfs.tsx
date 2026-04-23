@@ -6,6 +6,7 @@ import { OrderFormPDF } from "@/app/(dashboard)/dashboard/orders/(pdf)/OrderForm
 import { IVRFormPDF } from "@/app/(dashboard)/dashboard/orders/(pdf)/IVRFormPDF";
 import { DeliveryInvoicePDF } from "@/app/(dashboard)/dashboard/orders/(pdf)/DeliveryInvoicePDF";
 import { generateFilledCMS1500 } from "@/lib/pdf/generate-cms1500";
+import { composeDeliveryInvoicePrefill } from "@/lib/invoice/delivery-invoice-prefill";
 
 export type OrderPdfFormType = "order_form" | "ivr" | "hcfa_1500" | "delivery_invoice";
 
@@ -33,7 +34,7 @@ export async function generateOrderPdf(
           patient:patients!orders_patient_id_fkey(
             first_name, last_name, date_of_birth
           ),
-          order_items(id, product_sku, product_name, quantity, unit_price)
+          order_items(id, product_sku, product_name, hcpcs_code, quantity, unit_price, total_amount)
         `)
         .eq("id", orderId)
         .single(),
@@ -89,8 +90,18 @@ export async function generateOrderPdf(
       fileName = `hcfa-1500-${order.order_number}.pdf`;
       documentType = "form_1500";
     } else if (formType === "delivery_invoice") {
+      // If the user hasn't saved the invoice form yet, the row won't exist —
+      // but the on-screen form still renders a prefill from order_items /
+      // order_ivr. Compose the same prefill here so the generated PDF
+      // mirrors what's on screen instead of emitting blanks.
+      const invoicePayload = deliveryInvoice
+        ?? composeDeliveryInvoicePrefill(
+          order as any,
+          ivr as any,
+          ((order as any).order_items ?? []) as any[],
+        );
       pdfBuffer = await renderToBuffer(
-        <DeliveryInvoicePDF order={order} invoice={deliveryInvoice} />,
+        <DeliveryInvoicePDF order={order} invoice={invoicePayload} />,
       );
       fileName = `invoice-${order.order_number}.pdf`;
       documentType = "delivery_invoice";

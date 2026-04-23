@@ -13,35 +13,10 @@ import type {
   SignerRelationship,
 } from "@/utils/interfaces/orders";
 import { ORDERS_PATH, generateOrderPDFs } from "./_shared";
-
-const DEFAULT_ACKNOWLEDGEMENTS: AcknowledgementMap = {
-  medicare_supplier_standards:    true,
-  training_safe_use:              true,
-  complaint_grievance:            true,
-  warranty_information:           true,
-  rights_responsibilities:        true,
-  hipaa_privacy:                  true,
-  safety_packet:                  true,
-  maintenance_cleaning:           true,
-  medical_info_authorization:     true,
-  written_instructions:           true,
-  repair_return_policy:           true,
-  return_demo:                    true,
-  capped_rental_info:             true,
-  emergency_preparedness:         true,
-  mission_statement:              true,
-  financial_responsibility:       true,
-  acceptance_of_services:         true,
-  participation_plan_of_care:     true,
-  patient_rental_purchase_option: true,
-};
-
-// Invoice number is derived from the order number so admins can correlate at
-// a glance: HBM-20260423-CX1K → MSS-20260423-CX1K.
-function buildInvoiceNumber(orderNumber: string | null | undefined): string {
-  if (!orderNumber) return "MSS-DRAFT";
-  return orderNumber.replace(/^HBM-/i, "MSS-");
-}
+import {
+  DEFAULT_ACKNOWLEDGEMENTS,
+  composeDeliveryInvoicePrefill,
+} from "@/lib/invoice/delivery-invoice-prefill";
 
 function rowToInterface(row: any): IDeliveryInvoice {
   return {
@@ -124,63 +99,25 @@ export async function getOrderDeliveryInvoice(
       return { invoice: null, error: "Order not found." };
     }
 
-    const patientName = order.patient
-      ? `${order.patient.first_name ?? ""} ${order.patient.last_name ?? ""}`.trim()
-      : "";
+    // Compose a draft via the shared helper so the PDF generator produces
+    // identical output when no row has been saved yet. rowToInterface flips
+    // the DB-style (snake_case, null id) shape into the camelCase UI shape.
+    const prefill = composeDeliveryInvoicePrefill(
+      order,
+      ivr,
+      (itemsRes.data ?? []) as any[],
+    );
 
-    // Pre-fill line items from order_items snapshot. HCPCS comes from the
-    // denormalized column we copy at order-add time (so a product edit later
-    // doesn't change historical invoices).
-    const orderItems = (itemsRes.data ?? []) as Array<{
-      product_name: string;
-      product_sku: string;
-      hcpcs_code: string | null;
-      unit_price: number | string;
-      quantity: number;
-      total_amount: number | string | null;
-    }>;
-    const prefillLineItems: IDeliveryInvoiceLineItem[] = orderItems.map((it) => ({
-      date: order.date_of_service ?? null,
-      qty: Number(it.quantity ?? 0),
-      hcpc: it.hcpcs_code ?? null,
-      // Mirror what's printed: include SKU if present so the row is self-describing.
-      description: it.product_sku
-        ? `${it.product_name} (${it.product_sku})`
-        : it.product_name,
-      perEach: it.unit_price != null ? Number(it.unit_price) : null,
-      total: it.total_amount != null ? Number(it.total_amount) : Number(it.unit_price ?? 0) * Number(it.quantity ?? 0),
-    }));
-
-    const draft: IDeliveryInvoice = {
-      id:               null,
-      orderId,
-      invoiceNumber:    buildInvoiceNumber(order.order_number),
-      invoiceDate:      order.date_of_service ?? new Date().toISOString().slice(0, 10),
-      customerName:     patientName || null,
-      // order_ivr stores the full address in one field; admin can split it
-      // into the invoice's structured fields when finalizing.
-      addressLine1:     ivr?.patient_address ?? null,
-      addressLine2:     null,
-      city:             null,
-      state:            null,
-      postalCode:       null,
-      insuranceName:    ivr?.insurance_provider ?? null,
-      insuranceNumber:  ivr?.member_id ?? null,
-      doctorName:       ivr?.physician_name ?? null,
-      deliveryMethod:   null,
-      lineItems:        prefillLineItems,
-      rentOrPurchase:   null,
-      dueCopay:         null,
-      totalReceived:    null,
-      acknowledgements: { ...DEFAULT_ACKNOWLEDGEMENTS },
-      patientSignatureUrl: null,
-      patientSignedAt:     null,
-      relationship:        null,
-      createdAt: null,
-      updatedAt: null,
+    return {
+      invoice: rowToInterface({
+        ...prefill,
+        id: null,
+        order_id: orderId,
+        created_at: null,
+        updated_at: null,
+      }),
+      error: null,
     };
-
-    return { invoice: draft, error: null };
   } catch (err) {
     console.error("[getOrderDeliveryInvoice]", err);
     return { invoice: null, error: "Failed to load invoice." };
