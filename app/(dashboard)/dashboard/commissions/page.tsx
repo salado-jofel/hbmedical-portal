@@ -22,13 +22,15 @@ import {
 export const metadata: Metadata = { title: "Commissions" };
 export const dynamic = "force-dynamic";
 
-const EMPTY_SUMMARY: ICommissionSummary = { totalEarned: 0, totalPending: 0, totalPaid: 0, currentRate: null };
+const EMPTY_SUMMARY: ICommissionSummary = { totalEarned: 0, totalPending: 0, totalApproved: 0, totalPaid: 0, currentRate: null };
 
 export default async function CommissionsPage() {
   const supabase = await createClient();
   const role = await getUserRole(supabase);
 
   if (!isAdmin(role) && !isSalesRep(role)) redirect("/dashboard");
+  // Admin commission management lives inside each rep's detail page under
+  // Sales Reps. Redirect admins there so they don't hit a rep-centric UI.
   if (isAdmin(role)) redirect("/dashboard/my-team");
 
   // Each fetch is isolated — one failure must not crash the entire page re-render,
@@ -47,12 +49,12 @@ export default async function CommissionsPage() {
       <PageHeader title="Commissions" subtitle="Commission rates and payout tracking" />
 
       <Providers rates={rates} commissions={commissions} payouts={payouts} summary={summary}>
-        {/* KPI row */}
+        {/* KPI row — lifecycle left to right: pending → approved → paid */}
         <div className="mb-5 grid grid-cols-2 gap-[10px] lg:grid-cols-4">
-          <KpiCard label="Total Earned"    value={formatAmount(summary.totalEarned)}  accentColor="teal"   />
-          <KpiCard label="Pending Approval" value={formatAmount(summary.totalPending)} accentColor="gold"   />
-          <KpiCard label="Total Paid"      value={formatAmount(summary.totalPaid)}    accentColor="green"  />
-          <KpiCard label="Current Rate"    value={summary.currentRate != null ? `${summary.currentRate}%` : "—"} accentColor="blue" />
+          <KpiCard label="Pending Approval" value={formatAmount(summary.totalPending)}  accentColor="gold"  />
+          <KpiCard label="Awaiting Payout"  value={formatAmount(summary.totalApproved)} accentColor="teal"  />
+          <KpiCard label="Total Paid"       value={formatAmount(summary.totalPaid)}     accentColor="green" />
+          <KpiCard label="Current Rate"     value={summary.currentRate != null ? `${summary.currentRate}%` : "—"} accentColor="blue" />
         </div>
 
         {/* Team Earnings — sub-rep override summary */}

@@ -37,7 +37,7 @@ export default function TierBreakdown() {
         ))}
       </div>
       <p className="mt-3 text-[11px] text-[var(--text3)]">
-        Based on delivered revenue in the trailing 3 months. Top 20% = A &middot; next 30% = B &middot; rest = C.
+        Your best-performing clinics, ranked by revenue over the last 3 months.
       </p>
     </div>
   );

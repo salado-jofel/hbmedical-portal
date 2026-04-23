@@ -38,36 +38,6 @@ export function CredentialsForm({ credentials, onDeleteClick }: CredentialsFormP
         />
       </div>
 
-      <div className="space-y-1.5">
-        <Label className="text-xs text-[#374151]">PTAN Number</Label>
-        <Input
-          name="ptan_number"
-          defaultValue={credentials?.ptan_number ?? ""}
-          placeholder="e.g. A12345"
-          className="h-9 text-sm"
-        />
-      </div>
-
-      <div className="space-y-1.5">
-        <Label className="text-xs text-[#374151]">Medical License Number</Label>
-        <Input
-          name="medical_license_number"
-          defaultValue={credentials?.medical_license_number ?? ""}
-          placeholder="e.g. G12345"
-          className="h-9 text-sm"
-        />
-      </div>
-
-      <div className="space-y-1.5">
-        <Label className="text-xs text-[#374151]">Other Credential</Label>
-        <Input
-          name="credential"
-          defaultValue={credentials?.credential ?? ""}
-          placeholder="DEA number, board cert, etc."
-          className="h-9 text-sm"
-        />
-      </div>
-
       {state?.error && (
         <p className="text-xs text-red-500 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
           {state.error}

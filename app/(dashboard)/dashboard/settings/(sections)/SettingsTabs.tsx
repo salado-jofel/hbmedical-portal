@@ -1,20 +1,26 @@
 "use client";
 
 import { useState } from "react";
-import { User, Users, ShieldCheck, ClipboardList } from "lucide-react";
+import { User, Users, ShieldCheck, ClipboardList, Banknote } from "lucide-react";
 import { cn } from "@/utils/utils";
 import { ProfileTab } from "../(components)/ProfileTab";
 import { TeamTab } from "../(components)/TeamTab";
 import { CredentialsTab } from "../(components)/CredentialsTab";
 import { EnrollmentTab } from "../(components)/EnrollmentTab";
+import { PayoutsTab } from "../(components)/PayoutsTab";
 import type { Profile } from "@/utils/interfaces/profiles";
 import type { IFacilityMember } from "@/utils/interfaces/facility-members";
 import type { IProviderCredentials } from "@/utils/interfaces/provider-credentials";
 import type { ISubRep } from "@/utils/interfaces/sub-reps";
 import type { IClinicAccount } from "@/utils/interfaces/settings";
-import type { FacilityEnrollmentData } from "@/app/(dashboard)/dashboard/settings/(services)/actions";
+import type {
+  FacilityEnrollmentData,
+  IAssignedRep,
+  IMyClinic,
+} from "@/app/(dashboard)/dashboard/settings/(services)/actions";
+import type { ConnectStatus, LastPayout } from "@/app/(dashboard)/dashboard/settings/(services)/stripe-connect-actions";
 
-type TabKey = "profile" | "team" | "credentials" | "enrollment";
+type TabKey = "profile" | "team" | "credentials" | "enrollment" | "payouts";
 
 interface Tab {
   key: TabKey;
@@ -24,14 +30,20 @@ interface Tab {
 
 interface SettingsTabsProps {
   profile: Profile;
+  myClinic: IMyClinic | null;
   isRep: boolean;
   myClinicAccounts: IClinicAccount[];
   mySubReps: ISubRep[];
   myClinicMembers: IFacilityMember[];
+  myAssignedRep: IAssignedRep | null;
   credentials: IProviderCredentials | null;
   showTeamTab: boolean;
   showCredentials: boolean;
   showEnrollment: boolean;
+  showPayouts: boolean;
+  connectStatus: ConnectStatus | null;
+  lastPayout?: LastPayout | null;
+  initialTab?: TabKey;
   enrollmentData: FacilityEnrollmentData | null;
   facilityName: string;
   providerName: string;
@@ -45,14 +57,20 @@ interface SettingsTabsProps {
 
 export function SettingsTabs({
   profile,
+  myClinic,
   isRep,
   myClinicAccounts,
   mySubReps,
   myClinicMembers,
+  myAssignedRep,
   credentials,
   showTeamTab,
   showCredentials,
   showEnrollment,
+  showPayouts,
+  connectStatus,
+  lastPayout = null,
+  initialTab,
   enrollmentData,
   facilityName,
   providerName,
@@ -74,9 +92,12 @@ export function SettingsTabs({
     ...(showEnrollment
       ? [{ key: "enrollment" as TabKey, label: "Enrollment", icon: ClipboardList }]
       : []),
+    ...(showPayouts
+      ? [{ key: "payouts" as TabKey, label: "Payouts", icon: Banknote }]
+      : []),
   ];
 
-  const [active, setActive] = useState<TabKey>("profile");
+  const [active, setActive] = useState<TabKey>(initialTab ?? "profile");
 
   return (
     <div className="space-y-6">
@@ -100,32 +121,49 @@ export function SettingsTabs({
         ))}
       </div>
 
-      {/* Tab content */}
+      {/* Tab content — all tabs stay MOUNTED; we only hide the inactive ones.
+          Unmounting on tab-switch would wipe in-memory form state (Enrollment
+          especially — its initial values come from a server-rendered prop that
+          doesn't refresh until a full page reload). */}
       <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[var(--r)] p-5">
-        {active === "profile" && <ProfileTab profile={profile} />}
-        {active === "team" && (
-          <TeamTab
-            isRep={isRep}
-            myClinicAccounts={myClinicAccounts}
-            mySubReps={mySubReps}
-            myClinicMembers={myClinicMembers}
-          />
+        <div hidden={active !== "profile"}>
+          <ProfileTab profile={profile} clinic={myClinic} />
+        </div>
+        {showTeamTab && (
+          <div hidden={active !== "team"}>
+            <TeamTab
+              isRep={isRep}
+              myClinicAccounts={myClinicAccounts}
+              mySubReps={mySubReps}
+              myClinicMembers={myClinicMembers}
+              myAssignedRep={myAssignedRep}
+            />
+          </div>
         )}
-        {active === "credentials" && showCredentials && (
-          <CredentialsTab credentials={credentials} />
+        {showCredentials && (
+          <div hidden={active !== "credentials"}>
+            <CredentialsTab credentials={credentials} />
+          </div>
         )}
-        {active === "enrollment" && showEnrollment && (
-          <EnrollmentTab
-            enrollmentData={enrollmentData}
-            facilityName={facilityName}
-            providerName={providerName}
-            providerNpi={providerNpi}
-            billingAddressPrefill={billingAddressPrefill}
-            billingCityPrefill={billingCityPrefill}
-            billingStatePrefill={billingStatePrefill}
-            billingZipPrefill={billingZipPrefill}
-            billingPhonePrefill={billingPhonePrefill}
-          />
+        {showEnrollment && (
+          <div hidden={active !== "enrollment"}>
+            <EnrollmentTab
+              enrollmentData={enrollmentData}
+              facilityName={facilityName}
+              providerName={providerName}
+              providerNpi={providerNpi}
+              billingAddressPrefill={billingAddressPrefill}
+              billingCityPrefill={billingCityPrefill}
+              billingStatePrefill={billingStatePrefill}
+              billingZipPrefill={billingZipPrefill}
+              billingPhonePrefill={billingPhonePrefill}
+            />
+          </div>
+        )}
+        {showPayouts && connectStatus && (
+          <div hidden={active !== "payouts"}>
+            <PayoutsTab status={connectStatus} lastPayout={lastPayout} />
+          </div>
         )}
       </div>
     </div>

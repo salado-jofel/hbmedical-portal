@@ -5,6 +5,7 @@ import { UserPlus, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import toast from "react-hot-toast";
 import { deactivateUser, reactivateUser, deleteUser, resendInvite } from "@/app/(dashboard)/dashboard/users/(services)/actions";
+import { adminResetProviderPin } from "@/app/(dashboard)/dashboard/settings/(services)/actions";
 import { useAppSelector, useAppDispatch } from "@/store/hooks";
 import { updateUserInStore, removeUserFromStore } from "@/app/(dashboard)/dashboard/users/(redux)/users-slice";
 import { CreateUserModal } from "../(components)/CreateUserModal";
@@ -29,6 +30,7 @@ export function UsersList() {
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [resetPinUserId, setResetPinUserId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
   const stats = useMemo(
@@ -102,7 +104,17 @@ export function UsersList() {
           return;
         }
         dispatch(removeUserFromStore(userId));
-        toast.success("User deleted.");
+        if (result.warning) {
+          // Long-duration warning toast — user was deleted but a side effect
+          // (e.g. orphan Stripe Connect account) needs admin attention.
+          toast(result.warning, {
+            duration: 15000,
+            icon: "⚠️",
+            style: { border: "1px solid #f59e0b", background: "#fffbeb", color: "#78350f" },
+          });
+        } else {
+          toast.success("User deleted.");
+        }
         setDeleteConfirmId(null);
       } catch {
         toast.error("Failed to delete user.");
@@ -125,6 +137,23 @@ export function UsersList() {
       toast.error("Failed to resend invite.");
     } finally {
       setLoadingId(null);
+    }
+  }
+
+  async function handleResetPin(userId: string) {
+    setPendingId(userId);
+    try {
+      const result = await adminResetProviderPin(userId);
+      if (result.success) {
+        toast.success("PIN reset. Provider will set a new PIN on their next signing.");
+      } else {
+        toast.error(result.error ?? "Failed to reset PIN.");
+      }
+    } catch {
+      toast.error("Failed to reset PIN.");
+    } finally {
+      setPendingId(null);
+      setResetPinUserId(null);
     }
   }
 
@@ -209,6 +238,7 @@ export function UsersList() {
           onReactivate={handleReactivate}
           onResendInvite={handleResendInvite}
           onDeleteClick={setDeleteConfirmId}
+          onResetPin={(u) => setResetPinUserId(u.id)}
         />
       ),
     },
@@ -269,6 +299,16 @@ export function UsersList() {
         confirmLabel="Delete User"
         isLoading={pendingId === deleteConfirmId && deleteConfirmId !== null}
         onConfirm={() => { if (deleteConfirmId) handleDelete(deleteConfirmId); }}
+      />
+
+      <ConfirmModal
+        open={resetPinUserId !== null}
+        onOpenChange={(open) => { if (!open) setResetPinUserId(null); }}
+        title="Reset provider PIN?"
+        description="This will clear this provider's signing PIN. They'll be prompted to set a new one the next time they sign an order. An email notification will be sent to them."
+        confirmLabel="Reset PIN"
+        isLoading={pendingId === resetPinUserId && resetPinUserId !== null}
+        onConfirm={() => { if (resetPinUserId) handleResetPin(resetPinUserId); }}
       />
     </div>
   );

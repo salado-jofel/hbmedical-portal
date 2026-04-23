@@ -16,11 +16,11 @@ const STATUS_CONFIG: Record<
     className: "bg-[var(--blue-lt)] text-[var(--blue)] border-[var(--blue-lt)]",
   },
   manufacturer_review: {
-    label: "Mfr. Review",
+    label: "Under Review",
     className: "bg-[var(--purple-lt)] text-[var(--purple)] border-[var(--purple-lt)]",
   },
   additional_info_needed: {
-    label: "Info Needed",
+    label: "Needs More Info",
     className: "bg-[var(--red-lt)] text-[var(--red)] border-[var(--red-lt)]",
   },
   approved: {

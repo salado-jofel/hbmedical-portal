@@ -141,6 +141,26 @@ async function upsertLocalInvoiceFromStripe(
 
   const admin = await createAdminClient();
 
+  // Verify the referenced order exists. `invoices.order_id` has an FK; upserting
+  // a row referencing a missing order throws 500 and makes Stripe retry the
+  // webhook forever (which is why the platform webhook sat at 22% error rate).
+  // Most common cause in dev: invoice created against a different Supabase
+  // branch, or a test order that was deleted. Warn and skip — Stripe will log
+  // the 200 and stop retrying.
+  const { data: orderExists } = await admin
+    .from("orders")
+    .select("id")
+    .eq("id", orderId)
+    .maybeSingle();
+  if (!orderExists) {
+    console.warn(
+      "[invoices.upsertLocalInvoiceFromStripe] Order referenced in invoice metadata not found — skipping upsert.",
+      "invoice:", invoice.id,
+      "orderId:", orderId,
+    );
+    return null;
+  }
+
   const { error } = await admin.from("invoices").upsert(
     {
       order_id: orderId,

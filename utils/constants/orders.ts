@@ -83,6 +83,7 @@ export const ORDER_ITEMS_SELECT = `
   product_id,
   product_name,
   product_sku,
+  hcpcs_code,
   unit_price,
   quantity,
   shipping_amount,
@@ -143,29 +144,47 @@ export const WOUND_TYPES = [
 ];
 
 export const REQUIRED_DOC_TYPES = [
-  { type: "facesheet",       label: "Facesheet" },
-  { type: "additional_ivr",  label: "Additional IVR Info" },
-  { type: "clinical_docs",   label: "Clinical Docs" },
-  { type: "form_1500",       label: "1500 Form" },
-  { type: "order_form",      label: "Order Form" },
+  { type: "facesheet",        label: "Facesheet" },
+  { type: "additional_ivr",   label: "Additional IVR Info" },
+  { type: "clinical_docs",    label: "Clinical Docs" },
+  { type: "form_1500",        label: "1500 Form" },
+  { type: "order_form",       label: "Order Form" },
+  { type: "delivery_invoice", label: "Invoice" },
 ] as const;
 
 export const ALL_DOC_TYPES: Array<{ type: string; label: string }> = [
-  { type: "facesheet",       label: "Facesheet" },
-  { type: "clinical_docs",   label: "Clinical Docs" },
-  { type: "order_form",      label: "Order Form" },
-  { type: "additional_ivr",  label: "Additional IVR Info" },
-  { type: "form_1500",       label: "1500 Form" },
-  { type: "wound_pictures",  label: "Wound Pictures" },
-  { type: "other",           label: "Other" },
+  { type: "facesheet",        label: "Facesheet" },
+  { type: "clinical_docs",    label: "Clinical Docs" },
+  { type: "order_form",       label: "Order Form" },
+  { type: "additional_ivr",   label: "Additional IVR Info" },
+  { type: "form_1500",        label: "1500 Form" },
+  { type: "delivery_invoice", label: "Invoice" },
+  { type: "wound_pictures",   label: "Wound Pictures" },
+  { type: "other",            label: "Other" },
 ];
+
+// The Invoice tab + doc card only show once an order is past the early
+// drafting stages (the invoice is meaningful only when the order is being
+// reviewed or fulfilled). Keep this in sync with the OrderDetailModal gate.
+export const INVOICE_VISIBLE_STATUSES = new Set<string>([
+  "manufacturer_review",
+  "additional_info_needed",
+  "approved",
+  "shipped",
+  "delivered",
+  "canceled",
+]);
+
+export function isInvoiceVisibleForStatus(status: string | null | undefined): boolean {
+  return !!status && INVOICE_VISIBLE_STATUSES.has(status);
+}
 
 export const ORDER_STATUS_FILTER_OPTIONS: { value: string; label: string }[] = [
   { value: "all",                    label: "All Statuses" },
   { value: "draft",                  label: "Draft" },
   { value: "pending_signature",      label: "Pending Signature" },
-  { value: "manufacturer_review",    label: "Mfr. Review" },
-  { value: "additional_info_needed", label: "Info Needed" },
+  { value: "manufacturer_review",    label: "Under Review" },
+  { value: "additional_info_needed", label: "Needs More Info" },
   { value: "approved",               label: "Approved" },
   { value: "shipped",                label: "Shipped" },
   { value: "delivered",              label: "Delivered" },

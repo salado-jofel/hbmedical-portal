@@ -1,6 +1,7 @@
 "use client";
 
 import { Building2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useAppSelector } from "@/store/hooks";
 import { DataTable } from "@/app/(components)/DataTable";
 import { EmptyState } from "@/app/(components)/EmptyState";
@@ -11,6 +12,7 @@ import type { IAccountWithMetrics } from "@/utils/interfaces/accounts";
 import type { TableColumn } from "@/utils/interfaces/table-column";
 
 export default function SubRepAccounts() {
+  const router = useRouter();
   const detail = useAppSelector((s) => s.subRepDetail.detail);
   if (!detail) return null;
   const accounts = detail.accounts as IAccountWithMetrics[];
@@ -67,6 +69,7 @@ export default function SubRepAccounts() {
             columns={columns}
             data={accounts}
             keyExtractor={(a) => a.id}
+            onRowClick={(a) => router.push(`/dashboard/accounts/${a.id}`)}
             emptyMessage="No accounts found"
             emptyIcon={<Building2 className="w-10 h-10 stroke-1" />}
           />

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowLeft, Building2, Loader2, ShoppingCart, Users } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAppSelector, useAppDispatch } from "@/store/hooks";
@@ -33,9 +33,21 @@ interface AccountHeaderProps {
 }
 
 export function AccountHeader({ accountId, isAdmin, salesReps }: AccountHeaderProps) {
+  const router = useRouter();
   const dispatch = useAppDispatch();
   const accounts = useAppSelector((s) => s.accounts.items);
   const account = accounts.find((a) => a.id === accountId);
+
+  // Go back where the user came from (could be /dashboard/accounts OR a rep
+  // detail page etc.). Falls back to /dashboard/accounts when there's no
+  // history (e.g. direct link, fresh tab).
+  function handleBack() {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+    } else {
+      router.push("/dashboard/accounts");
+    }
+  }
 
   const [statusPending, startStatusTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -87,13 +99,14 @@ export function AccountHeader({ accountId, isAdmin, salesReps }: AccountHeaderPr
   return (
     <div className="space-y-4 pb-5 border-b border-[var(--border)]">
       {/* ── Back link ── */}
-      <Link
-        href="/dashboard/accounts"
+      <button
+        type="button"
+        onClick={handleBack}
         className="inline-flex items-center gap-1.5 text-sm text-[var(--text2)] hover:text-[var(--navy)] transition-colors"
       >
         <ArrowLeft className="w-4 h-4" />
-        Back to Accounts
-      </Link>
+        Back
+      </button>
 
       {/* ── Main header row ── */}
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">

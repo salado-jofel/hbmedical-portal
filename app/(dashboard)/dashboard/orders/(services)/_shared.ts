@@ -95,6 +95,7 @@ export function getDocumentLabel(type: string): string {
     clinical_docs: "Clinical Documentation",
     order_form: "Order Form",
     additional_ivr: "Additional IVR Info",
+    delivery_invoice: "Invoice",
     form_1500: "CMS-1500 Form",
     wound_pictures: "Wound Photos",
     other: "Additional Documentation",
@@ -286,7 +287,7 @@ export async function triggerAiExtraction(
 
 export async function generateOrderPDFs(
   orderId: string,
-  formTypes: ("order_form" | "ivr" | "hcfa_1500")[],
+  formTypes: ("order_form" | "ivr" | "hcfa_1500" | "delivery_invoice")[],
 ): Promise<{ success: boolean; error: string | null }> {
   try {
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";

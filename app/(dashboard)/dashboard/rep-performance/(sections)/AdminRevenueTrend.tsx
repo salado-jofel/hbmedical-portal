@@ -20,10 +20,10 @@ const LINE_COLORS = [
 
 export function AdminRevenueTrend({
   data,
-  repNames,
+  reps,
 }: {
   data: Array<{ month: string } & Record<string, number | string>>;
-  repNames: string[];
+  reps: Array<{ id: string; name: string }>;
 }) {
   return (
     <div className="rounded-[var(--r)] border border-[var(--border)] bg-[var(--surface)] p-4">
@@ -42,11 +42,12 @@ export function AdminRevenueTrend({
             />
             <Tooltip formatter={(v) => formatAmount(Number(v ?? 0))} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
-            {repNames.map((name, i) => (
+            {reps.map((r, i) => (
               <Line
-                key={name}
+                key={r.id}
+                name={r.name}
                 type="monotone"
-                dataKey={name}
+                dataKey={r.id}
                 stroke={LINE_COLORS[i % LINE_COLORS.length]}
                 strokeWidth={2}
                 dot={{ r: 2 }}

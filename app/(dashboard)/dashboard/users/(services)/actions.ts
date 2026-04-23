@@ -11,6 +11,7 @@ import type { IUser, IUserFormState, UserStatus } from "@/utils/interfaces/users
 import type { UserRole } from "@/utils/helpers/role";
 import { isAdmin, isSalesRep } from "@/utils/helpers/role";
 import { buildResetPasswordEmail } from "@/lib/emails/build-reset-password-email";
+import { stripe } from "@/lib/stripe/stripe";
 
 /* -------------------------------------------------------------------------- */
 /* getUsers                                                                   */
@@ -285,10 +286,11 @@ export async function deleteUser(userId: string): Promise<IUserFormState> {
 
     const adminClient = createAdminClient();
 
-    // 1. Fetch profile to check status and role
+    // 1. Fetch profile to check status and role (also pull connect account
+    //    id so we can clean it up in Stripe before nuking the local record).
     const { data: profile } = await adminClient
       .from("profiles")
-      .select("status, role")
+      .select("status, role, stripe_connect_account_id")
       .eq("id", userId)
       .single();
 
@@ -303,8 +305,33 @@ export async function deleteUser(userId: string): Promise<IUserFormState> {
 
     // 2. Clean up related data in FK-safe order
 
-    // Rep hierarchy (sales reps only)
+    // Sales-rep-specific cleanup: Stripe Connect account + rep hierarchy.
+    // Stripe deletion runs first; if it fails we keep going (admin can clean
+    // the orphan up manually in Stripe Dashboard) and surface a warning.
+    let stripeWarning: string | null = null;
     if (isSalesRep(profile.role)) {
+      const connectAccountId = profile.stripe_connect_account_id as string | null;
+      if (connectAccountId) {
+        try {
+          await stripe.accounts.del(connectAccountId);
+        } catch (err: any) {
+          const code = err?.code as string | undefined;
+          // "resource_missing" = already gone in Stripe; harmless.
+          if (code !== "resource_missing") {
+            console.error(
+              "[deleteUser] Stripe Connect account delete failed (continuing):",
+              "account:", connectAccountId,
+              "code:", code,
+              "message:", err?.message,
+            );
+            stripeWarning =
+              `User was deleted, but their Stripe Connect account (${connectAccountId}) ` +
+              `couldn't be removed automatically (${err?.message ?? code ?? "unknown error"}). ` +
+              `Please clean it up in Stripe Dashboard → Connect → Accounts.`;
+          }
+        }
+      }
+
       await adminClient
         .from("rep_hierarchy")
         .delete()
@@ -385,7 +412,11 @@ export async function deleteUser(userId: string): Promise<IUserFormState> {
     }
 
     revalidatePath("/dashboard/users");
-    return { success: true, error: null };
+    return {
+      success: true,
+      error: null,
+      ...(stripeWarning ? { warning: stripeWarning } : {}),
+    };
   } catch (err) {
     console.error("[deleteUser] Unexpected error:", err);
     return { success: false, error: "An unexpected error occurred." };

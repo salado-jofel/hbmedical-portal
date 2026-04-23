@@ -10,13 +10,16 @@ import { PhoneInputField } from "@/app/(components)/PhoneInputField";
 import { updateProfile } from "@/app/(dashboard)/dashboard/settings/(services)/actions";
 import { ROLE_LABELS } from "@/utils/helpers/role";
 import { ChangePasswordForm } from "./ChangePasswordForm";
+import { MyClinicCard } from "./MyClinicCard";
 import type { Profile, IProfileFormState } from "@/utils/interfaces/profiles";
+import type { IMyClinic } from "@/app/(dashboard)/dashboard/settings/(services)/actions";
 
 interface ProfileTabProps {
   profile: Profile;
+  clinic?: IMyClinic | null;
 }
 
-export function ProfileTab({ profile }: ProfileTabProps) {
+export function ProfileTab({ profile, clinic = null }: ProfileTabProps) {
   /* ── Profile form ── */
   const [phone, setPhone] = useState(profile.phone ?? "");
   const [profileState, profileAction, isProfilePending] = useActionState<
@@ -118,6 +121,14 @@ export function ProfileTab({ profile }: ProfileTabProps) {
           </Button>
         </div>
       </form>
+
+      {/* ── My Clinic (providers only) ── */}
+      {clinic && (
+        <>
+          <div className="border-t border-[var(--border)]" />
+          <MyClinicCard clinic={clinic} />
+        </>
+      )}
 
       {/* ── Divider ── */}
       <div className="border-t border-[var(--border)]" />

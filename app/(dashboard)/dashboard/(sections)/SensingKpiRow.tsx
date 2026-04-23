@@ -13,7 +13,7 @@ export function SensingKpiRow({
   monthlyRevenue: Array<{ period: string; revenue: number }>;
   orders: DashboardOrder[];
 }) {
-  const { momLabel, momAccent, activeDoctors } = useMemo(() => {
+  const { momLabel, momAccent, activeClinics } = useMemo(() => {
     const len = monthlyRevenue.length;
     const current = len > 0 ? monthlyRevenue[len - 1].revenue : 0;
     const previous = len > 1 ? monthlyRevenue[len - 2].revenue : 0;
@@ -26,14 +26,16 @@ export function SensingKpiRow({
     const dir: "up" | "flat" | "down" =
       momPct > 0.5 ? "up" : momPct < -0.5 ? "down" : "flat";
 
+    // Count unique facilities ("clinics") the rep has sold into over the last
+    // 90 days. Previously counted `assigned_provider_id` but that field is
+    // rarely populated, making the KPI read 0 in realistic data.
     const cutoff = Date.now() - 90 * MS_DAY;
-    const docs = new Set<string>();
+    const clinics = new Set<string>();
     for (const o of orders) {
       const placed = o.placed_at;
       if (!placed) continue;
       if (new Date(placed).getTime() < cutoff) continue;
-      const pid = o.assigned_provider_id;
-      if (pid) docs.add(pid);
+      if (o.facility_id) clinics.add(o.facility_id);
     }
 
     const label =
@@ -41,13 +43,13 @@ export function SensingKpiRow({
       dir === "down" ? `${momPct.toFixed(1)}%`  :
                        "0%";
     const accent = dir === "up" ? "green" : dir === "down" ? "red" : "teal";
-    return { momLabel: label, momAccent: accent, activeDoctors: docs.size };
+    return { momLabel: label, momAccent: accent, activeClinics: clinics.size };
   }, [monthlyRevenue, orders]);
 
   return (
     <div className="mb-5 grid grid-cols-2 gap-[10px]">
       <KpiCard label="MoM Revenue Growth" value={momLabel} accentColor={momAccent} />
-      <KpiCard label="Active Doctors" value={String(activeDoctors)} accentColor="purple" />
+      <KpiCard label="Active Clinics" value={String(activeClinics)} accentColor="purple" />
     </div>
   );
 }

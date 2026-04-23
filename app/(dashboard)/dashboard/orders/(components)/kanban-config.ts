@@ -28,12 +28,15 @@ export const KANBAN_STATUS_CONFIG: Record<
     dot: "bg-blue-500",
   },
   manufacturer_review: {
-    label: "Mfr. Review",
+    // Plainer wording for non-technical users — "Mfr." was jargon. Meaning is
+    // unchanged: HB Medical's team is reviewing the order.
+    label: "Under Review",
     badge: "bg-purple-50 text-purple-700",
     dot: "bg-purple-500",
   },
   additional_info_needed: {
-    label: "Info Needed",
+    // "Info Needed" was ambiguous (needed by who? from who?). Plainer copy.
+    label: "Needs More Info",
     badge: "bg-red-50 text-red-700",
     dot: "bg-red-500",
   },

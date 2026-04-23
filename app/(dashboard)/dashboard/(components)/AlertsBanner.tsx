@@ -29,7 +29,7 @@ export function AlertsBanner({
     if (stuckInReview.length > 0) {
       list.push({
         variant: "red",
-        message: `${stuckInReview.length} order${stuckInReview.length > 1 ? "s" : ""} in manufacturer review for over 48 hours.`,
+        message: `${stuckInReview.length} order${stuckInReview.length > 1 ? "s" : ""} under review for over 48 hours.`,
         actionLabel: "View Orders",
         href: "/dashboard/orders",
       });

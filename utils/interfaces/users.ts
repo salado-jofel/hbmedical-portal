@@ -11,6 +11,10 @@ export type UserData = {
   role: UserRole;
   isSubRep: boolean;
   userId: string;
+  // Only meaningful for sales reps (top-level + sub). Drives the post-login
+  // gate that blocks portal access until Stripe Connect onboarding finishes.
+  // Null/false for non-rep roles.
+  stripeDetailsSubmitted: boolean;
 };
 
 export interface IUser {
@@ -41,4 +45,8 @@ export interface IUserFormState {
     email?: string;
     role?: string;
   };
+  // Set when an action succeeded but a non-critical side effect failed
+  // (e.g. user was deleted from our DB but the orphaned Stripe Connect
+  // account couldn't be cleaned up). Surfaces a yellow toast in the UI.
+  warning?: string;
 }
