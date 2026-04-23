@@ -15,6 +15,9 @@ export interface PayRepResult {
   transferId?: string;
   amountPaid?: number;
   commissionsPaid?: number;
+  // Set when the Stripe transfer succeeded (money moved) but the local DB
+  // could not be fully reconciled — admin needs to know to investigate.
+  warning?: string;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -83,28 +86,22 @@ export async function payRepCommissions(
       return { success: false, error: "Approved total is $0 — nothing to transfer." };
     }
 
-    // Double-pay guard. We rely on DB state rather than a deterministic Stripe
-    // idempotency key because Stripe caches failed responses for 24 hours — if
-    // the first attempt hit balance_insufficient, every retry with the same
-    // key would replay that failure even after the balance was topped up.
-    // Instead: check the payouts table for an existing paid row, and use a
-    // fresh UUID idempotency key per attempt so retries are never cached.
-    const { data: existingPaid } = await admin
-      .from(PAYOUTS_TABLE)
-      .select("id, stripe_transfer_id")
-      .eq("rep_id", repId)
-      .eq("period", period)
-      .eq("status", "paid")
-      .maybeSingle();
-    if (existingPaid?.stripe_transfer_id) {
-      return {
-        success: false,
-        error: `This rep has already been paid for ${period} (transfer ${existingPaid.stripe_transfer_id}).`,
-      };
-    }
+    // Double-pay protection model:
+    //   1. We only fetch commissions with status='approved' above. Already-paid
+    //      commissions are excluded by the WHERE clause, so a second payout in
+    //      the same period naturally covers only the *new* approved earnings.
+    //   2. Stripe idempotency uses a fresh UUID per attempt. We deliberately
+    //      avoid a deterministic key because Stripe caches failed responses
+    //      for 24h (the prior balance_insufficient bug), and we may legitimately
+    //      want multiple successful payouts per (rep, period) when commissions
+    //      arrive throughout the month.
+    //   3. The narrow remaining race — two admin clicks fired in the same
+    //      ~500ms window before the first marks commissions paid — would
+    //      double-send. Acceptable for a manual one-button monthly flow; if it
+    //      bites in production, gate this with a SELECT … FOR UPDATE / row-lock.
 
-    // Stripe transfer. Fresh idempotency key per attempt — safe because we
-    // already proved above that no successful payout exists for this rep+period.
+    // Stripe transfer. Fresh idempotency key per attempt — safe because the
+    // status='approved' filter above already excludes anything already paid.
     let transfer: Stripe.Transfer;
     try {
       transfer = await stripe.transfers.create(
@@ -136,20 +133,12 @@ export async function payRepCommissions(
       return { success: false, error: friendly };
     }
 
-    // Upsert payout row for this rep+period. Unique on (rep_id, period) would be
-    // ideal; without that we match explicitly.
-    const { data: existing, error: existErr } = await admin
-      .from(PAYOUTS_TABLE)
-      .select("id")
-      .eq("rep_id", repId)
-      .eq("period", period)
-      .maybeSingle();
-    if (existErr) {
-      console.error("[payRepCommissions] payout lookup:", existErr);
-    }
-
+    // Always insert a new payouts row. Multiple rows per (rep, period) are
+    // allowed and expected — each row corresponds to one Stripe transfer, so
+    // top-ups during the month each get their own audit trail and unique
+    // stripe_transfer_id (which has a UNIQUE index).
     const paidAt = new Date().toISOString();
-    const payoutPayload = {
+    const { error: insErr } = await admin.from(PAYOUTS_TABLE).insert({
       rep_id: repId,
       period,
       total_amount: totalAmount,
@@ -158,41 +147,33 @@ export async function payRepCommissions(
       paid_by: adminUser.id,
       stripe_transfer_id: transfer.id,
       notes: `Stripe transfer ${transfer.id} (${approved.length} commission${approved.length === 1 ? "" : "s"})`,
-    };
+    });
 
-    if (existing) {
-      const { error: updErr } = await admin
-        .from(PAYOUTS_TABLE)
-        .update(payoutPayload)
-        .eq("id", existing.id);
-      if (updErr) {
-        console.error("[payRepCommissions] payout update:", updErr);
-        // Don't fail the flow — money already moved. Surface as a soft log.
-      }
-    } else {
-      const { error: insErr } = await admin
-        .from(PAYOUTS_TABLE)
-        .insert(payoutPayload);
-      if (insErr) {
-        console.error("[payRepCommissions] payout insert:", insErr);
-      }
-    }
-
-    // Flip commissions to paid. If this fails after a successful transfer,
-    // we've sent money but DB is stale — log loudly, don't throw.
+    // Flip commissions to paid. Independent of payout-row insert success.
     const commissionIds = approved.map((c: any) => c.id as string);
     const { error: flipErr } = await admin
       .from(COMMISSION_TABLE)
       .update({ status: "paid", paid_at: paidAt })
       .in("id", commissionIds);
-    if (flipErr) {
+
+    // Money has already moved at this point. If either DB write failed, we
+    // can't reverse the Stripe transfer — surface a warning to the admin so
+    // they manually reconcile (insert a missing payouts row, update commission
+    // statuses) using the transfer.id we return.
+    let warning: string | undefined;
+    if (insErr || flipErr) {
       console.error(
-        "[payRepCommissions] CRITICAL: transfer succeeded but commissions could not be marked paid:",
-        flipErr,
-        "| transfer_id:",
-        transfer.id,
+        "[payRepCommissions] CRITICAL: transfer succeeded but local DB write failed.",
+        "transfer_id:", transfer.id,
+        "insErr:", insErr,
+        "flipErr:", flipErr,
       );
-      // Return success=true with a warning so UI toasts success; admin sees logs.
+      const parts: string[] = [];
+      if (insErr) parts.push("payout audit row");
+      if (flipErr) parts.push("commission status update");
+      warning =
+        `Money was sent successfully (Stripe transfer ${transfer.id}), but the ${parts.join(" and ")} ` +
+        `failed locally. Please reconcile manually using the transfer ID.`;
     }
 
     revalidatePath(`/dashboard/my-team/${repId}`);
@@ -202,6 +183,7 @@ export async function payRepCommissions(
       transferId: transfer.id,
       amountPaid: totalAmount,
       commissionsPaid: approved.length,
+      warning,
     };
   } catch (err) {
     console.error("[payRepCommissions] unexpected:", err);

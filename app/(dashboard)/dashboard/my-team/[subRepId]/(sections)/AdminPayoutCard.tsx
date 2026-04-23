@@ -56,9 +56,21 @@ export default function AdminPayoutCard({
     startTransition(async () => {
       const result = await payRepCommissions(repId, period);
       if (result.success) {
-        toast.success(
-          `Paid ${formatAmount(result.amountPaid ?? 0)} to ${repName}. ${result.commissionsPaid} commission${result.commissionsPaid === 1 ? "" : "s"} settled.`,
-        );
+        // Soft-warning case: Stripe transfer went through but a local DB
+        // write failed. Use a long-duration warning toast so the admin notices
+        // and copies the transfer ID for manual reconciliation. Do NOT use
+        // toast.success — the green checkmark would mask the issue.
+        if (result.warning) {
+          toast(result.warning, {
+            duration: 15000,
+            icon: "⚠️",
+            style: { border: "1px solid #f59e0b", background: "#fffbeb", color: "#78350f" },
+          });
+        } else {
+          toast.success(
+            `Paid ${formatAmount(result.amountPaid ?? 0)} to ${repName}. ${result.commissionsPaid} commission${result.commissionsPaid === 1 ? "" : "s"} settled.`,
+          );
+        }
         router.refresh();
       } else {
         toast.error(result.error ?? "Failed to pay rep.");
