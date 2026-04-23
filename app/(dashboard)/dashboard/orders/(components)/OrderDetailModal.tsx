@@ -109,11 +109,12 @@ import { OrderFormTab } from "./OrderFormTab";
 import type { AiStatus } from "./OrderFormTab";
 import { IVRTab } from "./IVRTab";
 import { HCFATab } from "./HCFATab";
+import { InvoiceTab } from "./InvoiceTab";
 import { OrderChatTab } from "./OrderChatTab";
 import { OrderHistoryTab } from "./OrderHistoryTab";
 import toast from "react-hot-toast";
 import { cn } from "@/utils/utils";
-import { REQUIRED_DOC_TYPES, ALL_DOC_TYPES } from "@/utils/constants/orders";
+import { REQUIRED_DOC_TYPES, ALL_DOC_TYPES, isInvoiceVisibleForStatus } from "@/utils/constants/orders";
 import { getDisplayOrderStatus } from "@/utils/helpers/orders";
 
 const TABS = [
@@ -121,6 +122,7 @@ const TABS = [
   { value: "order-form", label: "Order Form" },
   { value: "ivr", label: "IVR Form" },
   { value: "hcfa", label: "HCFA/1500" },
+  { value: "invoice", label: "Invoice" },
   { value: "conversation", label: "Chat" },
   { value: "history", label: "History" },
 ] as const;
@@ -296,16 +298,17 @@ export function OrderDetailModal({
               duration: 5000,
             });
           }
-          // Refresh patient name and documents — AI may have linked a patient and generated PDFs
+          // Refresh patient name and documents — AI may have linked a patient and generated PDFs.
+          // Note: ORDER_WITH_RELATIONS_SELECT does NOT include order_documents,
+          // so updated.documents is always undefined — fetch docs directly so
+          // the right-side cards flip from yellow to green after extraction.
           getOrderById(order.id).then((updated) => {
             if (updated?.patient_full_name) {
               setPatientName(updated.patient_full_name);
               dispatch(updateOrderInStore(updated));
             }
-            if (updated?.documents) {
-              setLocalDocuments(updated.documents);
-            }
           });
+          void refreshDocuments();
           // Refresh IVR and HCFA with AI-extracted data so those tabs are current
           // Increment reset keys so already-mounted forms remount with fresh AI data
           getOrderIVR(order.id).then(({ ivr }) => {
@@ -783,10 +786,20 @@ export function OrderDetailModal({
         else next.delete(type);
         return next;
       });
+      // Belt-and-suspenders: even if the order_documents realtime insert is
+      // missed (e.g. table not in the supabase_realtime publication on this
+      // env, or RLS noise), refetch the docs list when a regen finishes so
+      // the right-side cards flip from yellow to green without needing a
+      // modal close/reopen. Small delay lets the upsert/INSERT settle.
+      if (status === "done") {
+        window.setTimeout(() => {
+          void refreshDocuments();
+        }, 400);
+      }
     }
     window.addEventListener("pdf-regenerating", handler as EventListener);
     return () => window.removeEventListener("pdf-regenerating", handler as EventListener);
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── Handlers ── */
 
@@ -905,6 +918,7 @@ export function OrderDetailModal({
       order_form: "order_form",
       form_1500: "hcfa_1500",
       additional_ivr: "ivr",
+      delivery_invoice: "delivery_invoice",
     };
     const formType = formTypeMap[docType];
     if (!formType) return;
@@ -985,6 +999,7 @@ export function OrderDetailModal({
           productId: prod.id,
           productName: prod.name,
           productSku: prod.sku,
+          hcpcsCode: prod.hcpcs_code ?? null,
           unitPrice,
           quantity: 1,
           subtotal: unitPrice,
@@ -1133,6 +1148,7 @@ export function OrderDetailModal({
             product_id: item.productId,
             product_name: item.productName,
             product_sku: item.productSku,
+            hcpcs_code: item.hcpcsCode ?? null,
             unit_price: item.unitPrice,
             quantity: item.quantity,
           })),
@@ -1289,10 +1305,13 @@ export function OrderDetailModal({
   /* ── Derived ── */
   const status = liveOrder.order_status;
   const displayStatus = getDisplayOrderStatus(liveOrder);
-  const visibleTabs = isProvider
-    ? TABS.filter((t) => t.value !== "hcfa")
-    : TABS;
-  const visibleRequiredDocTypes = isProvider
+  // Invoice tab + doc card only show once the order is past the early
+  // drafting stages — see INVOICE_VISIBLE_STATUSES.
+  const invoiceUnlocked = isInvoiceVisibleForStatus(status);
+  const visibleTabs = (isProvider ? TABS.filter((t) => t.value !== "hcfa") : TABS).filter(
+    (t) => t.value !== "invoice" || invoiceUnlocked,
+  );
+  const visibleRequiredDocTypes = (isProvider
     ? REQUIRED_DOC_TYPES.filter((d) => {
         if (d.type === "form_1500") return false;
         if (d.type === "facesheet" || d.type === "clinical_docs") {
@@ -1300,7 +1319,8 @@ export function OrderDetailModal({
         }
         return true;
       })
-    : REQUIRED_DOC_TYPES;
+    : REQUIRED_DOC_TYPES
+  ).filter((d) => d.type !== "delivery_invoice" || invoiceUnlocked);
   const isOverviewDirty =
     draftItems.some((i) => i.isNew) ||
     draftItems.some((draft) => {
@@ -1617,6 +1637,12 @@ export function OrderDetailModal({
                         setIsHcfaDirty(false);
                       }}
                     />
+                    {invoiceUnlocked && (
+                      <InvoiceTab
+                        isActive={tab === "invoice"}
+                        order={liveOrder}
+                      />
+                    )}
                     <OrderChatTab
                       isActive={tab === "conversation"}
                       isReady={loadedTabs.has("conversation")}
@@ -1872,6 +1898,7 @@ export function OrderDetailModal({
                               "order_form",
                               "form_1500",
                               "additional_ivr",
+                              "delivery_invoice",
                             ].includes(doc.type);
                             const isAiGenerating =
                               isRegenerableType &&

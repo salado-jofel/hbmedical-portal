@@ -4,9 +4,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { OrderFormPDF } from "@/app/(dashboard)/dashboard/orders/(pdf)/OrderFormPDF";
 import { IVRFormPDF } from "@/app/(dashboard)/dashboard/orders/(pdf)/IVRFormPDF";
+import { DeliveryInvoicePDF } from "@/app/(dashboard)/dashboard/orders/(pdf)/DeliveryInvoicePDF";
 import { generateFilledCMS1500 } from "@/lib/pdf/generate-cms1500";
 
-export type OrderPdfFormType = "order_form" | "ivr" | "hcfa_1500";
+export type OrderPdfFormType = "order_form" | "ivr" | "hcfa_1500" | "delivery_invoice";
 
 export interface GenerateOrderPdfResult {
   success: boolean;
@@ -22,7 +23,7 @@ export async function generateOrderPdf(
   adminClient: SupabaseClient = createAdminClient(),
 ): Promise<GenerateOrderPdfResult> {
   try {
-    const [orderRes, formRes, ivrRes, hcfaRes] = await Promise.all([
+    const [orderRes, formRes, ivrRes, hcfaRes, deliveryInvoiceRes] = await Promise.all([
       adminClient
         .from("orders")
         .select(`
@@ -39,12 +40,14 @@ export async function generateOrderPdf(
       adminClient.from("order_form").select("*").eq("order_id", orderId).maybeSingle(),
       adminClient.from("order_ivr").select("*").eq("order_id", orderId).maybeSingle(),
       adminClient.from("order_form_1500").select("*").eq("order_id", orderId).maybeSingle(),
+      adminClient.from("order_delivery_invoices").select("*").eq("order_id", orderId).maybeSingle(),
     ]);
 
     const order = orderRes.data;
     const form = formRes.data;
     const ivr = ivrRes.data;
     const hcfa = hcfaRes.data;
+    const deliveryInvoice = deliveryInvoiceRes.data;
 
     if (!order) {
       return { success: false, formType, error: "Order not found" };
@@ -85,6 +88,12 @@ export async function generateOrderPdf(
       pdfBuffer = Buffer.from(filled);
       fileName = `hcfa-1500-${order.order_number}.pdf`;
       documentType = "form_1500";
+    } else if (formType === "delivery_invoice") {
+      pdfBuffer = await renderToBuffer(
+        <DeliveryInvoicePDF order={order} invoice={deliveryInvoice} />,
+      );
+      fileName = `invoice-${order.order_number}.pdf`;
+      documentType = "delivery_invoice";
     } else {
       return { success: false, formType, error: "Invalid formType" };
     }

@@ -15,6 +15,7 @@ const PRODUCTS_SELECT = `
   name,
   description,
   category,
+  hcpcs_code,
   unit_price,
   is_active,
   sort_order,
@@ -52,6 +53,7 @@ function mapProduct(row: any): Product {
     name: row.name,
     description: row.description ?? null,
     category: row.category ?? null,
+    hcpcs_code: row.hcpcs_code ?? null,
     unit_price: unitPrice,
     is_active: Boolean(row.is_active),
     sort_order: Number(row.sort_order ?? 0),
@@ -90,6 +92,7 @@ export async function addProduct(formData: FormData): Promise<Product> {
     name: normalizeText(formData.get("name")) ?? "",
     description: normalizeText(formData.get("description")),
     category: normalizeText(formData.get("category")),
+    hcpcs_code: normalizeText(formData.get("hcpcs_code")),
     unit_price: formData.get("unit_price") ?? 0,
     is_active: parseBoolean(formData.get("is_active"), true),
     sort_order: formData.get("sort_order") ?? 0,
@@ -100,6 +103,7 @@ export async function addProduct(formData: FormData): Promise<Product> {
     name: parsed.name,
     description: parsed.description ?? null,
     category: parsed.category ?? null,
+    hcpcs_code: parsed.hcpcs_code ?? null,
     unit_price: parsed.unit_price,
     is_active: parsed.is_active ?? true,
     sort_order: parsed.sort_order ?? 0,
@@ -140,6 +144,9 @@ export async function editProduct(
     category: formData.has("category")
       ? normalizeText(formData.get("category"))
       : undefined,
+    hcpcs_code: formData.has("hcpcs_code")
+      ? normalizeText(formData.get("hcpcs_code"))
+      : undefined,
     unit_price: formData.has("unit_price")
       ? formData.get("unit_price")
       : undefined,
@@ -158,6 +165,7 @@ export async function editProduct(
   if (parsed.description !== undefined)
     payload.description = parsed.description;
   if (parsed.category !== undefined) payload.category = parsed.category;
+  if (parsed.hcpcs_code !== undefined) payload.hcpcs_code = parsed.hcpcs_code;
   if (parsed.unit_price !== undefined) payload.unit_price = parsed.unit_price;
   if (parsed.is_active !== undefined) payload.is_active = parsed.is_active;
   if (parsed.sort_order !== undefined) payload.sort_order = parsed.sort_order;

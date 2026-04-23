@@ -69,6 +69,7 @@ export const documentTypeSchema = z.enum([
   "order_form",
   "form_1500",
   "additional_ivr",
+  "delivery_invoice",
   "other",
 ]);
 
@@ -110,6 +111,7 @@ export interface IOrderItem {
   productId: string | null;
   productName: string;
   productSku: string;
+  hcpcsCode: string | null;
   unitPrice: number;
   quantity: number;
   shippingAmount: number;
@@ -200,6 +202,58 @@ export interface IInvoice {
   paidAt?:         string | null;
   hostedInvoiceUrl?: string | null;
   createdAt:       string;
+}
+
+// Meridian delivery invoice. Distinct from IInvoice (Stripe payment invoice).
+export type DeliveryMethod = "home_delivery" | "patient_picked_up" | "mail_order" | "return";
+export type RentOrPurchase = "rent" | "purchase";
+export type SignerRelationship = "patient" | "spouse_relative" | "caregiver" | "other";
+
+export interface IDeliveryInvoiceLineItem {
+  date:        string | null;   // ISO date
+  qty:         number | null;
+  hcpc:        string | null;
+  description: string | null;   // includes lot/serial number
+  perEach:     number | null;
+  total:       number | null;
+}
+
+export type AcknowledgementMap = Record<string, boolean>;
+
+export interface IDeliveryInvoice {
+  id:                 string | null;  // null when prefilled but unsaved
+  orderId:            string;
+  invoiceNumber:      string;
+  invoiceDate:        string | null;
+
+  customerName:       string | null;
+  addressLine1:       string | null;
+  addressLine2:       string | null;
+  city:               string | null;
+  state:              string | null;
+  postalCode:         string | null;
+
+  insuranceName:      string | null;
+  insuranceNumber:    string | null;
+  doctorName:         string | null;
+
+  deliveryMethod:     DeliveryMethod | null;
+
+  lineItems:          IDeliveryInvoiceLineItem[];
+
+  rentOrPurchase:     RentOrPurchase | null;
+
+  dueCopay:           number | null;
+  totalReceived:      number | null;
+
+  acknowledgements:   AcknowledgementMap;
+
+  patientSignatureUrl: string | null;
+  patientSignedAt:     string | null;
+  relationship:        SignerRelationship | null;
+
+  createdAt: string | null;
+  updatedAt: string | null;
 }
 
 export interface IOrderIVR {
@@ -563,6 +617,7 @@ export type ProductRecord = {
   sku: string;
   name: string;
   category: string | null;
+  hcpcs_code: string | null;
   unit_price: number;
   is_active: boolean;
   sort_order: number;
@@ -984,6 +1039,7 @@ export function mapOrder(raw: RawOrderRecord): DashboardOrder {
       productId: i.product_id,
       productName: i.product_name,
       productSku: i.product_sku,
+      hcpcsCode: (i as any).hcpcs_code ?? null,
       unitPrice: Number(i.unit_price),
       quantity: Number(i.quantity),
       shippingAmount: Number(i.shipping_amount),
