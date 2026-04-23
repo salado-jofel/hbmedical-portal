@@ -7,8 +7,9 @@ import { Button } from "@/components/ui/button";
 import { PillBadge } from "@/app/(components)/PillBadge";
 import { useAppSelector, useAppDispatch } from "@/store/hooks";
 import { updateCommissionInStore } from "../(redux)/commissions-slice";
-import { approveCommissions, adjustCommission } from "../(services)/actions";
+import { approveCommissions, adjustCommission, voidCommission } from "../(services)/actions";
 import { formatAmount } from "@/utils/helpers/formatter";
+import OrderQuickView from "@/app/(dashboard)/dashboard/my-team/[subRepId]/(sections)/OrderQuickView";
 import { isAdmin } from "@/utils/helpers/role";
 import type { UserRole } from "@/utils/helpers/role";
 import type { ICommission } from "@/utils/interfaces/commissions";
@@ -72,6 +73,9 @@ export default function CommissionLedger() {
   const [adjustTarget, setAdjustTarget] = useState<ICommission | null>(null);
   const [adjValue, setAdjValue] = useState("");
   const [adjNotes, setAdjNotes] = useState("");
+  const [voidTarget, setVoidTarget] = useState<ICommission | null>(null);
+  const [voidReason, setVoidReason] = useState("");
+  const [quickViewOrderId, setQuickViewOrderId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [mounted, setMounted] = useState(false);
 
@@ -153,6 +157,30 @@ export default function CommissionLedger() {
     });
   }
 
+  function openVoid(c: ICommission) {
+    setVoidTarget(c);
+    setVoidReason("");
+  }
+
+  function handleVoid() {
+    if (!voidTarget) return;
+    const reason = voidReason.trim();
+    if (!reason) {
+      toast.error("Please enter a reason for voiding this commission.");
+      return;
+    }
+    startTransition(async () => {
+      const result = await voidCommission(voidTarget.id, reason);
+      if (result.success) {
+        dispatch(updateCommissionInStore({ ...voidTarget, status: "void", notes: reason }));
+        setVoidTarget(null);
+        toast.success("Commission voided.");
+      } else {
+        toast.error(result.error ?? "Failed to void commission.");
+      }
+    });
+  }
+
   const pendingSelected = Array.from(selectedIds).filter(
     (id) => commissions.find((c) => c.id === id)?.status === "pending",
   );
@@ -223,7 +251,19 @@ export default function CommissionLedger() {
               <thead>
                 <tr className="border-b border-[var(--border)] bg-[var(--bg)]">
                   {admin && <th className="w-8 px-4 py-[9px]" />}
-                  {["Rep", "Order #", "Sale Amt", "Rate", "Commission", "Adj", "Override", "Status", ...(admin ? [""] : [])].map((h) => (
+                  {[
+                    // Rep column only meaningful to admin — self-view always shows the viewer.
+                    ...(admin ? ["Rep"] : []),
+                    "Order #",
+                    "Period",
+                    "Sale Amt",
+                    "Rate",
+                    "Commission",
+                    "Adj",
+                    "Override",
+                    "Status",
+                    ...(admin ? [""] : []),
+                  ].map((h) => (
                     <th
                       key={h}
                       className="px-4 py-[9px] text-[10px] font-semibold uppercase tracking-[0.6px] text-[var(--text3)] whitespace-nowrap"
@@ -248,17 +288,32 @@ export default function CommissionLedger() {
                         )}
                       </td>
                     )}
-                    {/* Rep avatar + name */}
-                    <td className="px-4 py-[10px]">
-                      <div className="flex items-center gap-2">
-                        <div className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full bg-[var(--teal-lt)] text-[10px] font-semibold text-[var(--teal)]">
-                          {initials(row.repName)}
+                    {/* Rep avatar + name — admin only */}
+                    {admin && (
+                      <td className="px-4 py-[10px]">
+                        <div className="flex items-center gap-2">
+                          <div className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full bg-[var(--teal-lt)] text-[10px] font-semibold text-[var(--teal)]">
+                            {initials(row.repName)}
+                          </div>
+                          <span className="text-[13px] font-medium text-[var(--navy)]">{row.repName}</span>
                         </div>
-                        <span className="text-[13px] font-medium text-[var(--navy)]">{row.repName}</span>
-                      </div>
+                      </td>
+                    )}
+                    <td className="px-4 py-[10px]" style={{ fontFamily: "var(--font-dm-mono), monospace" }}>
+                      {row.orderId ? (
+                        <button
+                          type="button"
+                          onClick={() => setQuickViewOrderId(row.orderId)}
+                          className="text-[12px] font-medium text-[var(--navy)] hover:underline underline-offset-2"
+                        >
+                          {row.orderNumber}
+                        </button>
+                      ) : (
+                        <span className="text-[12px] text-[var(--text2)]">{row.orderNumber}</span>
+                      )}
                     </td>
-                    <td className="px-4 py-[10px] text-[12px] text-[var(--text2)]" style={{ fontFamily: "var(--font-dm-mono), monospace" }}>
-                      {row.orderNumber}
+                    <td className="px-4 py-[10px] text-[12px] text-[var(--text2)]">
+                      {row.payoutPeriod ?? "—"}
                     </td>
                     <td className="px-4 py-[10px] text-[13px]" style={{ fontFamily: "var(--font-dm-mono), monospace" }}>
                       {formatAmount(row.orderAmount)}
@@ -287,13 +342,24 @@ export default function CommissionLedger() {
                     </td>
                     {admin && (
                       <td className="px-4 py-[10px]">
-                        <button
-                          type="button"
-                          onClick={() => openAdjust(row)}
-                          className="rounded-[6px] border border-[var(--border)] px-2 py-1 text-[11px] font-medium text-[var(--text2)] transition hover:border-[var(--navy)] hover:text-[var(--navy)]"
-                        >
-                          Adjust
-                        </button>
+                        <div className="flex gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => openAdjust(row)}
+                            className="rounded-[6px] border border-[var(--border)] px-2 py-1 text-[11px] font-medium text-[var(--text2)] transition hover:border-[var(--navy)] hover:text-[var(--navy)]"
+                          >
+                            Adjust
+                          </button>
+                          {(row.status === "pending" || row.status === "approved") && (
+                            <button
+                              type="button"
+                              onClick={() => openVoid(row)}
+                              className="rounded-[6px] border border-[var(--border)] px-2 py-1 text-[11px] font-medium text-[var(--text2)] transition hover:border-red-300 hover:bg-red-50 hover:text-red-600"
+                            >
+                              Void
+                            </button>
+                          )}
+                        </div>
                       </td>
                     )}
                   </tr>
@@ -353,6 +419,51 @@ export default function CommissionLedger() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Void modal */}
+      <Dialog open={!!voidTarget} onOpenChange={(v) => { if (!v) setVoidTarget(null); }}>
+        <DialogContent className="max-w-sm gap-0 overflow-hidden rounded-2xl border border-[var(--border)] p-0 shadow-2xl">
+          <div className="border-b border-[var(--border)] px-5 py-4">
+            <DialogTitle className="text-[15px] font-semibold text-[var(--navy)]">Void Commission</DialogTitle>
+            <p className="mt-0.5 text-[11px] text-[var(--text3)]">
+              {voidTarget?.orderNumber} — {voidTarget?.repName} — {voidTarget ? formatAmount(voidTarget.finalAmount ?? voidTarget.commissionAmount + voidTarget.adjustment) : ""}
+            </p>
+          </div>
+          <div className="space-y-4 p-5">
+            <p className="text-[12px] text-[var(--text2)]">
+              Voiding this commission removes it from future payouts. This cannot be undone.
+            </p>
+            <div className="space-y-1.5">
+              <Label className="text-[12px]">Reason <span className="text-red-400">*</span></Label>
+              <Input
+                value={voidReason}
+                onChange={(e) => setVoidReason(e.target.value)}
+                placeholder="e.g. Order refunded, sale reversed..."
+                className="h-9 text-sm"
+              />
+            </div>
+          </div>
+          <div className="flex gap-2 border-t border-[var(--border)] px-5 py-3">
+            <Button variant="outline" size="sm" className="flex-1" onClick={() => setVoidTarget(null)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              disabled={isPending}
+              onClick={handleVoid}
+              className="flex-1 bg-red-500 text-white hover:bg-red-600"
+            >
+              Void
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Order quick-view — opens inline so the rep doesn't lose their ledger position */}
+      <OrderQuickView
+        orderId={quickViewOrderId}
+        onClose={() => setQuickViewOrderId(null)}
+      />
     </>
   );
 }

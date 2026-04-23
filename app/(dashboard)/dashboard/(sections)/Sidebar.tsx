@@ -92,11 +92,19 @@ export const NAV_GROUPS: NavGroupDef[] = [
         href: "/dashboard/accounts",
         visible: (role) => isAdmin(role) || isSalesRep(role) || isSupport(role),
       },
+      // Same page, different label per role: reps manage their sub-reps ("My Team"),
+      // admins manage every sales rep system-wide ("Sales Reps").
+      {
+        icon: Users,
+        label: "Sales Reps",
+        href: "/dashboard/my-team",
+        visible: isAdmin,
+      },
       {
         icon: Users,
         label: "My Team",
         href: "/dashboard/my-team",
-        visible: (role) => isSalesRep(role) || isAdmin(role),
+        visible: isSalesRep,
       },
       {
         icon: CheckSquare,
@@ -128,11 +136,18 @@ export const NAV_GROUPS: NavGroupDef[] = [
         href: "/dashboard/commissions",
         visible: (role) => isSalesRep(role),
       },
-{
+      // Admin sees system-wide analytics ("Reports"), reps see their own ("My Performance").
+      {
+        icon: TrendingUp,
+        label: "Reports",
+        href: "/dashboard/rep-performance",
+        visible: isAdmin,
+      },
+      {
         icon: TrendingUp,
         label: "My Performance",
         href: "/dashboard/rep-performance",
-        visible: (role) => isSalesRep(role) || isAdmin(role),
+        visible: isSalesRep,
       },
     ],
   },

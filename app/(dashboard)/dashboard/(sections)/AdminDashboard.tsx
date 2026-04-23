@@ -32,8 +32,8 @@ const STATUS_VARIANT: Record<string, StatusVariant> = {
 const PIPELINE = [
   { key: "draft",                    label: "Draft",       variant: "blue"  as StatusVariant },
   { key: "pending_signature",        label: "Pending Sig", variant: "gold"  as StatusVariant },
-  { key: "manufacturer_review",      label: "In Review",   variant: "gold"  as StatusVariant },
-  { key: "additional_info_needed",   label: "Info Needed", variant: "red"   as StatusVariant },
+  { key: "manufacturer_review",      label: "Under Review",    variant: "gold"  as StatusVariant },
+  { key: "additional_info_needed",   label: "Needs More Info", variant: "red"   as StatusVariant },
   { key: "approved",                 label: "Approved",    variant: "teal"  as StatusVariant },
   { key: "shipped",                  label: "Shipped",     variant: "blue"  as StatusVariant },
   { key: "delivered",                label: "Delivered",   variant: "green" as StatusVariant },

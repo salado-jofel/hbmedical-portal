@@ -26,12 +26,25 @@ function attainmentColor(pct: number | null): string {
 function SubRepRow({ rep }: { rep: IRepPerformance }) {
   const pct    = rep.attainmentPct;
   const capped = Math.min(pct ?? 0, 100);
+
+  // Em-dash for zero-valued cells — rows for brand-new sub-reps are otherwise
+  // a wall of "$0.00 / 0 / 0" which buries any real data in other rows.
+  const monoClass = "text-[13px]";
+  const dashClass = "text-[13px] text-[var(--text3)]";
+  const mono = { fontFamily: "var(--font-dm-mono), monospace" } as const;
+
   return (
     <tr className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--bg)]">
       <td className="px-4 py-[10px] text-[13px] font-medium text-[var(--navy)]">{rep.repName}</td>
-      <td className="px-4 py-[10px] text-[13px]" style={{ fontFamily: "var(--font-dm-mono), monospace" }}>{formatAmount(rep.actualRevenue)}</td>
-      <td className="px-4 py-[10px] text-[13px] text-[var(--text2)]" style={{ fontFamily: "var(--font-dm-mono), monospace" }}>
-        {rep.quota != null ? formatAmount(rep.quota) : "—"}
+      <td className="px-4 py-[10px]" style={mono}>
+        {rep.actualRevenue > 0
+          ? <span className={monoClass}>{formatAmount(rep.actualRevenue)}</span>
+          : <span className={dashClass}>—</span>}
+      </td>
+      <td className="px-4 py-[10px]" style={mono}>
+        {rep.quota != null
+          ? <span className="text-[13px] text-[var(--text2)]">{formatAmount(rep.quota)}</span>
+          : <span className={dashClass}>—</span>}
       </td>
       <td className="px-4 py-[10px]">
         {pct !== null ? (
@@ -43,8 +56,16 @@ function SubRepRow({ rep }: { rep: IRepPerformance }) {
           </div>
         ) : <span className="text-[12px] text-[var(--text3)]">—</span>}
       </td>
-      <td className="px-4 py-[10px] text-[13px]" style={{ fontFamily: "var(--font-dm-mono), monospace" }}>{formatAmount(rep.commissionEarned)}</td>
-      <td className="px-4 py-[10px] text-[13px] text-[var(--text2)]">{rep.paidOrders}</td>
+      <td className="px-4 py-[10px]" style={mono}>
+        {rep.commissionEarned > 0
+          ? <span className={monoClass}>{formatAmount(rep.commissionEarned)}</span>
+          : <span className={dashClass}>—</span>}
+      </td>
+      <td className="px-4 py-[10px]">
+        {rep.paidOrders > 0
+          ? <span className="text-[13px] text-[var(--text2)]">{rep.paidOrders}</span>
+          : <span className={dashClass}>—</span>}
+      </td>
     </tr>
   );
 }

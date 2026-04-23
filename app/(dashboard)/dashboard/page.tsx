@@ -15,6 +15,7 @@ import { getUsers } from "./users/(services)/actions";
 import { getAccounts } from "./accounts/(services)/actions";
 import { getTasks } from "./tasks/(services)/actions";
 import { getRepCommissionSummary } from "./commissions/(services)/actions";
+import { getMyLastPayout, type LastPayout } from "./settings/(services)/stripe-connect-actions";
 import { getMonthlyRevenue } from "./rep-performance/(services)/actions";
 import { getTopAccountsByRep, type ITopAccount } from "./(services)/dashboard-actions";
 import { AdminDashboard } from "./(sections)/AdminDashboard";
@@ -61,6 +62,7 @@ export default async function DashboardPage() {
     monthlyRevenue,
     topAccounts,
     currentQuota,
+    lastPayout,
   ] = await Promise.all([
     getAllOrders(),
     adminUser ? getUsers() : Promise.resolve([] as IUser[]),
@@ -74,6 +76,7 @@ export default async function DashboardPage() {
       ? getTopAccountsByRep(user.id, 5).catch(() => [] as ITopAccount[])
       : Promise.resolve([] as ITopAccount[]),
     repUser && user ? fetchCurrentQuota(user.id).catch(() => null) : Promise.resolve(null as number | null),
+    repUser ? getMyLastPayout().catch(() => null) : Promise.resolve(null as LastPayout | null),
   ]);
 
   return (
@@ -93,6 +96,7 @@ export default async function DashboardPage() {
           monthlyRevenue={monthlyRevenue}
           currentQuota={currentQuota}
           topAccounts={topAccounts}
+          lastPayout={lastPayout}
         />
       )}
       {isSupport(role) && (

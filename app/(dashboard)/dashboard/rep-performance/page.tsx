@@ -27,7 +27,7 @@ export const dynamic = "force-dynamic";
 
 const EMPTY_EXTRAS: IAdminPerformanceExtras = {
   monthlyByRep: [],
-  repNames: [],
+  reps: [],
   repRanking: [],
   quotaAttainment: [],
   teamFunnel: [],
@@ -77,7 +77,7 @@ export default async function RepPerformancePage() {
           <TierBreakdown />
 
           <div className="mb-5">
-            <AdminRevenueTrend data={adminExtras.monthlyByRep} repNames={adminExtras.repNames} />
+            <AdminRevenueTrend data={adminExtras.monthlyByRep} reps={adminExtras.reps} />
           </div>
 
           <div className="mb-5 grid grid-cols-1 lg:grid-cols-2 gap-5">

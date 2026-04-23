@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { uuidString } from "@/utils/validators/shared";
 
 export interface Product {
   id: string;
@@ -20,7 +21,7 @@ export interface Product {
 }
 
 export const productSchema = z.object({
-  id: z.string().uuid(),
+  id: uuidString(),
   sku: z.string().trim().min(1),
   name: z.string().trim().min(1),
   description: z.string().nullable(),

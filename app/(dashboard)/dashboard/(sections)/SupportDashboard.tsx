@@ -49,8 +49,8 @@ export function SupportDashboard({ orders }: { orders: DashboardOrder[] }) {
       <PageHeader title="Dashboard" subtitle="Support overview" />
 
       <div className="mb-5 grid grid-cols-2 gap-[10px] lg:grid-cols-3">
-        <KpiCard label="In Review"     value={String(inReview)}      accentColor="gold" />
-        <KpiCard label="Info Needed"   value={String(infoNeeded)}    accentColor="red"  />
+        <KpiCard label="Under Review"     value={String(inReview)}   accentColor="gold" />
+        <KpiCard label="Needs More Info"  value={String(infoNeeded)} accentColor="red"  />
         <KpiCard label="Active Orders" value={String(activeOrders)}  accentColor="teal" />
       </div>
 

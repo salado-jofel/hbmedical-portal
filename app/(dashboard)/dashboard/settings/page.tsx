@@ -14,8 +14,12 @@ import {
   getMyClinicMembers,
   getMyAssignedRep,
   getMyEnrollment,
+  getMyClinic,
 } from "@/app/(dashboard)/dashboard/settings/(services)/actions";
-import { getMyConnectStatus } from "@/app/(dashboard)/dashboard/settings/(services)/stripe-connect-actions";
+import {
+  getMyConnectStatus,
+  getMyLastPayout,
+} from "@/app/(dashboard)/dashboard/settings/(services)/stripe-connect-actions";
 import { notFound } from "next/navigation";
 import Providers from "./(sections)/Providers";
 import { SettingsTabs } from "./(sections)/SettingsTabs";
@@ -50,6 +54,8 @@ export default async function SettingsPage({
     enrollmentData,
     facility,
     connectStatus,
+    myClinic,
+    lastPayout,
   ] = await Promise.all([
       repUser ? getMyClinicAccounts() : Promise.resolve([]),
       repUser ? getMySubReps() : Promise.resolve([]),
@@ -66,6 +72,8 @@ export default async function SettingsPage({
             .then((r) => r.data)
         : Promise.resolve(null),
       showPayouts ? getMyConnectStatus() : Promise.resolve(null),
+      providerUser ? getMyClinic() : Promise.resolve(null),
+      showPayouts ? getMyLastPayout() : Promise.resolve(null),
     ]);
 
   const showEnrollment = providerUser;
@@ -85,6 +93,7 @@ export default async function SettingsPage({
       <Providers>
         <SettingsTabs
           profile={profile}
+          myClinic={myClinic}
           isRep={repUser}
           myClinicAccounts={myClinicAccounts}
           mySubReps={mySubReps}
@@ -96,6 +105,7 @@ export default async function SettingsPage({
           showEnrollment={showEnrollment}
           showPayouts={showPayouts}
           connectStatus={connectStatus}
+          lastPayout={lastPayout}
           initialTab={initialTab}
           enrollmentData={enrollmentData}
           facilityName={facilityName}

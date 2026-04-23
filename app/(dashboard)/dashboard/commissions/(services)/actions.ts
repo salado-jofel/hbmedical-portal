@@ -467,6 +467,71 @@ export async function approveCommissions(
 }
 
 /* -------------------------------------------------------------------------- */
+/* 6b. voidCommission                                                         */
+/*                                                                            */
+/* Admin-only. Used for manual clawback of a pending/approved commission      */
+/* (e.g. order refunded, bad sale). Commissions that are already `paid`       */
+/* cannot be voided — admin must record a negative `adjustment` on the next   */
+/* period's payout instead, via adjustCommission.                             */
+/* -------------------------------------------------------------------------- */
+
+export async function voidCommission(
+  commissionId: string,
+  reason: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await createClient();
+    await requireAdminOrThrow(supabase);
+
+    const trimmedReason = (reason ?? "").trim();
+    if (!trimmedReason) {
+      return { success: false, error: "A reason is required when voiding a commission." };
+    }
+
+    const adminClient = createAdminClient();
+
+    const { data: existing, error: fetchError } = await adminClient
+      .from(COMMISSION_TABLE)
+      .select("status")
+      .eq("id", commissionId)
+      .maybeSingle();
+
+    if (fetchError) {
+      console.error("[voidCommission] Fetch error:", JSON.stringify(fetchError));
+      return { success: false, error: "Failed to load commission." };
+    }
+    if (!existing) {
+      return { success: false, error: "Commission not found." };
+    }
+    if (existing.status === "paid") {
+      return {
+        success: false,
+        error: "This commission has already been paid. Record a negative adjustment on the next payout instead.",
+      };
+    }
+    if (existing.status === "void") {
+      return { success: true }; // idempotent
+    }
+
+    const { error: updateError } = await adminClient
+      .from(COMMISSION_TABLE)
+      .update({ status: "void", notes: trimmedReason })
+      .eq("id", commissionId);
+
+    if (updateError) {
+      console.error("[voidCommission] Update error:", JSON.stringify(updateError));
+      return { success: false, error: updateError.message ?? "Failed to void commission." };
+    }
+
+    revalidatePath(COMMISSIONS_PATH);
+    return { success: true };
+  } catch (err) {
+    console.error("[voidCommission] Unexpected error:", err);
+    return { success: false, error: "An unexpected error occurred." };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
 /* 7. getPayouts                                                              */
 /* -------------------------------------------------------------------------- */
 
@@ -643,9 +708,11 @@ export async function getRepCommissionSummary(repId?: string): Promise<ICommissi
 
   // Admin with no repId → aggregate all commissions; with repId → filter to that rep.
   // Sales rep → always filter to own commissions only.
+  // Void commissions never count toward totals — they're clawbacks, not earnings.
   let commQuery = adminClient
     .from(COMMISSION_TABLE)
-    .select("status, final_amount, commission_amount, adjustment");
+    .select("status, final_amount, commission_amount, adjustment")
+    .neq("status", "void");
 
   if (adminMode) {
     if (repId) commQuery = commQuery.eq("rep_id", repId);
@@ -699,13 +766,15 @@ export async function getRepCommissionSummary(repId?: string): Promise<ICommissi
       : Number(c.commission_amount) + Number(c.adjustment ?? 0);
 
   const rows = commissions ?? [];
-  const totalEarned  = rows.reduce((s: number, c: any) => s + getAmount(c), 0);
-  const totalPending = rows.filter((c: any) => c.status === "pending").reduce((s: number, c: any) => s + getAmount(c), 0);
-  const totalPaid    = rows.filter((c: any) => c.status === "paid").reduce((s: number, c: any) => s + getAmount(c), 0);
+  const totalEarned   = rows.reduce((s: number, c: any) => s + getAmount(c), 0);
+  const totalPending  = rows.filter((c: any) => c.status === "pending" ).reduce((s: number, c: any) => s + getAmount(c), 0);
+  const totalApproved = rows.filter((c: any) => c.status === "approved").reduce((s: number, c: any) => s + getAmount(c), 0);
+  const totalPaid     = rows.filter((c: any) => c.status === "paid"    ).reduce((s: number, c: any) => s + getAmount(c), 0);
 
   return {
     totalEarned,
     totalPending,
+    totalApproved,
     totalPaid,
     currentRate: rateData ? Number(rateData.rate_percent) : null,
   };

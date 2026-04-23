@@ -50,11 +50,14 @@ export interface IMyTeamKpis {
 export interface ICommissionHistoryRow {
   id: string;
   period: string;
+  order_id: string | null;
+  order_number: string | null;
   commission_amount: number;
   adjustment: number;
   final_amount: number;
   your_override_amount: number | null;
   status: string;
+  created_at: string;
 }
 
 export interface ISubRepDetail {

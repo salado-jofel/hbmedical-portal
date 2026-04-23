@@ -1,5 +1,6 @@
 import { handleStripeInvoiceWebhookEvent } from "@/lib/stripe/invoices/handle-stripe-invoice-webhook";
 import { handleCheckoutWebhookEvent } from "@/lib/stripe/payments/handle-checkout-webhook";
+import { handleRefundWebhookEvent } from "@/lib/stripe/payments/handle-refund-webhook";
 import { stripe } from "@/lib/stripe/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
@@ -78,6 +79,7 @@ export async function POST(request: Request) {
 
     await handleCheckoutWebhookEvent(event);
     await handleStripeInvoiceWebhookEvent(event);
+    await handleRefundWebhookEvent(event);
 
     return NextResponse.json({ received: true });
   } catch (error) {

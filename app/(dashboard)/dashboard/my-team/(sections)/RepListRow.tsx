@@ -24,10 +24,10 @@ export function RepListRow({ row }: { row: IRepListRow }) {
       </div>
 
       <div className="grid grid-cols-4 shrink-0 md:w-[480px]">
-        <Stat value={String(row.accountCount)} label="Accounts" />
-        <Stat value={String(row.ordersInPeriod)} label="Orders" />
-        <Stat value={String(row.deliveredInPeriod)} label="Delivered" />
-        <Stat value={formatAmount(row.commissionInPeriod)} label="Commission" />
+        <Stat value={dashIfZero(row.accountCount)}       label="Accounts" />
+        <Stat value={dashIfZero(row.ordersInPeriod)}     label="Orders" />
+        <Stat value={dashIfZero(row.deliveredInPeriod)}  label="Delivered" />
+        <Stat value={row.commissionInPeriod > 0 ? formatAmount(row.commissionInPeriod) : "—"} label="Commission" />
       </div>
 
       <div className="md:ml-4 shrink-0 md:w-[90px] md:text-center">
@@ -39,10 +39,18 @@ export function RepListRow({ row }: { row: IRepListRow }) {
   );
 }
 
+function dashIfZero(n: number): string {
+  return n > 0 ? String(n) : "—";
+}
+
 function Stat({ value, label }: { value: string; label: string }) {
+  const isEmpty = value === "—";
   return (
     <div className="text-center">
-      <p className="text-[16px] font-semibold text-[var(--navy)] leading-none">{value}</p>
+      <p className={cn(
+        "text-[16px] font-semibold leading-none",
+        isEmpty ? "text-[var(--text3)]" : "text-[var(--navy)]",
+      )}>{value}</p>
       <p className="mt-1 text-[10px] uppercase tracking-wide text-[var(--text3)]">{label}</p>
     </div>
   );

@@ -26,12 +26,18 @@ import {
   mapOrders,
 } from "../interfaces/orders";
 
+// "Processed" = payment or invoice actually succeeded, not just "method picked".
+//   • Pay Now → payment_status === "paid"
+//   • Net-30  → invoice_status === "issued" (Stripe finalized the invoice)
+// Abandoned Pay Now checkouts stay in "approved" so the provider can Resume
+// Payment from the detail modal.
 export function getDisplayOrderStatus(
-  order: Pick<DashboardOrder, "order_status" | "payment_method">,
+  order: Pick<DashboardOrder, "order_status" | "payment_method" | "payment_status" | "invoice_status">,
 ): OrderStatus | "processed" {
-  return order.order_status === "approved" && order.payment_method
-    ? "processed"
-    : order.order_status;
+  if (order.order_status !== "approved") return order.order_status;
+  if (order.payment_method === "pay_now" && order.payment_status === "paid") return "processed";
+  if (order.payment_method === "net_30" && order.invoice_status === "issued") return "processed";
+  return order.order_status;
 }
 
 export { mapOrder as mapDashboardOrder, mapOrders as mapDashboardOrders };

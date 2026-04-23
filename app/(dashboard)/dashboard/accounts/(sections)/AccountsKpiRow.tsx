@@ -42,8 +42,10 @@ export function AccountsKpiRow() {
         />
       </div>
 
-      {/* Row 2 — revenue */}
-      <div className="grid grid-cols-1 gap-[10px] sm:grid-cols-3">
+      {/* Row 2 — real revenue only. "1 Year Projected" card was dropped:
+          it's current monthly avg × 12, pure extrapolation, not actionable
+          for a salesperson (and the underlying calc had a formatting bug). */}
+      <div className="grid grid-cols-1 gap-[10px] sm:grid-cols-2">
         <div className="rounded-[var(--r)] border border-[#bbf7d0] bg-[#f0fdf4] px-[1.1rem] py-4">
           <p className="mb-[5px] text-[10px] font-medium uppercase text-[var(--text3)]" style={{ letterSpacing: "0.7px" }}>
             Delivered Revenue
@@ -64,16 +66,6 @@ export function AccountsKpiRow() {
             {formatAmount(totals.pipeline_revenue)}
           </p>
           <p className="mt-[5px] text-[11px] text-[var(--text3)]">orders in approved / shipped</p>
-        </div>
-
-        <div className="rounded-[var(--r)] border border-[#ddd6fe] bg-[#f5f3ff] px-[1.1rem] py-4">
-          <p className="mb-[5px] text-[10px] font-medium uppercase text-[var(--text3)]" style={{ letterSpacing: "0.7px" }}>
-            1 Year Est. Projected Revenue
-          </p>
-          <p className="text-[22px] font-semibold leading-none text-[#7c3aed]">
-            {formatAmount(totals.one_year_projected)}
-          </p>
-          <p className="mt-[5px] text-[11px] text-[var(--text3)]">based on period avg</p>
         </div>
       </div>
     </div>
