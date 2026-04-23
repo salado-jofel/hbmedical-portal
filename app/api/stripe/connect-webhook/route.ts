@@ -40,12 +40,21 @@ async function reserveWebhookEvent(event: Stripe.Event) {
 
 export async function POST(request: Request) {
   const signature = request.headers.get("stripe-signature");
-  const webhookSecret = process.env.STRIPE_CONNECT_WEBHOOK_SECRET;
+  // Connect endpoint gets its own signing secret in production; fall back to
+  // STRIPE_WEBHOOK_SECRET when running locally through a single Stripe CLI
+  // listener so devs don't have to duplicate the env var.
+  const webhookSecret =
+    process.env.STRIPE_CONNECT_WEBHOOK_SECRET ?? process.env.STRIPE_WEBHOOK_SECRET;
 
-  if (!signature || !webhookSecret) {
-    return new NextResponse("Missing Stripe Connect webhook signature or secret.", {
-      status: 400,
-    });
+  if (!signature) {
+    console.error("[connect.webhook] Missing stripe-signature header");
+    return new NextResponse("Missing stripe-signature header.", { status: 400 });
+  }
+  if (!webhookSecret) {
+    console.error(
+      "[connect.webhook] Missing STRIPE_CONNECT_WEBHOOK_SECRET (or STRIPE_WEBHOOK_SECRET) env var",
+    );
+    return new NextResponse("Missing Stripe Connect webhook secret.", { status: 400 });
   }
 
   const rawBody = await request.text();
