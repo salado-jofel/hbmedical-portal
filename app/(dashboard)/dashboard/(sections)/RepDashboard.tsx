@@ -52,7 +52,7 @@ export function RepDashboard({
       {commissionSummary && (
         <div className="mb-5 grid grid-cols-2 gap-[10px]">
           <KpiCard label="Commission Earned" value={formatAmount(commissionSummary.totalEarned)}   accentColor="teal" />
-          <KpiCard label="Pending Payout"    value={formatAmount(commissionSummary.totalPending)}  accentColor="gold" />
+          <KpiCard label="Awaiting Payout"   value={formatAmount(commissionSummary.totalApproved)} accentColor="gold" />
         </div>
       )}
 

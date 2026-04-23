@@ -22,7 +22,7 @@ import {
 export const metadata: Metadata = { title: "Commissions" };
 export const dynamic = "force-dynamic";
 
-const EMPTY_SUMMARY: ICommissionSummary = { totalEarned: 0, totalPending: 0, totalPaid: 0, currentRate: null };
+const EMPTY_SUMMARY: ICommissionSummary = { totalEarned: 0, totalPending: 0, totalApproved: 0, totalPaid: 0, currentRate: null };
 
 export default async function CommissionsPage() {
   const supabase = await createClient();

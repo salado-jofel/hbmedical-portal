@@ -18,7 +18,7 @@ import type {
   IAssignedRep,
   IMyClinic,
 } from "@/app/(dashboard)/dashboard/settings/(services)/actions";
-import type { ConnectStatus } from "@/app/(dashboard)/dashboard/settings/(services)/stripe-connect-actions";
+import type { ConnectStatus, LastPayout } from "@/app/(dashboard)/dashboard/settings/(services)/stripe-connect-actions";
 
 type TabKey = "profile" | "team" | "credentials" | "enrollment" | "payouts";
 
@@ -42,6 +42,7 @@ interface SettingsTabsProps {
   showEnrollment: boolean;
   showPayouts: boolean;
   connectStatus: ConnectStatus | null;
+  lastPayout?: LastPayout | null;
   initialTab?: TabKey;
   enrollmentData: FacilityEnrollmentData | null;
   facilityName: string;
@@ -68,6 +69,7 @@ export function SettingsTabs({
   showEnrollment,
   showPayouts,
   connectStatus,
+  lastPayout = null,
   initialTab,
   enrollmentData,
   facilityName,
@@ -160,7 +162,7 @@ export function SettingsTabs({
         )}
         {showPayouts && connectStatus && (
           <div hidden={active !== "payouts"}>
-            <PayoutsTab status={connectStatus} />
+            <PayoutsTab status={connectStatus} lastPayout={lastPayout} />
           </div>
         )}
       </div>

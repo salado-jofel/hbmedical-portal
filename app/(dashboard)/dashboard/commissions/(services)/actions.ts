@@ -766,13 +766,15 @@ export async function getRepCommissionSummary(repId?: string): Promise<ICommissi
       : Number(c.commission_amount) + Number(c.adjustment ?? 0);
 
   const rows = commissions ?? [];
-  const totalEarned  = rows.reduce((s: number, c: any) => s + getAmount(c), 0);
-  const totalPending = rows.filter((c: any) => c.status === "pending").reduce((s: number, c: any) => s + getAmount(c), 0);
-  const totalPaid    = rows.filter((c: any) => c.status === "paid").reduce((s: number, c: any) => s + getAmount(c), 0);
+  const totalEarned   = rows.reduce((s: number, c: any) => s + getAmount(c), 0);
+  const totalPending  = rows.filter((c: any) => c.status === "pending" ).reduce((s: number, c: any) => s + getAmount(c), 0);
+  const totalApproved = rows.filter((c: any) => c.status === "approved").reduce((s: number, c: any) => s + getAmount(c), 0);
+  const totalPaid     = rows.filter((c: any) => c.status === "paid"    ).reduce((s: number, c: any) => s + getAmount(c), 0);
 
   return {
     totalEarned,
     totalPending,
+    totalApproved,
     totalPaid,
     currentRate: rateData ? Number(rateData.rate_percent) : null,
   };

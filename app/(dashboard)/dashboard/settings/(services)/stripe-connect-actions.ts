@@ -15,6 +15,12 @@ export interface ConnectStatus {
   detailsSubmitted: boolean;
 }
 
+export interface LastPayout {
+  period: string;
+  totalAmount: number;
+  paidAt: string | null;
+}
+
 export interface ConnectActionResult {
   success: boolean;
   error: string | null;
@@ -43,6 +49,32 @@ export async function getMyConnectStatus(): Promise<ConnectStatus> {
     payoutsEnabled: !!data?.stripe_payouts_enabled,
     chargesEnabled: !!data?.stripe_charges_enabled,
     detailsSubmitted: !!data?.stripe_details_submitted,
+  };
+}
+
+/* -------------------------------------------------------------------------- */
+/* getMyLastPayout — most recent paid payout for the current rep              */
+/* -------------------------------------------------------------------------- */
+
+export async function getMyLastPayout(): Promise<LastPayout | null> {
+  const supabase = await createClient();
+  const user = await getCurrentUserOrThrow(supabase);
+
+  const adminClient = createAdminClient();
+  const { data } = await adminClient
+    .from("payouts")
+    .select("period, total_amount, paid_at")
+    .eq("rep_id", user.id)
+    .eq("status", "paid")
+    .order("paid_at", { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!data) return null;
+  return {
+    period: data.period as string,
+    totalAmount: Number(data.total_amount),
+    paidAt: (data.paid_at as string | null) ?? null,
   };
 }
 

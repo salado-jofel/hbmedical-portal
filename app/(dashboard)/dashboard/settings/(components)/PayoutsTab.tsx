@@ -1,20 +1,24 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { Banknote, ExternalLink, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
+import { formatAmount, formatDate } from "@/utils/helpers/formatter";
 import {
   createConnectOnboardingLink,
   createConnectLoginLink,
   type ConnectStatus,
+  type LastPayout,
 } from "@/app/(dashboard)/dashboard/settings/(services)/stripe-connect-actions";
 
 interface PayoutsTabProps {
   status: ConnectStatus;
+  lastPayout?: LastPayout | null;
 }
 
-export function PayoutsTab({ status }: PayoutsTabProps) {
+export function PayoutsTab({ status, lastPayout = null }: PayoutsTabProps) {
   const [isPending, startTransition] = useTransition();
   const [busy, setBusy] = useState<"setup" | "manage" | null>(null);
 
@@ -125,6 +129,27 @@ export function PayoutsTab({ status }: PayoutsTabProps) {
           )}
         </div>
       </div>
+
+      {/* Last payout summary — only when payouts enabled and there's a history */}
+      {ready && lastPayout && (
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
+          <p className="text-[10px] uppercase tracking-wide text-[var(--text3)]">Last payout</p>
+          <div className="mt-1 flex items-baseline gap-2">
+            <p className="text-lg font-semibold text-[var(--navy)]">
+              {formatAmount(lastPayout.totalAmount)}
+            </p>
+            <p className="text-xs text-[var(--text2)]">
+              on {lastPayout.paidAt ? formatDate(lastPayout.paidAt) : lastPayout.period}
+            </p>
+          </div>
+          <Link
+            href="/dashboard/commissions"
+            className="mt-2 inline-block text-xs text-[var(--text2)] underline underline-offset-2 hover:text-[var(--navy)]"
+          >
+            View full payout history →
+          </Link>
+        </div>
+      )}
 
       <p className="text-[11px] text-[var(--text3)]">
         Payouts are processed by Stripe. HB Medical never sees or stores your bank account details.

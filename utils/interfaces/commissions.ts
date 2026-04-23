@@ -50,8 +50,9 @@ export interface ICommissionRateFormState {
 }
 
 export interface ICommissionSummary {
-  totalEarned:  number;
-  totalPending: number;
-  totalPaid:    number;
-  currentRate:  number | null;
+  totalEarned:   number;
+  totalPending:  number;  // pending admin approval
+  totalApproved: number;  // approved, awaiting next payout
+  totalPaid:     number;
+  currentRate:   number | null;
 }
