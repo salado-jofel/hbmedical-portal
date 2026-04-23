@@ -31,6 +31,13 @@ export function InviteClinicForm({ isAdmin = false, repsWithFacilities = [] }: {
     repsWithFacilities[0]?.facilityId ?? ""
   );
   const [sentEmail, setSentEmail] = useState<string | null>(null);
+  // Radix Select internals call useId(). With our Redux-populated layout
+  // (TabNav, NotificationBell, etc. all defer to client mount), the useId
+  // counter ends up in a different state on the SSR pass than on the first
+  // client render, and the Select's aria-controls mismatch. Mount-guard so
+  // the form is purely client-rendered, matching the surrounding pattern.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   const hasNoReps = isAdmin && repsWithFacilities.length === 0;
 
@@ -45,6 +52,10 @@ export function InviteClinicForm({ isAdmin = false, repsWithFacilities = [] }: {
 
   function resetForm() {
     setSentEmail(null);
+  }
+
+  if (!mounted) {
+    return <div className="h-[280px]" aria-hidden />;
   }
 
   if (sentEmail) {

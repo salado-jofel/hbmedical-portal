@@ -388,6 +388,19 @@ export function OnboardingDashboard({
       {/* ── Section D — Invite Sub-Rep ── */}
       <InviteSubRepSection showSection={showSubRepSection} />
 
+      {/* ── Section E — Invite tokens (admin sees all, rep sees their own).
+          Hidden by InviteTokensSection itself when there are zero tokens. */}
+      <InviteTokensSection
+        tokens={tokens}
+        isAdmin={isAdmin}
+        isDeletingToken={isDeletingToken}
+        deleteTokenId={deleteTokenId}
+        onDeleteClick={(tokenId) => {
+          setDeleteTokenId(tokenId);
+          setTokenConfirmOpen(true);
+        }}
+      />
+
       {/* ── Section E — My Sub-Reps ── */}
       {/* {showSubRepSection && (
         <section className="space-y-3">

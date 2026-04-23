@@ -85,7 +85,13 @@ export async function getMyLastPayout(): Promise<LastPayout | null> {
 /* to the profile; otherwise creates a new Express account first.             */
 /* -------------------------------------------------------------------------- */
 
-export async function createConnectOnboardingLink(): Promise<ConnectActionResult> {
+// returnPath lets callers swap the post-Stripe destination. Defaults to the
+// Settings → Payouts return route so existing callers keep working. The login
+// gate at /onboarding/payouts passes its own return path so reps land back
+// in the gate (which then forwards to /dashboard once details_submitted=true).
+export async function createConnectOnboardingLink(
+  returnPath: string = "/dashboard/settings/payouts/return",
+): Promise<ConnectActionResult> {
   try {
     const supabase = await createClient();
     const user = await getCurrentUserOrThrow(supabase);
@@ -140,8 +146,8 @@ export async function createConnectOnboardingLink(): Promise<ConnectActionResult
     const link = await stripe.accountLinks.create({
       account: accountId,
       type: "account_onboarding",
-      refresh_url: `${appUrl}/dashboard/settings/payouts/return?status=refresh`,
-      return_url: `${appUrl}/dashboard/settings/payouts/return?status=complete`,
+      refresh_url: `${appUrl}${returnPath}?status=refresh`,
+      return_url: `${appUrl}${returnPath}?status=complete`,
     });
 
     return { success: true, error: null, url: link.url };

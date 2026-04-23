@@ -25,6 +25,9 @@ export function InviteSubRepForm() {
   >(inviteSubRep, null);
 
   const [sentEmail, setSentEmail] = useState<string | null>(null);
+  // See InviteClinicForm — Radix Select needs a stable useId counter across
+  // SSR/client. Mount-guard so the form renders client-only.
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     if (!state) return;
@@ -35,8 +38,14 @@ export function InviteSubRepForm() {
     }
   }, [state]);
 
+  useEffect(() => setMounted(true), []);
+
   function resetForm() {
     setSentEmail(null);
+  }
+
+  if (!mounted) {
+    return <div className="h-[300px]" aria-hidden />;
   }
 
   if (sentEmail) {

@@ -25,6 +25,10 @@ export function InviteSalesRepForm() {
   >(generateInviteToken, null);
 
   const [sentEmail, setSentEmail] = useState<string | null>(null);
+  // See InviteClinicForm for the rationale — Radix Select internals call
+  // useId() and need a stable counter across SSR/client. Mount-guard so the
+  // form is purely client-rendered.
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     if (!state) return;
@@ -35,8 +39,14 @@ export function InviteSalesRepForm() {
     }
   }, [state]);
 
+  useEffect(() => setMounted(true), []);
+
   function resetForm() {
     setSentEmail(null);
+  }
+
+  if (!mounted) {
+    return <div className="h-[300px]" aria-hidden />;
   }
 
   if (sentEmail) {
