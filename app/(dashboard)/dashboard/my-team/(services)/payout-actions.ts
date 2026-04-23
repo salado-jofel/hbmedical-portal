@@ -25,8 +25,8 @@ export interface PayRepResult {
 /*                                                                            */
 /* Pays a single rep for all their `approved` commissions in the given        */
 /* period. One Stripe transfer → one payouts row → bulk status flip on the    */
-/* underlying commissions. Idempotent via rep+period key so a double-click    */
-/* or network retry never sends two transfers.                                */
+/* underlying commissions. One payout per (rep, period) — late-arriving       */
+/* commissions roll into the next month's batch.                              */
 /* -------------------------------------------------------------------------- */
 
 export async function payRepCommissions(
@@ -86,22 +86,29 @@ export async function payRepCommissions(
       return { success: false, error: "Approved total is $0 — nothing to transfer." };
     }
 
-    // Double-pay protection model:
-    //   1. We only fetch commissions with status='approved' above. Already-paid
-    //      commissions are excluded by the WHERE clause, so a second payout in
-    //      the same period naturally covers only the *new* approved earnings.
-    //   2. Stripe idempotency uses a fresh UUID per attempt. We deliberately
-    //      avoid a deterministic key because Stripe caches failed responses
-    //      for 24h (the prior balance_insufficient bug), and we may legitimately
-    //      want multiple successful payouts per (rep, period) when commissions
-    //      arrive throughout the month.
-    //   3. The narrow remaining race — two admin clicks fired in the same
-    //      ~500ms window before the first marks commissions paid — would
-    //      double-send. Acceptable for a manual one-button monthly flow; if it
-    //      bites in production, gate this with a SELECT … FOR UPDATE / row-lock.
+    // One-payout-per-period rule (business decision: monthly batches).
+    // Reject if a paid payout already exists for this (rep, period). Belt:
+    // this DB check rejects with a clear error. Suspenders: the unique index
+    // payouts_rep_period_uidx blocks any future bug that bypasses this guard.
+    const { data: existingPaid } = await admin
+      .from(PAYOUTS_TABLE)
+      .select("id, stripe_transfer_id, total_amount")
+      .eq("rep_id", repId)
+      .eq("period", period)
+      .eq("status", "paid")
+      .maybeSingle();
+    if (existingPaid) {
+      return {
+        success: false,
+        error: `This rep has already been paid for ${period} (transfer ${existingPaid.stripe_transfer_id}). Late commissions roll into next month's payout.`,
+      };
+    }
 
-    // Stripe transfer. Fresh idempotency key per attempt — safe because the
-    // status='approved' filter above already excludes anything already paid.
+    // Stripe transfer. Fresh UUID idempotency key per attempt — Stripe caches
+    // failed responses for 24h on a deterministic key, which used to cause
+    // balance_insufficient failures to replay forever. Safe because the
+    // existingPaid guard above ensures only one successful pay attempt per
+    // (rep, period) ever lands in the DB.
     let transfer: Stripe.Transfer;
     try {
       transfer = await stripe.transfers.create(
@@ -133,10 +140,9 @@ export async function payRepCommissions(
       return { success: false, error: friendly };
     }
 
-    // Always insert a new payouts row. Multiple rows per (rep, period) are
-    // allowed and expected — each row corresponds to one Stripe transfer, so
-    // top-ups during the month each get their own audit trail and unique
-    // stripe_transfer_id (which has a UNIQUE index).
+    // Insert the payout audit row. Exactly one row per (rep, period) under
+    // the one-payout-per-month rule — guarded above and at the DB by the
+    // payouts_rep_period_uidx unique index.
     const paidAt = new Date().toISOString();
     const { error: insErr } = await admin.from(PAYOUTS_TABLE).insert({
       rep_id: repId,
