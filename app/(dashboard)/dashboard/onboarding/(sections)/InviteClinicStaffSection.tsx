@@ -30,6 +30,10 @@ export function InviteClinicStaffSection({
     );
 
   const [sentStaffEmail, setSentStaffEmail] = useState<string | null>(null);
+  // See InviteClinicForm — Radix Select needs a stable useId counter across
+  // SSR/client. The surrounding layout populates Redux on mount, so the form
+  // body is rendered client-only.
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     if (!clinicInviteState) return;
@@ -40,7 +44,10 @@ export function InviteClinicStaffSection({
     }
   }, [clinicInviteState]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => setMounted(true), []);
+
   if (!showSection) return null;
+  if (!mounted) return null;
 
   return (
     <section className="bg-white rounded-xl border border-[var(--border)] p-5 space-y-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">

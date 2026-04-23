@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
+import { Loader2, RefreshCw, Trash2 } from "lucide-react";
 import { InviteTokenCard } from "../(components)/InviteTokenCard";
 import { resendInviteEmail } from "../(services)/invite-actions";
 import type { IInviteToken } from "@/utils/interfaces/invite-tokens";
@@ -22,6 +23,14 @@ export function InviteTokensSection({
   onDeleteClick,
 }: InviteTokensSectionProps) {
   const [resendingTokenId, setResendingTokenId] = useState<string | null>(null);
+  // Tokens are populated into Redux via a useEffect after mount, so the SSR
+  // tree always sees an empty list while the client tree sees rows. That
+  // shifts useId() order inside Radix-driven children and trips a hydration
+  // mismatch (aria-controls). Defer rendering until after mount so SSR emits
+  // nothing for this section and the client owns the whole subtree.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  if (!mounted) return null;
 
   async function handleResendInviteToken(tokenId: string) {
     setResendingTokenId(tokenId);
@@ -39,14 +48,23 @@ export function InviteTokensSection({
     }
   }
 
-  if (tokens.length === 0) return null;
+  // Admin view only shows actionable tokens (Active or Expired). Used tokens
+  // describe completed signups — those users are now manageable from the Users
+  // page, so leaving them here would just bloat the table over time.
+  // Rep view (cards below) is unchanged — reps don't create many invites and
+  // benefit from seeing the history.
+  const visibleTokens = isAdmin
+    ? tokens.filter((t) => !t.used_at)
+    : tokens;
+
+  if (visibleTokens.length === 0) return null;
 
   return (
     <section className="space-y-3">
       <h2 className="text-sm font-semibold text-[var(--navy)]">
         {isAdmin
-          ? `All invite links (${tokens.length})`
-          : `Your invite links (${tokens.length})`}
+          ? `Pending invite links (${visibleTokens.length})`
+          : `Your invite links (${visibleTokens.length})`}
       </h2>
       {isAdmin ? (
         <div className="bg-white rounded-xl border border-[var(--border)] overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
@@ -54,6 +72,9 @@ export function InviteTokensSection({
             <thead>
               <tr className="bg-[var(--bg)] border-b border-[var(--border)]">
                 <th className="px-4 py-3 text-[10px] uppercase tracking-wider font-semibold text-[var(--text3)]">
+                  Invited
+                </th>
+                <th className="px-4 py-3 text-[10px] uppercase tracking-wider font-semibold text-[var(--text3)] hidden lg:table-cell">
                   Created By
                 </th>
                 <th className="px-4 py-3 text-[10px] uppercase tracking-wider font-semibold text-[var(--text3)] hidden sm:table-cell">
@@ -65,30 +86,23 @@ export function InviteTokensSection({
                 <th className="px-4 py-3 text-[10px] uppercase tracking-wider font-semibold text-[var(--text3)] text-right">
                   Status
                 </th>
+                <th className="px-4 py-3 text-[10px] uppercase tracking-wider font-semibold text-[var(--text3)] text-right">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody suppressHydrationWarning>
-              {tokens.map((token) => {
-                const isUsed = !!token.used_at;
-                const isExpired =
-                  !isUsed && token.expires_at
-                    ? new Date(token.expires_at) < new Date()
-                    : false;
-                const statusLabel = isUsed
-                  ? "Used"
-                  : isExpired
-                    ? "Expired"
-                    : "Active";
-                const statusStyle = isUsed
-                  ? "bg-[var(--border)] text-[var(--text2)]"
-                  : isExpired
-                    ? "bg-red-50 text-red-600"
-                    : "bg-emerald-50 text-emerald-700";
-                const dotStyle = isUsed
-                  ? "bg-[var(--text3)]"
-                  : isExpired
-                    ? "bg-red-400"
-                    : "bg-emerald-500";
+              {visibleTokens.map((token) => {
+                // Used tokens are filtered out for admin view above, so we
+                // only need to distinguish Active vs Expired here.
+                const isExpired = token.expires_at
+                  ? new Date(token.expires_at) < new Date()
+                  : false;
+                const statusLabel = isExpired ? "Expired" : "Active";
+                const statusStyle = isExpired
+                  ? "bg-red-50 text-red-600"
+                  : "bg-emerald-50 text-emerald-700";
+                const dotStyle = isExpired ? "bg-red-400" : "bg-emerald-500";
                 const roleColors: Record<string, string> = {
                   clinical_provider: "bg-teal-50 text-teal-700",
                   clinical_staff: "bg-[var(--border)] text-[var(--text2)]",
@@ -110,7 +124,18 @@ export function InviteTokensSection({
                     className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--bg)] transition-colors"
                   >
                     <td className="px-4 py-3.5">
-                      <span className="text-sm text-[var(--navy)] font-medium">
+                      {token.invited_email ? (
+                        <span className="text-sm text-[var(--navy)] font-medium">
+                          {token.invited_email}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-[var(--text3)] italic">
+                          Open invite (no specific email)
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3.5 hidden lg:table-cell">
+                      <span className="text-sm text-[var(--text2)]">
                         {createdBy}
                       </span>
                     </td>
@@ -137,6 +162,40 @@ export function InviteTokensSection({
                         />
                         {statusLabel}
                       </span>
+                    </td>
+                    <td className="px-4 py-3.5 text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        {/* Resend only makes sense on Active tokens (the email
+                            link still works). Expired tokens just get Delete. */}
+                        {!isExpired && (
+                          <button
+                            type="button"
+                            onClick={() => handleResendInviteToken(token.id)}
+                            disabled={resendingTokenId === token.id}
+                            title="Resend invite email"
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--text2)] hover:bg-[var(--bg)] hover:text-[var(--navy)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {resendingTokenId === token.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <RefreshCw className="h-3.5 w-3.5" />
+                            )}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => onDeleteClick(token.id)}
+                          disabled={isDeletingToken && deleteTokenId === token.id}
+                          title="Delete invite link"
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--text2)] hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {isDeletingToken && deleteTokenId === token.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );

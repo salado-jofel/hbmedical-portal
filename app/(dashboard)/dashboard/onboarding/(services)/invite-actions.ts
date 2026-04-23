@@ -252,12 +252,22 @@ export async function generateInviteToken(
 export async function deleteInviteToken(tokenId: string): Promise<void> {
   const supabase = await createClient();
   const user = await getCurrentUserOrThrow(supabase);
+  const role = await getUserRole(supabase);
 
-  const { error } = await supabase
-    .from(INVITE_TOKENS_TABLE)
-    .delete()
-    .eq("id", tokenId)
-    .eq("created_by", user.id);
+  // Admins can delete any invite (they manage the whole system).
+  // Sales reps can only delete invites they created — guard against one rep
+  // revoking another's pending sub-rep invite. Use the admin client for
+  // admin deletes so RLS doesn't reject the cross-creator delete.
+  const { error } = isAdmin(role as UserRole)
+    ? await createAdminClient()
+        .from(INVITE_TOKENS_TABLE)
+        .delete()
+        .eq("id", tokenId)
+    : await supabase
+        .from(INVITE_TOKENS_TABLE)
+        .delete()
+        .eq("id", tokenId)
+        .eq("created_by", user.id);
 
   if (error) {
     console.error("[deleteInviteToken] Error:", JSON.stringify(error));

@@ -52,11 +52,12 @@ export function RepDashboard({
     <>
       <PageHeader title="Dashboard" subtitle="Your sales overview" />
 
-      {/* Primary KPIs — the rep's four top questions: what did I make, what's
-          owed to me, what's in flight, how close am I to quota? */}
+      {/* Primary KPIs — mirror the Commissions page lifecycle so $ amounts
+          map 1:1 to a stage with no overlap (Pending Approval and Awaiting
+          Payout are disjoint buckets, not a parent/child total). */}
       <div className="mb-3 grid grid-cols-2 gap-[10px] lg:grid-cols-4">
         <KpiCard label="Revenue This Month" value={formatAmount(revenueThisMonth)}                              accentColor="teal"   />
-        <KpiCard label="Commission Earned"  value={formatAmount(commissionSummary?.totalEarned ?? 0)}           accentColor="green"  />
+        <KpiCard label="Pending Approval"   value={formatAmount(commissionSummary?.totalPending ?? 0)}          accentColor="green"  />
         <KpiCard label="Awaiting Payout"    value={formatAmount(commissionSummary?.totalApproved ?? 0)}         accentColor="gold"   />
         <KpiCard label="Active Orders"      value={String(activeOrders)}                                         accentColor="blue"   />
       </div>

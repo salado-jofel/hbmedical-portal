@@ -104,7 +104,17 @@ export function UsersList() {
           return;
         }
         dispatch(removeUserFromStore(userId));
-        toast.success("User deleted.");
+        if (result.warning) {
+          // Long-duration warning toast — user was deleted but a side effect
+          // (e.g. orphan Stripe Connect account) needs admin attention.
+          toast(result.warning, {
+            duration: 15000,
+            icon: "⚠️",
+            style: { border: "1px solid #f59e0b", background: "#fffbeb", color: "#78350f" },
+          });
+        } else {
+          toast.success("User deleted.");
+        }
         setDeleteConfirmId(null);
       } catch {
         toast.error("Failed to delete user.");

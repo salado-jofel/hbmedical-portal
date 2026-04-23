@@ -35,7 +35,7 @@ export async function getUserData(): Promise<UserData | null> {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("first_name, last_name, role")
+    .select("first_name, last_name, role, stripe_details_submitted")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -65,5 +65,6 @@ export async function getUserData(): Promise<UserData | null> {
     role,
     isSubRep,
     userId: user.id,
+    stripeDetailsSubmitted: !!profile?.stripe_details_submitted,
   };
 }
