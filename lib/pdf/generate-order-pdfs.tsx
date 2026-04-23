@@ -119,12 +119,18 @@ export async function generateOrderPdf(
       .maybeSingle();
 
     if (existing) {
-      await adminClient
+      const { error: updateErr } = await adminClient
         .from("order_documents")
         .update({ file_size: pdfBuffer.length })
         .eq("id", existing.id);
+      if (updateErr) {
+        // Don't fail the request — PDF is in storage — but surface so we
+        // don't repeat the old bug where a CHECK constraint silently
+        // blocked inserts and the card stayed yellow forever.
+        console.error(`[generateOrderPdf:${formType}] order_documents update:`, updateErr);
+      }
     } else {
-      await adminClient.from("order_documents").insert({
+      const { error: insertErr } = await adminClient.from("order_documents").insert({
         order_id: orderId,
         document_type: documentType,
         bucket: "hbmedical-bucket-private",
@@ -133,6 +139,10 @@ export async function generateOrderPdf(
         mime_type: "application/pdf",
         file_size: pdfBuffer.length,
       });
+      if (insertErr) {
+        console.error(`[generateOrderPdf:${formType}] order_documents insert:`, insertErr);
+        return { success: false, formType, error: `order_documents insert failed: ${insertErr.message}` };
+      }
     }
 
     return { success: true, formType, filePath, fileName };

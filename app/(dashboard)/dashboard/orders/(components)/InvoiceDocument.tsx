@@ -148,6 +148,20 @@ export function InvoiceDocument({
     return rows;
   }, [invoice.lineItems]);
 
+  // Grand total = sum of filled line-item totals. Derived, not stored —
+  // PDF computes the same way so the two never drift.
+  const grandTotal = useMemo(
+    () =>
+      invoice.lineItems.reduce((sum, row) => {
+        if (row.total != null) return sum + Number(row.total);
+        if (row.perEach != null && row.qty != null) {
+          return sum + Number(row.perEach) * Number(row.qty);
+        }
+        return sum;
+      }, 0),
+    [invoice.lineItems],
+  );
+
   return (
     <div>
       <FormActionBar
@@ -291,6 +305,16 @@ export function InvoiceDocument({
               <CellInput value={row.total?.toString() ?? ""} onChange={(v) => updateLineItem(idx, { total: v ? Number(v) : null })} placeholder="—" align="right" />
             </div>
           ))}
+          {/* GRAND TOTAL — sum of line-item totals, same calc as the PDF */}
+          <div className="grid grid-cols-[80px_60px_90px_1fr_90px_90px] bg-[#f7f7f7] border-t-2 border-[#333] text-[12px] font-semibold">
+            <div className="col-span-4 px-2 py-2 text-right text-[#555] uppercase tracking-wide text-[10px]">
+              Grand Total
+            </div>
+            <div className="px-2 py-2 text-right text-[var(--navy)]" />
+            <div className="px-2 py-2 text-right text-[var(--navy)]">
+              {grandTotal.toLocaleString("en-US", { style: "currency", currency: "USD" })}
+            </div>
+          </div>
         </div>
 
         {/* TOTALS */}

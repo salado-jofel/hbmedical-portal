@@ -95,6 +95,31 @@ const s = StyleSheet.create({
   cPer:   { width: "12%", paddingHorizontal: 2, textAlign: "right" },
   cTotal: { width: "12%", paddingHorizontal: 2, textAlign: "right" },
 
+  grandTotalRow: {
+    flexDirection: "row",
+    backgroundColor: "#f3f3f3",
+    borderTop: `1pt solid #333`,
+    borderBottom: `0.5pt solid ${LINE}`,
+    paddingVertical: 4,
+  },
+  grandTotalLabel: {
+    flex: 1,
+    paddingHorizontal: 4,
+    textAlign: "right",
+    fontSize: 7,
+    fontFamily: "Helvetica-Bold",
+    color: GRAY,
+    letterSpacing: 0.4,
+  },
+  grandTotalVal: {
+    width: "12%",
+    paddingHorizontal: 2,
+    textAlign: "right",
+    fontSize: 9,
+    fontFamily: "Helvetica-Bold",
+    color: NAVY,
+  },
+
   totalsRow: {
     flexDirection: "row",
     justifyContent: "flex-end",
@@ -159,6 +184,16 @@ export function DeliveryInvoicePDF({ order, invoice }: DeliveryInvoicePDFProps) 
   // whether or not items are filled in (matches the printed form).
   const padded = [...lineItems];
   while (padded.length < 8) padded.push({});
+
+  // Grand total = sum of line totals (or qty × perEach when total is blank).
+  // Mirrors the calc in InvoiceDocument so the screen and PDF never drift.
+  const grandTotal = lineItems.reduce((sum: number, row: any) => {
+    if (row?.total != null) return sum + Number(row.total);
+    if (row?.perEach != null && row?.qty != null) {
+      return sum + Number(row.perEach) * Number(row.qty);
+    }
+    return sum;
+  }, 0);
 
   const dm = invoice?.delivery_method as string | null;
   const rent = invoice?.rent_or_purchase as string | null;
@@ -263,6 +298,12 @@ export function DeliveryInvoicePDF({ order, invoice }: DeliveryInvoicePDFProps) 
             <Text style={[s.td, s.cTotal]}>{row.total != null ? fmtMoney(row.total) : ""}</Text>
           </View>
         ))}
+
+        {/* Grand Total */}
+        <View style={s.grandTotalRow}>
+          <Text style={s.grandTotalLabel}>GRAND TOTAL</Text>
+          <Text style={s.grandTotalVal}>{fmtMoney(grandTotal)}</Text>
+        </View>
 
         {/* Totals */}
         <View style={s.totalsRow}>
