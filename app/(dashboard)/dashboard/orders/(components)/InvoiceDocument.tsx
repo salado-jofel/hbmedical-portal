@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { MapPin, Mail, Globe, Phone } from "lucide-react";
+import { MapPin, Mail, Globe, Phone, PenLine, Check, Info } from "lucide-react";
 import toast from "react-hot-toast";
 import { HBLogo } from "@/app/(components)/HBLogo";
 import { FormActionBar } from "./FormActionBar";
+import { CapturePatientSignatureModal } from "./CapturePatientSignatureModal";
 import { upsertOrderDeliveryInvoice } from "../(services)/order-delivery-invoice-actions";
+import { canCapturePatientSignature, isOrderFullyLocked } from "@/utils/constants/orders";
 import type {
   AcknowledgementMap,
   DashboardOrder,
@@ -52,12 +54,19 @@ interface InvoiceDocumentProps {
   order: DashboardOrder;
   initialInvoice: IDeliveryInvoice;
   onDirtyChange?: (dirty: boolean) => void;
+  isAdmin?: boolean;
+  isProvider?: boolean;
+  /** Called when the patient-signature capture modal commits a new invoice. */
+  onInvoiceUpdated?: (invoice: IDeliveryInvoice) => void;
 }
 
 export function InvoiceDocument({
   order,
   initialInvoice,
   onDirtyChange,
+  isAdmin = false,
+  isProvider = false,
+  onInvoiceUpdated,
 }: InvoiceDocumentProps) {
   // Snapshot baseline state — comparison-based dirty tracking matches the
   // pattern used by OrderFormDocument / IVRFormDocument.
@@ -73,6 +82,28 @@ export function InvoiceDocument({
   useEffect(() => {
     onDirtyChange?.(isDirty);
   }, [isDirty, onDirtyChange]);
+
+  // Controls the patient-signature capture modal.
+  const [captureOpen, setCaptureOpen] = useState(false);
+
+  // Derived lock state for non-admins: after the patient signs, or once the
+  // order has progressed past manufacturer_review, the whole invoice (and
+  // the rest of the order) becomes read-only. Admin bypasses entirely.
+  const orderStatus = (order as unknown as { order_status?: string }).order_status;
+  const locked = isOrderFullyLocked(orderStatus, invoice.patientSignedAt, isAdmin);
+
+  const canCapture = canCapturePatientSignature({
+    status: orderStatus,
+    role: isProvider ? "clinical_provider" : null,
+    isAdmin,
+  });
+  // Shown next to the (dis)abled button to explain why it's greyed out.
+  const captureGateMessage =
+    orderStatus !== "shipped"
+      ? "Available once the order is shipped."
+      : !isAdmin && !isProvider
+        ? "Only the clinical provider can capture the patient's signature."
+        : null;
 
   function update<K extends keyof IDeliveryInvoice>(key: K, value: IDeliveryInvoice[K]) {
     setInvoice((prev) => ({ ...prev, [key]: value }));
@@ -230,6 +261,16 @@ export function InvoiceDocument({
           </h1>
           <div className="mx-auto mt-1.5 w-28 border-b-2" style={{ borderColor: TEAL }} />
         </div>
+
+        {/* Everything below is field-editable only while the order is not
+            yet locked. When locked, inputs go read-only in one shot via the
+            fieldset — the signature section (below) is deliberately OUTSIDE
+            the fieldset so the Capture button still works in the "shipped"
+            window. */}
+        <fieldset
+          disabled={locked}
+          className={`m-0 p-0 border-0 ${locked ? "opacity-85" : ""}`}
+        >
 
         {/* INVOICE # + DATE */}
         <div className="flex justify-end gap-6 mb-3">
@@ -411,44 +452,123 @@ export function InvoiceDocument({
           responsible.
         </p>
 
-        {/* SIGNATURE OF PATIENT — capture is still TBD, but the layout now
-            matches the PDF (label → line → caregiver caption + Date/Time
-            → relationship checkboxes). */}
+        </fieldset>
+
+        {/* SIGNATURE OF PATIENT — live proof-of-delivery capture.
+            Renders one of three states depending on data + gating:
+              1) signed    → image + metadata (who signed, when, relationship)
+              2) capture   → "Capture Patient Signature" button (shipped + provider/admin)
+              3) locked    → greyed-out button with tooltip explaining why */}
         <div className="mt-5">
-          <div className="text-[10px] font-bold uppercase tracking-wide text-[#555] mb-1">
-            Signature of Patient
+          <div className="flex items-center justify-between mb-1">
+            <div className="text-[10px] font-bold uppercase tracking-wide text-[#555]">
+              Signature of Patient
+            </div>
+            {invoice.patientSignedAt && (
+              <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-green-50 border border-green-200">
+                <Check className="w-3 h-3 text-green-600 shrink-0" />
+                <span className="text-[10px] font-semibold text-green-700">Captured</span>
+              </div>
+            )}
           </div>
-          <div className="border-b border-[#333] h-6" />
-          <div className="flex items-center justify-between mt-1">
-            <span className="text-[9px] italic text-[#777]">
-              (If signed by caregiver or other, list relationship and reason)
-            </span>
-            <span className="text-[9px] italic text-[#777]">
-              Date / Time: ____________________
-            </span>
-          </div>
-          <div className="flex items-center gap-4 mt-3">
-            <span className="text-[10px] font-bold uppercase tracking-wide text-[#555]">
-              Relationship if not patient:
-            </span>
-            {[
-              { v: "spouse_relative", label: "Spouse / Relative" },
-              { v: "caregiver",       label: "Caregiver" },
-              { v: "other",           label: "Other" },
-            ].map((opt) => (
-              <Checkbox
-                key={opt.v}
-                label={opt.label}
-                checked={false}
-                onChange={() => {}}
-                size="sm"
-              />
-            ))}
-          </div>
+
+          {invoice.patientSignedAt && invoice.patientSignatureImage ? (
+            <>
+              <div className="border-b border-[#333] pb-1 h-12 flex items-end">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={invoice.patientSignatureImage}
+                  alt="Patient signature"
+                  className="h-10 object-contain object-left"
+                />
+              </div>
+              <div className="flex items-center justify-between mt-1">
+                <span className="text-[9px] italic text-[#777]">
+                  {invoice.relationship && invoice.signerName
+                    ? `Signed by ${invoice.signerName} (${relationshipLabel(invoice.relationship)})${invoice.signerReason ? ` — ${invoice.signerReason}` : ""}`
+                    : "Signed by patient"}
+                </span>
+                <div className="flex items-center gap-3">
+                  {/* Recapture — only available while the order is still in
+                      `shipped` (before admin marks delivered). Provider or
+                      admin. Same gate as the initial capture. */}
+                  {canCapture && (
+                    <button
+                      type="button"
+                      onClick={() => setCaptureOpen(true)}
+                      className="text-[10px] text-[#0f2d4a] hover:text-red-500 underline underline-offset-2 transition-colors"
+                    >
+                      Recapture
+                    </button>
+                  )}
+                  <span className="text-[9px] italic text-[#777]">
+                    {new Date(invoice.patientSignedAt).toLocaleString("en-US", {
+                      year: "numeric",
+                      month: "2-digit",
+                      day: "2-digit",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </span>
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="border-b border-[#333] h-12 flex items-center">
+                <button
+                  type="button"
+                  onClick={() => setCaptureOpen(true)}
+                  disabled={!canCapture}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-[11px] font-semibold transition-colors ${
+                    canCapture
+                      ? "border-[#0f2d4a] text-[#0f2d4a] hover:bg-[#0f2d4a] hover:text-white"
+                      : "border-[#ccc] text-[#aaa] bg-[#f7f7f7] cursor-not-allowed"
+                  }`}
+                >
+                  <PenLine className="w-3.5 h-3.5 shrink-0" />
+                  Capture Patient Signature
+                </button>
+                {captureGateMessage && !canCapture && (
+                  <span className="ml-3 inline-flex items-center gap-1 text-[10px] italic text-[#888]">
+                    <Info className="w-3 h-3 shrink-0" />
+                    {captureGateMessage}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center justify-between mt-1">
+                <span className="text-[9px] italic text-[#777]">
+                  (If signed by caregiver or other, list relationship and reason)
+                </span>
+              </div>
+            </>
+          )}
         </div>
       </div>
+
+      <CapturePatientSignatureModal
+        open={captureOpen}
+        onOpenChange={setCaptureOpen}
+        orderId={order.id}
+        clinicName={order.facility_name || ""}
+        patientName={order.patient_full_name ?? null}
+        onCaptured={(nextInvoice) => {
+          baselineRef.current = nextInvoice;
+          setInvoice(nextInvoice);
+          onInvoiceUpdated?.(nextInvoice);
+        }}
+      />
     </div>
   );
+}
+
+function relationshipLabel(r: string): string {
+  switch (r) {
+    case "spouse_relative": return "Spouse / Relative";
+    case "caregiver":       return "Caregiver";
+    case "other":           return "Other";
+    default: return r;
+  }
 }
 
 /* ─── Tiny field primitives kept inline to avoid pulling in a new file ─── */
@@ -478,20 +598,23 @@ function Input({
   className,
   type = "text",
   placeholder,
+  disabled,
 }: {
   value: string;
   onChange: (v: string) => void;
   className?: string;
   type?: string;
   placeholder?: string;
+  disabled?: boolean;
 }) {
   return (
     <input
       type={type}
       value={value}
       placeholder={placeholder}
+      disabled={disabled}
       onChange={(e) => onChange(e.target.value)}
-      className={`border-b border-[#888] bg-transparent px-1 py-0.5 text-[13px] outline-none focus:border-[var(--navy)] ${className ?? "w-full"}`}
+      className={`border-b border-[#888] bg-transparent px-1 py-0.5 text-[13px] outline-none focus:border-[var(--navy)] disabled:text-[#777] disabled:cursor-not-allowed ${className ?? "w-full"}`}
     />
   );
 }
@@ -501,18 +624,21 @@ function CellInput({
   onChange,
   placeholder,
   align = "left",
+  disabled,
 }: {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   align?: "left" | "right";
+  disabled?: boolean;
 }) {
   return (
     <input
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
-      className={`px-2 py-1 text-[12px] outline-none border-r border-[#eee] last:border-0 bg-transparent text-${align} placeholder:text-[#bbb]`}
+      disabled={disabled}
+      className={`px-2 py-1 text-[12px] outline-none border-r border-[#eee] last:border-0 bg-transparent text-${align} placeholder:text-[#bbb] disabled:text-[#777] disabled:cursor-not-allowed`}
     />
   );
 }
@@ -522,16 +648,18 @@ function Checkbox({
   checked,
   onChange,
   size = "md",
+  disabled,
 }: {
   label: string;
   checked: boolean;
   onChange: (v: boolean) => void;
   size?: "sm" | "md";
+  disabled?: boolean;
 }) {
   const box = size === "sm" ? "w-3 h-3" : "w-3.5 h-3.5";
   const text = size === "sm" ? "text-[10px]" : "text-[11px]";
   return (
-    <label className="inline-flex items-center gap-1.5 cursor-pointer select-none">
+    <label className={`inline-flex items-center gap-1.5 select-none ${disabled ? "cursor-not-allowed opacity-70" : "cursor-pointer"}`}>
       <span
         className={`${box} border border-[#666] rounded-[2px] flex items-center justify-center bg-white`}
       >
@@ -541,6 +669,7 @@ function Checkbox({
       <input
         type="checkbox"
         checked={checked}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
         className="hidden"
       />

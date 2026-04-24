@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useTransition, useRef } from "react";
+import { useState, useEffect, useMemo, useTransition, useRef } from "react";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
   removeOrderFromStore,
@@ -114,7 +114,7 @@ import { OrderChatTab } from "./OrderChatTab";
 import { OrderHistoryTab } from "./OrderHistoryTab";
 import toast from "react-hot-toast";
 import { cn } from "@/utils/utils";
-import { REQUIRED_DOC_TYPES, ALL_DOC_TYPES, isInvoiceVisibleForStatus } from "@/utils/constants/orders";
+import { REQUIRED_DOC_TYPES, ALL_DOC_TYPES, isInvoiceVisibleForStatus, isItemsEditable } from "@/utils/constants/orders";
 import { getDisplayOrderStatus } from "@/utils/helpers/orders";
 
 const TABS = [
@@ -178,6 +178,24 @@ export function OrderDetailModal({
   const [, startTransition] = useTransition();
 
   const [tab, setTab] = useState<TabValue>("overview");
+
+  /* -- Status-aware edit gate (overlays the role-based `canEdit` prop) --
+     Non-admins lose edit rights once the order is past manufacturer_review.
+     Admin bypasses entirely. The patient-signature lock is enforced inside
+     the Invoice tab itself (and server-side in order_items actions), so
+     cross-tab gating only needs to track status. */
+  const effectiveCanEdit = useMemo(() => {
+    if (isAdmin) return canEdit;
+    return canEdit && isItemsEditable(liveOrder.order_status);
+  }, [canEdit, isAdmin, liveOrder.order_status]);
+
+  // Signing of Order Form / IVR is only meaningful before admin approval.
+  // Once the order hits manufacturer_review+, the provider can no longer
+  // sign/unsign — admin can still see sign controls for audit correction.
+  const effectiveCanSign = useMemo(() => {
+    if (isAdmin) return canSign;
+    return canSign && isItemsEditable(liveOrder.order_status);
+  }, [canSign, isAdmin, liveOrder.order_status]);
 
   /* -- Documents (shared between Docs tab and right panel) -- */
   const [documents, setDocuments] = useState<IOrderDocument[]>([]);
@@ -1622,8 +1640,8 @@ export function OrderDetailModal({
                       aiStatus={aiStatus}
                       orderForm={orderForm}
                       order={liveOrder}
-                      canEdit={canEdit}
-                      canSign={canSign}
+                      canEdit={effectiveCanEdit}
+                      canSign={effectiveCanSign}
                       currentUserName={currentUserName ?? null}
                       patientName={patientName}
                       onSaved={(updated) => {
@@ -1635,8 +1653,8 @@ export function OrderDetailModal({
                     <IVRTab
                       isActive={tab === "ivr"}
                       order={liveOrder}
-                      canEdit={canEdit}
-                      canSign={canSign}
+                      canEdit={effectiveCanEdit}
+                      canSign={effectiveCanSign}
                       currentUserName={currentUserName ?? null}
                       ivrData={ivrData}
                       resetIvrKey={resetIvrKey}
@@ -1651,8 +1669,8 @@ export function OrderDetailModal({
                     <HCFATab
                       isActive={tab === "hcfa"}
                       order={liveOrder}
-                      canEdit={canEdit}
-                      canSign={canSign}
+                      canEdit={effectiveCanEdit}
+                      canSign={effectiveCanSign}
                       currentUserName={currentUserName ?? null}
                       hcfaData={hcfaData}
                       resetHcfaKey={resetHcfaKey}
@@ -1668,6 +1686,8 @@ export function OrderDetailModal({
                       <InvoiceTab
                         isActive={tab === "invoice"}
                         order={liveOrder}
+                        isAdmin={isAdmin}
+                        isProvider={isProvider}
                       />
                     )}
                     <OrderChatTab

@@ -252,6 +252,16 @@ export interface IDeliveryInvoice {
   patientSignedAt:     string | null;
   relationship:        SignerRelationship | null;
 
+  // Patient-signature capture fields (proof of delivery).
+  // `patientSignatureImage` holds the base64 PNG drawn/typed/uploaded by the
+  // patient at hand-off; `capturedBy` is the provider running the capture.
+  // `signerName` / `signerReason` are filled when a caregiver signs for the
+  // patient (set alongside `relationship`).
+  patientSignatureImage:    string | null;
+  patientSignatureCapturedBy: string | null;
+  signerName:               string | null;
+  signerReason:             string | null;
+
   createdAt: string | null;
   updatedAt: string | null;
 }

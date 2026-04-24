@@ -90,6 +90,10 @@ export interface DeliveryInvoicePrefill {
   patient_signature_url: null;
   patient_signed_at:     null;
   relationship:          null;
+  patient_signature_image:       null;
+  patient_signature_captured_by: null;
+  signer_name:                   null;
+  signer_reason:                 null;
 }
 
 export function composeDeliveryInvoicePrefill(
@@ -141,5 +145,9 @@ export function composeDeliveryInvoicePrefill(
     patient_signature_url: null,
     patient_signed_at:     null,
     relationship:          null,
+    patient_signature_image:       null,
+    patient_signature_captured_by: null,
+    signer_name:                   null,
+    signer_reason:                 null,
   };
 }

@@ -1017,6 +1017,15 @@ export function OrderFormDocument({
           fontFamily: "system-ui, sans-serif",
         }}
       >
+        {/* Single fieldset gates every form control + button below. When
+            the order is locked (non-admin + status >= manufacturer_review)
+            this disables the Sign button, product picker, and every input
+            in one shot without having to thread a prop through each
+            primitive. */}
+        <fieldset
+          disabled={isReadOnly}
+          className={`m-0 p-0 border-0 ${isReadOnly ? "opacity-90" : ""}`}
+        >
         {/* ── 1. HEADER ── */}
         <div className="flex items-start justify-between pb-3 border-b border-[#e5e5e5]">
           {/* Left: Brand */}
@@ -2149,6 +2158,7 @@ export function OrderFormDocument({
             </div>
           </div>
         </div>
+        </fieldset>
       </div>
 
       <SignOrderModal

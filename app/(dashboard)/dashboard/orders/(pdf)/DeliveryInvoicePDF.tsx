@@ -4,6 +4,7 @@ import {
   Page,
   Text,
   View,
+  Image,
   StyleSheet,
 } from "@react-pdf/renderer";
 import { PDFHeader } from "./PDFHeader";
@@ -398,32 +399,66 @@ export function DeliveryInvoicePDF({ order, invoice }: DeliveryInvoicePDFProps) 
           and/or deductibles for which I am responsible.
         </Text>
 
-        {/* Signature */}
-        <View style={s.sigArea}>
-          <Text style={s.sigLabel}>Signature of Patient</Text>
-          <View style={s.sigLine} />
-          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-            <Text style={s.sigCaption}>
-              (If signed by caregiver or other, list relationship and reason)
-            </Text>
-            <Text style={s.sigCaption}>
-              Date / Time: {v(invoice?.patient_signed_at, "____________________")}
-            </Text>
-          </View>
-          <View style={s.relRow}>
-            <Text style={s.sigLabel}>Relationship if not patient:</Text>
-            {[
-              { v: "spouse_relative", label: "Spouse / Relative" },
-              { v: "caregiver",       label: "Caregiver" },
-              { v: "other",           label: "Other" },
-            ].map((opt) => (
-              <View key={opt.v} style={s.deliveryItem}>
-                <BoxX checked={invoice?.relationship === opt.v} />
-                <Text style={s.deliveryLabel}>{opt.label}</Text>
+        {/* Signature — embeds the captured patient signature PNG on the
+            line when present, formats the signed timestamp, and prints the
+            signer name below the line when a caregiver signed on behalf. */}
+        {(() => {
+          const sigImage = invoice?.patient_signature_image as string | null | undefined;
+          const signedAt = invoice?.patient_signed_at as string | null | undefined;
+          const signerName = invoice?.signer_name as string | null | undefined;
+          const signerReason = invoice?.signer_reason as string | null | undefined;
+
+          const signedAtText = signedAt
+            ? new Date(signedAt).toLocaleString("en-US", {
+                year: "numeric",
+                month: "2-digit",
+                day: "2-digit",
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            : "____________________";
+
+          return (
+            <View style={s.sigArea}>
+              <Text style={s.sigLabel}>Signature of Patient</Text>
+              <View
+                style={{
+                  height: 32,
+                  marginTop: 14,
+                  justifyContent: "flex-end",
+                  alignItems: "flex-start",
+                  borderBottom: `0.75pt solid #333`,
+                  paddingBottom: 1,
+                }}
+              >
+                {sigImage ? (
+                  <Image src={sigImage} style={{ height: 28 }} />
+                ) : null}
               </View>
-            ))}
-          </View>
-        </View>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 2 }}>
+                <Text style={s.sigCaption}>
+                  {signerName
+                    ? `Signed by ${signerName}${signerReason ? ` — ${signerReason}` : ""}`
+                    : "(If signed by caregiver or other, list relationship and reason)"}
+                </Text>
+                <Text style={s.sigCaption}>Date / Time: {signedAtText}</Text>
+              </View>
+              <View style={s.relRow}>
+                <Text style={s.sigLabel}>Relationship if not patient:</Text>
+                {[
+                  { v: "spouse_relative", label: "Spouse / Relative" },
+                  { v: "caregiver",       label: "Caregiver" },
+                  { v: "other",           label: "Other" },
+                ].map((opt) => (
+                  <View key={opt.v} style={s.deliveryItem}>
+                    <BoxX checked={invoice?.relationship === opt.v} />
+                    <Text style={s.deliveryLabel}>{opt.label}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          );
+        })()}
 
         {/* Footer */}
         <View style={s.footer} fixed>
