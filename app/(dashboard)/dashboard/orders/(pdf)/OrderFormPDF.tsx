@@ -158,9 +158,12 @@ export function OrderFormPDF({
   const physSig        = v(form?.physician_signature);
   const physSigDate    = v(form?.physician_signature_date);
 
-  /* Wound type — form first, then order */
+  /* Wound type — `woundType` powers the "Type of Wound" row (subtype the
+     provider picks in the form). `isPostSurgical` switches the PDF template
+     variant and binds to order.wound_type instead, which is stable across
+     subtype edits in the form. */
   const woundType = v(form?.wound_type) || v(order.wound_type);
-  const isPostSurgical = woundType === "post_surgical";
+  const isPostSurgical = v(order.wound_type) === "post_surgical";
 
   /* Anticipated length & follow-up */
   const ald = form?.anticipated_length_days != null
@@ -187,7 +190,7 @@ export function OrderFormPDF({
         <View style={s.row}>
           <UField label="Patient Name" value={patientNameVal} width={120} />
           <UField label="Date" value={patientDateVal} width={64} />
-          {!isPostSurgical && <UField label="Wound Visit #" value={v(form?.wound_visit_number)} width={30} />}
+          <UField label="Wound Visit #" value={v(form?.wound_visit_number)} width={30} />
         </View>
 
         {/* ── Medicare notice ── */}
@@ -232,7 +235,7 @@ export function OrderFormPDF({
             <CB checked={form?.use_blood_thinners === true} label="Yes" />
             <CB checked={form?.use_blood_thinners !== true} label="No" />
           </View>
-          {form?.use_blood_thinners === true && form?.blood_thinner_details ? (
+          {!isPostSurgical && form?.use_blood_thinners === true && form?.blood_thinner_details ? (
             <View style={{ flexDirection: "row", alignItems: "flex-end", marginTop: 2 }}>
               <Text style={s.label}>Details: </Text>
               <View style={[s.uline, { width: 200 }]}>
@@ -322,63 +325,70 @@ export function OrderFormPDF({
                 <CB checked={form?.active_vasculitis === true} label="YES" />
                 <CB checked={form?.active_vasculitis !== true} label="NO" />
               </View>
-              <View style={{ flexDirection: "row", alignItems: "center" }}>
-                <Text style={[s.label, { marginRight: 6 }]}>Active Charcot Arthropathy?</Text>
-                <CB checked={form?.active_charcot === true} label="YES" />
-                <CB checked={form?.active_charcot !== true} label="NO" />
-              </View>
+              {!isPostSurgical && (
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  <Text style={[s.label, { marginRight: 6 }]}>Active Charcot Arthropathy?</Text>
+                  <CB checked={form?.active_charcot === true} label="YES" />
+                  <CB checked={form?.active_charcot !== true} label="NO" />
+                </View>
+              )}
             </View>
           </View>
 
-          {/* Right: Exudate */}
+          {/* Right: Exudate — labels + options vary by variant */}
           <View style={{ width: 128, borderLeft: `0.5pt solid ${LINE}`, paddingLeft: 8 }}>
-            <Text style={s.sectionLabel}>Wound Exudate Amount</Text>
+            <Text style={s.sectionLabel}>
+              {isPostSurgical ? "Surgical Site Exudate Amount" : "Wound Exudate Amount"}
+            </Text>
             <CBVal current={form?.exudate_amount} value="none"     label="None / Scant" />
             <CBVal current={form?.exudate_amount} value="minimal"  label="Minimal / Light" />
-            <CBVal current={form?.exudate_amount} value="moderate" label="Moderate" />
-            <CBVal current={form?.exudate_amount} value="heavy"    label="Heavy" />
+            {!isPostSurgical && (
+              <>
+                <CBVal current={form?.exudate_amount} value="moderate" label="Moderate" />
+                <CBVal current={form?.exudate_amount} value="heavy"    label="Heavy" />
+              </>
+            )}
           </View>
         </View>
 
         {/* ── Skin Condition ── */}
-        {!isPostSurgical && (
-          <View style={s.section}>
-            <View style={cbRowStyle}>
-              <Text style={[s.label, { marginRight: 6 }]}>Skin Condition:</Text>
-              <CBVal current={form?.skin_condition} value="normal"   label="Normal" />
-              <CBVal current={form?.skin_condition} value="thin"     label="Thin" />
-              <CBVal current={form?.skin_condition} value="atrophic" label="Atrophic" />
-              <CBVal current={form?.skin_condition} value="stasis"   label="Stasis Wound / Venous" />
-              <CBVal current={form?.skin_condition} value="ischemic" label="Ischemic" />
+        <View style={s.section}>
+          <View style={cbRowStyle}>
+            <Text style={[s.label, { marginRight: 6 }]}>Skin Condition:</Text>
+            <CBVal current={form?.skin_condition} value="normal"   label="Normal" />
+            <CBVal current={form?.skin_condition} value="thin"     label="Thin" />
+            <CBVal current={form?.skin_condition} value="atrophic" label="Atrophic" />
+            <CBVal current={form?.skin_condition} value="stasis"   label="Stasis Wound / Venous" />
+            <CBVal current={form?.skin_condition} value="ischemic" label="Ischemic" />
+          </View>
+        </View>
+
+        {/* ── Wound Stage / Classification ──
+            Chronic: full heading + hint + description.
+            Post-surgical: just a bare "Description" field (the chronic-
+            specific staging hint is dropped per the post-surgical template). */}
+        <View style={s.section}>
+          {!isPostSurgical && (
+            <Text style={s.sectionLabel}>
+              Wound Stage / Grade / Classification{" "}
+              <Text style={{ fontSize: 6, color: GRAY, fontFamily: "Helvetica" }}>
+                (stage for PUs, Wagner grade for DFUs, CEAP Classification for VLUs)
+              </Text>
+            </Text>
+          )}
+          <View style={{ flexDirection: "row", alignItems: "flex-end" }}>
+            <Text style={[s.label, { marginRight: 4 }]}>Description: </Text>
+            <View style={[s.uline, { flex: 1 }]}>
+              <Text style={s.val}>{v(form?.wound_stage)}</Text>
             </View>
           </View>
-        )}
-
-        {/* ── Wound Stage / Classification ── */}
-        <View style={s.section}>
-          <Text style={s.sectionLabel}>
-            Wound Stage / Grade / Classification{" "}
-            <Text style={{ fontSize: 6, color: GRAY, fontFamily: "Helvetica" }}>
-              (stage for PUs, Wagner grade for DFUs, CEAP Classification for VLUs)
-            </Text>
-          </Text>
-          {!isPostSurgical && (
-            <View style={{ flexDirection: "row", alignItems: "flex-end" }}>
-              <Text style={[s.label, { marginRight: 4 }]}>Description: </Text>
-              <View style={[s.uline, { flex: 1 }]}>
-                <Text style={s.val}>{v(form?.wound_stage)}</Text>
-              </View>
-            </View>
-          )}
         </View>
 
         {/* ── Drainage ── */}
-        {!isPostSurgical && (
-          <View style={s.section}>
-            <Text style={s.sectionLabel}>Drainage</Text>
-            <Text style={s.textArea}>{v(form?.drainage_description)}</Text>
-          </View>
-        )}
+        <View style={s.section}>
+          <Text style={s.sectionLabel}>Drainage</Text>
+          <Text style={s.textArea}>{v(form?.drainage_description)}</Text>
+        </View>
 
         {/* ── Treatment Plan ── */}
         <View style={s.section}>
@@ -395,13 +405,34 @@ export function OrderFormPDF({
           <Text style={s.textArea}>{v(form?.clinical_notes)}</Text>
         </View>
 
-        {/* ── Home Health / SNF ── */}
-        <View style={s.section}>
-          <View style={cbRowStyle}>
-            <CB checked={form?.is_receiving_home_health === true} label="Receiving Home Health (PT/OT/HHA/Nursing)" />
-            <CB checked={form?.is_patient_at_snf === true} label="Patient at SNF" />
+        {/* ── Home Health / SNF ──
+            Chronic: compact single-row checkboxes.
+            Post-surgical: two explicit Yes/No question rows matching the
+            provided template ("Is the patient going to home health after
+            surgery?" / "Is patient at a SNF?"). */}
+        {isPostSurgical ? (
+          <View style={s.section}>
+            <View style={[cbRowStyle, { marginBottom: 3 }]}>
+              <Text style={[s.label, { marginRight: 6 }]}>
+                Is the patient going to home health after surgery?
+              </Text>
+              <CB checked={form?.is_receiving_home_health === true} label="Yes" />
+              <CB checked={form?.is_receiving_home_health !== true} label="No" />
+            </View>
+            <View style={cbRowStyle}>
+              <Text style={[s.label, { marginRight: 6 }]}>Is patient at a SNF?</Text>
+              <CB checked={form?.is_patient_at_snf === true} label="Yes" />
+              <CB checked={form?.is_patient_at_snf !== true} label="No" />
+            </View>
           </View>
-        </View>
+        ) : (
+          <View style={s.section}>
+            <View style={cbRowStyle}>
+              <CB checked={form?.is_receiving_home_health === true} label="Receiving Home Health (PT/OT/HHA/Nursing)" />
+              <CB checked={form?.is_patient_at_snf === true} label="Patient at SNF" />
+            </View>
+          </View>
+        )}
 
         {/* ── Anticipated Length of Need ── */}
         <View style={s.section}>
