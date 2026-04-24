@@ -7,7 +7,6 @@ import {
   Circle,
   Clock,
   FileText,
-  Package,
   PenLine,
   Stethoscope,
   UserCheck,
@@ -67,28 +66,17 @@ const STATUS_RANK: Record<string, number> = Object.fromEntries(
   STATUS_PIPELINE.map((s, i) => [s.value, i]),
 );
 
-/* ── Checklist helpers ── */
+/* ── Checklist helpers ──
+   Forms are considered "completed" only once the physician has signed them —
+   matches the provider workflow (fill → sign → submit). Partial content alone
+   no longer counts. */
 
-function hasOrderFormContent(form: IOrderForm | null): boolean {
-  if (!form) return false;
-  // "Started filling it" — at least one of the key clinical fields set.
-  return !!(
-    form.chiefComplaint ||
-    form.icd10Code ||
-    form.woundLengthCm ||
-    form.treatmentPlan ||
-    (form.subjectiveSymptoms && form.subjectiveSymptoms.length > 0)
-  );
+function isOrderFormSigned(form: IOrderForm | null): boolean {
+  return !!form?.physicianSignedAt;
 }
 
-function hasIvrContent(ivr: Partial<IOrderIVR> | null): boolean {
-  if (!ivr) return false;
-  return !!(
-    ivr.subscriberName ||
-    ivr.memberId ||
-    ivr.planType ||
-    ivr.insuranceProvider
-  );
+function isIvrSigned(ivr: Partial<IOrderIVR> | null): boolean {
+  return !!ivr?.physicianSignedAt;
 }
 
 function fmtRelativeTime(iso: string | null | undefined): string {
@@ -156,23 +144,20 @@ export function OrderOverviewTab({
         done: hasClinicalDocs,
       },
       {
-        id: "products",
-        label: "Products added",
-        icon: Package,
-        done: itemCount > 0,
-        detail: itemCount > 0 ? `${itemCount} item${itemCount === 1 ? "" : "s"}` : undefined,
-      },
-      {
+        // Products live inside the Order Form now, so the two checks fold
+        // into a single row: Order Form is "completed" once it's signed AND
+        // has at least one product.
         id: "order_form",
         label: "Order Form completed",
         icon: Stethoscope,
-        done: hasOrderFormContent(orderForm),
+        done: isOrderFormSigned(orderForm) && itemCount > 0,
+        detail: itemCount > 0 ? `${itemCount} item${itemCount === 1 ? "" : "s"}` : undefined,
       },
       {
         id: "ivr",
         label: "IVR Form completed",
         icon: FileText,
-        done: hasIvrContent(ivrData),
+        done: isIvrSigned(ivrData),
       },
       {
         id: "signed",

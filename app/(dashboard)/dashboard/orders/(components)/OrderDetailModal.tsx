@@ -1012,10 +1012,10 @@ export function OrderDetailModal({
 
   async function handleSubmitOrder() {
     if (draftItems.length === 0) {
-      toast.error("Please add at least one product before submitting.", {
+      toast.error("Add at least one product in the Order Form tab before submitting.", {
         duration: 4000,
       });
-      setTab("overview");
+      setTab("order-form");
       return;
     }
     if (hasAnyUnsavedChanges) {
@@ -1046,8 +1046,8 @@ export function OrderDetailModal({
 
   async function handleSignAndSubmit() {
     if (draftItems.length === 0) {
-      toast.error("Add at least one product in the Overview tab before signing.", { duration: 4000 });
-      setTab("overview");
+      toast.error("Add at least one product in the Order Form tab before signing.", { duration: 4000 });
+      setTab("order-form");
       return;
     }
     if (hasAnyUnsavedChanges) {

@@ -765,7 +765,17 @@ export function IVRFormDocument({
           : "IVR form saved.",
     );
     setBaseline({ ...formData });
-    onSaved?.(payload);
+    // Parent caches `ivrData` from this payload. Include the sign fields
+    // (intentionally excluded from the DB payload above) so the cached
+    // snapshot stays in sync after sign/unsign — otherwise the IVR tab
+    // forgets its signed state after a remount / order status change.
+    onSaved?.({
+      ...payload,
+      physicianSignedAt: formData.physicianSignedAt,
+      physicianSignedBy: formData.physicianSignedBy,
+      physicianSignatureImage:
+        signIntent === "unsign" ? null : specimenSignatureUrl,
+    });
     setPendingPin(null);
     if (signIntent === "unsign") {
       setSpecimenSignatureUrl(null);
