@@ -69,8 +69,18 @@ const s = StyleSheet.create({
     marginVertical: 6,
   },
   deliveryItem: { flexDirection: "row", alignItems: "center", gap: 4 },
-  box: { width: 8, height: 8, borderWidth: 0.75, borderColor: BLACK, borderStyle: "solid", alignItems: "center", justifyContent: "center" },
-  boxChecked: { fontSize: 8, color: BLACK, lineHeight: 0.9 },
+  // Helvetica at 8pt can't reliably render a single "X" glyph inside a tiny
+  // flex-centered box (see PDFComponents.tsx note). Draw the X with two
+  // rotated Views in <BoxX> below instead of using a Text element.
+  box: { width: 10, height: 10, borderWidth: 0.75, borderColor: BLACK, borderStyle: "solid", position: "relative" },
+  xLine: {
+    position: "absolute",
+    top: 4.25,
+    left: -1,
+    width: 12,
+    height: 1.25,
+    backgroundColor: BLACK,
+  },
   deliveryLabel: { fontSize: 8, color: BLACK },
 
   tableHead: {
@@ -171,6 +181,22 @@ const v = (val: unknown, fallback = "—") =>
 const fmtMoney = (n: number | null | undefined) =>
   n == null ? "—" : n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 
+// Draws a checkbox, optionally with an X made of two rotated line Views.
+// Avoids the react-pdf issue where a single small Text glyph doesn't
+// render reliably inside a tiny container.
+function BoxX({ checked }: { checked: boolean }) {
+  return (
+    <View style={s.box}>
+      {checked ? (
+        <>
+          <View style={[s.xLine, { transform: "rotate(45deg)" }]} />
+          <View style={[s.xLine, { transform: "rotate(-45deg)" }]} />
+        </>
+      ) : null}
+    </View>
+  );
+}
+
 interface DeliveryInvoicePDFProps {
   order: any;
   invoice: any;
@@ -192,7 +218,14 @@ export function DeliveryInvoicePDF({ order, invoice }: DeliveryInvoicePDFProps) 
   }, 0);
 
   const dm = invoice?.delivery_method as string | null;
-  const rent = invoice?.rent_or_purchase as string | null;
+
+  // Clinic name flows in via the order's facility join; falls back to a
+  // neutral phrase if missing so the acknowledgement sentence still reads.
+  const facility = order?.facility;
+  const clinicName: string =
+    (Array.isArray(facility) ? facility[0]?.name : facility?.name) ||
+    order?.facility_name ||
+    "The supplier";
 
   return (
     <Document>
@@ -267,9 +300,7 @@ export function DeliveryInvoicePDF({ order, invoice }: DeliveryInvoicePDFProps) 
             { v: "return",            label: "Return" },
           ].map((opt) => (
             <View key={opt.v} style={s.deliveryItem}>
-              <View style={s.box}>
-                {dm === opt.v && <Text style={s.boxChecked}>X</Text>}
-              </View>
+              <BoxX checked={dm === opt.v} />
               <Text style={s.deliveryLabel}>{opt.label}</Text>
             </View>
           ))}
@@ -319,36 +350,28 @@ export function DeliveryInvoicePDF({ order, invoice }: DeliveryInvoicePDFProps) 
           <Text style={s.totalsVal}>{fmtMoney(invoice?.total_received)}</Text>
         </View>
 
-        {/* Rent vs Purchase */}
+        {/* Purchase only — rental is no longer offered, so this is a static,
+            pre-checked line rather than a rent-vs-purchase choice. */}
         <Text style={s.rentLine}>
-          Medicare allows a rental or purchase of some DME items. Please check one option:
+          Medicare allows a rental or purchase of some DME items.
         </Text>
         <View style={s.rentRow}>
-          {[
-            { v: "rent",     label: "Rent" },
-            { v: "purchase", label: "Purchase" },
-          ].map((opt) => (
-            <View key={opt.v} style={s.deliveryItem}>
-              <View style={s.box}>
-                {rent === opt.v && <Text style={s.boxChecked}>X</Text>}
-              </View>
-              <Text style={s.deliveryLabel}>{opt.label}</Text>
-            </View>
-          ))}
+          <View style={s.deliveryItem}>
+            <BoxX checked={true} />
+            <Text style={s.deliveryLabel}>Purchase</Text>
+          </View>
         </View>
 
         {/* Acknowledgements */}
         <Text style={s.ackTitle}>Disclosures Provided</Text>
         <Text style={s.ackHelp}>
-          Meridian Surgical Supplies has reviewed the admission package with the
+          {clinicName} has reviewed the admission package with the
           patient and specifically reviewed and left a copy of the following:
         </Text>
         <View style={s.ackGrid}>
           {ACK_LABELS.map(([key, label]) => (
             <View key={key} style={s.ackItem}>
-              <View style={s.box}>
-                {acks[key] !== false && <Text style={s.boxChecked}>X</Text>}
-              </View>
+              <BoxX checked={acks[key] !== false} />
               <Text style={s.ackLabel}>{label}</Text>
             </View>
           ))}
@@ -395,9 +418,7 @@ export function DeliveryInvoicePDF({ order, invoice }: DeliveryInvoicePDFProps) 
               { v: "other",           label: "Other" },
             ].map((opt) => (
               <View key={opt.v} style={s.deliveryItem}>
-                <View style={s.box}>
-                  {invoice?.relationship === opt.v && <Text style={s.boxChecked}>X</Text>}
-                </View>
+                <BoxX checked={invoice?.relationship === opt.v} />
                 <Text style={s.deliveryLabel}>{opt.label}</Text>
               </View>
             ))}

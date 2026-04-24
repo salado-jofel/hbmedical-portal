@@ -12,7 +12,6 @@ import type {
   DeliveryMethod,
   IDeliveryInvoice,
   IDeliveryInvoiceLineItem,
-  RentOrPurchase,
 } from "@/utils/interfaces/orders";
 
 const NAVY = "#0f2d4a";
@@ -23,11 +22,6 @@ const DELIVERY_OPTIONS: { value: DeliveryMethod; label: string }[] = [
   { value: "patient_picked_up", label: "Patient Picked-Up" },
   { value: "mail_order",        label: "Mail Order" },
   { value: "return",            label: "Return" },
-];
-
-const RENT_OPTIONS: { value: RentOrPurchase; label: string }[] = [
-  { value: "rent",     label: "Rent" },
-  { value: "purchase", label: "Purchase" },
 ];
 
 // Three-column grid in the printed form. Order kept identical to the PDF so
@@ -123,7 +117,8 @@ export function InvoiceDocument({
         doctorName:       invoice.doctorName,
         deliveryMethod:   invoice.deliveryMethod,
         lineItems:        invoice.lineItems,
-        rentOrPurchase:   invoice.rentOrPurchase,
+        // Rent is no longer offered — we only sell. Always persist "purchase".
+        rentOrPurchase:   "purchase",
         dueCopay:         invoice.dueCopay,
         totalReceived:    invoice.totalReceived,
         acknowledgements: invoice.acknowledgements,
@@ -135,6 +130,28 @@ export function InvoiceDocument({
       baselineRef.current = res.invoice;
       setInvoice(res.invoice);
       toast.success("Invoice saved.");
+
+      // Kick PDF regen from the client so the right-side doc card can show
+      // its blue "Generating…" state via the pdf-regenerating events —
+      // same pattern OrderFormDocument uses. Fire-and-forget.
+      window.dispatchEvent(
+        new CustomEvent("pdf-regenerating", {
+          detail: { type: "delivery_invoice", status: "start" },
+        }),
+      );
+      fetch("/api/generate-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: order.id, formType: "delivery_invoice" }),
+      })
+        .catch((err) => console.error("[Invoice] PDF regen failed:", err))
+        .finally(() => {
+          window.dispatchEvent(
+            new CustomEvent("pdf-regenerating", {
+              detail: { type: "delivery_invoice", status: "done" },
+            }),
+          );
+        });
     } finally {
       setIsPending(false);
     }
@@ -341,19 +358,13 @@ export function InvoiceDocument({
           </div>
         </div>
 
-        {/* RENT / PURCHASE */}
+        {/* PURCHASE — rental is no longer offered, so Purchase is a static,
+            pre-checked statement rather than a choice. */}
         <p className="mt-4 text-[10px] italic text-[#777]">
-          Medicare allows a rental or purchase of some DME items. Please check one option:
+          Medicare allows a rental or purchase of some DME items.
         </p>
         <div className="flex gap-4 mt-1.5">
-          {RENT_OPTIONS.map((opt) => (
-            <Checkbox
-              key={opt.value}
-              label={opt.label}
-              checked={invoice.rentOrPurchase === opt.value}
-              onChange={(v) => update("rentOrPurchase", v ? opt.value : null)}
-            />
-          ))}
+          <Checkbox label="Purchase" checked={true} onChange={() => {}} />
         </div>
 
         {/* ACKNOWLEDGEMENTS */}
@@ -361,7 +372,8 @@ export function InvoiceDocument({
           Disclosures Provided
         </h3>
         <p className="text-[10px] text-[#666] mb-2">
-          Default-checked: Meridian reviewed the admission package with the patient and left a copy.
+          Default-checked: <span className="font-semibold">{order.facility_name || "The supplier"}</span>
+          {" "}reviewed the admission package with the patient and left a copy.
           Toggle off only if a disclosure was specifically not provided.
         </p>
         <div className="grid grid-cols-3 gap-x-3 gap-y-1.5">
@@ -376,15 +388,62 @@ export function InvoiceDocument({
           ))}
         </div>
 
-        {/* SIGNATURE PLACEHOLDER */}
-        <div className="mt-6 border-t border-[#e5e5e5] pt-3">
-          <div className="text-[10px] font-bold uppercase tracking-wide text-[#555] mb-2">
+        {/* AUTHORIZATION PARAGRAPH — mirrors DeliveryInvoicePDF so the
+            on-screen form matches the generated PDF exactly. */}
+        <h3 className="text-[12px] font-bold mt-5 mb-1" style={{ color: NAVY }}>
+          Authorization to Assign Benefits to Provider &amp; Release of Medical Information
+        </h3>
+        <p className="text-[10px] leading-snug text-[#333]">
+          I request that payment of authorized Medicare/Medicaid/Medicare
+          Supplemental/Other Insurers and other benefits be made on my behalf
+          to the above company for products and services that they have
+          provided for me. I further authorize a copy of this agreement to be
+          used in place of the original and authorize any holder of medical
+          information about me to release to the Centers for Medicare and
+          Medicaid Services and its agents or others any information needed to
+          determine these benefits or compliance with current healthcare
+          standards. Meridian Surgical Supplies and/or any of our corporate
+          affiliates may obtain medical or other information necessary in
+          order to process claims, including determining eligibility and
+          seeking reimbursement for medical equipment and supplies provided.
+          I agree to pay all amounts that are not covered by my Insurers,
+          including applicable co-payments and/or deductibles for which I am
+          responsible.
+        </p>
+
+        {/* SIGNATURE OF PATIENT — capture is still TBD, but the layout now
+            matches the PDF (label → line → caregiver caption + Date/Time
+            → relationship checkboxes). */}
+        <div className="mt-5">
+          <div className="text-[10px] font-bold uppercase tracking-wide text-[#555] mb-1">
             Signature of Patient
           </div>
-          <div className="border border-dashed border-[#ccc] rounded-md p-4 text-center text-[11px] text-[#999]">
-            Signature capture flow pending — leave blank for now.
-            <br />
-            (Printed PDF shows a blank signature line.)
+          <div className="border-b border-[#333] h-6" />
+          <div className="flex items-center justify-between mt-1">
+            <span className="text-[9px] italic text-[#777]">
+              (If signed by caregiver or other, list relationship and reason)
+            </span>
+            <span className="text-[9px] italic text-[#777]">
+              Date / Time: ____________________
+            </span>
+          </div>
+          <div className="flex items-center gap-4 mt-3">
+            <span className="text-[10px] font-bold uppercase tracking-wide text-[#555]">
+              Relationship if not patient:
+            </span>
+            {[
+              { v: "spouse_relative", label: "Spouse / Relative" },
+              { v: "caregiver",       label: "Caregiver" },
+              { v: "other",           label: "Other" },
+            ].map((opt) => (
+              <Checkbox
+                key={opt.v}
+                label={opt.label}
+                checked={false}
+                onChange={() => {}}
+                size="sm"
+              />
+            ))}
           </div>
         </div>
       </div>

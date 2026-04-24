@@ -1768,7 +1768,10 @@ export function IVRFormDocument({
           </p>
         </div>
 
-        {/* ── 10. PHYSICIAN AGREEMENT ── */}
+        {/* ── 10. PHYSICIAN AGREEMENT ──
+            Layout matches the generated PDF: value sits on the line,
+            caption label below. Fixed cell height keeps the underlines
+            aligned whether signed or not. */}
         <div ref={signatureSectionRef} className="mt-4 pt-3 border-t border-[#e5e5e5]">
           <p className="text-[11px] text-[#444] leading-relaxed mb-4">
             By signing below, I certify that I have received the necessary
@@ -1777,28 +1780,47 @@ export function IVRFormDocument({
             patient. This information is for verifying insurance coverage,
             seeking reimbursement, and the sole purpose of claim support.
           </p>
-          <div className="grid grid-cols-2 gap-6">
+
+          <div className="grid grid-cols-[1fr_220px] gap-8">
+            {/* SIGNATURE CELL */}
             <div>
-              <FL className="block mb-1">Physician or Authorized Signature</FL>
-              {formData.physicianSignedAt ? (
-                <div className="space-y-2">
-                  {specimenSignatureUrl && (
-                    <div className="border-b border-[#333] pb-1 max-w-[260px]">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={specimenSignatureUrl}
-                        alt="Provider signature"
-                        className="h-10 object-contain object-left"
-                      />
-                    </div>
-                  )}
+              <div className="h-12 flex items-end border-b border-[#333] pb-1">
+                {formData.physicianSignedAt ? (
+                  specimenSignatureUrl ? (
+                    <img
+                      src={specimenSignatureUrl}
+                      alt="Provider signature"
+                      className="h-10 object-contain object-left"
+                    />
+                  ) : (
+                    <span className="text-[15px] text-[#111] italic">
+                      {formData.physicianSignature || "Signed"}
+                    </span>
+                  )
+                ) : canSign ? (
+                  <button
+                    type="button"
+                    onClick={() => setSignModalOpen(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-[#0f2d4a] text-[#0f2d4a] text-[11px] font-semibold hover:bg-[#0f2d4a] hover:text-white transition-colors"
+                  >
+                    <PenLine className="w-3.5 h-3.5 shrink-0" />
+                    Sign
+                  </button>
+                ) : (
+                  <span className="text-[11px] text-[#999] italic">
+                    Awaiting provider signature
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center justify-between mt-1">
+                <span className="text-[9px] font-semibold uppercase tracking-wide text-[#777]">
+                  Physician or Authorized Signature
+                </span>
+                {formData.physicianSignedAt && (
                   <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-green-50 border border-green-200">
-                      <Check className="w-3.5 h-3.5 text-green-600 shrink-0" />
-                      <span className="text-[11px] font-semibold text-green-700">Signed</span>
-                    </div>
-                    <div className="text-[11px] text-[#444]">
-                      <span className="font-medium">{formData.physicianSignature}</span>
+                    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-green-50 border border-green-200">
+                      <Check className="w-3 h-3 text-green-600 shrink-0" />
+                      <span className="text-[10px] font-semibold text-green-700">Signed</span>
                     </div>
                     {canSign && (
                       <button
@@ -1812,48 +1834,41 @@ export function IVRFormDocument({
                             physicianSignedBy: null,
                           }));
                         }}
-                        className="text-[11px] text-[#999] hover:text-red-500 underline underline-offset-2 transition-colors ml-1"
+                        className="text-[10px] text-[#999] hover:text-red-500 underline underline-offset-2 transition-colors"
                       >
                         Unsign
                       </button>
                     )}
                   </div>
-                </div>
-              ) : canSign ? (
-                <button
-                  type="button"
-                  onClick={() => setSignModalOpen(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-[#0f2d4a] text-[#0f2d4a] text-[11px] font-semibold hover:bg-[#0f2d4a] hover:text-white transition-colors"
-                >
-                  <PenLine className="w-3.5 h-3.5 shrink-0" />
-                  Sign
-                </button>
-              ) : (
-                <p className="text-[11px] text-[#999] italic py-1">Awaiting provider signature</p>
-              )}
+                )}
+              </div>
             </div>
+
+            {/* DATE CELL */}
             <div>
-              <FL className="block mb-1">Date</FL>
-              {formData.physicianSignedAt ? (
-                // Signed-state: mirror the committed timestamp here so the
-                // Date field fills in automatically (matches the permanent
-                // record once saved).
-                <p className="text-[13px] text-[#111] py-0.5 border-b border-[#888] pb-1">
-                  {new Date(formData.physicianSignedAt).toLocaleDateString("en-US", {
-                    year: "numeric",
-                    month: "2-digit",
-                    day: "2-digit",
-                  })}
-                </p>
-              ) : (
-                <FormInput
-                  value={formData.physicianSignatureDate}
-                  onChange={(v) => set("physicianSignatureDate", v)}
-                  className="w-full"
-                  placeholder="—"
-                  disabled={!canEdit}
-                />
-              )}
+              <div className="h-12 flex items-end border-b border-[#333] pb-1">
+                {formData.physicianSignedAt ? (
+                  <span className="text-[13px] font-semibold text-[#111]">
+                    {new Date(formData.physicianSignedAt).toLocaleDateString("en-US", {
+                      year: "numeric",
+                      month: "2-digit",
+                      day: "2-digit",
+                    })}
+                  </span>
+                ) : (
+                  <input
+                    type="text"
+                    value={formData.physicianSignatureDate}
+                    onChange={(e) => set("physicianSignatureDate", e.target.value)}
+                    placeholder="—"
+                    disabled={!canEdit}
+                    className="w-full text-[13px] bg-transparent outline-none placeholder:text-[#bbb]"
+                  />
+                )}
+              </div>
+              <div className="mt-1 text-[9px] font-semibold uppercase tracking-wide text-[#777]">
+                Date
+              </div>
             </div>
           </div>
         </div>

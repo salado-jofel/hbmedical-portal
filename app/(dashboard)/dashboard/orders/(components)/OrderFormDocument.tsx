@@ -2024,43 +2024,55 @@ export function OrderFormDocument({
           <span className="text-[13px] text-[#444]">weeks</span>
         </DocRow>
 
-        {/* ── 19. SIGNATURE ── */}
-        <div ref={signatureSectionRef} className="pt-4 mt-2 grid grid-cols-2 gap-6">
+        {/* ── 19. SIGNATURE ──
+            Layout mirrors the generated PDF: value sits on the line,
+            tiny caption label below. Fixed cell height keeps underlines
+            aligned across signed / unsigned states. */}
+        <div ref={signatureSectionRef} className="pt-4 mt-2 grid grid-cols-[1fr_220px] gap-8">
+          {/* SIGNATURE CELL */}
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-wide text-[#555] mb-1">
-              Physicians Signature
-            </p>
-            {formData.physicianSignedAt ? (
-              <div className="space-y-2">
-                {/* Specimen signature — only available in-session (not
-                    persisted). On page reload we fall back to the badge. */}
-                {specimenSignatureUrl && (
-                  <div className="border-b border-[#333] pb-1 max-w-[260px]">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={specimenSignatureUrl}
-                      alt="Provider signature"
-                      className="h-10 object-contain object-left"
-                    />
-                  </div>
-                )}
+            <div className="h-12 flex items-end border-b border-[#333] pb-1">
+              {formData.physicianSignedAt ? (
+                specimenSignatureUrl ? (
+                  <img
+                    src={specimenSignatureUrl}
+                    alt="Provider signature"
+                    className="h-10 object-contain object-left"
+                  />
+                ) : (
+                  <span className="text-[15px] text-[#111] italic">
+                    {formData.physicianSignature || "Signed"}
+                  </span>
+                )
+              ) : canSign ? (
+                <button
+                  type="button"
+                  onClick={() => setSignModalOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-[#0f2d4a] text-[#0f2d4a] text-[11px] font-semibold hover:bg-[#0f2d4a] hover:text-white transition-colors"
+                >
+                  <PenLine className="w-3.5 h-3.5 shrink-0" />
+                  Sign
+                </button>
+              ) : (
+                <span className="text-[11px] text-[#999] italic">
+                  Awaiting provider signature
+                </span>
+              )}
+            </div>
+            <div className="flex items-center justify-between mt-1">
+              <span className="text-[9px] font-semibold uppercase tracking-wide text-[#777]">
+                Physicians Signature
+              </span>
+              {formData.physicianSignedAt && (
                 <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-green-50 border border-green-200">
-                    <Check className="w-3.5 h-3.5 text-green-600 shrink-0" />
-                    <span className="text-[11px] font-semibold text-green-700">
-                      Signed
-                    </span>
-                  </div>
-                  <div className="text-[11px] text-[#444]">
-                    <span className="font-medium">{formData.physicianSignature}</span>
+                  <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-green-50 border border-green-200">
+                    <Check className="w-3 h-3 text-green-600 shrink-0" />
+                    <span className="text-[10px] font-semibold text-green-700">Signed</span>
                   </div>
                   {canSign && (
                     <button
                       type="button"
                       onClick={() => {
-                        // Local-only flip. Save commits the unsign on the
-                        // server + regenerates the unsigned PDF. Until
-                        // then the signed row on the server is unchanged.
                         setSpecimenSignatureUrl(null);
                         setPendingPin(null);
                         setFormData((prev) => ({
@@ -2069,73 +2081,72 @@ export function OrderFormDocument({
                           physicianSignedBy: null,
                         }));
                       }}
-                      className="text-[11px] text-[#999] hover:text-red-500 underline underline-offset-2 transition-colors ml-1"
+                      className="text-[10px] text-[#999] hover:text-red-500 underline underline-offset-2 transition-colors"
                     >
                       Unsign
                     </button>
                   )}
                 </div>
-              </div>
-            ) : canSign ? (
-              <button
-                type="button"
-                onClick={() => setSignModalOpen(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-[#0f2d4a] text-[#0f2d4a] text-[11px] font-semibold hover:bg-[#0f2d4a] hover:text-white transition-colors"
-              >
-                <PenLine className="w-3.5 h-3.5 shrink-0" />
-                Sign
-              </button>
-            ) : (
-              <p className="text-[11px] text-[#999] italic py-1">
-                Awaiting provider signature
-              </p>
-            )}
-            <p className="text-[10px] text-[#777] mt-0.5">
-              Authorized Provider Signature
-            </p>
+              )}
+            </div>
           </div>
+
+          {/* DATE SIGNED CELL */}
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-wide text-[#555] mb-1">
-              Date
-            </p>
-            {formData.physicianSignedAt ? (
-              // Signed-state: show the signed timestamp here instead of a
-              // loose text field. Reflects the permanent record once saved,
-              // and fills in immediately on local sign.
-              <p className="text-[13px] text-[#111] py-0.5 border-b border-[#888] pb-1">
-                {new Date(formData.physicianSignedAt).toLocaleDateString("en-US", {
-                  year: "numeric",
-                  month: "2-digit",
-                  day: "2-digit",
-                })}
-              </p>
-            ) : (
-              <FormInput
-                value={formData.physicianSignatureDate}
-                onChange={(v) => set("physicianSignatureDate", v)}
+            <div className="h-12 flex items-end border-b border-[#333] pb-1">
+              {formData.physicianSignedAt ? (
+                <span className="text-[13px] font-semibold text-[#111]">
+                  {new Date(formData.physicianSignedAt).toLocaleDateString("en-US", {
+                    year: "numeric",
+                    month: "2-digit",
+                    day: "2-digit",
+                  })}
+                </span>
+              ) : (
+                <input
+                  type="text"
+                  value={formData.physicianSignatureDate}
+                  onChange={(e) => set("physicianSignatureDate", e.target.value)}
+                  placeholder="—"
+                  className="w-full text-[13px] bg-transparent outline-none placeholder:text-[#bbb]"
+                />
+              )}
+            </div>
+            <div className="mt-1 text-[9px] font-semibold uppercase tracking-wide text-[#777]">
+              Date Signed
+            </div>
+          </div>
+
+          {/* PATIENT NAME CELL */}
+          <div>
+            <div className="h-12 flex items-end border-b border-[#333] pb-1">
+              <input
+                type="text"
+                value={formData.patientName}
+                onChange={(e) => set("patientName", e.target.value)}
                 placeholder="—"
+                className="w-full text-[13px] font-semibold text-[#111] bg-transparent outline-none placeholder:text-[#bbb]"
               />
-            )}
-          </div>
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-wide text-[#555] mb-1">
+            </div>
+            <div className="mt-1 text-[9px] font-semibold uppercase tracking-wide text-[#777]">
               Patient Name
-            </p>
-            <FormInput
-              value={formData.patientName}
-              onChange={(v) => set("patientName", v)}
-              placeholder="—"
-            />
+            </div>
           </div>
+
+          {/* DATE OF SERVICE CELL */}
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-wide text-[#555] mb-1">
-              Date
-            </p>
-            <FormInput
-              value={formData.patientDate}
-              onChange={(v) => set("patientDate", v)}
-              placeholder="—"
-            />
+            <div className="h-12 flex items-end border-b border-[#333] pb-1">
+              <input
+                type="text"
+                value={formData.patientDate}
+                onChange={(e) => set("patientDate", e.target.value)}
+                placeholder="—"
+                className="w-full text-[13px] font-semibold text-[#111] bg-transparent outline-none placeholder:text-[#bbb]"
+              />
+            </div>
+            <div className="mt-1 text-[9px] font-semibold uppercase tracking-wide text-[#777]">
+              Date of Service
+            </div>
           </div>
         </div>
       </div>

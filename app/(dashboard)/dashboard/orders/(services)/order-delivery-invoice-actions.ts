@@ -12,7 +12,7 @@ import type {
   RentOrPurchase,
   SignerRelationship,
 } from "@/utils/interfaces/orders";
-import { ORDERS_PATH, generateOrderPDFs } from "./_shared";
+import { ORDERS_PATH } from "./_shared";
 import {
   DEFAULT_ACKNOWLEDGEMENTS,
   composeDeliveryInvoicePrefill,
@@ -176,7 +176,9 @@ export async function upsertOrderDeliveryInvoice(
       doctor_name:         input.doctorName,
       delivery_method:     input.deliveryMethod,
       line_items:          input.lineItems ?? [],
-      rent_or_purchase:    input.rentOrPurchase,
+      // Rental is no longer offered — always store "purchase" regardless of
+      // what the UI sends, so legacy "rent" rows are corrected on next save.
+      rent_or_purchase:    "purchase",
       due_copay:           input.dueCopay,
       total_received:      input.totalReceived,
       acknowledgements:    input.acknowledgements ?? DEFAULT_ACKNOWLEDGEMENTS,
@@ -193,12 +195,10 @@ export async function upsertOrderDeliveryInvoice(
       return { success: false, invoice: null, error: error.message };
     }
 
-    // Regenerate the invoice PDF in the background; intentionally not awaited
-    // so the form save feels instant. PayoutsTab-style "regenerating" badge in
-    // the modal is driven by the existing pdf-regenerating event mechanism.
-    generateOrderPDFs(orderId, ["delivery_invoice"]).catch((err) =>
-      console.error("[upsertOrderDeliveryInvoice] PDF regen:", err),
-    );
+    // PDF regen is fired by the client after this action returns so the
+    // right-side card can flip to its blue "Generating…" state via the
+    // pdf-regenerating CustomEvent pattern (see InvoiceDocument.save).
+    // Doing it here too would cause a double regen.
 
     revalidatePath(ORDERS_PATH);
 
