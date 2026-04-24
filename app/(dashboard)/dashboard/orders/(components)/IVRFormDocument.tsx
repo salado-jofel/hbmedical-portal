@@ -810,6 +810,13 @@ export function IVRFormDocument({
           fontFamily: "system-ui, sans-serif",
         }}
       >
+        {/* Fieldset gate — disables every input/button inside the paper when
+            the order is locked (non-admin + status >= manufacturer_review,
+            via the effectiveCanEdit computed in OrderDetailModal). */}
+        <fieldset
+          disabled={!canEdit}
+          className={`m-0 p-0 border-0 ${!canEdit ? "opacity-90" : ""}`}
+        >
         {/* ── 1. HEADER ── */}
         <div className="flex items-start justify-between pb-3 border-b border-[#e5e5e5]">
           <div className="flex items-center gap-3">
@@ -1891,6 +1898,7 @@ export function IVRFormDocument({
           </span>
           <span>REV2.1</span>
         </div>
+        </fieldset>
       </div>
 
       <SignOrderModal

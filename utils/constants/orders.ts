@@ -193,6 +193,56 @@ export function isItemsEditable(status: string | null | undefined): boolean {
   return !!status && ITEMS_EDITABLE_STATUSES.has(status);
 }
 
+// Non-admin roles lose all edit rights once the admin has accepted the
+// order (manufacturer_review onwards). The single exception is `shipped`,
+// where the provider still needs to capture the patient's proof-of-delivery
+// signature on the Invoice tab. Once the patient has signed, everything
+// locks — the signature IS the point-of-no-return.
+const POST_APPROVAL_STATUSES = new Set<string>([
+  "manufacturer_review",
+  "approved",
+  "shipped",
+  "delivered",
+  "canceled",
+]);
+
+/**
+ * True when all fields + actions on the order must be read-only for
+ * non-admin roles. Admin bypasses this entirely (they can always edit).
+ *
+ * Semantics:
+ *   - Patient signed → fully locked regardless of status.
+ *   - Status ≥ manufacturer_review → locked.
+ *   - Otherwise editable.
+ */
+export function isOrderFullyLocked(
+  status: string | null | undefined,
+  patientSignedAt: string | null | undefined,
+  isAdmin: boolean,
+): boolean {
+  if (isAdmin) return false;
+  if (patientSignedAt) return true;
+  return !!status && POST_APPROVAL_STATUSES.has(status);
+}
+
+/**
+ * Gates the "Capture Patient Signature" (and Recapture) affordance on the
+ * Invoice tab. Only clinical_provider or admin, only while the order is in
+ * `shipped` status. Applies to both first-time capture and re-capture:
+ * providers can fix a bad signature while the order is still in the shipped
+ * window; once admin flips the order to `delivered`, it locks for everyone
+ * (non-admin).
+ */
+export function canCapturePatientSignature(args: {
+  status: string | null | undefined;
+  role: string | null | undefined;
+  isAdmin: boolean;
+}): boolean {
+  if (args.isAdmin) return args.status === "shipped";
+  if (args.role !== "clinical_provider") return false;
+  return args.status === "shipped";
+}
+
 export const ORDER_STATUS_FILTER_OPTIONS: { value: string; label: string }[] = [
   { value: "all",                    label: "All Statuses" },
   { value: "draft",                  label: "Draft" },

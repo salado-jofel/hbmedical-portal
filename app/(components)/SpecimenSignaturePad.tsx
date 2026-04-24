@@ -32,6 +32,8 @@ interface SpecimenSignaturePadProps {
   /** Fires true when the pad transitions from empty → has-content or vice versa. */
   onDirtyChange?: (hasContent: boolean) => void;
   className?: string;
+  /** Tailwind height class for the draw canvas / preview boxes. Default h-32. */
+  padHeightClass?: string;
 }
 
 /**
@@ -46,14 +48,17 @@ export const SpecimenSignaturePad = forwardRef<
   SpecimenSignaturePadHandle,
   SpecimenSignaturePadProps
 >(function SpecimenSignaturePad(
-  { defaultName = "", disabled = false, onDirtyChange, className },
+  { defaultName = "", disabled = false, onDirtyChange, className, padHeightClass = "h-32" },
   ref,
 ) {
   const [tab, setTab] = useState<Tab>("type");
   const [typedSig, setTypedSig] = useState(defaultName);
   const [uploadDataUrl, setUploadDataUrl] = useState<string | null>(null);
   const drawCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const drawDirtyRef = useRef(false);
+  // Draw-dirty tracked as state (not ref) so handleDrawMove triggers a
+  // re-render — without this, the parent's Confirm button never enables
+  // because hasContent is recomputed only when state changes.
+  const [drawDirty, setDrawDirty] = useState(false);
 
   useEffect(() => {
     setTypedSig(defaultName);
@@ -65,7 +70,7 @@ export const SpecimenSignaturePad = forwardRef<
     tab === "type"
       ? typedSig.trim().length > 0
       : tab === "draw"
-        ? drawDirtyRef.current
+        ? drawDirty
         : !!uploadDataUrl;
 
   useEffect(() => {
@@ -118,7 +123,7 @@ export const SpecimenSignaturePad = forwardRef<
   }
 
   function drawnToDataUrl(): string | null {
-    if (!drawDirtyRef.current) return null;
+    if (!drawDirty) return null;
     const c = drawCanvasRef.current;
     return c ? trimCanvasToDataUrl(c) : null;
   }
@@ -153,15 +158,16 @@ export const SpecimenSignaturePad = forwardRef<
       ((e.clientY - rect.top) / rect.height) * c.height,
     );
     ctx.stroke();
-    drawDirtyRef.current = true;
+    // State-setter batches — only the first stroke transition from false→true
+    // actually causes a re-render, which is what we want.
+    if (!drawDirty) setDrawDirty(true);
   }
 
   function clearDraw() {
     const c = drawCanvasRef.current;
     if (!c) return;
     c.getContext("2d")?.clearRect(0, 0, c.width, c.height);
-    drawDirtyRef.current = false;
-    onDirtyChange?.(false);
+    setDrawDirty(false);
   }
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -288,11 +294,12 @@ export const SpecimenSignaturePad = forwardRef<
           <canvas
             ref={drawCanvasRef}
             width={600}
-            height={140}
+            height={180}
             onPointerDown={handleDrawStart}
             onPointerMove={handleDrawMove}
             className={cn(
-              "w-full h-32 rounded-md border border-dashed border-[var(--border)] bg-white",
+              "w-full rounded-md border border-dashed border-[var(--border)] bg-white",
+              padHeightClass,
               disabled ? "cursor-not-allowed" : "cursor-crosshair",
             )}
             style={{ touchAction: "none" }}
