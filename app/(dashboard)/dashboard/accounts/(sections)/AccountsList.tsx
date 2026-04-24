@@ -21,6 +21,7 @@ import type {
   IAccountWithMetrics,
 } from "@/utils/interfaces/accounts";
 import { AccountTierBadge } from "../(components)/AccountTierBadge";
+import { useTableRealtimeRefresh } from "@/utils/hooks/useOrderRealtime";
 
 export function AccountsList({ salesReps, isAdmin, period }: {
   salesReps: IRepProfile[];
@@ -41,6 +42,12 @@ export function AccountsList({ salesReps, isAdmin, period }: {
   const [tierFilter, setTierFilter] = useState<AccountTier | "all">("all");
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
+
+  // Account list is collaborative — admins approve new facilities, reps
+  // see assignments change, status flips between active/pending. Subscribe
+  // to facilities (the row itself) and profiles (rep assignments).
+  useTableRealtimeRefresh("facilities");
+  useTableRealtimeRefresh("profiles");
 
   const myCount = isRep ? accounts.filter((a) => a.assigned_rep === userId).length : 0;
   const subRepCount = isRep ? accounts.filter((a) => a.assigned_rep && a.assigned_rep !== userId).length : 0;

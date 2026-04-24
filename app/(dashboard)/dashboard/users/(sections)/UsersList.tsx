@@ -18,6 +18,7 @@ import type { StatusFilter } from "@/utils/interfaces/users";
 import type { TableColumn } from "@/utils/interfaces/table-column";
 import type { UserRole } from "@/utils/helpers/role";
 import { ROLE_LABELS } from "@/utils/helpers/role";
+import { useTableRealtimeRefresh } from "@/utils/hooks/useOrderRealtime";
 
 export function UsersList() {
   const dispatch = useAppDispatch();
@@ -32,6 +33,10 @@ export function UsersList() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [resetPinUserId, setResetPinUserId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
+
+  // Live user list — reflects invites, status changes, role edits from
+  // other admins (or from the user completing setup themselves).
+  useTableRealtimeRefresh("profiles");
 
   const stats = useMemo(
     () => ({

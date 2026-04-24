@@ -10,6 +10,10 @@ import { updateCommissionInStore } from "../(redux)/commissions-slice";
 import { approveCommissions, adjustCommission, voidCommission } from "../(services)/actions";
 import { formatAmount } from "@/utils/helpers/formatter";
 import OrderQuickView from "@/app/(dashboard)/dashboard/my-team/[subRepId]/(sections)/OrderQuickView";
+import {
+  useOrderUpdatesRefresh,
+  useCommissionUpdatesRefresh,
+} from "@/utils/hooks/useOrderRealtime";
 import { isAdmin } from "@/utils/helpers/role";
 import type { UserRole } from "@/utils/helpers/role";
 import type { ICommission } from "@/utils/interfaces/commissions";
@@ -80,6 +84,12 @@ export default function CommissionLedger() {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => setMounted(true), []);
+
+  // Refresh the ledger's server-rendered props on any change in orders
+  // OR commissions. Commissions change independently of orders (approve,
+  // void, adjust, assign-to-payout), so we need both subscriptions.
+  useOrderUpdatesRefresh();
+  useCommissionUpdatesRefresh();
 
   const periods = useMemo(() => {
     const set = new Set<string>();

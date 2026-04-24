@@ -5,6 +5,10 @@ import { useAppSelector } from "@/store/hooks";
 import { formatAmount, formatDate } from "@/utils/helpers/formatter";
 import { cn } from "@/utils/utils";
 import OrderQuickView from "./OrderQuickView";
+import {
+  useOrderUpdatesRefresh,
+  useCommissionUpdatesRefresh,
+} from "@/utils/hooks/useOrderRealtime";
 
 const STATUS_STYLES: Record<string, string> = {
   paid:      "bg-[var(--green-lt)] text-[var(--green)]",
@@ -16,6 +20,12 @@ const STATUS_STYLES: Record<string, string> = {
 export default function SubRepCommissionHistory() {
   const detail = useAppSelector((s) => s.subRepDetail.detail);
   const [quickViewOrderId, setQuickViewOrderId] = useState<string | null>(null);
+
+  // Refresh server-side detail (which rehydrates redux via Providers) on
+  // any order OR commission change — the history table shows commission
+  // status and amounts that shift on both kinds of events.
+  useOrderUpdatesRefresh();
+  useCommissionUpdatesRefresh();
 
   if (!detail) return null;
   const { history, overrideEarnedThisPeriod } = detail;

@@ -35,6 +35,7 @@ import {
 } from "@/utils/interfaces/tasks";
 import type { IAccount, IRepProfile } from "@/utils/interfaces/accounts";
 import { GROUP_CONFIG } from "@/utils/constants/tasks";
+import { useTableRealtimeRefresh } from "@/utils/hooks/useOrderRealtime";
 
 type GroupKey = keyof typeof GROUP_CONFIG;
 
@@ -66,6 +67,9 @@ export function TasksBoard({ accounts, salesReps, isAdmin }: {
   const [priorityFilter, setPriorityFilter] = useState<TaskPriority | "all">("all");
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+
+  // Keep the board live when another user assigns / completes / deletes a task.
+  useTableRealtimeRefresh("tasks");
 
   useEffect(() => setMounted(true), []);
   const [deleteId, setDeleteId] = useState<string | null>(null);

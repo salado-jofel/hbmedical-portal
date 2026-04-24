@@ -20,6 +20,7 @@ import { ProductRowActions } from "../(components)/ProductRowActions";
 import type { RowEdit } from "@/utils/interfaces/products";
 import { Package } from "lucide-react";
 import toast from "react-hot-toast";
+import { useTableRealtimeRefresh } from "@/utils/hooks/useOrderRealtime";
 
 export default function ProductsTable() {
   const dispatch = useAppDispatch();
@@ -30,6 +31,10 @@ export default function ProductsTable() {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Catalog is admin-edited — keep the table live when another admin adds /
+  // edits / deletes a product.
+  useTableRealtimeRefresh("products");
 
   const filtered: Product[] = useMemo(
     () =>

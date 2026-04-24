@@ -18,6 +18,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import OrderQuickView from "./OrderQuickView";
+import {
+  useOrderUpdatesRefresh,
+  useCommissionUpdatesRefresh,
+} from "@/utils/hooks/useOrderRealtime";
 
 export interface PendingCommission {
   id: string;
@@ -39,6 +43,13 @@ export default function AdminApprovalsCard({ pending, pendingTotal }: AdminAppro
   const [voidTarget, setVoidTarget] = useState<PendingCommission | null>(null);
   const [voidReason, setVoidReason] = useState("");
   const [quickViewOrderId, setQuickViewOrderId] = useState<string | null>(null);
+
+  // Keep the pending list live — server component refetches whenever any
+  // order OR commission row changes. Orders cover new-commission creation;
+  // commissions cover approve / void / adjust / assign-to-payout done by
+  // another admin.
+  useOrderUpdatesRefresh();
+  useCommissionUpdatesRefresh();
 
   // Empty state (no pending)
   if (pending.length === 0) {

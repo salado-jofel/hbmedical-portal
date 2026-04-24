@@ -10,6 +10,7 @@ import { updatePayoutInStore } from "../(redux)/commissions-slice";
 import { generatePayout, markPayoutPaid } from "../(services)/actions";
 import { formatAmount, formatDate } from "@/utils/helpers/formatter";
 import { isAdmin } from "@/utils/helpers/role";
+import { useTableRealtimeRefresh } from "@/utils/hooks/useOrderRealtime";
 import type { UserRole } from "@/utils/helpers/role";
 import type { IPayout } from "@/utils/interfaces/commissions";
 import {
@@ -58,6 +59,10 @@ export default function PayoutTable() {
   const [confirmPayout, setConfirmPayout] = useState<IPayout | null>(null);
   const [isPending, startTransition] = useTransition();
   const [mounted, setMounted] = useState(false);
+
+  // Keep the payout table live when another admin generates or marks paid
+  // a payout for any rep in the same period.
+  useTableRealtimeRefresh("payouts");
 
   useEffect(() => setMounted(true), []);
 
