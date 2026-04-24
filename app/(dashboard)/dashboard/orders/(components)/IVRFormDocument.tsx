@@ -81,6 +81,36 @@ type IVRFormState = {
   physicianSignatureDate: string;
   physicianSignedAt: string | null;
   physicianSignedBy: string | null;
+  // ── Chronic-only fields ──
+  // Rendered only when order.wound_type === "chronic". Post-surgical leaves
+  // these untouched (values persist in DB if set previously, but the UI +
+  // PDF don't display them). Allows chronic IVR to carry full back-office
+  // data (benefits, verification, detailed auth) while post-surgical
+  // matches the physician-facing template.
+  groupNumber: string;
+  planName: string;
+  subscriberRelationship: string;
+  coverageStartDate: string;
+  coverageEndDate: string;
+  secondaryGroupNumber: string;
+  secondarySubscriberRelationship: string;
+  deductibleAmount: string;
+  deductibleMet: string;
+  outOfPocketMax: string;
+  outOfPocketMet: string;
+  copayAmount: string;
+  coinsurancePercent: string;
+  dmeCovered: boolean | null;
+  woundCareCovered: boolean | null;
+  priorAuthRequired: boolean | null;
+  priorAuthNumber: string;
+  unitsAuthorized: string;
+  priorAuthStartDate: string;
+  priorAuthEndDate: string;
+  verifiedBy: string;
+  verifiedDate: string;
+  verificationReference: string;
+  notes: string;
 };
 
 function buildFormState(ivr: Partial<IOrderIVR> | null): IVRFormState {
@@ -135,6 +165,31 @@ function buildFormState(ivr: Partial<IOrderIVR> | null): IVRFormState {
     physicianSignatureDate: s(ivr?.physicianSignatureDate),
     physicianSignedAt:  ivr?.physicianSignedAt  ?? null,
     physicianSignedBy:  ivr?.physicianSignedBy  ?? null,
+    // Chronic-only — numbers stringified for input controls.
+    groupNumber: s(ivr?.groupNumber),
+    planName: s(ivr?.planName),
+    subscriberRelationship: s(ivr?.subscriberRelationship),
+    coverageStartDate: s(ivr?.coverageStartDate),
+    coverageEndDate: s(ivr?.coverageEndDate),
+    secondaryGroupNumber: s(ivr?.secondaryGroupNumber),
+    secondarySubscriberRelationship: s(ivr?.secondarySubscriberRelationship),
+    deductibleAmount: ivr?.deductibleAmount != null ? String(ivr.deductibleAmount) : "",
+    deductibleMet: ivr?.deductibleMet != null ? String(ivr.deductibleMet) : "",
+    outOfPocketMax: ivr?.outOfPocketMax != null ? String(ivr.outOfPocketMax) : "",
+    outOfPocketMet: ivr?.outOfPocketMet != null ? String(ivr.outOfPocketMet) : "",
+    copayAmount: ivr?.copayAmount != null ? String(ivr.copayAmount) : "",
+    coinsurancePercent: ivr?.coinsurancePercent != null ? String(ivr.coinsurancePercent) : "",
+    dmeCovered: typeof ivr?.dmeCovered === "boolean" ? ivr.dmeCovered : null,
+    woundCareCovered: typeof ivr?.woundCareCovered === "boolean" ? ivr.woundCareCovered : null,
+    priorAuthRequired: typeof ivr?.priorAuthRequired === "boolean" ? ivr.priorAuthRequired : null,
+    priorAuthNumber: s(ivr?.priorAuthNumber),
+    unitsAuthorized: ivr?.unitsAuthorized != null ? String(ivr.unitsAuthorized) : "",
+    priorAuthStartDate: s(ivr?.priorAuthStartDate),
+    priorAuthEndDate: s(ivr?.priorAuthEndDate),
+    verifiedBy: s(ivr?.verifiedBy),
+    verifiedDate: s(ivr?.verifiedDate),
+    verificationReference: s(ivr?.verificationReference),
+    notes: s(ivr?.notes),
   };
 }
 
@@ -429,6 +484,12 @@ export function IVRFormDocument({
   onDirtyChange,
 }: IVRFormDocumentProps) {
   const orderId = order.id;
+  // Template variant — chronic gets the full back-office IVR (Benefits &
+  // Coverage, Verification, extended insurance, detailed Prior Auth).
+  // Post-surgical renders the lean physician-facing form per the client's
+  // template. Bound to order.wound_type so subtype edits in the form don't
+  // flip the variant mid-session.
+  const isPostSurgical = order.wound_type === "post_surgical";
   const [formData, setFormData] = useState<IVRFormState>(() =>
     buildFormState(ivrData),
   );
@@ -562,6 +623,32 @@ export function IVRFormDocument({
       physicianSignatureDate: ns(formData.physicianSignatureDate),
       physicianSignedAt: formData.physicianSignedAt ?? null,
       physicianSignedBy: formData.physicianSignedBy ?? null,
+      // Chronic-only fields. Persist for post-surgical too so toggling
+      // wound_type doesn't destroy data — the UI just hides them.
+      groupNumber: ns(formData.groupNumber),
+      planName: ns(formData.planName),
+      subscriberRelationship: ns(formData.subscriberRelationship),
+      coverageStartDate: ns(formData.coverageStartDate),
+      coverageEndDate: ns(formData.coverageEndDate),
+      secondaryGroupNumber: ns(formData.secondaryGroupNumber),
+      secondarySubscriberRelationship: ns(formData.secondarySubscriberRelationship),
+      deductibleAmount: formData.deductibleAmount.trim() === "" ? null : Number(formData.deductibleAmount),
+      deductibleMet: formData.deductibleMet.trim() === "" ? null : Number(formData.deductibleMet),
+      outOfPocketMax: formData.outOfPocketMax.trim() === "" ? null : Number(formData.outOfPocketMax),
+      outOfPocketMet: formData.outOfPocketMet.trim() === "" ? null : Number(formData.outOfPocketMet),
+      copayAmount: formData.copayAmount.trim() === "" ? null : Number(formData.copayAmount),
+      coinsurancePercent: formData.coinsurancePercent.trim() === "" ? null : Number(formData.coinsurancePercent),
+      dmeCovered: formData.dmeCovered === true,
+      woundCareCovered: formData.woundCareCovered === true,
+      priorAuthRequired: formData.priorAuthRequired === true,
+      priorAuthNumber: ns(formData.priorAuthNumber),
+      unitsAuthorized: formData.unitsAuthorized.trim() === "" ? null : Number(formData.unitsAuthorized),
+      priorAuthStartDate: ns(formData.priorAuthStartDate),
+      priorAuthEndDate: ns(formData.priorAuthEndDate),
+      verifiedBy: ns(formData.verifiedBy),
+      verifiedDate: ns(formData.verifiedDate),
+      verificationReference: ns(formData.verificationReference),
+      notes: ns(formData.notes),
     };
     const result = await upsertOrderIVR(orderId, payload);
     setIsSaving(false);
@@ -1115,6 +1202,225 @@ export function IVRFormDocument({
           </div>
         </div>
 
+        {/* ── 6b. CHRONIC-ONLY SUPPLEMENTAL SECTIONS ──
+            Back-office fields populated after the insurance call. Not on the
+            post-surgical physician-facing template. Data persists in DB even
+            when hidden, so switching wound_type is non-destructive. */}
+        {!isPostSurgical && (
+          <>
+            {/* Insurance details — Primary */}
+            <SectionHeader title="Insurance Details — Primary" />
+            <div className="px-2 pt-2 pb-1 border-b border-[#e5e5e5] space-y-2">
+              <TwoCol className="px-0">
+                <FieldBlock label="Group Number">
+                  <FormInput
+                    value={formData.groupNumber}
+                    onChange={(v) => set("groupNumber", v)}
+                    className="w-full"
+                    disabled={!canEdit}
+                  />
+                </FieldBlock>
+                <FieldBlock label="Plan Name">
+                  <FormInput
+                    value={formData.planName}
+                    onChange={(v) => set("planName", v)}
+                    className="w-full"
+                    disabled={!canEdit}
+                  />
+                </FieldBlock>
+                <FieldBlock label="Subscriber Relationship">
+                  <div className="flex flex-wrap gap-3 pt-0.5">
+                    {["Self", "Spouse", "Child", "Other"].map((t) => (
+                      <FormCheckbox
+                        key={t}
+                        checked={formData.subscriberRelationship === t}
+                        onChange={() =>
+                          set(
+                            "subscriberRelationship",
+                            formData.subscriberRelationship === t ? "" : t,
+                          )
+                        }
+                        label={t}
+                      />
+                    ))}
+                  </div>
+                </FieldBlock>
+                <FieldBlock label="Coverage Start">
+                  <FormInput
+                    value={formData.coverageStartDate}
+                    onChange={(v) => set("coverageStartDate", v)}
+                    className="w-full"
+                    placeholder="MM/DD/YYYY"
+                    disabled={!canEdit}
+                  />
+                </FieldBlock>
+                <FieldBlock label="Coverage End">
+                  <FormInput
+                    value={formData.coverageEndDate}
+                    onChange={(v) => set("coverageEndDate", v)}
+                    className="w-full"
+                    placeholder="MM/DD/YYYY"
+                    disabled={!canEdit}
+                  />
+                </FieldBlock>
+              </TwoCol>
+            </div>
+
+            {/* Insurance details — Secondary */}
+            <SectionHeader title="Insurance Details — Secondary" />
+            <div className="px-2 pt-2 pb-1 border-b border-[#e5e5e5] space-y-2">
+              <TwoCol className="px-0">
+                <FieldBlock label="Group Number">
+                  <FormInput
+                    value={formData.secondaryGroupNumber}
+                    onChange={(v) => set("secondaryGroupNumber", v)}
+                    className="w-full"
+                    disabled={!canEdit}
+                  />
+                </FieldBlock>
+                <FieldBlock label="Subscriber Relationship">
+                  <div className="flex flex-wrap gap-3 pt-0.5">
+                    {["Self", "Spouse", "Child", "Other"].map((t) => (
+                      <FormCheckbox
+                        key={t}
+                        checked={formData.secondarySubscriberRelationship === t}
+                        onChange={() =>
+                          set(
+                            "secondarySubscriberRelationship",
+                            formData.secondarySubscriberRelationship === t ? "" : t,
+                          )
+                        }
+                        label={t}
+                      />
+                    ))}
+                  </div>
+                </FieldBlock>
+              </TwoCol>
+            </div>
+
+            {/* Benefits & Coverage */}
+            <SectionHeader title="Benefits & Coverage" />
+            <div className="px-2 pt-2 pb-1 border-b border-[#e5e5e5] space-y-2">
+              <TwoCol className="px-0">
+                <FieldBlock label="Deductible Amount">
+                  <FormInput
+                    value={formData.deductibleAmount}
+                    onChange={(v) => set("deductibleAmount", v)}
+                    className="w-full"
+                    placeholder="$"
+                    disabled={!canEdit}
+                  />
+                </FieldBlock>
+                <FieldBlock label="Deductible Met">
+                  <FormInput
+                    value={formData.deductibleMet}
+                    onChange={(v) => set("deductibleMet", v)}
+                    className="w-full"
+                    placeholder="$"
+                    disabled={!canEdit}
+                  />
+                </FieldBlock>
+                <FieldBlock label="Out of Pocket Max">
+                  <FormInput
+                    value={formData.outOfPocketMax}
+                    onChange={(v) => set("outOfPocketMax", v)}
+                    className="w-full"
+                    placeholder="$"
+                    disabled={!canEdit}
+                  />
+                </FieldBlock>
+                <FieldBlock label="Out of Pocket Met">
+                  <FormInput
+                    value={formData.outOfPocketMet}
+                    onChange={(v) => set("outOfPocketMet", v)}
+                    className="w-full"
+                    placeholder="$"
+                    disabled={!canEdit}
+                  />
+                </FieldBlock>
+                <FieldBlock label="Copay Amount">
+                  <FormInput
+                    value={formData.copayAmount}
+                    onChange={(v) => set("copayAmount", v)}
+                    className="w-full"
+                    placeholder="$"
+                    disabled={!canEdit}
+                  />
+                </FieldBlock>
+                <FieldBlock label="Coinsurance %">
+                  <FormInput
+                    value={formData.coinsurancePercent}
+                    onChange={(v) => set("coinsurancePercent", v)}
+                    className="w-full"
+                    placeholder="%"
+                    disabled={!canEdit}
+                  />
+                </FieldBlock>
+              </TwoCol>
+              <div className="pt-1 space-y-2">
+                <YesNo
+                  label="DME Covered?"
+                  value={formData.dmeCovered}
+                  onChange={(v) => set("dmeCovered", v)}
+                />
+                <YesNo
+                  label="Wound Care Covered?"
+                  value={formData.woundCareCovered}
+                  onChange={(v) => set("woundCareCovered", v)}
+                />
+              </div>
+            </div>
+
+            {/* Prior Authorization — detailed */}
+            <SectionHeader title="Prior Authorization" />
+            <div className="px-2 pt-2 pb-1 border-b border-[#e5e5e5] space-y-2">
+              <YesNo
+                label="Prior Auth Required?"
+                value={formData.priorAuthRequired}
+                onChange={(v) => set("priorAuthRequired", v)}
+              />
+              {formData.priorAuthRequired === true && (
+                <TwoCol className="px-0">
+                  <FieldBlock label="Auth Number">
+                    <FormInput
+                      value={formData.priorAuthNumber}
+                      onChange={(v) => set("priorAuthNumber", v)}
+                      className="w-full"
+                      disabled={!canEdit}
+                    />
+                  </FieldBlock>
+                  <FieldBlock label="Units Authorized">
+                    <FormInput
+                      value={formData.unitsAuthorized}
+                      onChange={(v) => set("unitsAuthorized", v)}
+                      className="w-full"
+                      disabled={!canEdit}
+                    />
+                  </FieldBlock>
+                  <FieldBlock label="Auth Start Date">
+                    <FormInput
+                      value={formData.priorAuthStartDate}
+                      onChange={(v) => set("priorAuthStartDate", v)}
+                      className="w-full"
+                      placeholder="MM/DD/YYYY"
+                      disabled={!canEdit}
+                    />
+                  </FieldBlock>
+                  <FieldBlock label="Auth End Date">
+                    <FormInput
+                      value={formData.priorAuthEndDate}
+                      onChange={(v) => set("priorAuthEndDate", v)}
+                      className="w-full"
+                      placeholder="MM/DD/YYYY"
+                      disabled={!canEdit}
+                    />
+                  </FieldBlock>
+                </TwoCol>
+              )}
+            </div>
+          </>
+        )}
+
         {/* ── 7. WOUND INFORMATION ── */}
         <SectionHeader title="Wound Information" />
         <div className="px-2 pt-2 pb-1 border-b border-[#e5e5e5] space-y-2">
@@ -1307,6 +1613,56 @@ export function IVRFormDocument({
             />
           </FieldBlock>
         </div>
+
+        {/* ── 8b. VERIFICATION — chronic only ──
+            Tracks who verified benefits, when, and the insurance-call
+            reference. Not on the post-surgical physician template. */}
+        {!isPostSurgical && (
+          <>
+            <SectionHeader title="Verification" />
+            <div className="px-2 pt-2 pb-1 border-b border-[#e5e5e5] space-y-2">
+              <TwoCol className="px-0">
+                <FieldBlock label="Verified By">
+                  <FormInput
+                    value={formData.verifiedBy}
+                    onChange={(v) => set("verifiedBy", v)}
+                    className="w-full"
+                    placeholder="Name of person who called"
+                    disabled={!canEdit}
+                  />
+                </FieldBlock>
+                <FieldBlock label="Verified Date">
+                  <FormInput
+                    value={formData.verifiedDate}
+                    onChange={(v) => set("verifiedDate", v)}
+                    className="w-full"
+                    placeholder="MM/DD/YYYY"
+                    disabled={!canEdit}
+                  />
+                </FieldBlock>
+                <FieldBlock label="Reference Number">
+                  <FormInput
+                    value={formData.verificationReference}
+                    onChange={(v) => set("verificationReference", v)}
+                    className="w-full"
+                    placeholder="Call reference #"
+                    disabled={!canEdit}
+                  />
+                </FieldBlock>
+              </TwoCol>
+              <FieldBlock label="Notes">
+                <textarea
+                  value={formData.notes}
+                  onChange={(e) => set("notes", e.target.value)}
+                  rows={3}
+                  placeholder="Additional notes..."
+                  disabled={!canEdit}
+                  className="w-full border-b border-[#888] bg-transparent text-[12px] leading-tight text-[#333] px-0.5 resize-none outline-none disabled:text-[#888]"
+                />
+              </FieldBlock>
+            </div>
+          </>
+        )}
 
         {/* ── 9. IMPORTANT NOTES ── */}
         <div className="mt-3 px-3 py-2.5 bg-[#f5f5f5] border border-[#ddd] text-[11px] text-[#444] space-y-1">
