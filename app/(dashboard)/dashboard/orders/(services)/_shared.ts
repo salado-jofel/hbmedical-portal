@@ -238,11 +238,28 @@ export async function triggerCombinedExtraction(
       }),
     });
 
-    const data = await response.json();
+    // Read as text first — the endpoint sometimes returns an HTML error page
+    // (e.g. dev-mode uncaught throw, framework-level failure) and calling
+    // .json() directly bubbles a confusing SyntaxError to the caller. Parse
+    // defensively so the real failure mode shows up in logs.
+    const raw = await response.text();
+    let data: { error?: string; success?: boolean } = {};
+    try {
+      data = raw ? JSON.parse(raw) : {};
+    } catch {
+      const snippet = raw.slice(0, 200).replace(/\s+/g, " ").trim();
+      console.error(
+        `[triggerCombinedExtraction] non-JSON response (status ${response.status}): ${snippet}`,
+      );
+      return {
+        success: false,
+        error: `AI extraction endpoint returned a non-JSON response (status ${response.status}). Check server logs for the real error.`,
+      };
+    }
 
     if (!response.ok || data.error) {
       console.error("[triggerCombinedExtraction]", data.error);
-      return { success: false, error: data.error };
+      return { success: false, error: data.error ?? `HTTP ${response.status}` };
     }
 
     return { success: true, error: null };
