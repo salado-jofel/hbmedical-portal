@@ -145,7 +145,7 @@ export const WOUND_TYPES = [
 
 export const REQUIRED_DOC_TYPES = [
   { type: "facesheet",        label: "Facesheet" },
-  { type: "additional_ivr",   label: "Additional IVR Info" },
+  { type: "additional_ivr",   label: "IVR Form" },
   { type: "clinical_docs",    label: "Clinical Docs" },
   { type: "form_1500",        label: "1500 Form" },
   { type: "order_form",       label: "Order Form" },
@@ -156,7 +156,7 @@ export const ALL_DOC_TYPES: Array<{ type: string; label: string }> = [
   { type: "facesheet",        label: "Facesheet" },
   { type: "clinical_docs",    label: "Clinical Docs" },
   { type: "order_form",       label: "Order Form" },
-  { type: "additional_ivr",   label: "Additional IVR Info" },
+  { type: "additional_ivr",   label: "IVR Form" },
   { type: "form_1500",        label: "1500 Form" },
   { type: "delivery_invoice", label: "Invoice" },
   { type: "wound_pictures",   label: "Wound Pictures" },
@@ -177,6 +177,20 @@ export const INVOICE_VISIBLE_STATUSES = new Set<string>([
 
 export function isInvoiceVisibleForStatus(status: string | null | undefined): boolean {
   return !!status && INVOICE_VISIBLE_STATUSES.has(status);
+}
+
+// Items (order_items) are editable only before the order has moved into
+// manufacturer review. Once an admin/reviewer is looking at it, the product
+// list is locked — any change requires the admin to bounce it back to
+// `additional_info_needed`, which re-opens editing.
+export const ITEMS_EDITABLE_STATUSES = new Set<string>([
+  "draft",
+  "pending_signature",
+  "additional_info_needed",
+]);
+
+export function isItemsEditable(status: string | null | undefined): boolean {
+  return !!status && ITEMS_EDITABLE_STATUSES.has(status);
 }
 
 export const ORDER_STATUS_FILTER_OPTIONS: { value: string; label: string }[] = [

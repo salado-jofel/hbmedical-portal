@@ -1612,20 +1612,10 @@ export function OrderDetailModal({
                       isActive={tab === "overview"}
                       order={order}
                       liveOrder={liveOrder}
-                      canEdit={canEdit}
-                      status={status}
-                      draftItems={draftItems}
-                      savedItems={savedItems}
-                      draftNotes={draftNotes}
-                      isOverviewDirty={isOverviewDirty}
-                      isSavingOverview={isSavingOverview}
-                      orderTotal={orderTotal}
-                      setDraftNotes={setDraftNotes}
-                      setItemToDelete={setItemToDelete}
-                      draftQtyChange={draftQtyChange}
-                      handleDiscardOverview={handleDiscardOverview}
-                      handleSaveOverview={handleSaveOverview}
-                      handleAddProductToDraft={handleAddProductToDraft}
+                      documents={localDocuments}
+                      orderForm={orderForm}
+                      ivrData={ivrData}
+                      history={history}
                     />
                     <OrderFormTab
                       isActive={tab === "order-form"}

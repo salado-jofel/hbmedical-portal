@@ -94,7 +94,7 @@ export function getDocumentLabel(type: string): string {
     facesheet: "Facesheet",
     clinical_docs: "Clinical Documentation",
     order_form: "Order Form",
-    additional_ivr: "Additional IVR Info",
+    additional_ivr: "IVR Form",
     delivery_invoice: "Invoice",
     form_1500: "CMS-1500 Form",
     wound_pictures: "Wound Photos",

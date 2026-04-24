@@ -342,6 +342,8 @@ export interface IOrderIVR {
   physicianSignatureDate: string | null;
   physicianSignedAt: string | null;
   physicianSignedBy: string | null;
+  /** PNG data URL. Set by Sign; cleared by Unsign. */
+  physicianSignatureImage: string | null;
   aiExtracted: boolean;
   createdAt: string;
   updatedAt: string;
@@ -518,6 +520,8 @@ export interface IOrderForm {
   physicianSignatureDate: string | null;
   physicianSignedAt: string | null;
   physicianSignedBy: string | null;
+  /** PNG data URL. Set by Sign; cleared by Unsign. */
+  physicianSignatureImage: string | null;
   // Meta
   aiExtracted: boolean;
   aiExtractedAt: string | null;

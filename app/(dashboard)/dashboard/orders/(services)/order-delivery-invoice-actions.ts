@@ -89,24 +89,31 @@ export async function getOrderDeliveryInvoice(
         .order("created_at", { ascending: true }),
     ]);
 
-    if (invoiceRes.data) {
-      return { invoice: rowToInterface(invoiceRes.data), error: null };
-    }
-
     const order = orderRes.data as any;
     const ivr = ivrRes.data as any;
     if (!order) {
       return { invoice: null, error: "Order not found." };
     }
 
-    // Compose a draft via the shared helper so the PDF generator produces
-    // identical output when no row has been saved yet. rowToInterface flips
-    // the DB-style (snake_case, null id) shape into the camelCase UI shape.
+    // Always re-derive line items from order_items so the invoice stays in
+    // sync as products are added / removed / re-quantified on the Order Form.
     const prefill = composeDeliveryInvoicePrefill(
       order,
       ivr,
       (itemsRes.data ?? []) as any[],
     );
+
+    // Saved row supplies user edits (addresses, acks, sigs). Line items
+    // come from order_items so the invoice is never stale vs the order.
+    if (invoiceRes.data) {
+      return {
+        invoice: rowToInterface({
+          ...invoiceRes.data,
+          line_items: prefill.line_items,
+        }),
+        error: null,
+      };
+    }
 
     return {
       invoice: rowToInterface({

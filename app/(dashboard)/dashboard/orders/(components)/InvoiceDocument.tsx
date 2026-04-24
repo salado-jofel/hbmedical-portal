@@ -140,13 +140,9 @@ export function InvoiceDocument({
     }
   }
 
-  // Always render at least 8 line-item rows so the on-screen table looks
-  // like the printed invoice even before products are wired in.
-  const visibleLineItems = useMemo(() => {
-    const rows = [...invoice.lineItems];
-    while (rows.length < 8) rows.push({ date: null, qty: null, hcpc: null, description: null, perEach: null, total: null });
-    return rows;
-  }, [invoice.lineItems]);
+  // Content-adaptive: render exactly the rows the invoice actually has.
+  // Zero line items → empty state below the header instead of padded blanks.
+  const visibleLineItems = invoice.lineItems;
 
   // Grand total = sum of filled line-item totals. Derived, not stored —
   // PDF computes the same way so the two never drift.
@@ -292,19 +288,25 @@ export function InvoiceDocument({
             <div className="px-2 py-1.5 text-right">Per Ea.</div>
             <div className="px-2 py-1.5 text-right">Total</div>
           </div>
-          {visibleLineItems.map((row, idx) => (
-            <div
-              key={idx}
-              className="grid grid-cols-[80px_60px_90px_1fr_90px_90px] border-b border-[#eee] last:border-0 text-[12px]"
-            >
-              <CellInput value={row.date ?? ""} onChange={(v) => updateLineItem(idx, { date: v || null })} placeholder="—" />
-              <CellInput value={row.qty?.toString() ?? ""} onChange={(v) => updateLineItem(idx, { qty: v ? Number(v) : null })} placeholder="—" />
-              <CellInput value={row.hcpc ?? ""} onChange={(v) => updateLineItem(idx, { hcpc: v || null })} placeholder="—" />
-              <CellInput value={row.description ?? ""} onChange={(v) => updateLineItem(idx, { description: v || null })} placeholder="—" />
-              <CellInput value={row.perEach?.toString() ?? ""} onChange={(v) => updateLineItem(idx, { perEach: v ? Number(v) : null })} placeholder="—" align="right" />
-              <CellInput value={row.total?.toString() ?? ""} onChange={(v) => updateLineItem(idx, { total: v ? Number(v) : null })} placeholder="—" align="right" />
+          {visibleLineItems.length === 0 ? (
+            <div className="px-3 py-4 text-center text-[11px] italic text-[#999] border-b border-[#eee]">
+              No products on this order.
             </div>
-          ))}
+          ) : (
+            visibleLineItems.map((row, idx) => (
+              <div
+                key={idx}
+                className="grid grid-cols-[80px_60px_90px_1fr_90px_90px] border-b border-[#eee] last:border-0 text-[12px]"
+              >
+                <CellInput value={row.date ?? ""} onChange={(v) => updateLineItem(idx, { date: v || null })} placeholder="—" />
+                <CellInput value={row.qty?.toString() ?? ""} onChange={(v) => updateLineItem(idx, { qty: v ? Number(v) : null })} placeholder="—" />
+                <CellInput value={row.hcpc ?? ""} onChange={(v) => updateLineItem(idx, { hcpc: v || null })} placeholder="—" />
+                <CellInput value={row.description ?? ""} onChange={(v) => updateLineItem(idx, { description: v || null })} placeholder="—" />
+                <CellInput value={row.perEach?.toString() ?? ""} onChange={(v) => updateLineItem(idx, { perEach: v ? Number(v) : null })} placeholder="—" align="right" />
+                <CellInput value={row.total?.toString() ?? ""} onChange={(v) => updateLineItem(idx, { total: v ? Number(v) : null })} placeholder="—" align="right" />
+              </div>
+            ))
+          )}
           {/* GRAND TOTAL — sum of line-item totals, same calc as the PDF */}
           <div className="grid grid-cols-[80px_60px_90px_1fr_90px_90px] bg-[#f7f7f7] border-t-2 border-[#333] text-[12px] font-semibold">
             <div className="col-span-4 px-2 py-2 text-right text-[#555] uppercase tracking-wide text-[10px]">

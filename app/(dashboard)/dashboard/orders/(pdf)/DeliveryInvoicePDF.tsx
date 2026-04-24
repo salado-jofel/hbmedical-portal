@@ -180,10 +180,6 @@ export function DeliveryInvoicePDF({ order, invoice }: DeliveryInvoicePDFProps) 
   const acks: Record<string, boolean> = invoice?.acknowledgements ?? {};
 
   const lineItems = Array.isArray(invoice?.line_items) ? invoice.line_items : [];
-  // Always render at least 8 rows so the table has the same visual weight
-  // whether or not items are filled in (matches the printed form).
-  const padded = [...lineItems];
-  while (padded.length < 8) padded.push({});
 
   // Grand total = sum of line totals (or qty × perEach when total is blank).
   // Mirrors the calc in InvoiceDocument so the screen and PDF never drift.
@@ -288,16 +284,24 @@ export function DeliveryInvoicePDF({ order, invoice }: DeliveryInvoicePDFProps) 
           <Text style={[s.th, s.cPer]}>Per Ea.</Text>
           <Text style={[s.th, s.cTotal]}>Total</Text>
         </View>
-        {padded.map((row: any, idx: number) => (
-          <View key={idx} style={s.tableRow}>
-            <Text style={[s.td, s.cDate]}>{v(row.date, "")}</Text>
-            <Text style={[s.td, s.cQty]}>{v(row.qty, "")}</Text>
-            <Text style={[s.td, s.cHcpc]}>{v(row.hcpc, "")}</Text>
-            <Text style={[s.td, s.cDesc]}>{v(row.description, "")}</Text>
-            <Text style={[s.td, s.cPer]}>{row.perEach != null ? fmtMoney(row.perEach) : ""}</Text>
-            <Text style={[s.td, s.cTotal]}>{row.total != null ? fmtMoney(row.total) : ""}</Text>
+        {lineItems.length === 0 ? (
+          <View style={s.tableRow}>
+            <Text style={[s.td, { flex: 1, fontStyle: "italic", color: GRAY }]}>
+              No products on this order.
+            </Text>
           </View>
-        ))}
+        ) : (
+          lineItems.map((row: any, idx: number) => (
+            <View key={idx} style={s.tableRow}>
+              <Text style={[s.td, s.cDate]}>{v(row.date, "")}</Text>
+              <Text style={[s.td, s.cQty]}>{v(row.qty, "")}</Text>
+              <Text style={[s.td, s.cHcpc]}>{v(row.hcpc, "")}</Text>
+              <Text style={[s.td, s.cDesc]}>{v(row.description, "")}</Text>
+              <Text style={[s.td, s.cPer]}>{row.perEach != null ? fmtMoney(row.perEach) : ""}</Text>
+              <Text style={[s.td, s.cTotal]}>{row.total != null ? fmtMoney(row.total) : ""}</Text>
+            </View>
+          ))
+        )}
 
         {/* Grand Total */}
         <View style={s.grandTotalRow}>

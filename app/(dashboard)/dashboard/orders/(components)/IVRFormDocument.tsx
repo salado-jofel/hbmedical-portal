@@ -18,7 +18,11 @@ import {
 } from "lucide-react";
 import { HBLogo } from "@/app/(components)/HBLogo";
 import { upsertOrderIVR } from "../(services)/order-ivr-actions";
-import { verifyProviderPin } from "../(services)/order-workflow-actions";
+import {
+  verifyProviderPin,
+  signIVRWithSpecimen,
+  unsignIVR,
+} from "../(services)/order-workflow-actions";
 import type { IOrderIVR, DashboardOrder } from "@/utils/interfaces/orders";
 import { cn } from "@/utils/utils";
 import toast from "react-hot-toast";
@@ -498,6 +502,18 @@ export function IVRFormDocument({
   );
   const [isSaving, setIsSaving] = useState(false);
   const [signModalOpen, setSignModalOpen] = useState(false);
+  // Anchor for the "please sign before saving" auto-scroll behavior.
+  const signatureSectionRef = useRef<HTMLDivElement | null>(null);
+  // Session-only specimen signature. Same rationale as OrderFormDocument.
+  const [specimenSignatureUrl, setSpecimenSignatureUrl] = useState<string | null>(
+    ivrData?.physicianSignatureImage ?? null,
+  );
+  // Resync from the server copy on load / parent refresh.
+  useEffect(() => {
+    setSpecimenSignatureUrl(ivrData?.physicianSignatureImage ?? null);
+  }, [ivrData?.physicianSignatureImage]);
+  // PIN buffered from the sign modal, committed at save-time.
+  const [pendingPin, setPendingPin] = useState<string | null>(null);
 
   useEffect(() => {
     const snap = buildFormState(ivrData);
@@ -568,11 +584,34 @@ export function IVRFormDocument({
 
   function handleDiscard() {
     setFormData(baseline);
+    setPendingPin(null);
+    if (!baseline.physicianSignedAt) {
+      setSpecimenSignatureUrl(null);
+    }
   }
 
   async function handleSave() {
     setIsSaving(true);
+
+    // Detect sign-state change relative to last saved baseline.
+    const wasSigned = !!baseline.physicianSignedAt;
+    const isSigned = !!formData.physicianSignedAt;
+    const signIntent: "sign" | "unsign" | "none" = !wasSigned && isSigned
+      ? "sign"
+      : wasSigned && !isSigned
+        ? "unsign"
+        : "none";
+
+    if (signIntent === "sign" && (!pendingPin || !specimenSignatureUrl)) {
+      setIsSaving(false);
+      toast.error("Signature data missing — please re-open Sign.");
+      return;
+    }
+
     const ns = (v: string) => v.trim() || null;
+    // physicianSignedAt/By intentionally omitted — committed via
+    // signIVRWithSpecimen / unsignIVR below so they never land in the DB
+    // without a PIN check.
     const payload: Partial<IOrderIVR> = {
       salesRepName: ns(formData.salesRepName),
       placeOfService: ns(formData.placeOfService),
@@ -621,8 +660,6 @@ export function IVRFormDocument({
       specialtySiteName: ns(formData.specialtySiteName),
       physicianSignature: ns(formData.physicianSignature),
       physicianSignatureDate: ns(formData.physicianSignatureDate),
-      physicianSignedAt: formData.physicianSignedAt ?? null,
-      physicianSignedBy: formData.physicianSignedBy ?? null,
       // Chronic-only fields. Persist for post-surgical too so toggling
       // wound_type doesn't destroy data — the UI just hides them.
       groupNumber: ns(formData.groupNumber),
@@ -651,33 +688,88 @@ export function IVRFormDocument({
       notes: ns(formData.notes),
     };
     const result = await upsertOrderIVR(orderId, payload);
-    setIsSaving(false);
     if (!result.success) {
+      setIsSaving(false);
       toast.error(result.error ?? "Failed to save.");
       return;
     }
-    toast.success("IVR form saved.");
+
+    // Commit sign/unsign if the local diff implies one — each branch also
+    // regenerates the IVR PDF with the correct signed/unsigned rendering.
+    if (signIntent === "sign") {
+      window.dispatchEvent(
+        new CustomEvent("pdf-regenerating", {
+          detail: { type: "additional_ivr", status: "start" },
+        }),
+      );
+      const signRes = await signIVRWithSpecimen(
+        orderId,
+        pendingPin as string,
+        specimenSignatureUrl as string,
+      );
+      window.dispatchEvent(
+        new CustomEvent("pdf-regenerating", {
+          detail: { type: "additional_ivr", status: "done" },
+        }),
+      );
+      if (!signRes.success) {
+        setIsSaving(false);
+        toast.error(signRes.error ?? "Sign failed — PIN may be wrong.");
+        return;
+      }
+    } else if (signIntent === "unsign") {
+      window.dispatchEvent(
+        new CustomEvent("pdf-regenerating", {
+          detail: { type: "additional_ivr", status: "start" },
+        }),
+      );
+      const unsignRes = await unsignIVR(orderId);
+      window.dispatchEvent(
+        new CustomEvent("pdf-regenerating", {
+          detail: { type: "additional_ivr", status: "done" },
+        }),
+      );
+      if (!unsignRes.success) {
+        setIsSaving(false);
+        toast.error(unsignRes.error ?? "Failed to unsign.");
+        return;
+      }
+    } else {
+      // Field-only save — regenerate PDF via the standard endpoint.
+      window.dispatchEvent(
+        new CustomEvent("pdf-regenerating", {
+          detail: { type: "additional_ivr", status: "start" },
+        }),
+      );
+      fetch("/api/generate-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId, formType: "ivr" }),
+      })
+        .catch((err) => console.error("[IVRForm] PDF generation failed:", err))
+        .finally(() => {
+          window.dispatchEvent(
+            new CustomEvent("pdf-regenerating", {
+              detail: { type: "additional_ivr", status: "done" },
+            }),
+          );
+        });
+    }
+
+    setIsSaving(false);
+    toast.success(
+      signIntent === "sign"
+        ? "IVR signed + saved."
+        : signIntent === "unsign"
+          ? "Unsigned + saved."
+          : "IVR form saved.",
+    );
     setBaseline({ ...formData });
     onSaved?.(payload);
-    // Generate PDF — badge shows "Generating..." until complete
-    window.dispatchEvent(
-      new CustomEvent("pdf-regenerating", {
-        detail: { type: "additional_ivr", status: "start" },
-      }),
-    );
-    fetch("/api/generate-pdf", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderId, formType: "ivr" }),
-    })
-      .catch((err) => console.error("[IVRForm] PDF generation failed:", err))
-      .finally(() => {
-        window.dispatchEvent(
-          new CustomEvent("pdf-regenerating", {
-            detail: { type: "additional_ivr", status: "done" },
-          }),
-        );
-      });
+    setPendingPin(null);
+    if (signIntent === "unsign") {
+      setSpecimenSignatureUrl(null);
+    }
   }
 
   /* ── Render ── */
@@ -1677,7 +1769,7 @@ export function IVRFormDocument({
         </div>
 
         {/* ── 10. PHYSICIAN AGREEMENT ── */}
-        <div className="mt-4 pt-3 border-t border-[#e5e5e5]">
+        <div ref={signatureSectionRef} className="mt-4 pt-3 border-t border-[#e5e5e5]">
           <p className="text-[11px] text-[#444] leading-relaxed mb-4">
             By signing below, I certify that I have received the necessary
             patient authorization to release the medical and/or other patient
@@ -1689,28 +1781,43 @@ export function IVRFormDocument({
             <div>
               <FL className="block mb-1">Physician or Authorized Signature</FL>
               {formData.physicianSignedAt ? (
-                <div className="flex items-center gap-2 py-1">
-                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-green-50 border border-green-200">
-                    <Check className="w-3.5 h-3.5 text-green-600 shrink-0" />
-                    <span className="text-[11px] font-semibold text-green-700">Signed</span>
-                  </div>
-                  <div className="text-[11px] text-[#444]">
-                    <span className="font-medium">{formData.physicianSignature}</span>
-                    <span className="text-[#999] ml-1">
-                      {new Date(formData.physicianSignedAt).toLocaleDateString("en-US", {
-                        month: "short", day: "numeric", year: "numeric",
-                      })}
-                    </span>
-                  </div>
-                  {canSign && (
-                    <button
-                      type="button"
-                      onClick={() => set("physicianSignedAt", null)}
-                      className="text-[11px] text-[#999] hover:text-red-500 underline underline-offset-2 transition-colors ml-1"
-                    >
-                      Unsign
-                    </button>
+                <div className="space-y-2">
+                  {specimenSignatureUrl && (
+                    <div className="border-b border-[#333] pb-1 max-w-[260px]">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={specimenSignatureUrl}
+                        alt="Provider signature"
+                        className="h-10 object-contain object-left"
+                      />
+                    </div>
                   )}
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-green-50 border border-green-200">
+                      <Check className="w-3.5 h-3.5 text-green-600 shrink-0" />
+                      <span className="text-[11px] font-semibold text-green-700">Signed</span>
+                    </div>
+                    <div className="text-[11px] text-[#444]">
+                      <span className="font-medium">{formData.physicianSignature}</span>
+                    </div>
+                    {canSign && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSpecimenSignatureUrl(null);
+                          setPendingPin(null);
+                          setFormData((prev) => ({
+                            ...prev,
+                            physicianSignedAt: null,
+                            physicianSignedBy: null,
+                          }));
+                        }}
+                        className="text-[11px] text-[#999] hover:text-red-500 underline underline-offset-2 transition-colors ml-1"
+                      >
+                        Unsign
+                      </button>
+                    )}
+                  </div>
                 </div>
               ) : canSign ? (
                 <button
@@ -1727,13 +1834,26 @@ export function IVRFormDocument({
             </div>
             <div>
               <FL className="block mb-1">Date</FL>
-              <FormInput
-                value={formData.physicianSignatureDate}
-                onChange={(v) => set("physicianSignatureDate", v)}
-                className="w-full"
-                placeholder="—"
-                disabled={!canEdit}
-              />
+              {formData.physicianSignedAt ? (
+                // Signed-state: mirror the committed timestamp here so the
+                // Date field fills in automatically (matches the permanent
+                // record once saved).
+                <p className="text-[13px] text-[#111] py-0.5 border-b border-[#888] pb-1">
+                  {new Date(formData.physicianSignedAt).toLocaleDateString("en-US", {
+                    year: "numeric",
+                    month: "2-digit",
+                    day: "2-digit",
+                  })}
+                </p>
+              ) : (
+                <FormInput
+                  value={formData.physicianSignatureDate}
+                  onChange={(v) => set("physicianSignatureDate", v)}
+                  className="w-full"
+                  placeholder="—"
+                  disabled={!canEdit}
+                />
+              )}
             </div>
           </div>
         </div>
@@ -1754,11 +1874,19 @@ export function IVRFormDocument({
         order={order}
         providerName={currentUserName ?? "Provider"}
         title="Sign IVR Form"
-        successMessage="IVR form signed. Save the form to persist your signature."
+        successMessage="Signature captured. Click Save to commit."
+        // PIN-verify only — commit happens at Save time via
+        // signIVRWithSpecimen. See OrderFormDocument for matching pattern.
         onSign={(pin) => verifyProviderPin(pin)}
-        onSuccess={() => {
+        onSuccess={(signatureImage, pin) => {
           const now = new Date().toISOString();
-          setFormData((prev) => ({ ...prev, physicianSignedAt: now, physicianSignature: currentUserName ?? "" }));
+          setSpecimenSignatureUrl(signatureImage);
+          setPendingPin(pin);
+          setFormData((prev) => ({
+            ...prev,
+            physicianSignedAt: now,
+            physicianSignature: currentUserName ?? "",
+          }));
         }}
       />
     </div>
