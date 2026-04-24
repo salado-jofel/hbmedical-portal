@@ -10,18 +10,32 @@ import {
 import {
   Loader2,
   CheckCircle2,
-  Lock,
   MapPin,
   Mail,
   Globe,
   Phone,
   Check,
   PenLine,
+  Plus,
+  Minus,
+  X,
+  Search,
 } from "lucide-react";
 import { HBLogo } from "@/app/(components)/HBLogo";
 import { saveOrderForm } from "../(services)/order-write-actions";
-import { verifyProviderPin } from "../(services)/order-workflow-actions";
-import type { IOrderForm, DashboardOrder } from "@/utils/interfaces/orders";
+import {
+  verifyProviderPin,
+  signOrderFormWithSpecimen,
+  unsignOrderForm,
+} from "../(services)/order-workflow-actions";
+import {
+  addOrderItems,
+  updateOrderItemQuantity,
+  deleteOrderItem,
+  getProducts,
+} from "../(services)/order-misc-actions";
+import type { IOrderForm, DashboardOrder, ProductRecord } from "@/utils/interfaces/orders";
+import { isItemsEditable } from "@/utils/constants/orders";
 import type { AiStatus } from "./OrderFormTab";
 import { FormDeficiencyBanner } from "./FormDeficiencyBanner";
 import { FormActionBar } from "./FormActionBar";
@@ -409,7 +423,31 @@ export function OrderFormDocument({
     buildFormState(orderForm, formFallbacks),
   );
   const [isSaving, setIsSaving] = useState(false);
+
+  // Signing does NOT lock the form. Provider can edit + save freely at any
+  // time. The signed state is purely informational (and drives whether the
+  // PDF gets a signature stamped on the next regen). Save gating is all on
+  // Submit Order, not here.
+  const isReadOnly = !canEdit;
+
   const [signModalOpen, setSignModalOpen] = useState(false);
+  // Anchor for the "please sign before saving" auto-scroll behavior.
+  const signatureSectionRef = useRef<HTMLDivElement | null>(null);
+  // Session-only specimen signature — set when SignOrderModal.onSuccess
+  // fires. Renders on-screen at the signature slot so the provider sees
+  // their actual signature, not just a "Signed" badge. Not persisted
+  // anywhere; cleared on page reload (the PDF is the permanent record).
+  const [specimenSignatureUrl, setSpecimenSignatureUrl] = useState<string | null>(
+    orderForm?.physicianSignatureImage ?? null,
+  );
+  // Resync when the server copy changes (AI extraction / parent refresh
+  // after save). Treat the stored column as the source of truth on load.
+  useEffect(() => {
+    setSpecimenSignatureUrl(orderForm?.physicianSignatureImage ?? null);
+  }, [orderForm?.physicianSignatureImage]);
+  // PIN buffered from the sign modal. Save-time commit re-verifies it on
+  // the server as the actual write. Sign is only UI-committed until save.
+  const [pendingPin, setPendingPin] = useState<string | null>(null);
 
   // Re-sync when AI extraction completes
   useEffect(() => {
@@ -418,8 +456,6 @@ export function OrderFormDocument({
     setBaseline(snap);
   }, [orderForm?.id, orderForm?.aiExtractedAt]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const isLocked = orderForm?.isLocked ?? false;
-  const isReadOnly = !canEdit || isLocked;
   const ai = orderForm?.aiExtracted ?? false;
   const aiExtracted = orderForm?.aiExtracted ?? false;
   // Bind to order.wound_type (stable — set at order creation) rather than
@@ -428,9 +464,116 @@ export function OrderFormDocument({
   // morphs when a post-surgical order's provider picks a granular subtype.
   const isPostSurgical = order.wound_type === "post_surgical";
 
+  /* ── Items editing (moved from Overview) ───────────────────────────────
+     Provider manages the product list in the Order Form now. Local draft
+     state survives until the Order Form save, which diffs against the
+     baseline and calls addOrderItems/updateOrderItemQuantity/deleteOrderItem.
+  */
+  type DraftItem = {
+    id: string;
+    productId: string;
+    productName: string;
+    productSku: string;
+    hcpcsCode: string | null;
+    unitPrice: number;
+    quantity: number;
+    isNew?: boolean;
+  };
+  const initialItems: DraftItem[] = (order.all_items ?? []).map((it) => ({
+    id: it.id,
+    productId: it.productId ?? "",
+    productName: it.productName,
+    productSku: it.productSku,
+    hcpcsCode: it.hcpcsCode ?? null,
+    unitPrice: Number(it.unitPrice),
+    quantity: Number(it.quantity),
+  }));
+  const [draftItems, setDraftItems] = useState<DraftItem[]>(initialItems);
+  const [itemsBaseline, setItemsBaseline] = useState<DraftItem[]>(initialItems);
+  const [products, setProducts] = useState<ProductRecord[]>([]);
+  const [productsLoading, setProductsLoading] = useState<boolean>(true);
+  const [productSearch, setProductSearch] = useState<string>("");
+  const itemsEditable = isItemsEditable(order.order_status) && !isReadOnly;
+
+  // Load products catalog once.
+  useEffect(() => {
+    getProducts()
+      .then((p) => setProducts(p))
+      .finally(() => setProductsLoading(false));
+  }, []);
+
+  // Re-sync items when the parent order row changes (e.g. after save ->
+  // refresh, or realtime update bringing fresh server IDs for new items).
+  useEffect(() => {
+    const next: DraftItem[] = (order.all_items ?? []).map((it) => ({
+      id: it.id,
+      productId: it.productId ?? "",
+      productName: it.productName,
+      productSku: it.productSku,
+      hcpcsCode: it.hcpcsCode ?? null,
+      unitPrice: Number(it.unitPrice),
+      quantity: Number(it.quantity),
+    }));
+    setDraftItems(next);
+    setItemsBaseline(next);
+  }, [order.id, order.all_items?.length, JSON.stringify(order.all_items?.map((i) => `${i.id}:${i.quantity}`))]);
+
+  const isItemsDirty = useMemo(
+    () => JSON.stringify(draftItems) !== JSON.stringify(itemsBaseline),
+    [draftItems, itemsBaseline],
+  );
+
+  const filteredProducts = useMemo(() => {
+    const q = productSearch.trim().toLowerCase();
+    if (!q) return products;
+    return products.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        p.sku.toLowerCase().includes(q) ||
+        (p.category ?? "").toLowerCase().includes(q) ||
+        (p.hcpcs_code ?? "").toLowerCase().includes(q),
+    );
+  }, [products, productSearch]);
+
+  function handleAddProductToDraft(prod: ProductRecord) {
+    setDraftItems((prev) => {
+      const existing = prev.find((i) => i.productId === prod.id);
+      if (existing) {
+        return prev.map((i) =>
+          i.productId === prod.id ? { ...i, quantity: i.quantity + 1 } : i,
+        );
+      }
+      return [
+        ...prev,
+        {
+          id: `draft-${prod.id}-${Date.now()}`,
+          productId: prod.id,
+          productName: prod.name,
+          productSku: prod.sku,
+          hcpcsCode: prod.hcpcs_code ?? null,
+          unitPrice: Number(prod.unit_price),
+          quantity: 1,
+          isNew: true,
+        },
+      ];
+    });
+  }
+
+  function handleItemQtyChange(itemId: string, nextQty: number) {
+    if (nextQty < 1) return;
+    setDraftItems((prev) =>
+      prev.map((i) => (i.id === itemId ? { ...i, quantity: nextQty } : i)),
+    );
+  }
+
+  function handleItemRemove(itemId: string) {
+    setDraftItems((prev) => prev.filter((i) => i.id !== itemId));
+  }
+
   const isDirty = useMemo(
-    () => JSON.stringify(formData) !== JSON.stringify(baseline),
-    [formData, baseline],
+    () =>
+      JSON.stringify(formData) !== JSON.stringify(baseline) || isItemsDirty,
+    [formData, baseline, isItemsDirty],
   );
 
   useEffect(() => {
@@ -553,13 +696,94 @@ export function OrderFormDocument({
 
   function handleDiscard() {
     setFormData(baseline);
+    setDraftItems(itemsBaseline);
+    setPendingPin(null);
+    // Restore specimen visibility to match whatever baseline had. If the
+    // baseline was unsigned, nothing should show; if it was signed,
+    // we no longer have the original image (it was session-only) so just
+    // clear and fall back to the signed-badge UI.
+    if (!baseline.physicianSignedAt) {
+      setSpecimenSignatureUrl(null);
+    }
+  }
+
+  async function saveItemsDiff(): Promise<{ success: boolean; error: string | null }> {
+    // Diff draftItems vs itemsBaseline and commit changes via the same
+    // server actions Overview used. Returns first error if any leg fails.
+    const newItems = draftItems.filter((i) => i.isNew);
+    const qtyChanges = draftItems.filter((draft) => {
+      if (draft.isNew) return false;
+      const saved = itemsBaseline.find((s) => s.id === draft.id);
+      return saved && saved.quantity !== draft.quantity;
+    });
+    const deletedIds = itemsBaseline
+      .filter((s) => !draftItems.find((d) => d.id === s.id))
+      .map((s) => s.id);
+
+    if (newItems.length === 0 && qtyChanges.length === 0 && deletedIds.length === 0) {
+      return { success: true, error: null };
+    }
+
+    if (newItems.length > 0) {
+      const res = await addOrderItems(
+        order.id,
+        newItems.map((i) => ({
+          product_id: i.productId,
+          product_name: i.productName,
+          product_sku: i.productSku,
+          hcpcs_code: i.hcpcsCode,
+          unit_price: i.unitPrice,
+          quantity: i.quantity,
+        })),
+      );
+      if (!res.success) return { success: false, error: res.error ?? "Failed to add products." };
+    }
+    for (const item of qtyChanges) {
+      const res = await updateOrderItemQuantity(item.id, item.quantity);
+      if (!res.success) return { success: false, error: `Failed to update qty: ${item.productName}` };
+    }
+    for (const id of deletedIds) {
+      const res = await deleteOrderItem(id);
+      if (!res.success) return { success: false, error: "Failed to remove item." };
+    }
+    return { success: true, error: null };
   }
 
   async function handleSave() {
     setIsSaving(true);
+
+    // Detect sign-state change relative to the last saved baseline.
+    // Signing + unsigning both flip local formData.physicianSignedAt; the
+    // diff against baseline tells us which commit to run after fields save.
+    const wasSigned = !!baseline.physicianSignedAt;
+    const isSigned = !!formData.physicianSignedAt;
+    const signIntent: "sign" | "unsign" | "none" = !wasSigned && isSigned
+      ? "sign"
+      : wasSigned && !isSigned
+        ? "unsign"
+        : "none";
+
+    if (signIntent === "sign" && (!pendingPin || !specimenSignatureUrl)) {
+      setIsSaving(false);
+      toast.error("Signature data missing — please re-open Sign.");
+      return;
+    }
+
+    if (isItemsDirty) {
+      const itemsResult = await saveItemsDiff();
+      if (!itemsResult.success) {
+        setIsSaving(false);
+        toast.error(itemsResult.error ?? "Failed to save products.");
+        return;
+      }
+    }
     const numOrNull = (v: string) => (v.trim() ? Number(v) : null);
     const strOrNull = (v: string) => v.trim() || null;
 
+    // Save form fields. physician_signed_at / physician_signed_by are
+    // intentionally NOT in this payload — signed state is committed via
+    // signOrderFormWithSpecimen (on sign) or unsignOrderForm (on unsign)
+    // below so it never lands in the DB without a PIN check.
     const result = await saveOrderForm(orderId, {
       wound_type: formData.woundType || null,
       surgical_dressing_type: formData.surgicalDressingType,
@@ -604,39 +828,104 @@ export function OrderFormDocument({
       patient_date: strOrNull(formData.patientDate),
       physician_signature: strOrNull(formData.physicianSignature),
       physician_signature_date: strOrNull(formData.physicianSignatureDate),
-      physician_signed_at: formData.physicianSignedAt ?? null,
-      physician_signed_by: formData.physicianSignedBy ?? null,
     });
 
-    setIsSaving(false);
-
     if (!result.success) {
+      setIsSaving(false);
       toast.error(result.error ?? "Failed to save order form.");
       return;
     }
 
-    toast.success("Order form saved.");
-    setBaseline({ ...formData });
-
-    // Generate PDF — badge shows "Generating..." until complete
-    window.dispatchEvent(
-      new CustomEvent("pdf-regenerating", {
-        detail: { type: "order_form", status: "start" },
-      }),
-    );
-    fetch("/api/generate-pdf", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderId, formType: "order_form" }),
-    })
-      .catch((err) => console.error("[OrderForm] PDF generation failed:", err))
-      .finally(() => {
+    // Commit sign-state change (if any) — each action also regenerates
+    // the Order Form PDF with the correct signed/unsigned rendering.
+    if (signIntent === "sign") {
+      window.dispatchEvent(
+        new CustomEvent("pdf-regenerating", {
+          detail: { type: "order_form", status: "start" },
+        }),
+      );
+      const signRes = await signOrderFormWithSpecimen(
+        orderId,
+        pendingPin as string,
+        specimenSignatureUrl as string,
+      );
+      window.dispatchEvent(
+        new CustomEvent("pdf-regenerating", {
+          detail: { type: "order_form", status: "done" },
+        }),
+      );
+      if (!signRes.success) {
+        setIsSaving(false);
+        toast.error(signRes.error ?? "Sign failed — PIN may be wrong.");
+        return;
+      }
+    } else if (signIntent === "unsign") {
+      window.dispatchEvent(
+        new CustomEvent("pdf-regenerating", {
+          detail: { type: "order_form", status: "start" },
+        }),
+      );
+      const unsignRes = await unsignOrderForm(orderId);
+      window.dispatchEvent(
+        new CustomEvent("pdf-regenerating", {
+          detail: { type: "order_form", status: "done" },
+        }),
+      );
+      if (!unsignRes.success) {
+        setIsSaving(false);
+        toast.error(unsignRes.error ?? "Failed to unsign.");
+        return;
+      }
+    } else {
+      // Fields-only save — regenerate the PDF via the standard endpoint.
+      // Delivery Invoice also regens when item lines changed (its line
+      // items draw from order_items).
+      const pdfTargets: Array<{ type: string; formType: string }> = [
+        { type: "order_form", formType: "order_form" },
+      ];
+      if (isItemsDirty) {
+        pdfTargets.push({
+          type: "delivery_invoice",
+          formType: "delivery_invoice",
+        });
+      }
+      for (const { type, formType } of pdfTargets) {
         window.dispatchEvent(
-          new CustomEvent("pdf-regenerating", {
-            detail: { type: "order_form", status: "done" },
-          }),
+          new CustomEvent("pdf-regenerating", { detail: { type, status: "start" } }),
         );
-      });
+        fetch("/api/generate-pdf", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orderId, formType }),
+        })
+          .catch((err) =>
+            console.error(`[OrderForm] ${formType} PDF gen failed:`, err),
+          )
+          .finally(() => {
+            window.dispatchEvent(
+              new CustomEvent("pdf-regenerating", { detail: { type, status: "done" } }),
+            );
+          });
+      }
+    }
+
+    setIsSaving(false);
+    toast.success(
+      signIntent === "sign"
+        ? "Order form signed + saved."
+        : signIntent === "unsign"
+          ? "Unsigned + saved."
+          : "Order form saved.",
+    );
+    setBaseline({ ...formData });
+    setItemsBaseline(draftItems);
+    // Clear the buffered PIN once committed; keep specimenSignatureUrl so
+    // the signature stays visible on-screen for the current session. On
+    // unsign save, clear the specimen too so the UI is consistent.
+    setPendingPin(null);
+    if (signIntent === "unsign") {
+      setSpecimenSignatureUrl(null);
+    }
 
     if (onSaved && orderForm) {
       const numOrNull2 = (v: string) => (v.trim() ? Number(v) : null);
@@ -691,7 +980,7 @@ export function OrderFormDocument({
     }
   }
 
-  const orderItems = order.all_items ?? [];
+  // orderItems replaced by editable draftItems state above.
 
   /* ── Render ── */
   return (
@@ -714,14 +1003,6 @@ export function OrderFormDocument({
           <CheckCircle2 className="w-4 h-4 shrink-0" />
           AI extraction complete — highlighted fields were auto-filled. Review
           before signing.
-        </div>
-      )}
-
-      {/* ── Locked notice ── */}
-      {isLocked && (
-        <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 border-b border-gray-200 text-xs text-gray-500">
-          <Lock className="w-4 h-4 shrink-0" />
-          This form is locked after signing and cannot be edited.
         </div>
       )}
 
@@ -1476,7 +1757,7 @@ export function OrderFormDocument({
           </div>
         </DocRow>
 
-        {/* ── 17. PRODUCT DISPENSED ── */}
+        {/* ── 17. PRODUCT DISPENSED (editable) ── */}
         <div className="py-2 border-b border-[#e5e5e5]">
           <FL className="block mb-0.5">Product Dispensed</FL>
           <p className="text-[10px] text-[#777] italic mb-2 leading-tight">
@@ -1484,7 +1765,7 @@ export function OrderFormDocument({
             receipt)
           </p>
 
-          {orderItems.length > 0 ? (
+          {draftItems.length > 0 ? (
             <table className="w-full text-[12px] border-collapse">
               <thead>
                 <tr className="border-b border-[#999]">
@@ -1494,7 +1775,7 @@ export function OrderFormDocument({
                   <th className="text-left py-1.5 font-semibold text-[#333]">
                     Product
                   </th>
-                  <th className="text-center py-1.5 font-semibold text-[#333] w-12">
+                  <th className="text-center py-1.5 font-semibold text-[#333] w-28">
                     Qty
                   </th>
                   <th className="text-right py-1.5 font-semibold text-[#333] w-24">
@@ -1503,24 +1784,89 @@ export function OrderFormDocument({
                   <th className="text-right py-1.5 font-semibold text-[#333] w-24">
                     Total
                   </th>
+                  {itemsEditable && <th className="w-8" />}
                 </tr>
               </thead>
               <tbody>
-                {orderItems.map((item) => (
-                  <tr key={item.id} className="border-b border-[#e5e5e5]">
-                    <td className="py-1.5 font-mono text-[11px] text-[#666]">
-                      {item.productSku}
-                    </td>
-                    <td className="py-1.5">{item.productName}</td>
-                    <td className="py-1.5 text-center">{item.quantity}</td>
-                    <td className="py-1.5 text-right font-mono">
-                      ${item.unitPrice.toFixed(2)}
-                    </td>
-                    <td className="py-1.5 text-right font-mono">
-                      ${(item.unitPrice * item.quantity).toFixed(2)}
-                    </td>
-                  </tr>
-                ))}
+                {draftItems.map((item) => {
+                  const baseline = itemsBaseline.find((b) => b.id === item.id);
+                  const qtyChanged = !item.isNew && baseline && baseline.quantity !== item.quantity;
+                  return (
+                    <tr
+                      key={item.id}
+                      className={cn(
+                        "border-b border-[#e5e5e5]",
+                        item.isNew && "bg-emerald-50",
+                        qtyChanged && "bg-amber-50",
+                      )}
+                    >
+                      <td className="py-1.5 font-mono text-[11px] text-[#666]">
+                        {item.productSku}
+                      </td>
+                      <td className="py-1.5">
+                        <div className="flex items-center gap-2">
+                          <span>{item.productName}</span>
+                          {item.hcpcsCode && (
+                            <span className="text-[10px] font-mono font-medium text-[var(--blue)] bg-[var(--blue-lt)] rounded px-1.5 py-0.5">
+                              {item.hcpcsCode}
+                            </span>
+                          )}
+                          {item.isNew && (
+                            <span className="text-[10px] font-medium text-emerald-700 bg-emerald-100 rounded px-1.5 py-0.5">
+                              New
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-1.5 text-center">
+                        {itemsEditable ? (
+                          <div className="inline-flex items-center gap-1 border border-[#ccc] rounded overflow-hidden">
+                            <button
+                              type="button"
+                              onClick={() => handleItemQtyChange(item.id, item.quantity - 1)}
+                              disabled={item.quantity <= 1 || isSaving}
+                              className="h-6 w-6 flex items-center justify-center hover:bg-[#eee] disabled:opacity-40"
+                            >
+                              <Minus className="w-3 h-3" />
+                            </button>
+                            <span className="px-2 text-[13px] font-medium min-w-[24px] text-center">
+                              {item.quantity}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleItemQtyChange(item.id, item.quantity + 1)}
+                              disabled={isSaving}
+                              className="h-6 w-6 flex items-center justify-center hover:bg-[#eee] disabled:opacity-40"
+                            >
+                              <Plus className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ) : (
+                          <span>{item.quantity}</span>
+                        )}
+                      </td>
+                      <td className="py-1.5 text-right font-mono">
+                        ${item.unitPrice.toFixed(2)}
+                      </td>
+                      <td className="py-1.5 text-right font-mono">
+                        ${(item.unitPrice * item.quantity).toFixed(2)}
+                      </td>
+                      {itemsEditable && (
+                        <td className="py-1.5 text-right">
+                          <button
+                            type="button"
+                            onClick={() => handleItemRemove(item.id)}
+                            disabled={isSaving}
+                            className="w-6 h-6 flex items-center justify-center rounded text-[#999] hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
+                            title="Remove"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-[#333]">
@@ -1532,22 +1878,120 @@ export function OrderFormDocument({
                   </td>
                   <td className="py-2 text-right font-semibold text-[14px] text-[#0d7a6b] font-mono">
                     $
-                    {orderItems
+                    {draftItems
                       .reduce((sum, i) => sum + i.unitPrice * i.quantity, 0)
                       .toFixed(2)}
                   </td>
+                  {itemsEditable && <td />}
                 </tr>
                 <tr>
-                  <td colSpan={5} className="py-1 text-[10px] text-[#999]">
-                    {orderItems.length} item(s) ·{" "}
-                    {orderItems.reduce((sum, i) => sum + i.quantity, 0)} unit(s)
+                  <td colSpan={itemsEditable ? 6 : 5} className="py-1 text-[10px] text-[#999]">
+                    {draftItems.length} item(s) ·{" "}
+                    {draftItems.reduce((sum, i) => sum + i.quantity, 0)} unit(s)
+                    {isItemsDirty && (
+                      <span className="ml-2 text-amber-600 font-medium">
+                        · Unsaved changes — save the Order Form to commit
+                      </span>
+                    )}
                   </td>
                 </tr>
               </tfoot>
             </table>
           ) : (
             <div className="py-3 text-center text-xs text-[#999] border border-dashed border-[#ccc] rounded mt-2">
-              No products added — add products from the Overview tab
+              {itemsEditable
+                ? "No products added — use the catalog below to add products."
+                : "No products on this order."}
+            </div>
+          )}
+
+          {/* Catalog picker — only shown while the status allows editing.
+              Search matches name/SKU/category/HCPCS. Adding stays as draft
+              until the Order Form is saved. */}
+          {itemsEditable && (
+            <div className="mt-4 pt-3 border-t border-[#e5e5e5]">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <FL className="block">Browse catalog</FL>
+                  <p className="text-[10px] text-[#777] italic leading-tight">
+                    Click <Plus className="inline w-3 h-3 -mt-0.5" /> to add. Changes save when you click Save.
+                  </p>
+                </div>
+                <div className="relative">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#999]" />
+                  <input
+                    type="text"
+                    value={productSearch}
+                    onChange={(e) => setProductSearch(e.target.value)}
+                    placeholder="Search SKU, name, HCPCS…"
+                    className="h-7 w-56 pl-7 pr-2 text-[12px] border border-[#ccc] rounded focus:border-[var(--navy)] focus:outline-none"
+                  />
+                </div>
+              </div>
+              {productsLoading ? (
+                <div className="py-4 text-center text-xs text-[#999]">
+                  <Loader2 className="w-4 h-4 inline animate-spin mr-1" />
+                  Loading catalog…
+                </div>
+              ) : filteredProducts.length === 0 ? (
+                <div className="py-3 text-center text-xs text-[#999]">
+                  No products match your search.
+                </div>
+              ) : (
+                <div className="max-h-64 overflow-y-auto border border-[#e5e5e5] rounded divide-y divide-[#f0f0f0]">
+                  {filteredProducts.map((p) => {
+                    const inDraft = draftItems.find((d) => d.productId === p.id);
+                    return (
+                      <div
+                        key={p.id}
+                        className={cn(
+                          "flex items-center gap-3 py-1.5 px-2 text-[12px]",
+                          inDraft ? "bg-[#f0fdf4]" : "hover:bg-[#f8fafc]",
+                        )}
+                      >
+                        <span className="font-mono text-[11px] text-[#666] w-20 shrink-0">
+                          {p.sku}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-[var(--navy)] truncate">
+                            {p.name}
+                          </div>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            {p.category && (
+                              <span className="text-[10px] text-[#94a3b8] bg-[#f1f5f9] rounded px-1.5 py-0.5">
+                                {p.category}
+                              </span>
+                            )}
+                            {p.hcpcs_code && (
+                              <span className="text-[10px] font-mono font-medium text-[var(--blue)] bg-[var(--blue-lt)] rounded px-1.5 py-0.5">
+                                {p.hcpcs_code}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <span className="font-mono text-[12px] text-gray-700 w-20 text-right shrink-0">
+                          ${Number(p.unit_price).toFixed(2)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleAddProductToDraft(p)}
+                          disabled={isSaving}
+                          className={cn(
+                            "w-7 h-7 rounded flex items-center justify-center shrink-0 text-white transition-colors",
+                            inDraft
+                              ? "bg-[var(--teal)] hover:bg-[var(--teal)]/80"
+                              : "bg-[var(--navy)] hover:bg-[var(--navy)]/80",
+                            "disabled:opacity-40",
+                          )}
+                          title={inDraft ? `In order (qty ${inDraft.quantity})` : "Add to order"}
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1580,87 +2024,129 @@ export function OrderFormDocument({
           <span className="text-[13px] text-[#444]">weeks</span>
         </DocRow>
 
-        {/* ── 19. SIGNATURE ── */}
-        <div className="pt-4 mt-2 grid grid-cols-2 gap-6">
+        {/* ── 19. SIGNATURE ──
+            Layout mirrors the generated PDF: value sits on the line,
+            tiny caption label below. Fixed cell height keeps underlines
+            aligned across signed / unsigned states. */}
+        <div ref={signatureSectionRef} className="pt-4 mt-2 grid grid-cols-[1fr_220px] gap-8">
+          {/* SIGNATURE CELL */}
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-wide text-[#555] mb-1">
-              Physicians Signature
-            </p>
-            {formData.physicianSignedAt ? (
-              <div className="flex items-center gap-2 py-1">
-                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-green-50 border border-green-200">
-                  <Check className="w-3.5 h-3.5 text-green-600 shrink-0" />
-                  <span className="text-[11px] font-semibold text-green-700">
-                    Signed
+            <div className="h-12 flex items-end border-b border-[#333] pb-1">
+              {formData.physicianSignedAt ? (
+                specimenSignatureUrl ? (
+                  <img
+                    src={specimenSignatureUrl}
+                    alt="Provider signature"
+                    className="h-10 object-contain object-left"
+                  />
+                ) : (
+                  <span className="text-[15px] text-[#111] italic">
+                    {formData.physicianSignature || "Signed"}
                   </span>
+                )
+              ) : canSign ? (
+                <button
+                  type="button"
+                  onClick={() => setSignModalOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-[#0f2d4a] text-[#0f2d4a] text-[11px] font-semibold hover:bg-[#0f2d4a] hover:text-white transition-colors"
+                >
+                  <PenLine className="w-3.5 h-3.5 shrink-0" />
+                  Sign
+                </button>
+              ) : (
+                <span className="text-[11px] text-[#999] italic">
+                  Awaiting provider signature
+                </span>
+              )}
+            </div>
+            <div className="flex items-center justify-between mt-1">
+              <span className="text-[9px] font-semibold uppercase tracking-wide text-[#777]">
+                Physicians Signature
+              </span>
+              {formData.physicianSignedAt && (
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-green-50 border border-green-200">
+                    <Check className="w-3 h-3 text-green-600 shrink-0" />
+                    <span className="text-[10px] font-semibold text-green-700">Signed</span>
+                  </div>
+                  {canSign && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSpecimenSignatureUrl(null);
+                        setPendingPin(null);
+                        setFormData((prev) => ({
+                          ...prev,
+                          physicianSignedAt: null,
+                          physicianSignedBy: null,
+                        }));
+                      }}
+                      className="text-[10px] text-[#999] hover:text-red-500 underline underline-offset-2 transition-colors"
+                    >
+                      Unsign
+                    </button>
+                  )}
                 </div>
-                <div className="text-[11px] text-[#444]">
-                  <span className="font-medium">{formData.physicianSignature}</span>
-                  <span className="text-[#999] ml-1">
-                    {new Date(formData.physicianSignedAt!).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                      year: "numeric",
-                    })}
-                  </span>
-                </div>
-                {canSign && (
-                  <button
-                    type="button"
-                    onClick={() => set("physicianSignedAt", null)}
-                    className="text-[11px] text-[#999] hover:text-red-500 underline underline-offset-2 transition-colors ml-1"
-                  >
-                    Unsign
-                  </button>
-                )}
-              </div>
-            ) : canSign ? (
-              <button
-                type="button"
-                onClick={() => setSignModalOpen(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-[#0f2d4a] text-[#0f2d4a] text-[11px] font-semibold hover:bg-[#0f2d4a] hover:text-white transition-colors"
-              >
-                <PenLine className="w-3.5 h-3.5 shrink-0" />
-                Sign
-              </button>
-            ) : (
-              <p className="text-[11px] text-[#999] italic py-1">
-                Awaiting provider signature
-              </p>
-            )}
-            <p className="text-[10px] text-[#777] mt-0.5">
-              Authorized Provider Signature
-            </p>
+              )}
+            </div>
           </div>
+
+          {/* DATE SIGNED CELL */}
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-wide text-[#555] mb-1">
-              Date
-            </p>
-            <FormInput
-              value={formData.physicianSignatureDate}
-              onChange={(v) => set("physicianSignatureDate", v)}
-              placeholder="—"
-            />
+            <div className="h-12 flex items-end border-b border-[#333] pb-1">
+              {formData.physicianSignedAt ? (
+                <span className="text-[13px] font-semibold text-[#111]">
+                  {new Date(formData.physicianSignedAt).toLocaleDateString("en-US", {
+                    year: "numeric",
+                    month: "2-digit",
+                    day: "2-digit",
+                  })}
+                </span>
+              ) : (
+                <input
+                  type="text"
+                  value={formData.physicianSignatureDate}
+                  onChange={(e) => set("physicianSignatureDate", e.target.value)}
+                  placeholder="—"
+                  className="w-full text-[13px] bg-transparent outline-none placeholder:text-[#bbb]"
+                />
+              )}
+            </div>
+            <div className="mt-1 text-[9px] font-semibold uppercase tracking-wide text-[#777]">
+              Date Signed
+            </div>
           </div>
+
+          {/* PATIENT NAME CELL */}
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-wide text-[#555] mb-1">
+            <div className="h-12 flex items-end border-b border-[#333] pb-1">
+              <input
+                type="text"
+                value={formData.patientName}
+                onChange={(e) => set("patientName", e.target.value)}
+                placeholder="—"
+                className="w-full text-[13px] font-semibold text-[#111] bg-transparent outline-none placeholder:text-[#bbb]"
+              />
+            </div>
+            <div className="mt-1 text-[9px] font-semibold uppercase tracking-wide text-[#777]">
               Patient Name
-            </p>
-            <FormInput
-              value={formData.patientName}
-              onChange={(v) => set("patientName", v)}
-              placeholder="—"
-            />
+            </div>
           </div>
+
+          {/* DATE OF SERVICE CELL */}
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-wide text-[#555] mb-1">
-              Date
-            </p>
-            <FormInput
-              value={formData.patientDate}
-              onChange={(v) => set("patientDate", v)}
-              placeholder="—"
-            />
+            <div className="h-12 flex items-end border-b border-[#333] pb-1">
+              <input
+                type="text"
+                value={formData.patientDate}
+                onChange={(e) => set("patientDate", e.target.value)}
+                placeholder="—"
+                className="w-full text-[13px] font-semibold text-[#111] bg-transparent outline-none placeholder:text-[#bbb]"
+              />
+            </div>
+            <div className="mt-1 text-[9px] font-semibold uppercase tracking-wide text-[#777]">
+              Date of Service
+            </div>
           </div>
         </div>
       </div>
@@ -1671,11 +2157,22 @@ export function OrderFormDocument({
         order={order}
         providerName={currentUserName ?? "Provider"}
         title="Sign Order Form"
-        successMessage="Order form signed. Save the form to persist your signature."
+        successMessage="Signature captured. Click Save to commit."
+        // Modal only verifies the PIN — no DB write here. The actual
+        // sign is committed when the provider clicks Save on the form,
+        // which runs the form-fields save + signOrderFormWithSpecimen.
         onSign={(pin) => verifyProviderPin(pin)}
-        onSuccess={() => {
+        onSuccess={(signatureImage, pin) => {
           const now = new Date().toISOString();
-          setFormData((prev) => ({ ...prev, physicianSignedAt: now, physicianSignature: currentUserName ?? "" }));
+          setSpecimenSignatureUrl(signatureImage);
+          setPendingPin(pin);
+          // Flip local signed state but leave baseline untouched so the
+          // Save bar appears until the user commits.
+          setFormData((prev) => ({
+            ...prev,
+            physicianSignedAt: now,
+            physicianSignature: currentUserName ?? "",
+          }));
         }}
       />
     </div>

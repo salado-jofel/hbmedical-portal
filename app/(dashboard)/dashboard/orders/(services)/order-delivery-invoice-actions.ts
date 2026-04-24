@@ -12,7 +12,7 @@ import type {
   RentOrPurchase,
   SignerRelationship,
 } from "@/utils/interfaces/orders";
-import { ORDERS_PATH, generateOrderPDFs } from "./_shared";
+import { ORDERS_PATH } from "./_shared";
 import {
   DEFAULT_ACKNOWLEDGEMENTS,
   composeDeliveryInvoicePrefill,
@@ -89,24 +89,31 @@ export async function getOrderDeliveryInvoice(
         .order("created_at", { ascending: true }),
     ]);
 
-    if (invoiceRes.data) {
-      return { invoice: rowToInterface(invoiceRes.data), error: null };
-    }
-
     const order = orderRes.data as any;
     const ivr = ivrRes.data as any;
     if (!order) {
       return { invoice: null, error: "Order not found." };
     }
 
-    // Compose a draft via the shared helper so the PDF generator produces
-    // identical output when no row has been saved yet. rowToInterface flips
-    // the DB-style (snake_case, null id) shape into the camelCase UI shape.
+    // Always re-derive line items from order_items so the invoice stays in
+    // sync as products are added / removed / re-quantified on the Order Form.
     const prefill = composeDeliveryInvoicePrefill(
       order,
       ivr,
       (itemsRes.data ?? []) as any[],
     );
+
+    // Saved row supplies user edits (addresses, acks, sigs). Line items
+    // come from order_items so the invoice is never stale vs the order.
+    if (invoiceRes.data) {
+      return {
+        invoice: rowToInterface({
+          ...invoiceRes.data,
+          line_items: prefill.line_items,
+        }),
+        error: null,
+      };
+    }
 
     return {
       invoice: rowToInterface({
@@ -169,7 +176,9 @@ export async function upsertOrderDeliveryInvoice(
       doctor_name:         input.doctorName,
       delivery_method:     input.deliveryMethod,
       line_items:          input.lineItems ?? [],
-      rent_or_purchase:    input.rentOrPurchase,
+      // Rental is no longer offered — always store "purchase" regardless of
+      // what the UI sends, so legacy "rent" rows are corrected on next save.
+      rent_or_purchase:    "purchase",
       due_copay:           input.dueCopay,
       total_received:      input.totalReceived,
       acknowledgements:    input.acknowledgements ?? DEFAULT_ACKNOWLEDGEMENTS,
@@ -186,12 +195,10 @@ export async function upsertOrderDeliveryInvoice(
       return { success: false, invoice: null, error: error.message };
     }
 
-    // Regenerate the invoice PDF in the background; intentionally not awaited
-    // so the form save feels instant. PayoutsTab-style "regenerating" badge in
-    // the modal is driven by the existing pdf-regenerating event mechanism.
-    generateOrderPDFs(orderId, ["delivery_invoice"]).catch((err) =>
-      console.error("[upsertOrderDeliveryInvoice] PDF regen:", err),
-    );
+    // PDF regen is fired by the client after this action returns so the
+    // right-side card can flip to its blue "Generating…" state via the
+    // pdf-regenerating CustomEvent pattern (see InvoiceDocument.save).
+    // Doing it here too would cause a double regen.
 
     revalidatePath(ORDERS_PATH);
 

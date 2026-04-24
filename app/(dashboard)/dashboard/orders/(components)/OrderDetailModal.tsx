@@ -1012,10 +1012,10 @@ export function OrderDetailModal({
 
   async function handleSubmitOrder() {
     if (draftItems.length === 0) {
-      toast.error("Please add at least one product before submitting.", {
+      toast.error("Add at least one product in the Order Form tab before submitting.", {
         duration: 4000,
       });
-      setTab("overview");
+      setTab("order-form");
       return;
     }
     if (hasAnyUnsavedChanges) {
@@ -1046,8 +1046,8 @@ export function OrderDetailModal({
 
   async function handleSignAndSubmit() {
     if (draftItems.length === 0) {
-      toast.error("Add at least one product in the Overview tab before signing.", { duration: 4000 });
-      setTab("overview");
+      toast.error("Add at least one product in the Order Form tab before signing.", { duration: 4000 });
+      setTab("order-form");
       return;
     }
     if (hasAnyUnsavedChanges) {
@@ -1612,20 +1612,10 @@ export function OrderDetailModal({
                       isActive={tab === "overview"}
                       order={order}
                       liveOrder={liveOrder}
-                      canEdit={canEdit}
-                      status={status}
-                      draftItems={draftItems}
-                      savedItems={savedItems}
-                      draftNotes={draftNotes}
-                      isOverviewDirty={isOverviewDirty}
-                      isSavingOverview={isSavingOverview}
-                      orderTotal={orderTotal}
-                      setDraftNotes={setDraftNotes}
-                      setItemToDelete={setItemToDelete}
-                      draftQtyChange={draftQtyChange}
-                      handleDiscardOverview={handleDiscardOverview}
-                      handleSaveOverview={handleSaveOverview}
-                      handleAddProductToDraft={handleAddProductToDraft}
+                      documents={localDocuments}
+                      orderForm={orderForm}
+                      ivrData={ivrData}
+                      history={history}
                     />
                     <OrderFormTab
                       isActive={tab === "order-form"}

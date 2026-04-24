@@ -4,6 +4,7 @@ import {
   Page,
   Text,
   View,
+  Image,
   StyleSheet,
 } from "@react-pdf/renderer";
 import { PDFHeader } from "./PDFHeader";
@@ -170,11 +171,14 @@ const KNOWN_PRODUCTS = [
 export function IVRFormPDF({
   order,
   ivr,
+  signatureImage,
 }: {
   order: Record<string, unknown>;
   ivr: Record<string, unknown> | null;
   form?: Record<string, unknown> | null;
   physicianName?: string | null;
+  /** PNG data URL rendered at the signature spot when present. */
+  signatureImage?: string;
 }) {
   console.log("[IVRFormPDF] ivr received:", ivr ? "YES" : "NO (null)");
   console.log("[IVRFormPDF] ivr.facility_name:", ivr?.facility_name ?? "(null)");
@@ -586,24 +590,55 @@ export function IVRFormPDF({
             and/or other patient information referenced on the form relating to the above-referenced patient. This
             information is for verifying insurance coverage, seeking reimbursement, and the sole purpose of claim support.
           </Text>
-          <View style={s.twoCol}>
-            <View style={s.col}>
-              <View style={s.sigLine} />
-              <Text style={[s.label, { marginTop: 2 }]}>Physician or Authorized Signature</Text>
-              {physicianSig ? (
-                <Text style={{ fontSize: 8, fontFamily: "Helvetica-Oblique", marginTop: 2 }}>
-                  {String(physicianSig)}
-                </Text>
-              ) : null}
-            </View>
-            <View style={{ width: 140 }}>
-              <View style={s.sigLine} />
-              <Text style={[s.label, { marginTop: 2 }]}>Date</Text>
-              {physicianSigDate ? (
-                <Text style={{ fontSize: 8, marginTop: 2 }}>{String(physicianSigDate)}</Text>
-              ) : null}
-            </View>
-          </View>
+          {(() => {
+            const signedAt = (ivr as any)?.physician_signed_at as string | null | undefined;
+            const signedDateText = signedAt
+              ? new Date(signedAt).toLocaleDateString("en-US", {
+                  year: "numeric",
+                  month: "2-digit",
+                  day: "2-digit",
+                })
+              : physicianSigDate
+                ? String(physicianSigDate)
+                : null;
+
+            const CELL_HEIGHT = 32;
+            const cellBox = {
+              height: CELL_HEIGHT,
+              justifyContent: "flex-end" as const,
+              borderBottom: `0.75pt solid #333`,
+              paddingBottom: 1,
+            };
+
+            return (
+              <View style={s.twoCol}>
+                <View style={s.col}>
+                  <View style={[cellBox, { alignItems: "flex-start" }]}>
+                    {signatureImage ? (
+                      <Image src={signatureImage} style={{ height: CELL_HEIGHT - 4 }} />
+                    ) : !signatureImage && physicianSig ? (
+                      <Text style={{ fontSize: 9, fontFamily: "Helvetica-Oblique" }}>
+                        {String(physicianSig)}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <Text style={[s.label, { marginTop: 2 }]}>
+                    Physician or Authorized Signature
+                  </Text>
+                </View>
+                <View style={{ width: 140 }}>
+                  <View style={cellBox}>
+                    {signedDateText ? (
+                      <Text style={{ fontSize: 9, fontFamily: "Helvetica-Bold" }}>
+                        {signedDateText}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <Text style={[s.label, { marginTop: 2 }]}>Date Signed</Text>
+                </View>
+              </View>
+            );
+          })()}
         </View>
 
         {/* ── 11. FOOTER ── */}

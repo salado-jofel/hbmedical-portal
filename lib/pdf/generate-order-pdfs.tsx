@@ -18,10 +18,27 @@ export interface GenerateOrderPdfResult {
   error?: string;
 }
 
+export interface GenerateOrderPdfOptions {
+  /**
+   * In-memory specimen signature (PNG data URL). Embedded at the physician
+   * signature spot on Order Form / IVR PDFs when present. Not persisted —
+   * provided by the sign action so this one-shot render captures the
+   * signature before it's discarded.
+   */
+  signatureImage?: string;
+  /**
+   * Bypass the is_locked guard. Used by the sign action itself so it can
+   * produce the signed PDF in the same transaction as the lock flip.
+   * All other callers leave this false — signed forms keep their frozen PDF.
+   */
+  ignoreLock?: boolean;
+}
+
 export async function generateOrderPdf(
   orderId: string,
   formType: OrderPdfFormType,
   adminClient: SupabaseClient = createAdminClient(),
+  options: GenerateOrderPdfOptions = {},
 ): Promise<GenerateOrderPdfResult> {
   try {
     const [orderRes, formRes, ivrRes, hcfaRes, deliveryInvoiceRes] = await Promise.all([
@@ -54,6 +71,13 @@ export async function generateOrderPdf(
       return { success: false, formType, error: "Order not found" };
     }
 
+    // No lock guard — saves always produce a fresh PDF, signed or not.
+    // The sign action still passes a signatureImage in-memory for its
+    // one-shot render; subsequent saves rebuild the PDF without it
+    // (because we don't persist the signature), which is the intended
+    // behavior: editing after signing invalidates the signed visual, and
+    // the provider re-signs to get a new stamped PDF.
+
     let pdfPhysicianName: string | null = null;
     if (formType === "ivr") {
       const providerId = order.assigned_provider_id || order.created_by;
@@ -74,13 +98,33 @@ export async function generateOrderPdf(
     let fileName: string;
     let documentType: string;
 
+    // Prefer the in-memory override (sign action's one-shot render) over
+    // the persisted column; fall back to the persisted column so ordinary
+    // saves / regens also embed the signature once it's been committed.
+    const persistedOrderFormSig =
+      ((form as any)?.physician_signature_image as string | null | undefined) ?? undefined;
+    const persistedIvrSig =
+      ((ivr as any)?.physician_signature_image as string | null | undefined) ?? undefined;
+
     if (formType === "order_form") {
-      pdfBuffer = await renderToBuffer(<OrderFormPDF order={order} form={form} />);
+      pdfBuffer = await renderToBuffer(
+        <OrderFormPDF
+          order={order}
+          form={form}
+          signatureImage={options.signatureImage ?? persistedOrderFormSig}
+        />,
+      );
       fileName = `order-form-${order.order_number}.pdf`;
       documentType = "order_form";
     } else if (formType === "ivr") {
       pdfBuffer = await renderToBuffer(
-        <IVRFormPDF order={order} ivr={ivr} form={form} physicianName={pdfPhysicianName} />,
+        <IVRFormPDF
+          order={order}
+          ivr={ivr}
+          form={form}
+          physicianName={pdfPhysicianName}
+          signatureImage={options.signatureImage ?? persistedIvrSig}
+        />,
       );
       fileName = `ivr-form-${order.order_number}.pdf`;
       documentType = "additional_ivr";
@@ -90,16 +134,17 @@ export async function generateOrderPdf(
       fileName = `hcfa-1500-${order.order_number}.pdf`;
       documentType = "form_1500";
     } else if (formType === "delivery_invoice") {
-      // If the user hasn't saved the invoice form yet, the row won't exist —
-      // but the on-screen form still renders a prefill from order_items /
-      // order_ivr. Compose the same prefill here so the generated PDF
-      // mirrors what's on screen instead of emitting blanks.
+      // Always re-derive line items from order_items so the PDF matches the
+      // current order. Saved row provides user edits (addresses, acks) when
+      // it exists; falls back to full prefill when it doesn't.
+      const prefill = composeDeliveryInvoicePrefill(
+        order as any,
+        ivr as any,
+        ((order as any).order_items ?? []) as any[],
+      );
       const invoicePayload = deliveryInvoice
-        ?? composeDeliveryInvoicePrefill(
-          order as any,
-          ivr as any,
-          ((order as any).order_items ?? []) as any[],
-        );
+        ? { ...deliveryInvoice, line_items: prefill.line_items }
+        : prefill;
       pdfBuffer = await renderToBuffer(
         <DeliveryInvoicePDF order={order} invoice={invoicePayload} />,
       );

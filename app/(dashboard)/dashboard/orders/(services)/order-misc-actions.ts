@@ -19,7 +19,9 @@ import {
   getUserFacilityId,
   insertOrderHistory,
   createNotifications,
+  generateOrderPDFs,
 } from "./_shared";
+import { isItemsEditable } from "@/utils/constants/orders";
 
 /* -------------------------------------------------------------------------- */
 /* addShippingInfo                                                            */
@@ -141,8 +143,12 @@ export async function addOrderItems(
       .maybeSingle();
 
     if (!order) return { success: false, error: "Order not found." };
-    if (order.order_status !== "draft") {
-      return { success: false, error: "Products can only be added to draft orders." };
+    if (!isItemsEditable(order.order_status)) {
+      return {
+        success: false,
+        error:
+          "Products can only be added while the order is a draft, awaiting signature, or in Needs More Info.",
+      };
     }
 
     const itemPayloads = items.map((item) => ({
@@ -174,6 +180,10 @@ export async function addOrderItems(
       null,
       userId,
       items.map((i) => `${i.product_name} ×${i.quantity}`).join(", "),
+    );
+    // Keep the invoice PDF in sync with the current order items.
+    generateOrderPDFs(orderId, ["delivery_invoice"]).catch((err) =>
+      console.error("[addOrderItems] invoice PDF regen:", err),
     );
     revalidatePath(ORDERS_PATH);
     return { success: true, error: null };
@@ -207,8 +217,12 @@ export async function updateOrderItemQuantity(
     if (!item) return { success: false, error: "Item not found." };
     const rawOrders = (item as { orders: unknown }).orders;
     const orderRecord = Array.isArray(rawOrders) ? rawOrders[0] : rawOrders;
-    if ((orderRecord as { order_status: string } | null)?.order_status !== "draft") {
-      return { success: false, error: "Can only edit items on draft orders." };
+    const status = (orderRecord as { order_status: string } | null)?.order_status;
+    if (!isItemsEditable(status)) {
+      return {
+        success: false,
+        error: "Items are locked once the order moves into manufacturer review or beyond.",
+      };
     }
 
     const { error } = await adminClient
@@ -222,6 +236,9 @@ export async function updateOrderItemQuantity(
     }
 
     await insertOrderHistory(adminClient, (item as { order_id: string }).order_id, "Item quantity updated", null, null, userId);
+    generateOrderPDFs((item as { order_id: string }).order_id, ["delivery_invoice"]).catch((err) =>
+      console.error("[updateOrderItemQuantity] invoice PDF regen:", err),
+    );
     revalidatePath(ORDERS_PATH);
     return { success: true, error: null };
   } catch (err) {
@@ -250,8 +267,12 @@ export async function deleteOrderItem(
     if (!item) return { success: false, error: "Item not found." };
     const rawOrders2 = (item as { orders: unknown }).orders;
     const orderRecord2 = Array.isArray(rawOrders2) ? rawOrders2[0] : rawOrders2;
-    if ((orderRecord2 as { order_status: string } | null)?.order_status !== "draft") {
-      return { success: false, error: "Can only remove items from draft orders." };
+    const status2 = (orderRecord2 as { order_status: string } | null)?.order_status;
+    if (!isItemsEditable(status2)) {
+      return {
+        success: false,
+        error: "Items are locked once the order moves into manufacturer review or beyond.",
+      };
     }
 
     const { error } = await adminClient
@@ -265,6 +286,9 @@ export async function deleteOrderItem(
     }
 
     await insertOrderHistory(adminClient, (item as { order_id: string }).order_id, "Item removed from order", null, null, userId);
+    generateOrderPDFs((item as { order_id: string }).order_id, ["delivery_invoice"]).catch((err) =>
+      console.error("[deleteOrderItem] invoice PDF regen:", err),
+    );
     revalidatePath(ORDERS_PATH);
     return { success: true, error: null };
   } catch (err) {

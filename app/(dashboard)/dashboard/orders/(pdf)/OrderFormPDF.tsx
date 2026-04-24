@@ -4,6 +4,7 @@ import {
   Page,
   Text,
   View,
+  Image,
   StyleSheet,
 } from "@react-pdf/renderer";
 import { PDFHeader } from "./PDFHeader";
@@ -142,9 +143,12 @@ const cbRowStyle = { flexDirection: "row" as const, alignItems: "center" as cons
 export function OrderFormPDF({
   order,
   form,
+  signatureImage,
 }: {
   order: Record<string, unknown>;
   form: Record<string, unknown> | null;
+  /** PNG data URL. Rendered at the signature spot when present. */
+  signatureImage?: string;
 }) {
   const items = (order.order_items as Record<string, unknown>[] | null) ?? [];
 
@@ -457,7 +461,7 @@ export function OrderFormPDF({
           {items.length > 0 ? (
             <>
               <View style={s.tableHeader}>
-                <Text style={[s.tableCell, { width: 60, fontFamily: "Helvetica-Bold", fontSize: 7 }]}>SKU</Text>
+                <Text style={[s.tableCell, { width: 92, fontFamily: "Helvetica-Bold", fontSize: 7 }]}>SKU</Text>
                 <Text style={[s.tableCell, { flex: 1, fontFamily: "Helvetica-Bold", fontSize: 7 }]}>Product</Text>
                 <Text style={[s.tableCell, { width: 24, fontFamily: "Helvetica-Bold", fontSize: 7, textAlign: "center" }]}>Qty</Text>
                 <Text style={[s.tableCell, { width: 54, fontFamily: "Helvetica-Bold", fontSize: 7, textAlign: "right" }]}>Unit Price</Text>
@@ -468,7 +472,7 @@ export function OrderFormPDF({
                 const qty = Number(item.quantity ?? 1);
                 return (
                   <View key={idx} style={s.tableRow}>
-                    <Text style={[s.tableCell, { width: 60, fontSize: 7.5, color: GRAY, fontFamily: "Courier" }]}>{v(item.product_sku)}</Text>
+                    <Text style={[s.tableCell, { width: 92, fontSize: 6.8, color: GRAY, fontFamily: "Courier", paddingRight: 4 }]}>{v(item.product_sku)}</Text>
                     <Text style={[s.tableCell, { flex: 1 }]}>{v(item.product_name)}</Text>
                     <Text style={[s.tableCell, { width: 24, textAlign: "center" }]}>{qty}</Text>
                     <Text style={[s.tableCell, { width: 54, textAlign: "right", fontFamily: "Courier" }]}>${unitPrice.toFixed(2)}</Text>
@@ -506,30 +510,67 @@ export function OrderFormPDF({
           <Text style={{ fontSize: 8 }}> weeks</Text>
         </View>
 
-        {/* ── Signature ── */}
-        <View style={s.sigGrid}>
-          <View style={s.sigBlock}>
-            <Text style={s.label}>Physicians Signature</Text>
-            <View style={s.sigLine} />
-            <Text style={{ fontSize: 6, color: GRAY, marginTop: 1 }}>Authorized Provider Signature</Text>
-          </View>
-          <View style={{ width: 110 }}>
-            <Text style={s.label}>Date</Text>
-            <View style={s.sigLine} />
-          </View>
-        </View>
-        <View style={[s.sigGrid, { marginTop: 6 }]}>
-          <View style={s.sigBlock}>
-            <Text style={s.label}>Patient Name</Text>
-            <View style={s.sigLine} />
-            <Text style={{ fontSize: 7.5, fontFamily: "Helvetica-Bold" }}>{patientNameVal}</Text>
-          </View>
-          <View style={{ width: 110 }}>
-            <Text style={s.label}>Date</Text>
-            <View style={s.sigLine} />
-            <Text style={{ fontSize: 7.5, fontFamily: "Helvetica-Bold" }}>{patientDateVal}</Text>
-          </View>
-        </View>
+        {/* ── Signature + Patient block ──
+            Unified layout: each cell has value-above-line, caption-below.
+            All four cells share the same cell height so the underlines
+            align horizontally across both rows. */}
+        {(() => {
+          const CELL_HEIGHT = 32;
+
+          const cellBox = {
+            height: CELL_HEIGHT,
+            justifyContent: "flex-end" as const,
+            borderBottom: `0.75pt solid #333`,
+            paddingBottom: 1,
+          };
+          const caption = { fontSize: 6, color: GRAY, marginTop: 2, textTransform: "uppercase" as const, letterSpacing: 0.3 };
+          const valueText = { fontSize: 9, fontFamily: "Helvetica-Bold", color: BLACK };
+
+          const signedAt = (form as any)?.physician_signed_at as string | null | undefined;
+          const signedDate = signedAt
+            ? new Date(signedAt).toLocaleDateString("en-US", {
+                year: "numeric",
+                month: "2-digit",
+                day: "2-digit",
+              })
+            : v(form?.physician_signature_date, "");
+
+          return (
+            <>
+              <View style={s.sigGrid}>
+                <View style={s.sigBlock}>
+                  <View style={[cellBox, { alignItems: "flex-start" }]}>
+                    {signatureImage ? (
+                      <Image src={signatureImage} style={{ height: CELL_HEIGHT - 4 }} />
+                    ) : null}
+                  </View>
+                  <Text style={caption}>Physicians Signature</Text>
+                </View>
+                <View style={{ width: 110 }}>
+                  <View style={cellBox}>
+                    {signedDate ? <Text style={valueText}>{signedDate}</Text> : null}
+                  </View>
+                  <Text style={caption}>Date Signed</Text>
+                </View>
+              </View>
+
+              <View style={[s.sigGrid, { marginTop: 10 }]}>
+                <View style={s.sigBlock}>
+                  <View style={cellBox}>
+                    {patientNameVal ? <Text style={valueText}>{patientNameVal}</Text> : null}
+                  </View>
+                  <Text style={caption}>Patient Name</Text>
+                </View>
+                <View style={{ width: 110 }}>
+                  <View style={cellBox}>
+                    {patientDateVal ? <Text style={valueText}>{patientDateVal}</Text> : null}
+                  </View>
+                  <Text style={caption}>Date of Service</Text>
+                </View>
+              </View>
+            </>
+          );
+        })()}
 
         {/* ── Footer ── */}
         <View style={s.footer} fixed>
