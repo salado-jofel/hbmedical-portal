@@ -1,18 +1,30 @@
 "use client";
 
 import type { DashboardOrder, OrderStatus } from "@/utils/interfaces/orders";
+import type { SortDirection, PageSize } from "@/utils/interfaces/paginated";
 import { getDisplayOrderStatus } from "@/utils/helpers/orders";
 import { OrderStatusBadge } from "../(components)/OrderStatusBadge";
 import { CreateOrderModal } from "../(components)/CreateOrderModal";
 import { EmptyState } from "@/app/(components)/EmptyState";
 import { PageHeader } from "@/app/(components)/PageHeader";
 import { TableToolbar } from "@/app/(components)/TableToolbar";
+import { Pagination } from "@/app/(components)/Pagination";
+import { SortableHeader } from "@/app/(components)/SortableHeader";
 import { ORDER_STATUS_FILTER_OPTIONS } from "@/utils/constants/orders";
-import { Package, List, LayoutGrid } from "lucide-react";
+import { Package, List, LayoutGrid, Loader2 } from "lucide-react";
 import { cn } from "@/utils/utils";
 
 export function ClinicOrdersTable({
-  filtered,
+  rows,
+  total,
+  page,
+  pageSize,
+  sort,
+  dir,
+  onToggleSort,
+  onPageChange,
+  onPageSizeChange,
+  isFetching,
   search,
   onSearchChange,
   statusFilter,
@@ -22,7 +34,16 @@ export function ClinicOrdersTable({
   canCreate,
   onOrderClick,
 }: {
-  filtered: DashboardOrder[];
+  rows: DashboardOrder[];
+  total: number;
+  page: number;
+  pageSize: PageSize;
+  sort: string;
+  dir: SortDirection;
+  onToggleSort: (col: string) => void;
+  onPageChange: (p: number) => void;
+  onPageSizeChange: (s: PageSize) => void;
+  isFetching: boolean;
   search: string;
   onSearchChange: (v: string) => void;
   statusFilter: OrderStatus | "all";
@@ -87,7 +108,7 @@ export function ClinicOrdersTable({
         ]}
       />
 
-      {filtered.length === 0 ? (
+      {rows.length === 0 && !isFetching ? (
         <EmptyState
           icon={<Package className="w-10 h-10 stroke-1" />}
           message="No orders found"
@@ -95,29 +116,64 @@ export function ClinicOrdersTable({
         />
       ) : (
         <div className="rounded-[var(--r)] border border-[var(--border)] overflow-hidden">
+          {isFetching && (
+            <div className="flex items-center justify-center gap-2 border-b border-[var(--border)] bg-[var(--bg)] px-4 py-1 text-[11px] text-[var(--text3)]">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Refreshing…
+            </div>
+          )}
           <table className="w-full text-sm">
             <thead className="bg-[var(--bg)] border-b border-[var(--border)]">
               <tr>
-                {["Order #", "Patient", "Type", "DOS", "Status", "Products", "Created"].map(
-                  (h, i) => (
-                    <th
-                      key={h}
-                      className={cn(
-                        "px-4 py-[9px] text-left text-[10px] font-semibold text-[var(--text3)] uppercase tracking-[0.6px]",
-                        i === 2 && "hidden lg:table-cell",
-                        i === 3 && "hidden lg:table-cell",
-                        i === 5 && "hidden xl:table-cell",
-                        i === 6 && "hidden xl:table-cell",
-                      )}
-                    >
-                      {h}
-                    </th>
-                  ),
-                )}
+                <th className="px-4 py-[9px] text-left">
+                  <SortableHeader
+                    label="Order #"
+                    column="order_number"
+                    currentSort={sort}
+                    currentDir={dir}
+                    onToggle={onToggleSort}
+                  />
+                </th>
+                <th className="px-4 py-[9px] text-left text-[10px] font-semibold text-[var(--text3)] uppercase tracking-[0.6px]">
+                  Patient
+                </th>
+                <th className="px-4 py-[9px] text-left text-[10px] font-semibold text-[var(--text3)] uppercase tracking-[0.6px] hidden lg:table-cell">
+                  Type
+                </th>
+                <th className="px-4 py-[9px] text-left hidden lg:table-cell">
+                  <SortableHeader
+                    label="DOS"
+                    column="date_of_service"
+                    currentSort={sort}
+                    currentDir={dir}
+                    onToggle={onToggleSort}
+                  />
+                </th>
+                <th className="px-4 py-[9px] text-left">
+                  <SortableHeader
+                    label="Status"
+                    column="order_status"
+                    currentSort={sort}
+                    currentDir={dir}
+                    onToggle={onToggleSort}
+                  />
+                </th>
+                <th className="px-4 py-[9px] text-left text-[10px] font-semibold text-[var(--text3)] uppercase tracking-[0.6px] hidden xl:table-cell">
+                  Products
+                </th>
+                <th className="px-4 py-[9px] text-left hidden xl:table-cell">
+                  <SortableHeader
+                    label="Updated"
+                    column="updated_at"
+                    currentSort={sort}
+                    currentDir={dir}
+                    onToggle={onToggleSort}
+                  />
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--border)]">
-              {filtered.map((order) => (
+              {rows.map((order) => (
                 <tr
                   key={order.id}
                   className="hover:bg-[var(--bg)] cursor-pointer transition-colors"
@@ -147,12 +203,26 @@ export function ClinicOrdersTable({
                       : "—"}
                   </td>
                   <td className="px-4 py-[10px] text-[12px] text-[var(--text3)] hidden xl:table-cell">
-                    {new Date(order.placed_at).toLocaleDateString()}
+                    {order.updated_at
+                      ? new Date(order.updated_at).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })
+                      : "—"}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          <Pagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            onPageChange={onPageChange}
+            onPageSizeChange={onPageSizeChange}
+          />
         </div>
       )}
     </div>

@@ -36,6 +36,7 @@ import {
 import type { IAccount, IRepProfile } from "@/utils/interfaces/accounts";
 import { GROUP_CONFIG } from "@/utils/constants/tasks";
 import { useTableRealtimeRefresh } from "@/utils/hooks/useOrderRealtime";
+import { useListParams } from "@/utils/hooks/useListParams";
 
 type GroupKey = keyof typeof GROUP_CONFIG;
 
@@ -63,8 +64,30 @@ export function TasksBoard({ accounts, salesReps, isAdmin }: {
     router.replace(pathname);
   }
 
-  const [statusFilter, setStatusFilter] = useState<TaskStatus | "all">("all");
-  const [priorityFilter, setPriorityFilter] = useState<TaskPriority | "all">("all");
+  // Due-date grouping (Overdue / This Week / Later) is the primary UX here;
+  // pagination would fragment the semantic groups. So this list gets URL-
+  // backed filters + search without pagination/sort — the grouping IS the
+  // sort. Flagged as a design choice, not an oversight.
+  const listParams = useListParams<
+    readonly ["due_date"],
+    readonly ["status", "priority"]
+  >({
+    defaultSort: "due_date",
+    defaultDir: "asc",
+    allowedSorts: ["due_date"] as const,
+    filterKeys: ["status", "priority"] as const,
+  });
+  const statusFilter = (listParams.filters.status as TaskStatus | null) ?? "all";
+  const priorityFilter =
+    (listParams.filters.priority as TaskPriority | null) ?? "all";
+  const setStatusFilter = (v: TaskStatus | "all") =>
+    listParams.setFilter("status", v === "all" ? null : v);
+  const setPriorityFilter = (v: TaskPriority | "all") =>
+    listParams.setFilter("priority", v === "all" ? null : v);
+
+  // Search is ephemeral — task titles can include patient / facility context.
+  const [search, setSearch] = useState("");
+
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
 
@@ -79,9 +102,16 @@ export function TasksBoard({ accounts, salesReps, isAdmin }: {
   const filtered = useMemo(() => {
     let result = tasks;
     if (statusFilter !== "all") result = result.filter((t) => t.status === statusFilter);
-    if (priorityFilter !== "all") result = result.filter((t) => t.priority === priorityFilter);
+    if (priorityFilter !== "all")
+      result = result.filter((t) => t.priority === priorityFilter);
+    if (search.trim()) {
+      const term = search.trim().toLowerCase();
+      result = result.filter((t) =>
+        (t.title ?? "").toLowerCase().includes(term),
+      );
+    }
     return result;
-  }, [tasks, statusFilter, priorityFilter]);
+  }, [tasks, statusFilter, priorityFilter, search]);
 
   const grouped = useMemo(() => groupTasksByDue(filtered), [filtered]);
 
@@ -123,6 +153,14 @@ export function TasksBoard({ accounts, salesReps, isAdmin }: {
       {/* ── Toolbar ── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex overflow-x-auto gap-2 pb-1 flex-nowrap [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+          {/* Search — not persisted to URL (task titles can reference patients). */}
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search tasks…"
+            className="h-8 w-48 shrink-0 rounded-md border border-[var(--border)] bg-white px-2 text-xs text-[var(--navy)] placeholder:text-[var(--text3)] outline-none focus:border-[var(--navy)]"
+          />
           <Select
             value={statusFilter}
             onValueChange={(v) => setStatusFilter(v as TaskStatus | "all")}

@@ -29,6 +29,19 @@ import {
 } from "@/utils/interfaces/accounts";
 import type { IRepProfile } from "@/utils/interfaces/accounts";
 import { assignTiers } from "@/utils/helpers/tiers";
+import {
+  pageToRange,
+  sanitizeDir,
+  sanitizePage,
+  sanitizePageSize,
+  sanitizeSort,
+  type PaginatedQuery,
+  type PaginatedResult,
+} from "@/utils/interfaces/paginated";
+import {
+  ACCOUNT_SORT_COLUMNS,
+  type AccountSortColumn,
+} from "@/utils/constants/accounts-list";
 
 /* -------------------------------------------------------------------------- */
 /* getAccounts                                                                */
@@ -386,4 +399,116 @@ export async function getAccountsWithMetrics(
   });
 
   return assignTiers(built);
+}
+
+/* -------------------------------------------------------------------------- */
+/* getAccountsWithMetricsPaginated                                            */
+/*                                                                            */
+/* Offset-paginated + sorted + filtered view of getAccountsWithMetrics.      */
+/*                                                                            */
+/* Implementation note: tier is a *global* ranking (top 20% A, next 30% B,    */
+/* rest C). We can't paginate at the DB layer without breaking tier semantics,*/
+/* so this wrapper computes the full list once per request (same cost as the  */
+/* current page), applies filter/search/sort in memory, and returns the       */
+/* requested page. DB-side pagination is a follow-up once a scale-motivated   */
+/* tier approach lands (e.g. materialized view).                              */
+/* -------------------------------------------------------------------------- */
+
+export async function getAccountsWithMetricsPaginated(
+  period: AccountPeriod,
+  query: PaginatedQuery<{
+    status: string | null;
+    tier: string | null;
+    rep: string | null;
+    owner: string | null; // "mine" | "sub_reps" | null — rep scope
+  }>,
+  opts?: { currentUserId?: string },
+): Promise<PaginatedResult<IAccountWithMetrics>> {
+  const page = sanitizePage(query.page);
+  const pageSize = sanitizePageSize(query.pageSize);
+  const sort = sanitizeSort<readonly AccountSortColumn[]>(
+    query.sort,
+    ACCOUNT_SORT_COLUMNS,
+    "created_at",
+  );
+  const dir = sanitizeDir(query.dir);
+
+  const all = await getAccountsWithMetrics(period);
+
+  const statusFilter = query.filters?.status ?? null;
+  const tierFilter = query.filters?.tier ?? null;
+  const repFilter = query.filters?.rep ?? null;
+  const ownerFilter = query.filters?.owner ?? null;
+  const searchRaw = (query.search ?? "").trim().toLowerCase();
+
+  let filtered = all;
+
+  if (statusFilter) {
+    filtered = filtered.filter((a) => a.status === statusFilter);
+  }
+  if (tierFilter) {
+    filtered = filtered.filter((a) => a.tier === tierFilter);
+  }
+  if (repFilter) {
+    filtered = filtered.filter((a) => a.assigned_rep === repFilter);
+  }
+  if (ownerFilter && opts?.currentUserId) {
+    if (ownerFilter === "mine") {
+      filtered = filtered.filter((a) => a.assigned_rep === opts.currentUserId);
+    } else if (ownerFilter === "sub_reps") {
+      filtered = filtered.filter(
+        (a) => a.assigned_rep && a.assigned_rep !== opts.currentUserId,
+      );
+    }
+  }
+  if (searchRaw.length > 0) {
+    filtered = filtered.filter((a) => {
+      const haystack = [
+        a.name,
+        a.city ?? "",
+        a.state ?? "",
+        a.address_line_1 ?? "",
+        a.contact ?? "",
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(searchRaw);
+    });
+  }
+
+  // Sort — stable by secondary key (name asc) so rows don't jitter between
+  // equal primary sort values.
+  const asc = dir === "asc" ? 1 : -1;
+  const tierRank: Record<string, number> = { A: 0, B: 1, C: 2 };
+  filtered = [...filtered].sort((a, b) => {
+    let primary = 0;
+    switch (sort) {
+      case "name":
+        primary = a.name.localeCompare(b.name) * asc;
+        break;
+      case "status":
+        primary = (a.status ?? "").localeCompare(b.status ?? "") * asc;
+        break;
+      case "tier":
+        primary = ((tierRank[a.tier] ?? 3) - (tierRank[b.tier] ?? 3)) * asc;
+        break;
+      case "delivered_revenue":
+        primary = ((a.delivered_revenue ?? 0) - (b.delivered_revenue ?? 0)) * asc;
+        break;
+      case "signed_count":
+        primary = ((a.signed_count ?? 0) - (b.signed_count ?? 0)) * asc;
+        break;
+      case "created_at":
+        primary =
+          (new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) * asc;
+        break;
+    }
+    if (primary !== 0) return primary;
+    return a.name.localeCompare(b.name);
+  });
+
+  const { from, to } = pageToRange(page, pageSize);
+  const rows = filtered.slice(from, to + 1);
+
+  return { rows, total: filtered.length, page, pageSize };
 }

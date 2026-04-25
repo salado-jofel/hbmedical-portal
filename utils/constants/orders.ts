@@ -243,6 +243,21 @@ export function canCapturePatientSignature(args: {
   return args.status === "shipped";
 }
 
+// Allowlist for server-side order sort column. Exported from a non-"use
+// server" module so both the client (as allowedSorts) and the server action
+// (as a sanitize target) can import it. Keep in sync with the sortable
+// columns in OrdersTable / ClinicOrdersTable.
+export const ORDER_SORT_COLUMNS = [
+  "updated_at",
+  "placed_at",
+  "created_at",
+  "order_number",
+  "order_status",
+  "date_of_service",
+  "payment_status",
+] as const;
+export type OrderSortColumn = (typeof ORDER_SORT_COLUMNS)[number];
+
 export const ORDER_STATUS_FILTER_OPTIONS: { value: string; label: string }[] = [
   { value: "all",                    label: "All Statuses" },
   { value: "draft",                  label: "Draft" },

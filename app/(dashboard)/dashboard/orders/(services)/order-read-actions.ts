@@ -20,6 +20,16 @@ import {
   ORDER_WITH_RELATIONS_SELECT,
   getUserFacilityId,
 } from "./_shared";
+import {
+  pageToRange,
+  sanitizeDir,
+  sanitizePage,
+  sanitizePageSize,
+  sanitizeSort,
+  type PaginatedQuery,
+  type PaginatedResult,
+} from "@/utils/interfaces/paginated";
+import { ORDER_SORT_COLUMNS, type OrderSortColumn } from "@/utils/constants/orders";
 
 /* -------------------------------------------------------------------------- */
 /* getOrders                                                                  */
@@ -55,6 +65,114 @@ export async function getOrders(): Promise<DashboardOrder[]> {
 
 // Legacy alias
 export const getAllOrders = getOrders;
+
+/* -------------------------------------------------------------------------- */
+/* getOrdersPaginated                                                         */
+/*                                                                            */
+/* Server-side paginated / sorted / filtered orders list for the Orders hub   */
+/* table view. Unpaginated `getOrders()` is still used by dashboards that     */
+/* aggregate across the full list and by the Kanban view (grouped by status). */
+/*                                                                            */
+/* Sortable columns are limited to direct orders-table columns — sorting by   */
+/* patient name or facility name would require a cross-table query or view    */
+/* and is explicitly out-of-scope for v1. The table's "Patient" / "Facility"  */
+/* columns render as plain (non-sortable) headers.                            */
+/*                                                                            */
+/* Search is multi-field via a prefetch pattern: resolve matching patient_ids */
+/* and facility_ids via their own ILIKE, then OR together with order_number   */
+/* + notes on the main query. Keeps PostgREST predicate complexity bounded.   */
+/* -------------------------------------------------------------------------- */
+
+export type OrderListFilters = {
+  status: string | null;
+};
+
+export async function getOrdersPaginated(
+  query: PaginatedQuery<OrderListFilters>,
+): Promise<PaginatedResult<DashboardOrder>> {
+  const supabase = await createClient();
+  const user = await getCurrentUserOrThrow(supabase);
+  const role = await getUserRole(supabase);
+
+  const page = sanitizePage(query.page);
+  const pageSize = sanitizePageSize(query.pageSize);
+  const sort = sanitizeSort<readonly OrderSortColumn[]>(
+    query.sort,
+    ORDER_SORT_COLUMNS,
+    "updated_at",
+  );
+  const dir = sanitizeDir(query.dir);
+  const status = query.filters?.status ?? null;
+  const searchRaw = (query.search ?? "").trim();
+
+  let builder = supabase
+    .from("orders")
+    .select(ORDER_WITH_RELATIONS_SELECT, { count: "exact" })
+    .order(sort, { ascending: dir === "asc" });
+
+  // Clinic-side scope — a clinic user only sees their own facility's orders.
+  if (isClinicSide(role)) {
+    const facilityId = await getUserFacilityId(user.id);
+    if (!facilityId) {
+      return { rows: [], total: 0, page, pageSize };
+    }
+    builder = builder.eq("facility_id", facilityId);
+  }
+
+  if (status) {
+    builder = builder.eq("order_status", status);
+  }
+
+  // Multi-field search — PHI-safe (term comes from ephemeral client state,
+  // never persisted in URL). Escape SQL ILIKE wildcards so a patient named
+  // "Smith%" doesn't turn into a wildcard query.
+  if (searchRaw.length > 0) {
+    const term = escapeIlikeWildcards(searchRaw);
+    const like = `%${term}%`;
+
+    // Patient IDs matching first/last name.
+    const { data: patientHits } = await supabase
+      .from("patients")
+      .select("id")
+      .or(`first_name.ilike.${like},last_name.ilike.${like}`);
+    const patientIds = (patientHits ?? []).map((p) => p.id as string);
+
+    // Facility IDs matching name.
+    const { data: facilityHits } = await supabase
+      .from("facilities")
+      .select("id")
+      .ilike("name", like);
+    const facilityIds = (facilityHits ?? []).map((f) => f.id as string);
+
+    // Compose OR across the direct orders columns + the resolved ID lists.
+    const orParts: string[] = [`order_number.ilike.${like}`];
+    if (patientIds.length > 0) orParts.push(`patient_id.in.(${patientIds.join(",")})`);
+    if (facilityIds.length > 0) orParts.push(`facility_id.in.(${facilityIds.join(",")})`);
+    builder = builder.or(orParts.join(","));
+  }
+
+  const { from, to } = pageToRange(page, pageSize);
+  const { data, error, count } = await builder.range(from, to);
+
+  if (error) {
+    console.error("[getOrdersPaginated]", JSON.stringify(error));
+    throw new Error(error.message ?? "Failed to fetch orders.");
+  }
+
+  return {
+    rows: mapOrders((data ?? []) as unknown as RawOrderRecord[]),
+    total: count ?? 0,
+    page,
+    pageSize,
+  };
+}
+
+/** PostgREST ILIKE interprets `%` and `_` as wildcards; escape them so a
+ *  user-typed term with those characters matches literally. Commas are also
+ *  special inside `.or()` expressions. */
+function escapeIlikeWildcards(s: string): string {
+  return s.replace(/[%_,]/g, (c) => `\\${c}`);
+}
 
 /* -------------------------------------------------------------------------- */
 /* getOrdersByFacility                                                        */
