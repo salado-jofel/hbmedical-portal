@@ -10,11 +10,12 @@ interface InvoiceTabProps {
   isActive: boolean;
   order: DashboardOrder;
   onDirtyChange?: (dirty: boolean) => void;
-  // Role flags used to gate the patient-signature capture button. `isAdmin`
-  // bypasses all lock rules; `isProvider` is the only non-admin allowed to
-  // capture.
+  // Role flags used to gate the patient-signature capture button. Admin
+  // bypasses other lock rules but is NOT allowed to capture patient
+  // signatures — that's a clinic-side action only (provider or staff).
   isAdmin?: boolean;
   isProvider?: boolean;
+  isClinicalStaff?: boolean;
 }
 
 // Loading state — mirrors the paper-document layout (header band, two field
@@ -106,6 +107,7 @@ export function InvoiceTab({
   onDirtyChange,
   isAdmin = false,
   isProvider = false,
+  isClinicalStaff = false,
 }: InvoiceTabProps) {
   const [invoice, setInvoice] = useState<IDeliveryInvoice | null>(null);
   const [loading, setLoading] = useState(false);
@@ -153,6 +155,7 @@ export function InvoiceTab({
           onDirtyChange={onDirtyChange}
           isAdmin={isAdmin}
           isProvider={isProvider}
+          isClinicalStaff={isClinicalStaff}
           onInvoiceUpdated={setInvoice}
         />
       )}

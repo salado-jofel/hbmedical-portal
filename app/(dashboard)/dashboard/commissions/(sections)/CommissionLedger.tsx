@@ -10,6 +10,18 @@ import { updateCommissionInStore } from "../(redux)/commissions-slice";
 import { approveCommissions, adjustCommission, voidCommission } from "../(services)/actions";
 import { formatAmount } from "@/utils/helpers/formatter";
 import OrderQuickView from "@/app/(dashboard)/dashboard/my-team/[subRepId]/(sections)/OrderQuickView";
+import {
+  useOrderUpdatesRefresh,
+  useCommissionUpdatesRefresh,
+} from "@/utils/hooks/useOrderRealtime";
+import { useListParams } from "@/utils/hooks/useListParams";
+import { useBriefBusy } from "@/utils/hooks/useBriefBusy";
+import { Pagination } from "@/app/(components)/Pagination";
+import { SortableHeader } from "@/app/(components)/SortableHeader";
+import { TableBusyBar } from "@/app/(components)/TableBusyBar";
+import { COMMISSION_SORT_COLUMNS } from "@/utils/constants/commissions-list";
+import { pageToRange } from "@/utils/interfaces/paginated";
+import { cn } from "@/utils/utils";
 import { isAdmin } from "@/utils/helpers/role";
 import type { UserRole } from "@/utils/helpers/role";
 import type { ICommission } from "@/utils/interfaces/commissions";
@@ -68,7 +80,24 @@ export default function CommissionLedger() {
   const role = useAppSelector((s) => s.dashboard.role) as UserRole;
   const admin = isAdmin(role);
 
-  const [selectedPeriod, setSelectedPeriod] = useState<string>("all");
+  // URL-backed list params: pagination, sort, period filter. Selected rows
+  // for bulk approve stay in local state (they shouldn't survive a refresh).
+  const listParams = useListParams<
+    typeof COMMISSION_SORT_COLUMNS,
+    readonly ["period"]
+  >({
+    defaultSort: "createdAt",
+    defaultDir: "desc",
+    allowedSorts: COMMISSION_SORT_COLUMNS,
+    filterKeys: ["period"] as const,
+  });
+  const selectedPeriod = listParams.filters.period ?? "all";
+  const setSelectedPeriod = (v: string) =>
+    listParams.setFilter("period", v === "all" ? null : v);
+
+  // Search is ephemeral (rep names can be identifying).
+  const [search, setSearch] = useState("");
+
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [adjustTarget, setAdjustTarget] = useState<ICommission | null>(null);
   const [adjValue, setAdjValue] = useState("");
@@ -81,16 +110,70 @@ export default function CommissionLedger() {
 
   useEffect(() => setMounted(true), []);
 
+  // Refresh the ledger's server-rendered props on any change in orders
+  // OR commissions. Commissions change independently of orders (approve,
+  // void, adjust, assign-to-payout), so we need both subscriptions.
+  useOrderUpdatesRefresh();
+  useCommissionUpdatesRefresh();
+
   const periods = useMemo(() => {
     const set = new Set<string>();
     for (const c of commissions) if (c.payoutPeriod) set.add(c.payoutPeriod);
     return Array.from(set).sort().reverse();
   }, [commissions]);
 
-  const filtered = useMemo(
-    () => selectedPeriod === "all" ? commissions : commissions.filter((c) => c.payoutPeriod === selectedPeriod),
-    [commissions, selectedPeriod],
-  );
+  const filtered = useMemo(() => {
+    let result = commissions;
+    if (selectedPeriod !== "all") {
+      result = result.filter((c) => c.payoutPeriod === selectedPeriod);
+    }
+    if (search.trim()) {
+      const term = search.trim().toLowerCase();
+      result = result.filter(
+        (c) =>
+          c.repName.toLowerCase().includes(term) ||
+          (c.orderNumber ?? "").toLowerCase().includes(term),
+      );
+    }
+    return result;
+  }, [commissions, selectedPeriod, search]);
+
+  // Apply sort (client-side — commissions are already in Redux).
+  const sorted = useMemo(() => {
+    const asc = listParams.dir === "asc" ? 1 : -1;
+    return [...filtered].sort((a, b) => {
+      let primary = 0;
+      switch (listParams.sort) {
+        case "createdAt":
+          primary =
+            (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) * asc;
+          break;
+        case "payoutPeriod":
+          primary = (a.payoutPeriod ?? "").localeCompare(b.payoutPeriod ?? "") * asc;
+          break;
+        case "finalAmount": {
+          const fa = a.finalAmount ?? a.commissionAmount + a.adjustment;
+          const fb = b.finalAmount ?? b.commissionAmount + b.adjustment;
+          primary = (fa - fb) * asc;
+          break;
+        }
+        case "status":
+          primary = a.status.localeCompare(b.status) * asc;
+          break;
+      }
+      return primary !== 0
+        ? primary
+        : new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+  }, [filtered, listParams.sort, listParams.dir]);
+
+  const pageCount = Math.max(1, Math.ceil(sorted.length / listParams.pageSize));
+  const clampedPage = Math.min(listParams.page, pageCount);
+  const { from, to } = pageToRange(clampedPage, listParams.pageSize);
+  const pageRows = sorted.slice(from, to + 1);
+
+  const searchBusy = useBriefBusy([search], 250);
+  const isBusy = listParams.isPending || searchBusy;
 
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
@@ -204,6 +287,14 @@ export default function CommissionLedger() {
             <p className="mt-[1px] text-[11px] text-[var(--text3)]">All earned commissions</p>
           </div>
           <div className="flex items-center gap-2">
+            {/* Search — ephemeral (rep names / order numbers). */}
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search rep, order #…"
+              className="h-8 w-48 rounded-[7px] border border-[var(--border2)] bg-[var(--surface)] px-2 text-[12px] text-[var(--navy)] placeholder:text-[var(--text3)] outline-none focus:border-[var(--accent)]"
+            />
             {/* Period filter */}
             <select
               value={selectedPeriod}
@@ -234,7 +325,7 @@ export default function CommissionLedger() {
               variant="outline"
               size="sm"
               className="gap-1.5 text-[12px]"
-              onClick={() => exportCSV(filtered)}
+              onClick={() => exportCSV(sorted)}
             >
               <Download className="h-3.5 w-3.5" />
               Export CSV
@@ -242,39 +333,80 @@ export default function CommissionLedger() {
           </div>
         </div>
 
+        <TableBusyBar busy={isBusy} />
         {/* Table */}
-        {filtered.length === 0 ? (
+        {sorted.length === 0 ? (
           <div className="px-4 py-8 text-center text-[13px] text-[var(--text3)]">No commissions found</div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className={cn("overflow-x-auto transition-opacity", isBusy && "opacity-70")}>
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-[var(--border)] bg-[var(--bg)]">
                   {admin && <th className="w-8 px-4 py-[9px]" />}
-                  {[
-                    // Rep column only meaningful to admin — self-view always shows the viewer.
-                    ...(admin ? ["Rep"] : []),
-                    "Order #",
-                    "Period",
-                    "Sale Amt",
-                    "Rate",
-                    "Commission",
-                    "Adj",
-                    "Override",
-                    "Status",
-                    ...(admin ? [""] : []),
-                  ].map((h) => (
-                    <th
-                      key={h}
-                      className="px-4 py-[9px] text-[10px] font-semibold uppercase tracking-[0.6px] text-[var(--text3)] whitespace-nowrap"
-                    >
-                      {h}
+                  {admin && (
+                    <th className="px-4 py-[9px] text-[10px] font-semibold uppercase tracking-[0.6px] text-[var(--text3)] whitespace-nowrap">
+                      Rep
                     </th>
-                  ))}
+                  )}
+                  <th className="px-4 py-[9px] text-[10px] font-semibold uppercase tracking-[0.6px] text-[var(--text3)] whitespace-nowrap">
+                    Order #
+                  </th>
+                  <th className="px-4 py-[9px] whitespace-nowrap">
+                    <SortableHeader
+                      label="Period"
+                      column="payoutPeriod"
+                      currentSort={listParams.sort}
+                      currentDir={listParams.dir}
+                      onToggle={(c) =>
+                        listParams.toggleSort(
+                          c as typeof COMMISSION_SORT_COLUMNS[number],
+                        )
+                      }
+                    />
+                  </th>
+                  <th className="px-4 py-[9px] text-[10px] font-semibold uppercase tracking-[0.6px] text-[var(--text3)] whitespace-nowrap">
+                    Sale Amt
+                  </th>
+                  <th className="px-4 py-[9px] text-[10px] font-semibold uppercase tracking-[0.6px] text-[var(--text3)] whitespace-nowrap">
+                    Rate
+                  </th>
+                  <th className="px-4 py-[9px] whitespace-nowrap">
+                    <SortableHeader
+                      label="Commission"
+                      column="finalAmount"
+                      currentSort={listParams.sort}
+                      currentDir={listParams.dir}
+                      onToggle={(c) =>
+                        listParams.toggleSort(
+                          c as typeof COMMISSION_SORT_COLUMNS[number],
+                        )
+                      }
+                    />
+                  </th>
+                  <th className="px-4 py-[9px] text-[10px] font-semibold uppercase tracking-[0.6px] text-[var(--text3)] whitespace-nowrap">
+                    Adj
+                  </th>
+                  <th className="px-4 py-[9px] text-[10px] font-semibold uppercase tracking-[0.6px] text-[var(--text3)] whitespace-nowrap">
+                    Override
+                  </th>
+                  <th className="px-4 py-[9px] whitespace-nowrap">
+                    <SortableHeader
+                      label="Status"
+                      column="status"
+                      currentSort={listParams.sort}
+                      currentDir={listParams.dir}
+                      onToggle={(c) =>
+                        listParams.toggleSort(
+                          c as typeof COMMISSION_SORT_COLUMNS[number],
+                        )
+                      }
+                    />
+                  </th>
+                  {admin && <th className="px-4 py-[9px]" />}
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((row) => (
+                {pageRows.map((row) => (
                   <tr key={row.id} className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--bg)]">
                     {admin && (
                       <td className="px-4 py-[10px]">
@@ -367,6 +499,15 @@ export default function CommissionLedger() {
               </tbody>
             </table>
           </div>
+        )}
+        {sorted.length > 0 && (
+          <Pagination
+            page={clampedPage}
+            pageSize={listParams.pageSize}
+            total={sorted.length}
+            onPageChange={listParams.setPage}
+            onPageSizeChange={listParams.setPageSize}
+          />
         )}
       </div>
 

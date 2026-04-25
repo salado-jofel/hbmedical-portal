@@ -1,154 +1,311 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
+import toast from "react-hot-toast";
 import { ActionBar } from "@/app/(components)/ActionBar";
 import { PillBadge } from "@/app/(components)/PillBadge";
+import { Pagination } from "@/app/(components)/Pagination";
+import { SortableHeader } from "@/app/(components)/SortableHeader";
+import { TableBusyBar } from "@/app/(components)/TableBusyBar";
+import { cn } from "@/utils/utils";
 import { formatAmount, formatDate } from "@/utils/helpers/formatter";
+import { useListParams } from "@/utils/hooks/useListParams";
+import { useBriefBusy } from "@/utils/hooks/useBriefBusy";
+import {
+  useOrderUpdatesRefresh,
+  useCommissionUpdatesRefresh,
+} from "@/utils/hooks/useOrderRealtime";
+import {
+  getSalesLogPaginated,
+  getSalesLogReps,
+} from "../(services)/actions";
+import {
+  SALES_LOG_SORT_COLUMNS,
+  type SalesLogRow,
+} from "@/utils/constants/sales-log";
+import { DEFAULT_PAGE_SIZE, type PaginatedResult } from "@/utils/interfaces/paginated";
 
-const REPS = [
-  { id: 1, name: "Sarah Mitchell", initials: "SM", color: "bg-[var(--teal)]"   },
-  { id: 2, name: "James Ochoa",    initials: "JO", color: "bg-[var(--blue)]"   },
-  { id: 3, name: "Rachel Kim",     initials: "RK", color: "bg-[var(--gold)]"   },
-  { id: 4, name: "Devon Patel",    initials: "DP", color: "bg-[var(--navy)]"   },
-  { id: 5, name: "Tanya Brooks",   initials: "TB", color: "bg-[var(--purple)]" },
-];
-
-const SALES = [
-  { id: "HB-2604-1", repId: 3, client: "Mass General Brigham",   products: "Surgical Kits (x40), Gloves (x200)",          amount: 18400, commission: 920,  date: "2026-04-07", status: "completed" },
-  { id: "HB-2604-2", repId: 4, client: "Rush University Medical", products: "IV Supplies (x100), Catheters (x50)",          amount: 14200, commission: 710,  date: "2026-04-06", status: "completed" },
-  { id: "HB-2604-3", repId: 1, client: "Palmetto General",        products: "Diagnostic Equipment (x2)",                    amount: 22000, commission: 880,  date: "2026-04-05", status: "completed" },
-  { id: "HB-2604-4", repId: 2, client: "Roper St. Francis",       products: "Surgical Kits (x60)",                          amount: 17800, commission: 712,  date: "2026-04-02", status: "completed" },
-  { id: "HB-2604-5", repId: 3, client: "Boston Children's",       products: "Lab Supplies (x300)",                          amount: 9800,  commission: 490,  date: "2026-04-03", status: "completed" },
-  { id: "HB-2604-6", repId: 5, client: "—",                       products: "PPE Bundle (x150)",                            amount: 12500, commission: 500,  date: "2026-04-04", status: "pending"   },
-  { id: "HB-2604-7", repId: 4, client: "Northwestern Medicine",   products: "Monitoring Equipment (x3)",                    amount: 31000, commission: 1550, date: "2026-04-04", status: "completed" },
-  { id: "HB-2604-8", repId: 1, client: "Coastal Surgical Center", products: "Suture Kits (x100), Drapes (x200)",            amount: 8700,  commission: 348,  date: "2026-04-02", status: "completed" },
-];
-
-const STATUS_VARIANT: Record<string, "green" | "gold"> = {
+const STATUS_VARIANT: Record<SalesLogRow["status"], "green" | "gold"> = {
   completed: "green",
-  pending:   "gold",
+  pending: "gold",
 };
 
-export default function SalesTable() {
-  const [search, setSearch]     = useState("");
-  const [repFilter, setRepFilter] = useState("");
+// Tiny deterministic color picker so each rep gets a stable avatar tint.
+function repColor(id: string): string {
+  const palette = [
+    "bg-[var(--teal)]",
+    "bg-[var(--blue)]",
+    "bg-[var(--gold)]",
+    "bg-[var(--navy)]",
+    "bg-[var(--purple)]",
+  ];
+  let hash = 0;
+  for (const c of id) hash = (hash * 31 + c.charCodeAt(0)) & 0xffff;
+  return palette[hash % palette.length];
+}
 
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase();
-    return SALES.filter((s) => {
-      const rep = REPS.find((r) => r.id === s.repId);
-      const matchesSearch =
-        !q ||
-        s.id.toLowerCase().includes(q) ||
-        s.client.toLowerCase().includes(q) ||
-        s.products.toLowerCase().includes(q) ||
-        rep?.name.toLowerCase().includes(q);
-      const matchesRep = !repFilter || String(s.repId) === repFilter;
-      return matchesSearch && matchesRep;
-    });
-  }, [search, repFilter]);
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "?";
+}
+
+export default function SalesTable() {
+  // Search ephemeral — rep names + facility names can be identifying.
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  const listParams = useListParams<
+    typeof SALES_LOG_SORT_COLUMNS,
+    readonly ["rep"]
+  >({
+    defaultSort: "date",
+    defaultDir: "desc",
+    allowedSorts: SALES_LOG_SORT_COLUMNS,
+    filterKeys: ["rep"] as const,
+  });
+  const repFilter = listParams.filters.rep ?? "";
+
+  const [data, setData] = useState<PaginatedResult<SalesLogRow>>({
+    rows: [],
+    total: 0,
+    page: 1,
+    pageSize: DEFAULT_PAGE_SIZE,
+  });
+  const [isFetching, setIsFetching] = useState(false);
+  const [reps, setReps] = useState<Array<{ id: string; name: string }>>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getSalesLogReps()
+      .then((list) => {
+        if (!cancelled) setReps(list);
+      })
+      .catch((err) => console.error("[SalesTable] getSalesLogReps failed:", err));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Cancellation via an incrementing ref so a slow older fetch doesn't
+  // overwrite a newer faster one on rapid pagination.
+  const fetchIdRef = useRef(0);
+  const refetch = useCallback(async () => {
+    const myId = ++fetchIdRef.current;
+    setIsFetching(true);
+    try {
+      const res = await getSalesLogPaginated({
+        page: listParams.page,
+        pageSize: listParams.pageSize,
+        sort: listParams.sort,
+        dir: listParams.dir,
+        filters: { rep: listParams.filters.rep },
+        search: debouncedSearch,
+      });
+      if (myId !== fetchIdRef.current) return;
+      setData(res);
+    } catch (err) {
+      if (myId !== fetchIdRef.current) return;
+      console.error("[SalesTable] fetch failed:", err);
+      toast.error("Failed to load sales.");
+    } finally {
+      if (myId === fetchIdRef.current) setIsFetching(false);
+    }
+  }, [
+    listParams.page,
+    listParams.pageSize,
+    listParams.sort,
+    listParams.dir,
+    listParams.filters.rep,
+    debouncedSearch,
+  ]);
+
+  useEffect(() => {
+    void refetch();
+  }, [refetch]);
+
+  // Live updates — sales log is derived from commissions + orders, so both
+  // realtime subscriptions matter.
+  const refetchRef = useRef(refetch);
+  refetchRef.current = refetch;
+  useOrderUpdatesRefresh(); // covers orders.status / updated_at changes globally
+  useCommissionUpdatesRefresh();
+
+  // Combined busy: listParams.isPending flips synchronously on click,
+  // covering the URL-update lag; useBriefBusy on the debounced search
+  // covers search-input changes (search isn't URL-backed); isFetching
+  // covers the actual server call duration.
+  const paramsBusy = useBriefBusy([debouncedSearch], 250);
+  const tableBusy = isFetching || listParams.isPending || paramsBusy;
 
   return (
     <div className="space-y-4">
-      {/* Action bar */}
       <ActionBar
         searchValue={search}
         onSearchChange={setSearch}
-        searchPlaceholder="Search orders, reps, clients..."
+        searchPlaceholder="Search order #, rep, client..."
       >
         <select
           value={repFilter}
-          onChange={(e) => setRepFilter(e.target.value)}
+          onChange={(e) =>
+            listParams.setFilter("rep", e.target.value ? e.target.value : null)
+          }
           className="h-8 rounded-[7px] border border-[var(--border2)] bg-transparent px-2.5 text-[13px] text-[var(--text)] focus:border-[var(--accent)] focus:outline-none"
         >
           <option value="">All Reps</option>
-          {REPS.map((r) => (
-            <option key={r.id} value={String(r.id)}>
+          {reps.map((r) => (
+            <option key={r.id} value={r.id}>
               {r.name}
             </option>
           ))}
         </select>
       </ActionBar>
 
-      {/* Table card */}
       <div className="overflow-hidden rounded-[var(--r)] border border-[var(--border)] bg-[var(--surface)]">
-        <div className="overflow-x-auto">
+        <TableBusyBar busy={tableBusy} />
+        <div className={cn("overflow-x-auto transition-opacity", tableBusy && "opacity-60")}>
           <table className="w-full text-left">
             <thead>
               <tr className="border-b border-[var(--border)] bg-[var(--bg)]">
-                {["Order #", "Rep", "Client", "Products", "Amount", "Commission", "Date", "Status"].map((h) => (
-                  <th
-                    key={h}
-                    className="px-4 py-[9px] text-[10px] font-semibold uppercase tracking-[0.6px] text-[var(--text3)]"
-                  >
-                    {h}
-                  </th>
-                ))}
+                <th className="px-4 py-[9px] text-[10px] font-semibold uppercase tracking-[0.6px] text-[var(--text3)]">
+                  Order #
+                </th>
+                <th className="px-4 py-[9px]">
+                  <SortableHeader
+                    label="Rep"
+                    column="rep"
+                    currentSort={listParams.sort}
+                    currentDir={listParams.dir}
+                    onToggle={(c) =>
+                      listParams.toggleSort(
+                        c as typeof SALES_LOG_SORT_COLUMNS[number],
+                      )
+                    }
+                  />
+                </th>
+                <th className="px-4 py-[9px] text-[10px] font-semibold uppercase tracking-[0.6px] text-[var(--text3)]">
+                  Client
+                </th>
+                <th className="px-4 py-[9px]">
+                  <SortableHeader
+                    label="Amount"
+                    column="amount"
+                    currentSort={listParams.sort}
+                    currentDir={listParams.dir}
+                    onToggle={(c) =>
+                      listParams.toggleSort(
+                        c as typeof SALES_LOG_SORT_COLUMNS[number],
+                      )
+                    }
+                    align="right"
+                  />
+                </th>
+                <th className="px-4 py-[9px]">
+                  <SortableHeader
+                    label="Commission"
+                    column="commission"
+                    currentSort={listParams.sort}
+                    currentDir={listParams.dir}
+                    onToggle={(c) =>
+                      listParams.toggleSort(
+                        c as typeof SALES_LOG_SORT_COLUMNS[number],
+                      )
+                    }
+                    align="right"
+                  />
+                </th>
+                <th className="px-4 py-[9px]">
+                  <SortableHeader
+                    label="Date"
+                    column="date"
+                    currentSort={listParams.sort}
+                    currentDir={listParams.dir}
+                    onToggle={(c) =>
+                      listParams.toggleSort(
+                        c as typeof SALES_LOG_SORT_COLUMNS[number],
+                      )
+                    }
+                  />
+                </th>
+                <th className="px-4 py-[9px] text-[10px] font-semibold uppercase tracking-[0.6px] text-[var(--text3)]">
+                  Status
+                </th>
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 ? (
+              {data.rows.length === 0 && !isFetching ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-[13px] text-[var(--text3)]">
+                  <td
+                    colSpan={7}
+                    className="px-4 py-10 text-center text-[13px] text-[var(--text3)]"
+                  >
                     No sales found.
                   </td>
                 </tr>
               ) : (
-                filtered.map((row) => {
-                  const rep = REPS.find((r) => r.id === row.repId)!;
-                  return (
-                    <tr
-                      key={row.id}
-                      className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--bg)]"
+                data.rows.map((row) => (
+                  <tr
+                    key={row.id}
+                    className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--bg)]"
+                  >
+                    <td
+                      className="px-4 py-[10px] text-[13px] font-medium text-[var(--navy)]"
+                      style={{ fontFamily: "var(--font-dm-mono), monospace" }}
                     >
-                      <td
-                        className="px-4 py-[10px] text-[13px] font-medium text-[var(--navy)]"
-                        style={{ fontFamily: "var(--font-dm-mono), monospace" }}
-                      >
-                        {row.id}
-                      </td>
-                      <td className="px-4 py-[10px]">
-                        <div className="flex items-center gap-2">
-                          <div
-                            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white ${rep.color}`}
-                          >
-                            {rep.initials}
-                          </div>
-                          <span className="text-[13px] text-[var(--text)]">{rep.name}</span>
+                      {row.orderNumber}
+                    </td>
+                    <td className="px-4 py-[10px]">
+                      <div className="flex items-center gap-2">
+                        <div
+                          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white ${repColor(row.repId)}`}
+                        >
+                          {initials(row.repName)}
                         </div>
-                      </td>
-                      <td className="px-4 py-[10px] text-[13px] text-[var(--text)]">{row.client}</td>
-                      <td className="max-w-[200px] truncate px-4 py-[10px] text-[13px] text-[var(--text2)]">
-                        {row.products}
-                      </td>
-                      <td
-                        className="px-4 py-[10px] text-[13px]"
-                        style={{ fontFamily: "var(--font-dm-mono), monospace" }}
-                      >
-                        {formatAmount(row.amount)}
-                      </td>
-                      <td
-                        className="px-4 py-[10px] text-[13px] font-medium text-[var(--teal)]"
-                        style={{ fontFamily: "var(--font-dm-mono), monospace" }}
-                      >
-                        {formatAmount(row.commission)}
-                      </td>
-                      <td className="px-4 py-[10px] text-[13px] text-[var(--text2)]">
-                        {formatDate(row.date)}
-                      </td>
-                      <td className="px-4 py-[10px]">
-                        <PillBadge
-                          label={row.status === "completed" ? "Completed" : "Pending"}
-                          variant={STATUS_VARIANT[row.status] ?? "gold"}
-                        />
-                      </td>
-                    </tr>
-                  );
-                })
+                        <span className="text-[13px] text-[var(--text)]">
+                          {row.repName}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-[10px] text-[13px] text-[var(--text)]">
+                      {row.client}
+                    </td>
+                    <td
+                      className="px-4 py-[10px] text-[13px] text-right"
+                      style={{ fontFamily: "var(--font-dm-mono), monospace" }}
+                    >
+                      {formatAmount(row.amount)}
+                    </td>
+                    <td
+                      className="px-4 py-[10px] text-[13px] font-medium text-right text-[var(--teal)]"
+                      style={{ fontFamily: "var(--font-dm-mono), monospace" }}
+                    >
+                      {formatAmount(row.commission)}
+                    </td>
+                    <td className="px-4 py-[10px] text-[13px] text-[var(--text2)]">
+                      {formatDate(row.date)}
+                    </td>
+                    <td className="px-4 py-[10px]">
+                      <PillBadge
+                        label={row.status === "completed" ? "Completed" : "Pending"}
+                        variant={STATUS_VARIANT[row.status] ?? "gold"}
+                      />
+                    </td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>
         </div>
+        <Pagination
+          page={data.page}
+          pageSize={data.pageSize}
+          total={data.total}
+          onPageChange={listParams.setPage}
+          onPageSizeChange={listParams.setPageSize}
+        />
       </div>
     </div>
   );

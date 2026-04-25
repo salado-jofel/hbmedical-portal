@@ -8,6 +8,7 @@ import { DataTable } from "@/app/(components)/DataTable";
 import { OrderMobileCard } from "@/app/(components)/OrderMobileCard";
 import { formatAmount, formatDate } from "@/utils/helpers/formatter";
 import { TableColumn } from "@/utils/interfaces/table-column";
+import { useOrderUpdatesRefresh } from "@/utils/hooks/useOrderRealtime";
 import type { DashboardOrder } from "@/utils/interfaces/orders";
 
 const columns: TableColumn<DashboardOrder>[] = [
@@ -51,6 +52,12 @@ export default function RecentOrdersTable({
   initialOrders,
 }: RecentOrdersTableProps) {
   const router = useRouter();
+
+  // Keep "Recent Orders" live for admins/reps/clinic users watching the
+  // dashboard. router.refresh() re-runs the dashboard server component so
+  // new/updated orders flow in without a manual page reload.
+  useOrderUpdatesRefresh();
+
   const recent = useMemo(
     () =>
       [...(initialOrders ?? [])]

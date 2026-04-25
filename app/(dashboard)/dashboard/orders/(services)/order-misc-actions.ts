@@ -497,11 +497,16 @@ export async function getUserFacility() {
 
 export interface OrderShipmentInfo {
   carrier: string | null;
+  service_level: string | null;
   tracking_number: string | null;
+  tracking_url: string | null;
   status: string | null;
   shipped_at: string | null;
   delivered_at: string | null;
   estimated_delivery_at: string | null;
+  /** Shipment row creation time — useful as "Label created" when the
+   *  carrier-side shipped_at hasn't been set yet. */
+  created_at: string | null;
 }
 
 export async function getOrderShipment(
@@ -512,7 +517,7 @@ export async function getOrderShipment(
     const { data } = await adminClient
       .from("shipments")
       .select(
-        "carrier, tracking_number, status, shipped_at, delivered_at, estimated_delivery_at",
+        "carrier, service_level, tracking_number, tracking_url, status, shipped_at, delivered_at, estimated_delivery_at, created_at",
       )
       .eq("order_id", orderId)
       .order("shipped_at", { ascending: false, nullsFirst: false })

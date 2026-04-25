@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { AlertBanner } from "@/app/(components)/AlertBanner";
+import { useOrderUpdatesRefresh } from "@/utils/hooks/useOrderRealtime";
 import type { DashboardOrder } from "@/utils/interfaces/orders";
 
 const MS_48H = 48 * 60 * 60 * 1000;
@@ -15,6 +16,11 @@ export function AlertsBanner({
   users: Array<{ status: string }>;
 }) {
   const router = useRouter();
+
+  // Alerts (stuck orders, pending payment counts) are derived from server
+  // data — re-run the page when any order changes so the banner numbers
+  // stay current without a manual refresh.
+  useOrderUpdatesRefresh();
 
   const alerts = useMemo(() => {
     const now = Date.now();

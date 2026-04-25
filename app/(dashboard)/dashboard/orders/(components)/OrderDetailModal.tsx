@@ -1688,6 +1688,10 @@ export function OrderDetailModal({
                         order={liveOrder}
                         isAdmin={isAdmin}
                         isProvider={isProvider}
+                        // Clinical staff = anyone on the clinic side who isn't
+                        // the provider themselves. They can capture the patient
+                        // signature on the provider's behalf at hand-off.
+                        isClinicalStaff={isClinical && !isProvider}
                       />
                     )}
                     <OrderChatTab
@@ -2266,13 +2270,33 @@ export function OrderDetailModal({
                     )}
 
                     {/* ── Shipping Section — visible to all roles once an order
-                        is shipped or delivered ── */}
+                        is shipped or delivered. Surfaces every column on the
+                        shipments row, plus a clickable tracking link if the
+                        carrier provided a tracking_url. */}
                     {(status === "shipped" || status === "delivered") && (
                       <div className="border-t border-[var(--border)] pt-4 space-y-2">
                         <h3 className="text-[10px] font-semibold uppercase tracking-[0.6px] text-[var(--text3)]">
                           Shipping
                         </h3>
                         <div className="space-y-1.5 text-[12px] text-[var(--text2)]">
+                          {shipmentData?.status && (
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[var(--text3)]">Status</span>
+                              <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium"
+                                style={
+                                  shipmentData.status === "delivered"
+                                    ? { background: "var(--green-lt)", color: "var(--green)" }
+                                    : shipmentData.status === "in_transit"
+                                      ? { background: "var(--blue-lt)", color: "var(--blue)" }
+                                      : shipmentData.status === "exception" || shipmentData.status === "returned"
+                                        ? { background: "var(--red-lt)", color: "var(--red)" }
+                                        : { background: "var(--gold-lt)", color: "var(--gold)" }
+                                }
+                              >
+                                {shipmentData.status.replace(/_/g, " ")}
+                              </span>
+                            </div>
+                          )}
                           {shipmentData?.carrier && (
                             <div className="flex items-center justify-between gap-2">
                               <span className="text-[var(--text3)]">Carrier</span>
@@ -2281,11 +2305,44 @@ export function OrderDetailModal({
                               </span>
                             </div>
                           )}
+                          {shipmentData?.service_level && (
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[var(--text3)]">Service</span>
+                              <span className="font-medium text-[var(--text)]">
+                                {shipmentData.service_level}
+                              </span>
+                            </div>
+                          )}
                           {(shipmentData?.tracking_number || liveOrder.tracking_number) && (
                             <div className="flex items-center justify-between gap-2">
                               <span className="text-[var(--text3)]">Tracking #</span>
-                              <span className="font-medium text-[var(--text)] break-all text-right">
-                                {shipmentData?.tracking_number ?? liveOrder.tracking_number}
+                              {shipmentData?.tracking_url ? (
+                                <a
+                                  href={shipmentData.tracking_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="font-medium text-[var(--blue)] hover:underline break-all text-right"
+                                >
+                                  {shipmentData?.tracking_number ?? liveOrder.tracking_number}
+                                </a>
+                              ) : (
+                                <span className="font-medium text-[var(--text)] break-all text-right">
+                                  {shipmentData?.tracking_number ?? liveOrder.tracking_number}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          {shipmentData?.created_at && !shipmentData.shipped_at && (
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[var(--text3)]">Label created</span>
+                              <span className="font-medium text-[var(--text)]">
+                                {new Date(shipmentData.created_at).toLocaleString("en-US", {
+                                  month: "short",
+                                  day: "numeric",
+                                  year: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
                               </span>
                             </div>
                           )}
@@ -2293,7 +2350,13 @@ export function OrderDetailModal({
                             <div className="flex items-center justify-between gap-2">
                               <span className="text-[var(--text3)]">Shipped on</span>
                               <span className="font-medium text-[var(--text)]">
-                                {new Date(shipmentData.shipped_at).toLocaleDateString()}
+                                {new Date(shipmentData.shipped_at).toLocaleString("en-US", {
+                                  month: "short",
+                                  day: "numeric",
+                                  year: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
                               </span>
                             </div>
                           )}
@@ -2311,7 +2374,13 @@ export function OrderDetailModal({
                               <span className="font-medium text-[var(--green)]">
                                 {new Date(
                                   liveOrder.delivered_at ?? shipmentData?.delivered_at ?? "",
-                                ).toLocaleDateString()}
+                                ).toLocaleString("en-US", {
+                                  month: "short",
+                                  day: "numeric",
+                                  year: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
                               </span>
                             </div>
                           )}

@@ -12,6 +12,16 @@ import type { UserRole } from "@/utils/helpers/role";
 import { isAdmin, isSalesRep } from "@/utils/helpers/role";
 import { buildResetPasswordEmail } from "@/lib/emails/build-reset-password-email";
 import { stripe } from "@/lib/stripe/stripe";
+import {
+  pageToRange,
+  sanitizeDir,
+  sanitizePage,
+  sanitizePageSize,
+  sanitizeSort,
+  type PaginatedQuery,
+  type PaginatedResult,
+} from "@/utils/interfaces/paginated";
+import { USER_SORT_COLUMNS, type UserSortColumn } from "@/utils/constants/users-list";
 
 /* -------------------------------------------------------------------------- */
 /* getUsers                                                                   */
@@ -90,6 +100,90 @@ export async function getUsers(filters?: {
   }
 
   return users;
+}
+
+/* -------------------------------------------------------------------------- */
+/* getUsersPaginated                                                          */
+/*                                                                            */
+/* Server-paginated view of the users list — range() at the DB layer plus     */
+/* a count: "exact" to drive the pagination footer. Sort is a direct profile  */
+/* column; filters are role + status; search OR's across first/last/email.    */
+/* -------------------------------------------------------------------------- */
+
+export async function getUsersPaginated(
+  query: PaginatedQuery<{ role: string | null; status: string | null }>,
+): Promise<PaginatedResult<IUser>> {
+  const supabase = await createClient();
+  await requireAdminOrThrow(supabase);
+
+  const adminClient = createAdminClient();
+
+  const page = sanitizePage(query.page);
+  const pageSize = sanitizePageSize(query.pageSize);
+  const sort = sanitizeSort<readonly UserSortColumn[]>(
+    query.sort,
+    USER_SORT_COLUMNS,
+    "created_at",
+  );
+  const dir = sanitizeDir(query.dir);
+
+  let builder = adminClient
+    .from("profiles")
+    .select(
+      `
+      id, email, first_name, last_name, phone, role, status,
+      has_completed_setup, created_at, updated_at,
+      facility:facilities!facilities_user_id_fkey(id, name, status, city, state)
+    `,
+      { count: "exact" },
+    )
+    .order(sort, { ascending: dir === "asc" });
+
+  if (query.filters?.role) builder = builder.eq("role", query.filters.role);
+  if (query.filters?.status) builder = builder.eq("status", query.filters.status);
+
+  const searchRaw = (query.search ?? "").trim();
+  if (searchRaw.length > 0) {
+    const term = searchRaw.replace(/[%_,]/g, (c) => `\\${c}`);
+    const like = `%${term}%`;
+    builder = builder.or(
+      `first_name.ilike.${like},last_name.ilike.${like},email.ilike.${like}`,
+    );
+  }
+
+  const { from, to } = pageToRange(page, pageSize);
+  const { data, error, count } = await builder.range(from, to);
+
+  if (error) {
+    console.error("[getUsersPaginated]", JSON.stringify(error));
+    throw new Error(error.message ?? "Failed to fetch users.");
+  }
+
+  const rows: IUser[] = (data ?? []).map((p: any) => {
+    const fac = Array.isArray(p.facility) ? p.facility[0] : p.facility;
+    const status = (p.status as UserStatus) ?? "pending";
+    return {
+      id: p.id,
+      first_name: p.first_name ?? "",
+      last_name: p.last_name ?? "",
+      email: p.email ?? "",
+      role: p.role,
+      created_at: p.created_at ?? "",
+      is_active: status === "active",
+      status,
+      facility: fac
+        ? {
+            id: fac.id,
+            name: fac.name,
+            status: fac.status ?? null,
+            city: fac.city ?? null,
+            state: fac.state ?? null,
+          }
+        : null,
+    };
+  });
+
+  return { rows, total: count ?? 0, page, pageSize };
 }
 
 /* -------------------------------------------------------------------------- */

@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { payRepCommissions } from "@/app/(dashboard)/dashboard/my-team/(services)/payout-actions";
 import { formatAmount } from "@/utils/helpers/formatter";
+import { useTableRealtimeRefresh } from "@/utils/hooks/useOrderRealtime";
 
 const MONTH_NAMES = [
   "January","February","March","April","May","June",
@@ -45,6 +46,10 @@ export default function AdminPayoutCard({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [confirmOpen, setConfirmOpen] = useState(false);
+
+  // Refresh server data when a payout row for this rep changes — e.g. the
+  // payout this card represents gets marked paid by another admin.
+  useTableRealtimeRefresh("payouts");
 
   // Nothing approved in this period — hide entirely.
   if (approvedTotal <= 0) return null;
