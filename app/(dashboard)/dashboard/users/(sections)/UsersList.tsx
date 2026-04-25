@@ -20,10 +20,13 @@ import type { UserRole } from "@/utils/helpers/role";
 import { ROLE_LABELS } from "@/utils/helpers/role";
 import { useTableRealtimeRefresh } from "@/utils/hooks/useOrderRealtime";
 import { useListParams } from "@/utils/hooks/useListParams";
+import { useBriefBusy } from "@/utils/hooks/useBriefBusy";
 import { Pagination } from "@/app/(components)/Pagination";
 import { SortableHeader } from "@/app/(components)/SortableHeader";
+import { TableBusyBar } from "@/app/(components)/TableBusyBar";
 import { USER_SORT_COLUMNS } from "@/utils/constants/users-list";
 import { pageToRange } from "@/utils/interfaces/paginated";
+import { cn } from "@/utils/utils";
 
 export function UsersList() {
   const dispatch = useAppDispatch();
@@ -127,6 +130,11 @@ export function UsersList() {
   const clampedPage = Math.min(listParams.page, pageCount);
   const { from, to } = pageToRange(clampedPage, listParams.pageSize);
   const pageRows = sorted.slice(from, to + 1);
+
+  // listParams.isPending fires synchronously on click; search busy covers
+  // the non-URL-backed input.
+  const searchBusy = useBriefBusy([search], 250);
+  const isBusy = listParams.isPending || searchBusy;
 
   function handleDeactivate(userId: string) {
     const user = users.find((u) => u.id === userId);
@@ -281,12 +289,13 @@ export function UsersList() {
 
       {/* ── Table ── */}
       <div className="overflow-hidden rounded-[var(--r)] border border-[var(--border)] bg-[var(--surface)]">
+        <TableBusyBar busy={isBusy} />
         {pageRows.length === 0 ? (
           <div className="p-6 text-center text-[13px] text-[var(--text3)]">
             No users found
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className={cn("overflow-x-auto transition-opacity", isBusy && "opacity-70")}>
             <table className="w-full text-sm text-left">
               <thead>
                 <tr className="bg-[var(--bg)] border-b border-[var(--border)]">

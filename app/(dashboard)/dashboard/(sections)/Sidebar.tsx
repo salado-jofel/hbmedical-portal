@@ -79,7 +79,11 @@ export const NAV_GROUPS: NavGroupDef[] = [
         icon: ShoppingCart,
         label: "Orders",
         href: "/dashboard/orders",
-        visible: (role) => isClinicalProvider(role) || isClinicalStaff(role),
+        visible: (role) =>
+          isClinicalProvider(role) ||
+          isClinicalStaff(role) ||
+          isAdmin(role) ||
+          isSupport(role),
       },
     ],
   },

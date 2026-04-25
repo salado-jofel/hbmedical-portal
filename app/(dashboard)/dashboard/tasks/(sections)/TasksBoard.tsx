@@ -37,6 +37,8 @@ import type { IAccount, IRepProfile } from "@/utils/interfaces/accounts";
 import { GROUP_CONFIG } from "@/utils/constants/tasks";
 import { useTableRealtimeRefresh } from "@/utils/hooks/useOrderRealtime";
 import { useListParams } from "@/utils/hooks/useListParams";
+import { useBriefBusy } from "@/utils/hooks/useBriefBusy";
+import { TableBusyBar } from "@/app/(components)/TableBusyBar";
 
 type GroupKey = keyof typeof GROUP_CONFIG;
 
@@ -114,6 +116,9 @@ export function TasksBoard({ accounts, salesReps, isAdmin }: {
   }, [tasks, statusFilter, priorityFilter, search]);
 
   const grouped = useMemo(() => groupTasksByDue(filtered), [filtered]);
+
+  const searchBusy = useBriefBusy([search], 250);
+  const isBusy = listParams.isPending || searchBusy;
 
   async function handleToggle(task: ITask) {
     setTogglingId(task.id);
@@ -216,6 +221,15 @@ export function TasksBoard({ accounts, salesReps, isAdmin }: {
           fab
         />
       </div>
+
+      {/* Briefly visible busy bar for filter/search clicks. Sits as a
+          standalone strip just above the kanban groups so the visual
+          feedback is consistent with the table-shaped lists elsewhere. */}
+      {isBusy && (
+        <div className="overflow-hidden rounded-[var(--r)] border border-[var(--border)] bg-[var(--surface)]">
+          <TableBusyBar busy={isBusy} />
+        </div>
+      )}
 
       {/* ── Groups ── */}
       {tasks.length === 0 ? (

@@ -2,13 +2,15 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import toast from "react-hot-toast";
-import { Loader2 } from "lucide-react";
 import { ActionBar } from "@/app/(components)/ActionBar";
 import { PillBadge } from "@/app/(components)/PillBadge";
 import { Pagination } from "@/app/(components)/Pagination";
 import { SortableHeader } from "@/app/(components)/SortableHeader";
+import { TableBusyBar } from "@/app/(components)/TableBusyBar";
+import { cn } from "@/utils/utils";
 import { formatAmount, formatDate } from "@/utils/helpers/formatter";
 import { useListParams } from "@/utils/hooks/useListParams";
+import { useBriefBusy } from "@/utils/hooks/useBriefBusy";
 import {
   useOrderUpdatesRefresh,
   useCommissionUpdatesRefresh,
@@ -132,6 +134,13 @@ export default function SalesTable() {
   useOrderUpdatesRefresh(); // covers orders.status / updated_at changes globally
   useCommissionUpdatesRefresh();
 
+  // Combined busy: listParams.isPending flips synchronously on click,
+  // covering the URL-update lag; useBriefBusy on the debounced search
+  // covers search-input changes (search isn't URL-backed); isFetching
+  // covers the actual server call duration.
+  const paramsBusy = useBriefBusy([debouncedSearch], 250);
+  const tableBusy = isFetching || listParams.isPending || paramsBusy;
+
   return (
     <div className="space-y-4">
       <ActionBar
@@ -156,13 +165,8 @@ export default function SalesTable() {
       </ActionBar>
 
       <div className="overflow-hidden rounded-[var(--r)] border border-[var(--border)] bg-[var(--surface)]">
-        {isFetching && (
-          <div className="flex items-center justify-center gap-2 border-b border-[var(--border)] bg-[var(--bg)] px-4 py-1 text-[11px] text-[var(--text3)]">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            Refreshing…
-          </div>
-        )}
-        <div className="overflow-x-auto">
+        <TableBusyBar busy={tableBusy} />
+        <div className={cn("overflow-x-auto transition-opacity", tableBusy && "opacity-60")}>
           <table className="w-full text-left">
             <thead>
               <tr className="border-b border-[var(--border)] bg-[var(--bg)]">

@@ -10,8 +10,9 @@ import { PageHeader } from "@/app/(components)/PageHeader";
 import { TableToolbar } from "@/app/(components)/TableToolbar";
 import { Pagination } from "@/app/(components)/Pagination";
 import { SortableHeader } from "@/app/(components)/SortableHeader";
+import { TableBusyBar } from "@/app/(components)/TableBusyBar";
 import { ORDER_STATUS_FILTER_OPTIONS } from "@/utils/constants/orders";
-import { Package, Loader2 } from "lucide-react";
+import { Package } from "lucide-react";
 import { cn } from "@/utils/utils";
 
 /**
@@ -37,6 +38,9 @@ export function OrdersTable({
   onSearchChange,
   statusFilter,
   onStatusFilterChange,
+  facilityFilter,
+  onFacilityFilterChange,
+  facilityOptions,
   tableMode,
   onTableModeChange,
   isAdmin,
@@ -57,6 +61,11 @@ export function OrdersTable({
   onSearchChange: (v: string) => void;
   statusFilter: OrderStatus | "all";
   onStatusFilterChange: (v: OrderStatus | "all") => void;
+  /** null when no facility is selected. */
+  facilityFilter: string | null;
+  onFacilityFilterChange: (v: string | null) => void;
+  /** Empty array hides the filter (clinic users). */
+  facilityOptions: Array<{ id: string; name: string }>;
   tableMode: boolean;
   onTableModeChange: (v: boolean) => void;
   isAdmin: boolean;
@@ -70,35 +79,39 @@ export function OrdersTable({
         title="Orders"
         subtitle="All orders across facilities"
         className="pb-4"
-        action={(isAdmin || isSupport) ? (
-          <div className="flex items-center gap-[3px] border border-[var(--border)] rounded-[var(--r)] p-1 shrink-0 bg-[var(--surface)]">
-            <button
-              onClick={() => onTableModeChange(false)}
-              className={cn(
-                "px-3 py-[5px] rounded-[7px] text-[12px] font-medium transition-colors",
-                !tableMode
-                  ? "bg-[var(--navy)] text-white"
-                  : "text-[var(--text2)] hover:bg-[var(--bg)]",
-              )}
-            >
-              Kanban
-            </button>
-            <button
-              onClick={() => onTableModeChange(true)}
-              className={cn(
-                "px-3 py-[5px] rounded-[7px] text-[12px] font-medium transition-colors",
-                tableMode
-                  ? "bg-[var(--navy)] text-white"
-                  : "text-[var(--text2)] hover:bg-[var(--bg)]",
-              )}
-            >
-              Table
-            </button>
-          </div>
-        ) : undefined}
+        action={
+          isAdmin || isSupport ? (
+            <div className="flex items-center gap-[3px] border border-[var(--border)] rounded-[var(--r)] p-1 shrink-0 bg-[var(--surface)]">
+              <button
+                onClick={() => onTableModeChange(true)}
+                className={cn(
+                  "px-3 py-[5px] rounded-[7px] text-[12px] font-medium transition-colors",
+                  tableMode
+                    ? "bg-[var(--navy)] text-white"
+                    : "text-[var(--text2)] hover:bg-[var(--bg)]",
+                )}
+              >
+                Table
+              </button>
+              <button
+                onClick={() => onTableModeChange(false)}
+                className={cn(
+                  "px-3 py-[5px] rounded-[7px] text-[12px] font-medium transition-colors",
+                  !tableMode
+                    ? "bg-[var(--navy)] text-white"
+                    : "text-[var(--text2)] hover:bg-[var(--bg)]",
+                )}
+              >
+                Kanban
+              </button>
+            </div>
+          ) : undefined
+        }
       />
 
-      {/* Filters */}
+      {/* Filters — facility dropdown only renders when admin/support gave us
+          options (clinic users get an empty list since they're already
+          scoped to their own facility). */}
       <TableToolbar
         searchValue={search}
         onSearchChange={onSearchChange}
@@ -112,6 +125,21 @@ export function OrdersTable({
             placeholder: "All Statuses",
             className: "w-full sm:w-44",
           },
+          ...(facilityOptions.length > 0
+            ? [
+                {
+                  value: facilityFilter ?? "all",
+                  onChange: (v: string) =>
+                    onFacilityFilterChange(v === "all" ? null : v),
+                  options: [
+                    { value: "all", label: "All Facilities" },
+                    ...facilityOptions.map((f) => ({ value: f.id, label: f.name })),
+                  ],
+                  placeholder: "All Facilities",
+                  className: "w-full sm:w-56",
+                },
+              ]
+            : []),
         ]}
       />
 
@@ -124,16 +152,13 @@ export function OrdersTable({
         />
       ) : (
         <div className="rounded-[var(--r)] border border-[var(--border)] overflow-hidden">
-          {/* A small spinner bar while a refetch (pagination / sort / filter /
-              realtime) is in flight — keeps the previous page visible instead
-              of flashing back to the skeleton. */}
-          {isFetching && (
-            <div className="flex items-center justify-center gap-2 border-b border-[var(--border)] bg-[var(--bg)] px-4 py-1 text-[11px] text-[var(--text3)]">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              Refreshing…
-            </div>
-          )}
-          <table className="w-full text-sm">
+          <TableBusyBar busy={isFetching} />
+          <table
+            className={cn(
+              "w-full text-sm transition-opacity",
+              isFetching && "opacity-60",
+            )}
+          >
             <thead className="bg-[var(--bg)] border-b border-[var(--border)]">
               <tr>
                 <th className="px-4 py-[9px] text-left">

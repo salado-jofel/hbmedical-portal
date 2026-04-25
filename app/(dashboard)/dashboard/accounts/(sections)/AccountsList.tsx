@@ -11,6 +11,7 @@ import { AccountsKpiRow } from "./AccountsKpiRow";
 import { EmptyState } from "@/app/(components)/EmptyState";
 import { Pagination } from "@/app/(components)/Pagination";
 import { SortableHeader } from "@/app/(components)/SortableHeader";
+import { TableBusyBar } from "@/app/(components)/TableBusyBar";
 import { cn } from "@/utils/utils";
 import { formatDate } from "@/utils/helpers/formatter";
 import type {
@@ -23,6 +24,7 @@ import type {
 import { AccountTierBadge } from "../(components)/AccountTierBadge";
 import { useTableRealtimeRefresh } from "@/utils/hooks/useOrderRealtime";
 import { useListParams } from "@/utils/hooks/useListParams";
+import { useBriefBusy } from "@/utils/hooks/useBriefBusy";
 import { ACCOUNT_SORT_COLUMNS } from "@/utils/constants/accounts-list";
 import { pageToRange } from "@/utils/interfaces/paginated";
 
@@ -143,6 +145,12 @@ export function AccountsList({ salesReps, isAdmin, period }: {
   const { from, to } = pageToRange(clampedPage, listParams.pageSize);
   const pageRows = sorted.slice(from, to + 1);
 
+  // listParams.isPending flips synchronously on URL-changing actions
+  // (sort / filter / page) so the bar appears the same render as the click.
+  // useBriefBusy on `search` covers the non-URL-backed search input.
+  const searchBusy = useBriefBusy([search], 250);
+  const isBusy = listParams.isPending || searchBusy;
+
   function handlePeriodChange(newPeriod: AccountPeriod) {
     const params = new URLSearchParams(searchParams?.toString() ?? "");
     params.set("period", newPeriod);
@@ -217,7 +225,8 @@ export function AccountsList({ salesReps, isAdmin, period }: {
         />
       ) : (
         <div className="overflow-hidden rounded-[var(--r)] border border-[var(--border)] bg-[var(--surface)]">
-          <div className="overflow-x-auto">
+          <TableBusyBar busy={isBusy} />
+          <div className={cn("overflow-x-auto transition-opacity", isBusy && "opacity-70")}>
             <table className="w-full text-sm text-left">
               <thead>
                 <tr className="bg-[var(--bg)] border-b border-[var(--border)]">

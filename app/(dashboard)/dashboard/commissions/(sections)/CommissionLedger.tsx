@@ -15,10 +15,13 @@ import {
   useCommissionUpdatesRefresh,
 } from "@/utils/hooks/useOrderRealtime";
 import { useListParams } from "@/utils/hooks/useListParams";
+import { useBriefBusy } from "@/utils/hooks/useBriefBusy";
 import { Pagination } from "@/app/(components)/Pagination";
 import { SortableHeader } from "@/app/(components)/SortableHeader";
+import { TableBusyBar } from "@/app/(components)/TableBusyBar";
 import { COMMISSION_SORT_COLUMNS } from "@/utils/constants/commissions-list";
 import { pageToRange } from "@/utils/interfaces/paginated";
+import { cn } from "@/utils/utils";
 import { isAdmin } from "@/utils/helpers/role";
 import type { UserRole } from "@/utils/helpers/role";
 import type { ICommission } from "@/utils/interfaces/commissions";
@@ -168,6 +171,9 @@ export default function CommissionLedger() {
   const clampedPage = Math.min(listParams.page, pageCount);
   const { from, to } = pageToRange(clampedPage, listParams.pageSize);
   const pageRows = sorted.slice(from, to + 1);
+
+  const searchBusy = useBriefBusy([search], 250);
+  const isBusy = listParams.isPending || searchBusy;
 
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
@@ -327,11 +333,12 @@ export default function CommissionLedger() {
           </div>
         </div>
 
+        <TableBusyBar busy={isBusy} />
         {/* Table */}
         {sorted.length === 0 ? (
           <div className="px-4 py-8 text-center text-[13px] text-[var(--text3)]">No commissions found</div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className={cn("overflow-x-auto transition-opacity", isBusy && "opacity-70")}>
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-[var(--border)] bg-[var(--bg)]">

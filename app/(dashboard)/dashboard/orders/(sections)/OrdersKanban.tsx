@@ -14,6 +14,7 @@ import {
   getUnreadMessageCounts,
   getOrderById,
   getOrdersPaginated,
+  getFacilitiesForOrderFilter,
 } from "../(services)/order-read-actions";
 import { ORDER_SORT_COLUMNS } from "@/utils/constants/orders";
 import { createClient } from "@/lib/supabase/client";
@@ -23,6 +24,7 @@ import { OrdersKanbanView } from "./OrdersKanbanView";
 import { ClinicOrdersTable } from "./ClinicOrdersTable";
 import type { KanbanColumn } from "@/utils/interfaces/orders";
 import { useListParams } from "@/utils/hooks/useListParams";
+import { useBriefBusy } from "@/utils/hooks/useBriefBusy";
 import { DEFAULT_PAGE_SIZE } from "@/utils/interfaces/paginated";
 import type { PaginatedResult } from "@/utils/interfaces/paginated";
 
@@ -232,13 +234,34 @@ export function OrdersKanban({
   // ignores these; they sit dormant in the URL until the user flips to table.
   const listParams = useListParams<
     typeof ORDER_SORT_COLUMNS,
-    readonly ["status"]
+    readonly ["status", "facility"]
   >({
     defaultSort: "updated_at",
     defaultDir: "desc",
     allowedSorts: ORDER_SORT_COLUMNS,
-    filterKeys: ["status"] as const,
+    filterKeys: ["status", "facility"] as const,
   });
+
+  // Facility filter only makes sense for admin/support — clinic users are
+  // already scoped to their own facility, and reps see the whole list. List
+  // is fetched once on mount.
+  const [facilityOptions, setFacilityOptions] = useState<
+    Array<{ id: string; name: string }>
+  >([]);
+  useEffect(() => {
+    if (!isAdmin && !isSupport) return;
+    let cancelled = false;
+    getFacilitiesForOrderFilter()
+      .then((list) => {
+        if (!cancelled) setFacilityOptions(list);
+      })
+      .catch((err) =>
+        console.error("[OrdersKanban] facility list fetch failed:", err),
+      );
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdmin, isSupport]);
 
   // Status filter is URL-synced for table users; Kanban filter button writes
   // the same param so the two stay in sync when flipping views.
@@ -277,7 +300,10 @@ export function OrdersKanban({
         pageSize: listParams.pageSize,
         sort: listParams.sort,
         dir: listParams.dir,
-        filters: { status: listParams.filters.status },
+        filters: {
+          status: listParams.filters.status,
+          facility: listParams.filters.facility,
+        },
         search: debouncedSearch,
       });
       if (myFetchId !== fetchIdRef.current) return; // stale response, drop
@@ -295,6 +321,7 @@ export function OrdersKanban({
     listParams.sort,
     listParams.dir,
     listParams.filters.status,
+    listParams.filters.facility,
     debouncedSearch,
   ]);
 
@@ -303,6 +330,16 @@ export function OrdersKanban({
   useEffect(() => {
     void refetchPaged();
   }, [refetchPaged]);
+
+  // Visible busy indicator combining three signals so the bar is on
+  // continuously from click → fetch settle:
+  //   - listParams.isPending  → flips synchronously when the user clicks
+  //                             sort/filter/page (covers the URL-update lag)
+  //   - paramsBusy            → flips when search debounce settles into a
+  //                             new value (search isn't URL-backed)
+  //   - isFetching            → covers the actual server call
+  const paramsBusy = useBriefBusy([debouncedSearch], 250);
+  const tableBusy = isFetching || listParams.isPending || paramsBusy;
 
   // Realtime: keep Kanban cards in sync (row-level Redux update) AND
   // trigger a paged refetch for table-view users. Both callbacks live on
@@ -480,7 +517,7 @@ export function OrdersKanban({
           onToggleSort={(col) => listParams.toggleSort(col as typeof ORDER_SORT_COLUMNS[number])}
           onPageChange={listParams.setPage}
           onPageSizeChange={listParams.setPageSize}
-          isFetching={isFetching}
+          isFetching={tableBusy}
           search={search}
           onSearchChange={setSearch}
           statusFilter={statusFilter}
@@ -508,11 +545,14 @@ export function OrdersKanban({
           onToggleSort={(col) => listParams.toggleSort(col as typeof ORDER_SORT_COLUMNS[number])}
           onPageChange={listParams.setPage}
           onPageSizeChange={listParams.setPageSize}
-          isFetching={isFetching}
+          isFetching={tableBusy}
           search={search}
           onSearchChange={setSearch}
           statusFilter={statusFilter}
           onStatusFilterChange={handleStatusFilterChange}
+          facilityFilter={listParams.filters.facility}
+          onFacilityFilterChange={(v) => listParams.setFilter("facility", v)}
+          facilityOptions={facilityOptions}
           tableMode={tableMode}
           onTableModeChange={setTableMode}
           isAdmin={isAdmin}

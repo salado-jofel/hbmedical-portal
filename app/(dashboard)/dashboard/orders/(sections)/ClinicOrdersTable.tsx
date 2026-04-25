@@ -10,8 +10,9 @@ import { PageHeader } from "@/app/(components)/PageHeader";
 import { TableToolbar } from "@/app/(components)/TableToolbar";
 import { Pagination } from "@/app/(components)/Pagination";
 import { SortableHeader } from "@/app/(components)/SortableHeader";
+import { TableBusyBar } from "@/app/(components)/TableBusyBar";
 import { ORDER_STATUS_FILTER_OPTIONS } from "@/utils/constants/orders";
-import { Package, List, LayoutGrid, Loader2 } from "lucide-react";
+import { Package, List, LayoutGrid } from "lucide-react";
 import { cn } from "@/utils/utils";
 
 export function ClinicOrdersTable({
@@ -116,13 +117,8 @@ export function ClinicOrdersTable({
         />
       ) : (
         <div className="rounded-[var(--r)] border border-[var(--border)] overflow-hidden">
-          {isFetching && (
-            <div className="flex items-center justify-center gap-2 border-b border-[var(--border)] bg-[var(--bg)] px-4 py-1 text-[11px] text-[var(--text3)]">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              Refreshing…
-            </div>
-          )}
-          <table className="w-full text-sm">
+          <TableBusyBar busy={isFetching} />
+          <table className={cn("w-full text-sm transition-opacity", isFetching && "opacity-60")}>
             <thead className="bg-[var(--bg)] border-b border-[var(--border)]">
               <tr>
                 <th className="px-4 py-[9px] text-left">

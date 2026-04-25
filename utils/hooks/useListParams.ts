@@ -34,7 +34,7 @@
  *   params.reset()                         // back to page 1, default sort, no filters
  */
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   DEFAULT_PAGE_SIZE,
@@ -76,6 +76,16 @@ export interface UseListParamsResult<
   toggleSort: (s: AllowedSorts[number]) => void;
   setFilter: (key: FilterKeys[number], value: string | null) => void;
   reset: () => void;
+
+  /**
+   * `true` while a navigation triggered by setPage / setSort / setFilter etc
+   * is in flight. Flips ON synchronously the moment the handler is called —
+   * before `router.replace()` has finished updating the URL — so consumers
+   * can show a loading indicator the same render as the click. The indicator
+   * stays ON until the transition's render commits, after which `searchParams`
+   * reflects the new URL.
+   */
+  isPending: boolean;
 }
 
 export function useListParams<
@@ -85,6 +95,7 @@ export function useListParams<
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const [isPending, startTransition] = useTransition();
 
   const defaultDir = config.defaultDir ?? "desc";
   const defaultPageSize = config.defaultPageSize ?? DEFAULT_PAGE_SIZE;
@@ -115,7 +126,14 @@ export function useListParams<
         else next.set(k, String(v));
       }
       const qs = next.toString();
-      router.replace(qs ? `${pathname}?${qs}` : pathname);
+      // startTransition gives us a synchronously-true `isPending` that
+      // consumers can hook into for an instant loading indicator. Without
+      // this, the only signal that "something happened" is the URL change
+      // — which `router.replace` defers by ~30-200ms in Next 16's app
+      // router, producing the click-to-feedback lag.
+      startTransition(() => {
+        router.replace(qs ? `${pathname}?${qs}` : pathname);
+      });
     },
     [searchParams, router, pathname],
   );
@@ -159,8 +177,9 @@ export function useListParams<
   );
 
   const reset = useCallback(() => {
-    const next = new URLSearchParams();
-    router.replace(pathname + (next.toString() ? `?${next.toString()}` : ""));
+    startTransition(() => {
+      router.replace(pathname);
+    });
   }, [router, pathname]);
 
   return {
@@ -175,5 +194,6 @@ export function useListParams<
     toggleSort,
     setFilter,
     reset,
+    isPending,
   };
 }

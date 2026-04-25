@@ -85,6 +85,13 @@ export const getAllOrders = getOrders;
 
 export type OrderListFilters = {
   status: string | null;
+  /**
+   * Admin / support filter to narrow the list to one facility. Ignored for
+   * clinic users — their query is already scoped to their facility, so an
+   * extra `facility` predicate would either match (no-op) or yield zero
+   * rows (a filter they shouldn't be able to set).
+   */
+  facility: string | null;
 };
 
 export async function getOrdersPaginated(
@@ -103,6 +110,7 @@ export async function getOrdersPaginated(
   );
   const dir = sanitizeDir(query.dir);
   const status = query.filters?.status ?? null;
+  const facility = query.filters?.facility ?? null;
   const searchRaw = (query.search ?? "").trim();
 
   let builder = supabase
@@ -121,6 +129,12 @@ export async function getOrdersPaginated(
 
   if (status) {
     builder = builder.eq("order_status", status);
+  }
+
+  // Admin / support facility filter — silently ignored for clinic users
+  // whose query is already scoped to their own facility above.
+  if (facility && !isClinicSide(role)) {
+    builder = builder.eq("facility_id", facility);
   }
 
   // Multi-field search — PHI-safe (term comes from ephemeral client state,
@@ -195,6 +209,37 @@ export async function getOrdersByFacility(
   }
 
   return mapOrders((data ?? []) as unknown as RawOrderRecord[]);
+}
+
+/* -------------------------------------------------------------------------- */
+/* getFacilitiesForOrderFilter                                                */
+/*                                                                            */
+/* Lightweight {id, name} list for the admin/support orders-list facility     */
+/* filter dropdown. Returns clinic facilities only (the type that actually    */
+/* places orders) sorted alphabetically. Clinic users get an empty list —     */
+/* the filter is hidden in their UI.                                          */
+/* -------------------------------------------------------------------------- */
+
+export async function getFacilitiesForOrderFilter(): Promise<
+  Array<{ id: string; name: string }>
+> {
+  const supabase = await createClient();
+  const role = await getUserRole(supabase);
+
+  if (isClinicSide(role)) return [];
+
+  const adminClient = createAdminClient();
+  const { data, error } = await adminClient
+    .from("facilities")
+    .select("id, name")
+    .eq("facility_type", "clinic")
+    .order("name", { ascending: true });
+
+  if (error) {
+    console.error("[getFacilitiesForOrderFilter]", JSON.stringify(error));
+    return [];
+  }
+  return (data ?? []).map((f) => ({ id: f.id as string, name: f.name as string }));
 }
 
 /* -------------------------------------------------------------------------- */
