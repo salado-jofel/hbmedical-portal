@@ -51,6 +51,10 @@ AUDIT-REPORT.md
 CLAUDE.md
 design-reference.html
 
+# Internal HIPAA compliance checklist — keep out of git (contains
+# infrastructure notes / audit gaps that shouldn't sit in version history)
+docs/HIPAA_COMPLIANCE_CHECKLIST.md
+
 # Dev-only Supabase seed data — never commit (contains test credentials)
 supabase/seeds/
 
