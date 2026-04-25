@@ -22,6 +22,8 @@ import {
   generateOrderPDFs,
 } from "./_shared";
 import { isItemsEditable } from "@/utils/constants/orders";
+import { safeLogError } from "@/lib/logging/safe-log";
+import { requireOrderAccess } from "@/lib/supabase/order-access";
 
 /* -------------------------------------------------------------------------- */
 /* addShippingInfo                                                            */
@@ -69,7 +71,7 @@ export async function addShippingInfo(
     });
 
     if (shipErr) {
-      console.error("[addShippingInfo] shipments insert:", JSON.stringify(shipErr));
+      safeLogError("addShippingInfo", shipErr, { phase: "shipments insert", orderId });
       // Non-fatal, continue
     }
 
@@ -85,7 +87,7 @@ export async function addShippingInfo(
       .eq("id", orderId);
 
     if (error) {
-      console.error("[addShippingInfo]", JSON.stringify(error));
+      safeLogError("addShippingInfo", error, { orderId });
       return { success: false, error: "Failed to update order shipping info." };
     }
 
@@ -168,7 +170,7 @@ export async function addOrderItems(
     const { error } = await adminClient.from("order_items").insert(itemPayloads);
 
     if (error) {
-      console.error("[addOrderItems]", JSON.stringify(error));
+      safeLogError("addOrderItems", error, { orderId });
       return { success: false, error: "Failed to add products." };
     }
 
@@ -183,12 +185,12 @@ export async function addOrderItems(
     );
     // Keep the invoice PDF in sync with the current order items.
     generateOrderPDFs(orderId, ["delivery_invoice"]).catch((err) =>
-      console.error("[addOrderItems] invoice PDF regen:", err),
+      safeLogError("addOrderItems", err, { phase: "invoice PDF regen", orderId }),
     );
     revalidatePath(ORDERS_PATH);
     return { success: true, error: null };
   } catch (err) {
-    console.error("[addOrderItems] unexpected:", err);
+    safeLogError("addOrderItems", err, { orderId });
     return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
   }
 }
@@ -231,18 +233,18 @@ export async function updateOrderItemQuantity(
       .eq("id", itemId);
 
     if (error) {
-      console.error("[updateOrderItemQuantity]", JSON.stringify(error));
+      safeLogError("updateOrderItemQuantity", error, { itemId });
       return { success: false, error: "Failed to update quantity." };
     }
 
     await insertOrderHistory(adminClient, (item as { order_id: string }).order_id, "Item quantity updated", null, null, userId);
     generateOrderPDFs((item as { order_id: string }).order_id, ["delivery_invoice"]).catch((err) =>
-      console.error("[updateOrderItemQuantity] invoice PDF regen:", err),
+      safeLogError("updateOrderItemQuantity", err, { phase: "invoice PDF regen" }),
     );
     revalidatePath(ORDERS_PATH);
     return { success: true, error: null };
   } catch (err) {
-    console.error("[updateOrderItemQuantity] unexpected:", err);
+    safeLogError("updateOrderItemQuantity", err, { itemId });
     return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
   }
 }
@@ -281,18 +283,18 @@ export async function deleteOrderItem(
       .eq("id", itemId);
 
     if (error) {
-      console.error("[deleteOrderItem]", JSON.stringify(error));
+      safeLogError("deleteOrderItem", error, { itemId });
       return { success: false, error: "Failed to remove item." };
     }
 
     await insertOrderHistory(adminClient, (item as { order_id: string }).order_id, "Item removed from order", null, null, userId);
     generateOrderPDFs((item as { order_id: string }).order_id, ["delivery_invoice"]).catch((err) =>
-      console.error("[deleteOrderItem] invoice PDF regen:", err),
+      safeLogError("deleteOrderItem", err, { phase: "invoice PDF regen" }),
     );
     revalidatePath(ORDERS_PATH);
     return { success: true, error: null };
   } catch (err) {
-    console.error("[deleteOrderItem] unexpected:", err);
+    safeLogError("deleteOrderItem", err, { itemId });
     return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
   }
 }
@@ -313,7 +315,7 @@ export async function getPatients(): Promise<IPatient[]> {
     .order("last_name");
 
   if (error) {
-    console.error("[getPatients]", JSON.stringify(error));
+    safeLogError("getPatients", error, { facilityId });
     throw new Error("Failed to fetch patients.");
   }
 
@@ -371,7 +373,7 @@ export async function createPatient(
       .single();
 
     if (error || !row) {
-      console.error("[createPatient]", JSON.stringify(error));
+      safeLogError("createPatient", error, { facilityId });
       return { success: false, error: "Failed to create patient." };
     }
 
@@ -454,7 +456,7 @@ export async function getProducts(): Promise<ProductRecord[]> {
     .order("name", { ascending: true });
 
   if (error) {
-    console.error("[getProducts]", JSON.stringify(error));
+    safeLogError("getProducts", error);
     return [];
   }
 
@@ -513,6 +515,7 @@ export async function getOrderShipment(
   orderId: string,
 ): Promise<OrderShipmentInfo | null> {
   try {
+    await requireOrderAccess(orderId);
     const adminClient = createAdminClient();
     const { data } = await adminClient
       .from("shipments")

@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getCurrentUserOrThrow } from "@/lib/supabase/auth";
 import type { IOrderIVR, IOrderForm } from "@/utils/interfaces/orders";
 import {
   ORDERS_PATH,
@@ -11,6 +10,9 @@ import {
   generateOrderPDFs,
   triggerAiExtraction,
 } from "./_shared";
+import { logPhiAccess } from "@/lib/audit/log-phi-access";
+import { safeLogError } from "@/lib/logging/safe-log";
+import { requireOrderAccess } from "@/lib/supabase/order-access";
 
 /* -------------------------------------------------------------------------- */
 /* getOrderIVR                                                                 */
@@ -107,8 +109,7 @@ export async function getOrderIVR(
   orderId: string,
 ): Promise<{ ivr: IOrderIVR | null }> {
   try {
-    const supabase = await createClient();
-    await getCurrentUserOrThrow(supabase);
+    await requireOrderAccess(orderId);
 
     const adminClient = createAdminClient();
 
@@ -119,15 +120,22 @@ export async function getOrderIVR(
       .maybeSingle();
 
     if (error) {
-      console.error("[getOrderIVR]", JSON.stringify(error));
+      safeLogError("getOrderIVR", error, { orderId });
       return { ivr: null };
     }
 
     if (!data) return { ivr: null };
 
+    void logPhiAccess({
+      action: "ivr.read",
+      resource: "order_ivr",
+      resourceId: (data as { id?: string }).id ?? null,
+      orderId,
+    });
+
     return { ivr: mapIvrRow(data as Record<string, unknown>) };
   } catch (err) {
-    console.error("[getOrderIVR] unexpected:", err);
+    safeLogError("getOrderIVR", err, { orderId });
     return { ivr: null };
   }
 }
@@ -234,19 +242,19 @@ export async function upsertOrderIVR(
       .upsert(payload, { onConflict: "order_id" });
 
     if (error) {
-      console.error("[upsertOrderIVR]", JSON.stringify(error));
+      safeLogError("upsertOrderIVR", error, { orderId });
       return { success: false, error: error.message ?? "Failed to save IVR." };
     }
 
     revalidatePath(ORDERS_PATH);
 
     generateOrderPDFs(orderId, ["ivr"]).catch(
-      err => console.error("[IVR PDF]", err),
+      err => safeLogError("IVR PDF", err, { orderId }),
     );
 
     return { success: true, error: null };
   } catch (err) {
-    console.error("[upsertOrderIVR] unexpected:", err);
+    safeLogError("upsertOrderIVR", err, { orderId });
     return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
   }
 }
@@ -258,8 +266,8 @@ export async function upsertOrderIVR(
 export async function getOrderAiStatus(
   orderId: string,
 ): Promise<{ aiExtracted: boolean; orderForm: IOrderForm | null }> {
+  await requireOrderAccess(orderId);
   const supabase = await createClient();
-  await getCurrentUserOrThrow(supabase);
 
   const { data: order } = await supabase
     .from("orders")

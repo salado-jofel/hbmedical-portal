@@ -5,7 +5,20 @@ import { isSalesRep } from "@/utils/helpers/role";
 import type { UserRole } from "@/utils/helpers/role";
 
 export async function updateSession(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request });
+  // Forward the current pathname into the request as an `x-pathname` header
+  // so server components / layouts can inspect it without sniffing internal
+  // Next.js APIs. Used by the dashboard layout's MFA gate.
+  //
+  // Mutating `request.headers` directly does NOT propagate to downstream
+  // server components in Next 16 / Turbopack — the request object passed
+  // into `NextResponse.next({ request })` is a new wrapper. To make the
+  // header visible, we have to clone Headers and pass it explicitly.
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-pathname", request.nextUrl.pathname);
+
+  let supabaseResponse = NextResponse.next({
+    request: { headers: requestHeaders },
+  });
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -20,7 +33,11 @@ export async function updateSession(request: NextRequest) {
             request.cookies.set({ name, value, ...options }),
           );
 
-          supabaseResponse = NextResponse.next({ request });
+          // Reuse the cloned headers so x-pathname survives the cookie
+          // refresh that happens during sign-in / token rotation.
+          supabaseResponse = NextResponse.next({
+            request: { headers: requestHeaders },
+          });
 
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options),

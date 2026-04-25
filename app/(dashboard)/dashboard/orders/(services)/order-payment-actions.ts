@@ -16,6 +16,8 @@ import {
   insertOrderHistory,
   createNotifications,
 } from "./_shared";
+import { safeLogError } from "@/lib/logging/safe-log";
+import { requireOrderAccess } from "@/lib/supabase/order-access";
 
 /* -------------------------------------------------------------------------- */
 /* setOrderPaymentMethod                                                      */
@@ -35,8 +37,6 @@ export async function setOrderPaymentMethod(
       .select("role")
       .eq("id", user.id)
       .single();
-
-    console.log("[setOrderPaymentMethod] role:", profile?.role, "method:", paymentMethod, "orderId:", orderId);
 
     const allowedRoles = [
       "admin",
@@ -69,7 +69,7 @@ export async function setOrderPaymentMethod(
       .eq("id", orderId);
 
     if (error) {
-      console.error("[setOrderPaymentMethod]", JSON.stringify(error));
+      safeLogError("setOrderPaymentMethod", error, { orderId });
       return { success: false, error: error.message };
     }
 
@@ -111,8 +111,6 @@ export async function initiatePayment(
       .select("role, first_name, last_name")
       .eq("id", user.id)
       .single();
-
-    console.log("[initiatePayment] role:", profile?.role, "orderId:", orderId);
 
     const allowedRoles = [
       "admin",
@@ -418,8 +416,7 @@ export const initiateRepPayment = initiatePayment;
 /* -------------------------------------------------------------------------- */
 
 export async function getOrderPayment(orderId: string): Promise<IPayment | null> {
-  const supabase = await createClient();
-  await getCurrentUserOrThrow(supabase);
+  await requireOrderAccess(orderId);
   const adminClient = createAdminClient();
 
   const { data } = await adminClient
@@ -453,8 +450,7 @@ export async function getOrderPayment(orderId: string): Promise<IPayment | null>
 /* -------------------------------------------------------------------------- */
 
 export async function getOrderInvoice(orderId: string): Promise<IInvoice | null> {
-  const supabase = await createClient();
-  await getCurrentUserOrThrow(supabase);
+  await requireOrderAccess(orderId);
   const adminClient = createAdminClient();
 
   const { data } = await adminClient

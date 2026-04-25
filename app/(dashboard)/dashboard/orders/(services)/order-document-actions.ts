@@ -1,9 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getCurrentUserOrThrow } from "@/lib/supabase/auth";
+import {
+  requireOrderAccess,
+  OrderAccessError,
+} from "@/lib/supabase/order-access";
+import { logPhiAccess } from "@/lib/audit/log-phi-access";
 import type { IOrderDocument } from "@/utils/interfaces/orders";
 import {
   ORDERS_PATH,
@@ -14,6 +17,7 @@ import {
   triggerCombinedExtraction,
   generateOrderPDFs,
 } from "./_shared";
+import { safeLogError } from "@/lib/logging/safe-log";
 
 /* -------------------------------------------------------------------------- */
 /* uploadOrderDocument                                                        */
@@ -25,9 +29,9 @@ export async function uploadOrderDocument(
   file: FormData,
 ): Promise<{ success: boolean; error?: string; document?: IOrderDocument }> {
   try {
-    const supabase = await createClient();
-    const user = await getCurrentUserOrThrow(supabase);
+    const { userId } = await requireOrderAccess(orderId);
     const adminClient = createAdminClient();
+    const user = { id: userId };
 
     const fileEntry = file.get("file") as File | null;
     if (!fileEntry) return { success: false, error: "No file provided." };
@@ -44,7 +48,7 @@ export async function uploadOrderDocument(
       });
 
     if (uploadErr) {
-      console.error("[uploadOrderDocument] storage:", JSON.stringify(uploadErr));
+      safeLogError("uploadOrderDocument", uploadErr, { phase: "storage", orderId, documentType });
       return { success: false, error: "Failed to upload file." };
     }
 
@@ -64,7 +68,7 @@ export async function uploadOrderDocument(
       .single();
 
     if (dbErr || !docRow) {
-      console.error("[uploadOrderDocument] db:", JSON.stringify(dbErr));
+      safeLogError("uploadOrderDocument", dbErr, { phase: "db", orderId, documentType });
       // Clean up storage
       await adminClient.storage.from(BUCKET).remove([filePath]);
       return { success: false, error: "Failed to save document record." };
@@ -104,17 +108,55 @@ export async function uploadOrderDocument(
 /* getDocumentSignedUrl                                                       */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Issues a signed URL for a private order document. PHI-bearing — every
+ * document type the orders flow stores (facesheet, clinical docs, IVR,
+ * order form, 1500, delivery invoice, wound photos) contains patient
+ * information. The 10-minute TTL keeps the window short enough that an
+ * accidentally-shared URL (Slack, email, browser history) doesn't remain
+ * useful for long. Long enough that a normal user click → download flow
+ * works without flake.
+ */
+const ORDER_DOCUMENT_SIGNED_URL_TTL_SECONDS = 600;
+
 export async function getDocumentSignedUrl(
   filePath: string,
 ): Promise<{ url: string | null; error?: string }> {
   try {
+    // Authorization gate. The path always starts with
+    // `order-documents/{orderId}/...`. Parse the order id and run the per-
+    // order access check before issuing a signed URL — service role bypasses
+    // RLS, so without this check any signed-in user could read another
+    // facility's PHI documents.
+    const orderIdMatch = filePath.match(/^order-documents\/([0-9a-f-]{36})\//i);
+    if (!orderIdMatch) {
+      return { url: null, error: "Invalid document path." };
+    }
+    const orderId = orderIdMatch[1];
+
+    try {
+      await requireOrderAccess(orderId);
+    } catch (err) {
+      if (err instanceof OrderAccessError) {
+        return { url: null, error: err.message };
+      }
+      throw err;
+    }
+
     const adminClient = createAdminClient();
     const { data, error } = await adminClient.storage
       .from(BUCKET)
-      .createSignedUrl(filePath, 3600);
+      .createSignedUrl(filePath, ORDER_DOCUMENT_SIGNED_URL_TTL_SECONDS);
+
+    void logPhiAccess({
+      action: "document.signed_url",
+      resource: "order_documents",
+      orderId,
+      metadata: { filePath, ttlSeconds: ORDER_DOCUMENT_SIGNED_URL_TTL_SECONDS },
+    });
 
     if (error) {
-      console.error("[getDocumentSignedUrl]", JSON.stringify(error));
+      safeLogError("getDocumentSignedUrl", error, { filePath });
       return { url: null, error: "Failed to generate signed URL." };
     }
 
@@ -133,6 +175,20 @@ export async function deleteOrderDocument(
   filePath: string,
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    // Authorization gate via the order id parsed from the storage path.
+    const orderIdMatch = filePath.match(/^order-documents\/([0-9a-f-]{36})\//i);
+    if (!orderIdMatch) {
+      return { success: false, error: "Invalid document path." };
+    }
+    try {
+      await requireOrderAccess(orderIdMatch[1]);
+    } catch (err) {
+      if (err instanceof OrderAccessError) {
+        return { success: false, error: err.message };
+      }
+      throw err;
+    }
+
     const adminClient = createAdminClient();
 
     const { error: storageErr } = await adminClient.storage
@@ -140,7 +196,7 @@ export async function deleteOrderDocument(
       .remove([filePath]);
 
     if (storageErr) {
-      console.error("[deleteOrderDocument] storage:", JSON.stringify(storageErr));
+      safeLogError("deleteOrderDocument", storageErr, { phase: "storage", docId });
       // Non-fatal
     }
 
@@ -150,7 +206,7 @@ export async function deleteOrderDocument(
       .eq("id", docId);
 
     if (error) {
-      console.error("[deleteOrderDocument] db:", JSON.stringify(error));
+      safeLogError("deleteOrderDocument", error, { phase: "db", docId });
       return { success: false, error: "Failed to delete document." };
     }
 
@@ -170,8 +226,7 @@ export async function upsertForm1500(
   formData: Record<string, unknown>,
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const supabase = await createClient();
-    await getCurrentUserOrThrow(supabase);
+    await requireOrderAccess(orderId);
     const adminClient = createAdminClient();
 
     const { error } = await adminClient.from("order_form_1500").upsert(
@@ -183,7 +238,7 @@ export async function upsertForm1500(
     );
 
     if (error) {
-      console.error("[upsertForm1500]", JSON.stringify(error));
+      safeLogError("upsertForm1500", error, { orderId });
       return { success: false, error: "Failed to save form." };
     }
 
@@ -198,8 +253,7 @@ export async function upsertForm1500(
 /* -------------------------------------------------------------------------- */
 
 export async function getForm1500(orderId: string) {
-  const supabase = await createClient();
-  await getCurrentUserOrThrow(supabase);
+  await requireOrderAccess(orderId);
   const adminClient = createAdminClient();
 
   // Fetch form row and order context (facility + enrollment + order_type) in parallel
@@ -320,6 +374,14 @@ export async function triggerDocumentExtraction(
   documentType: string,
   filePath: string,
 ): Promise<{ success: boolean; error: string | null }> {
+  try {
+    await requireOrderAccess(orderId);
+  } catch (err) {
+    if (err instanceof OrderAccessError) {
+      return { success: false, error: err.message };
+    }
+    throw err;
+  }
   // Defense-in-depth: never run AI extraction on manual-input orders.
   const adminClient = createAdminClient();
   const { data: order } = await adminClient
@@ -332,7 +394,7 @@ export async function triggerDocumentExtraction(
   }
 
   triggerAiExtraction(orderId, documentType, filePath).catch((err) =>
-    console.error("[triggerDocumentExtraction]", err),
+    safeLogError("triggerDocumentExtraction", err, { orderId, documentType }),
   );
   return { success: true, error: null };
 }
@@ -345,6 +407,14 @@ export async function triggerOrderExtraction(
   orderId: string,
   documents: Array<{ documentType: string; filePath: string }>,
 ): Promise<{ success: boolean; error: string | null }> {
+  try {
+    await requireOrderAccess(orderId);
+  } catch (err) {
+    if (err instanceof OrderAccessError) {
+      return { success: false, error: err.message };
+    }
+    throw err;
+  }
   // Defense-in-depth: never run AI extraction on orders flagged as manual input,
   // even if a client somewhere dispatches this after creation.
   const adminClient = createAdminClient();
@@ -358,7 +428,7 @@ export async function triggerOrderExtraction(
   }
 
   triggerCombinedExtraction(orderId, documents).catch((err) =>
-    console.error("[triggerOrderExtraction]", err),
+    safeLogError("triggerOrderExtraction", err, { orderId }),
   );
   return { success: true, error: null };
 }

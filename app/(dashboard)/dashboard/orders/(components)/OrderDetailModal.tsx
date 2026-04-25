@@ -2321,6 +2321,7 @@ export function OrderDetailModal({
                                   href={shipmentData.tracking_url}
                                   target="_blank"
                                   rel="noopener noreferrer"
+                                  referrerPolicy="no-referrer"
                                   className="font-medium text-[var(--blue)] hover:underline break-all text-right"
                                 >
                                   {shipmentData?.tracking_number ?? liveOrder.tracking_number}

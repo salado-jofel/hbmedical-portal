@@ -18,6 +18,7 @@ import {
   insertOrderHistory,
   createNotifications,
 } from "./_shared";
+import { safeLogError } from "@/lib/logging/safe-log";
 
 /* -------------------------------------------------------------------------- */
 /* submitForSignature                                                         */
@@ -45,7 +46,7 @@ export async function submitForSignature(
       .eq("id", orderId);
 
     if (error) {
-      console.error("[submitForSignature]", JSON.stringify(error));
+      safeLogError("submitForSignature", error, { orderId });
       return { success: false, error: "Failed to submit order." };
     }
 
@@ -98,7 +99,7 @@ export async function recallOrder(
       .eq("id", orderId);
 
     if (error) {
-      console.error("[recallOrder]", JSON.stringify(error));
+      safeLogError("recallOrder", error, { orderId });
       return { success: false, error: "Failed to recall order." };
     }
 
@@ -148,9 +149,9 @@ export async function signOrder(
       .eq("user_id", user.id)
       .maybeSingle();
 
-    console.log("[signOrder] verifying PIN for user:", user.id);
-    console.log("[signOrder] creds:", !!creds, credError?.message ?? null);
-    console.log("[signOrder] pin_hash found:", !!creds?.pin_hash);
+    if (credError) {
+      safeLogError("signOrder", credError, { phase: "credentials lookup", userId: user.id });
+    }
 
     if (!creds?.pin_hash) {
       return { success: false, error: "No PIN set. Please set up your provider PIN.", noPinSet: true };
@@ -160,8 +161,6 @@ export async function signOrder(
       input_pin:   pin,
       stored_hash: creds.pin_hash,
     });
-
-    console.log("[signOrder] verify result:", isValid, rpcError?.message ?? null);
 
     if (rpcError || !isValid) {
       return { success: false, error: "Incorrect PIN. Please try again." };
@@ -201,7 +200,7 @@ export async function signOrder(
       .eq("id", orderId);
 
     if (error) {
-      console.error("[signOrder]", JSON.stringify(error));
+      safeLogError("signOrder", error, { orderId });
       return { success: false, error: "Failed to sign order." };
     }
 
@@ -312,7 +311,7 @@ export async function signAndSubmitOrder(
       .eq("id", orderId);
 
     if (error) {
-      console.error("[signAndSubmitOrder]", JSON.stringify(error));
+      safeLogError("signAndSubmitOrder", error, { orderId });
       return { success: false, error: "Failed to sign and submit order." };
     }
 
@@ -508,7 +507,7 @@ export async function submitSignedOrder(
       .eq("id", orderId);
 
     if (error) {
-      console.error("[submitSignedOrder]", JSON.stringify(error));
+      safeLogError("submitSignedOrder", error, { orderId });
       return { success: false, error: "Failed to submit order." };
     }
 
@@ -632,7 +631,7 @@ export async function approveOrder(
       .eq("id", orderId);
 
     if (error) {
-      console.error("[approveOrder]", JSON.stringify(error));
+      safeLogError("approveOrder", error, { orderId });
       return { success: false, error: "Failed to approve order." };
     }
 
@@ -703,7 +702,7 @@ export async function requestAdditionalInfo(
       .eq("id", orderId);
 
     if (error) {
-      console.error("[requestAdditionalInfo]", JSON.stringify(error));
+      safeLogError("requestAdditionalInfo", error, { orderId });
       return { success: false, error: "Failed to update order." };
     }
 
@@ -766,7 +765,7 @@ export async function resubmitForReview(
       .eq("id", orderId);
 
     if (error) {
-      console.error("[resubmitForReview]", JSON.stringify(error));
+      safeLogError("resubmitForReview", error, { orderId });
       return { success: false, error: "Failed to resubmit order." };
     }
 
@@ -837,7 +836,7 @@ export async function markOrderDelivered(
       .eq("id", orderId);
 
     if (error) {
-      console.error("[markOrderDelivered]", JSON.stringify(error));
+      safeLogError("markOrderDelivered", error, { orderId });
       return { success: false, error: "Failed to mark order as delivered." };
     }
 
@@ -916,7 +915,7 @@ async function signFormWithSpecimenImpl(args: {
       .eq("order_id", orderId);
 
     if (updateErr) {
-      console.error(`[signFormWithSpecimen:${formTable}] update:`, updateErr);
+      safeLogError(`signFormWithSpecimen:${formTable}`, updateErr, { orderId });
       return { success: false, error: updateErr.message };
     }
 
@@ -937,13 +936,13 @@ async function signFormWithSpecimenImpl(args: {
       // Log but don't fail the sign — DB state is committed. Admin can
       // re-trigger PDF generation via the Regenerate button if needed
       // (though it'll be gated by is_locked; they'd unlock first).
-      console.error(`[signFormWithSpecimen:${pdfFormType}] PDF gen:`, pdfResult.error);
+      safeLogError(`signFormWithSpecimen:${pdfFormType}`, pdfResult.error, { phase: "PDF gen", orderId });
     }
 
     revalidatePath(ORDERS_PATH);
     return { success: true };
   } catch (err) {
-    console.error(`[signFormWithSpecimen:${formTable}] unexpected:`, err);
+    safeLogError(`signFormWithSpecimen:${formTable}`, err, { orderId });
     return {
       success: false,
       error: err instanceof Error ? err.message : "Unexpected error.",
@@ -1020,7 +1019,7 @@ async function unsignFormImpl(args: {
       .eq("order_id", orderId);
 
     if (updateErr) {
-      console.error(`[unsignForm:${formTable}] update:`, updateErr);
+      safeLogError(`unsignForm:${formTable}`, updateErr, { orderId });
       return { success: false, error: updateErr.message };
     }
 
@@ -1033,13 +1032,13 @@ async function unsignFormImpl(args: {
       ignoreLock: true,
     });
     if (!pdfResult.success) {
-      console.error(`[unsignForm:${pdfFormType}] PDF regen:`, pdfResult.error);
+      safeLogError(`unsignForm:${pdfFormType}`, pdfResult.error, { phase: "PDF regen", orderId });
     }
 
     revalidatePath(ORDERS_PATH);
     return { success: true };
   } catch (err) {
-    console.error(`[unsignForm:${formTable}] unexpected:`, err);
+    safeLogError(`unsignForm:${formTable}`, err, { orderId });
     return {
       success: false,
       error: err instanceof Error ? err.message : "Unexpected error.",

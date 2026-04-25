@@ -14,6 +14,8 @@ import type {
   SignerRelationship,
 } from "@/utils/interfaces/orders";
 import { ORDERS_PATH } from "./_shared";
+import { logPhiAccess } from "@/lib/audit/log-phi-access";
+import { requireOrderAccess } from "@/lib/supabase/order-access";
 import {
   DEFAULT_ACKNOWLEDGEMENTS,
   composeDeliveryInvoicePrefill,
@@ -131,8 +133,21 @@ export async function getOrderDeliveryInvoice(
         doctor_name:      saved.doctor_name      || prefill.doctor_name,
         line_items:       prefill.line_items,
       };
+      void logPhiAccess({
+        action: "invoice.read",
+        resource: "order_delivery_invoices",
+        resourceId: (saved as { id?: string }).id ?? null,
+        orderId,
+      });
       return { invoice: rowToInterface(healed), error: null };
     }
+
+    void logPhiAccess({
+      action: "invoice.read",
+      resource: "order_delivery_invoices",
+      orderId,
+      metadata: { prefilled: true },
+    });
 
     return {
       invoice: rowToInterface({
@@ -175,8 +190,7 @@ export async function upsertOrderDeliveryInvoice(
   input: UpsertDeliveryInvoiceInput,
 ): Promise<{ success: boolean; invoice: IDeliveryInvoice | null; error: string | null }> {
   try {
-    const supabase = await createClient();
-    await getCurrentUserOrThrow(supabase);
+    await requireOrderAccess(orderId);
 
     const adminClient = createAdminClient();
 
