@@ -227,19 +227,28 @@ export function isOrderFullyLocked(
 
 /**
  * Gates the "Capture Patient Signature" (and Recapture) affordance on the
- * Invoice tab. Only clinical_provider or admin, only while the order is in
- * `shipped` status. Applies to both first-time capture and re-capture:
- * providers can fix a bad signature while the order is still in the shipped
- * window; once admin flips the order to `delivered`, it locks for everyone
- * (non-admin).
+ * Invoice tab. Patient signing is a clinic-side action — the clinical
+ * provider hands the device to the patient at delivery, or the clinical
+ * staff handles it on the provider's behalf. Admin / support / sales-rep
+ * are explicitly NOT allowed to capture, even though admin bypasses other
+ * lock rules: the signature is HIPAA-grade proof-of-delivery and must
+ * originate from someone in the patient's care chain.
+ *
+ * Applies to both first-time capture and re-capture: clinic users can fix
+ * a bad signature while the order is still in `shipped`. Once admin flips
+ * to `delivered`, the status gate hides the affordance.
  */
 export function canCapturePatientSignature(args: {
   status: string | null | undefined;
   role: string | null | undefined;
+  /** Reserved for symmetry with other gate helpers — admin still cannot
+   *  capture patient signatures, so this argument is intentionally ignored. */
   isAdmin: boolean;
 }): boolean {
-  if (args.isAdmin) return args.status === "shipped";
-  if (args.role !== "clinical_provider") return false;
+  void args.isAdmin;
+  if (args.role !== "clinical_provider" && args.role !== "clinical_staff") {
+    return false;
+  }
   return args.status === "shipped";
 }
 

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUserOrThrow, getUserRole } from "@/lib/supabase/auth";
-import { isAdmin, isClinicalProvider } from "@/utils/helpers/role";
+import { isClinicalProvider, isClinicalStaff } from "@/utils/helpers/role";
 import type {
   AcknowledgementMap,
   DeliveryMethod,
@@ -260,11 +260,15 @@ export async function captureInvoicePatientSignature(
     const user = await getCurrentUserOrThrow(supabase);
     const role = await getUserRole(supabase);
 
-    if (!isAdmin(role) && !isClinicalProvider(role)) {
+    // Patient proof-of-delivery must originate from someone in the patient's
+    // care chain — provider or their staff. Admin / support / sales-rep are
+    // explicitly NOT allowed to capture, even though admin bypasses other
+    // lock rules. See canCapturePatientSignature in utils/constants/orders.
+    if (!isClinicalProvider(role) && !isClinicalStaff(role)) {
       return {
         success: false,
         invoice: null,
-        error: "Only a clinical provider can capture the patient's signature.",
+        error: "Only the clinical provider or their staff can capture the patient's signature.",
       };
     }
 
@@ -282,7 +286,9 @@ export async function captureInvoicePatientSignature(
     if (!order) {
       return { success: false, invoice: null, error: "Order not found." };
     }
-    if (!isAdmin(role) && order.order_status !== "shipped") {
+    // No admin bypass — patient signature must be captured during the
+    // shipped window regardless of role.
+    if (order.order_status !== "shipped") {
       return {
         success: false,
         invoice: null,

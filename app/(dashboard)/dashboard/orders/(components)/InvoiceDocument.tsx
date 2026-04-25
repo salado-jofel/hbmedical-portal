@@ -56,6 +56,11 @@ interface InvoiceDocumentProps {
   onDirtyChange?: (dirty: boolean) => void;
   isAdmin?: boolean;
   isProvider?: boolean;
+  /**
+   * `true` for clinical_staff users — provider's staff can also capture
+   * the patient signature on the provider's behalf at hand-off.
+   */
+  isClinicalStaff?: boolean;
   /** Called when the patient-signature capture modal commits a new invoice. */
   onInvoiceUpdated?: (invoice: IDeliveryInvoice) => void;
 }
@@ -66,6 +71,7 @@ export function InvoiceDocument({
   onDirtyChange,
   isAdmin = false,
   isProvider = false,
+  isClinicalStaff = false,
   onInvoiceUpdated,
 }: InvoiceDocumentProps) {
   // Snapshot baseline state — comparison-based dirty tracking matches the
@@ -92,17 +98,25 @@ export function InvoiceDocument({
   const orderStatus = (order as unknown as { order_status?: string }).order_status;
   const locked = isOrderFullyLocked(orderStatus, invoice.patientSignedAt, isAdmin);
 
+  // Patient signing is provider/staff territory only — admin (even though
+  // they bypass other lock rules) cannot capture the proof-of-delivery
+  // signature. See canCapturePatientSignature comments in
+  // utils/constants/orders.ts for the reasoning.
+  const effectiveRole = isProvider
+    ? "clinical_provider"
+    : isClinicalStaff
+      ? "clinical_staff"
+      : null;
   const canCapture = canCapturePatientSignature({
     status: orderStatus,
-    role: isProvider ? "clinical_provider" : null,
+    role: effectiveRole,
     isAdmin,
   });
-  // Shown next to the (dis)abled button to explain why it's greyed out.
   const captureGateMessage =
     orderStatus !== "shipped"
       ? "Available once the order is shipped."
-      : !isAdmin && !isProvider
-        ? "Only the clinical provider can capture the patient's signature."
+      : !isProvider && !isClinicalStaff
+        ? "Only the clinical provider or their staff can capture the patient's signature."
         : null;
 
   function update<K extends keyof IDeliveryInvoice>(key: K, value: IDeliveryInvoice[K]) {
