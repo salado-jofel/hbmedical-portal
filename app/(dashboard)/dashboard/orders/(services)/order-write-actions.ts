@@ -25,6 +25,7 @@ import {
   generateOrderPDFs,
   insertOrderHistory,
 } from "./_shared";
+import { safeLogError } from "@/lib/logging/safe-log";
 
 /* -------------------------------------------------------------------------- */
 /* createOrder                                                                */
@@ -68,7 +69,7 @@ export async function createOrder(data: {
         .select("id")
         .single();
       if (patientErr || !patientRow) {
-        console.error("[createOrder] patient insert:", JSON.stringify(patientErr));
+        safeLogError("createOrder", patientErr, { phase: "patient insert" });
         return { success: false, error: "Failed to save patient information." };
       }
       patientId = patientRow.id;
@@ -104,7 +105,7 @@ export async function createOrder(data: {
       .single();
 
     if (orderErr || !orderRow) {
-      console.error("[createOrder] order insert:", JSON.stringify(orderErr));
+      safeLogError("createOrder", orderErr, { phase: "order insert" });
       return { success: false, error: "Failed to create order." };
     }
 
@@ -117,14 +118,14 @@ export async function createOrder(data: {
     // order_type is now purely a product classification with no effect on form behavior.
     if (data.manual_input) {
       generateOrderPDFs(orderId, ["order_form", "ivr", "hcfa_1500"]).catch((err) =>
-        console.error("[createOrder] PDF generation (manual):", err),
+        safeLogError("createOrder", err, { phase: "PDF generation (manual)", orderId }),
       );
     }
 
     revalidatePath(ORDERS_PATH);
     return { success: true, error: null, orderId };
   } catch (err) {
-    console.error("[createOrder] unexpected:", err);
+    safeLogError("createOrder", err);
     return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
   }
 }
@@ -168,7 +169,7 @@ export async function assignProvider(
       .eq("id", orderId);
 
     if (error) {
-      console.error("[assignProvider]", JSON.stringify(error));
+      safeLogError("assignProvider", error, { orderId, providerId });
       return { success: false, error: "Failed to assign provider." };
     }
 
@@ -229,7 +230,7 @@ export async function cancelOrder(
       .eq("id", orderId);
 
     if (error) {
-      console.error("[cancelOrder]", JSON.stringify(error));
+      safeLogError("cancelOrder", error, { orderId });
       return { success: false, error: "Failed to cancel order." };
     }
 
@@ -276,7 +277,7 @@ export async function deleteOrder(orderId: string): Promise<void> {
   const { error } = await adminClient.from("orders").delete().eq("id", orderId);
 
   if (error) {
-    console.error("[deleteOrder]", JSON.stringify(error));
+    safeLogError("deleteOrder", error, { orderId });
     throw new Error("Failed to delete order.");
   }
 
@@ -383,7 +384,13 @@ export async function saveOrderForm(
     physician_signed_at?: string | null;
     physician_signed_by?: string | null;
   },
-): Promise<{ success: boolean; error?: string }> {
+  ifMatchUpdatedAt?: string | null,
+): Promise<{
+  success: boolean;
+  error?: string;
+  conflict?: boolean;
+  updatedAt?: string;
+}> {
   try {
     await requireIVREditRole();
     const adminClient = createAdminClient();
@@ -391,12 +398,34 @@ export async function saveOrderForm(
     // wound_type lives on the orders table — separate update
     const { wound_type, ...formData } = data;
 
-    const { error } = await adminClient
+    if (ifMatchUpdatedAt) {
+      const { data: current } = await adminClient
+        .from("order_form")
+        .select("updated_at")
+        .eq("order_id", orderId)
+        .maybeSingle();
+      if (current && current.updated_at !== ifMatchUpdatedAt) {
+        return {
+          success: false,
+          conflict: true,
+          error:
+            "Someone else saved this form while you were editing. Reload to see their changes.",
+        };
+      }
+    }
+
+    const nowIso = new Date().toISOString();
+    const { data: saved, error } = await adminClient
       .from("order_form")
-      .upsert({ order_id: orderId, ...formData }, { onConflict: "order_id" });
+      .upsert(
+        { order_id: orderId, ...formData, updated_at: nowIso },
+        { onConflict: "order_id" },
+      )
+      .select("updated_at")
+      .single();
 
     if (error) {
-      console.error("[saveOrderForm]", JSON.stringify(error));
+      safeLogError("saveOrderForm", error, { orderId });
       return { success: false, error: error.message ?? "Failed to save." };
     }
 
@@ -409,9 +438,9 @@ export async function saveOrderForm(
 
     revalidatePath(ORDERS_PATH);
     generateOrderPDFs(orderId, ["order_form"]).catch((err) =>
-      console.error("[OrderForm PDF]", err),
+      safeLogError("OrderForm PDF", err, { orderId }),
     );
-    return { success: true };
+    return { success: true, updatedAt: saved?.updated_at ?? nowIso };
   } catch (err) {
     return {
       success: false,

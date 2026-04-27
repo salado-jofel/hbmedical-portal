@@ -14,6 +14,13 @@ import { generateText } from "ai";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { generateOrderPdf, type OrderPdfFormType } from "@/lib/pdf/generate-order-pdfs";
 import { NextRequest, NextResponse } from "next/server";
+import {
+  requireOrderAccess,
+  orderAccessErrorStatus,
+  OrderAccessError,
+} from "@/lib/supabase/order-access";
+import { logPhiAccess } from "@/lib/audit/log-phi-access";
+import { safeLogError } from "@/lib/logging/safe-log";
 
 export const maxDuration = 60;
 
@@ -622,7 +629,7 @@ async function handleCombinedExtraction(
     const jsonStr = jsonMatch?.[1] ?? jsonMatch?.[2] ?? text;
     extractedFields = JSON.parse(jsonStr.trim());
   } catch {
-    console.error("[extract-combined] JSON parse failed:", text);
+    safeLogError("extract-combined", "JSON parse failed", { orderId, textLength: text.length });
     return NextResponse.json({ error: "Failed to parse AI response as JSON" }, { status: 500 });
   }
 
@@ -661,7 +668,7 @@ async function handleCombinedExtraction(
     const { error: ivrErr } = await adminClient
       .from("order_ivr")
       .upsert(ivrPayload, { onConflict: "order_id" });
-    if (ivrErr) console.error("[extract-combined] order_ivr FAILED:", JSON.stringify(ivrErr));
+    if (ivrErr) safeLogError("extract-combined", ivrErr, { phase: "order_ivr insert", orderId });
   }
 
   /* ── STEP 7: Upsert order_form_1500 ── */
@@ -686,7 +693,7 @@ async function handleCombinedExtraction(
     const { error: f15Err } = await adminClient
       .from("order_form_1500")
       .upsert(form1500Payload, { onConflict: "order_id" });
-    if (f15Err) console.error("[extract-combined] order_form_1500 FAILED:", JSON.stringify(f15Err));
+    if (f15Err) safeLogError("extract-combined", f15Err, { phase: "order_form_1500 insert", orderId });
   }
 
   /* ── STEP 8: Upsert order_form ── */
@@ -703,7 +710,7 @@ async function handleCombinedExtraction(
   const { error: ofErr } = await adminClient
     .from("order_form")
     .upsert(orderFormPayload, { onConflict: "order_id" });
-  if (ofErr) console.error("[extract-combined] order_form FAILED:", JSON.stringify(ofErr));
+  if (ofErr) safeLogError("extract-combined", ofErr, { phase: "order_form insert", orderId });
 
   /* ── STEP 9: Auto-create patient from facesheet data ── */
   const firstName = (ai1500.patient_first_name as string | undefined);
@@ -791,6 +798,43 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
+
+    // ── Authorization gate ──
+    // AI extraction reads order documents (facesheets, clinical docs — both
+    // PHI-bearing) and writes structured data back to PHI tables. The route
+    // must verify the caller is authenticated and has access to this order.
+    // Without this check, anyone with a valid orderId could trigger paid AI
+    // calls and exfiltrate PHI through the structured response.
+    try {
+      await requireOrderAccess(orderId);
+    } catch (err) {
+      if (err instanceof OrderAccessError) {
+        return NextResponse.json(
+          { error: err.message },
+          { status: orderAccessErrorStatus(err) },
+        );
+      }
+      console.error("[extract] access check failed:", err);
+      return NextResponse.json(
+        { error: "Access check failed." },
+        { status: 500 },
+      );
+    }
+
+    // Audit — AI extraction reads PHI documents (facesheet, clinical
+    // notes) and writes structured fields back. Log every call.
+    void logPhiAccess({
+      action: "ai.extract",
+      resource: "order_documents",
+      orderId,
+      metadata: {
+        path: Array.isArray(documentsArray) ? "combined" : "legacy",
+        documentType: documentType ?? null,
+        documents: Array.isArray(documentsArray)
+          ? documentsArray.map((d: any) => ({ type: d.documentType, hasPath: !!d.filePath }))
+          : undefined,
+      },
+    });
 
     // ── Combined path: documents[] array with facesheet + clinical_docs ──
     if (Array.isArray(documentsArray) && documentsArray.length > 0) {
@@ -1023,7 +1067,7 @@ export async function POST(req: NextRequest) {
       const jsonStr = jsonMatch?.[1] ?? jsonMatch?.[2] ?? text;
       extractedFields = JSON.parse(jsonStr.trim());
     } catch {
-      console.error("[extract] JSON parse failed:", text);
+      safeLogError("extract", "JSON parse failed", { orderId, textLength: text.length });
       return NextResponse.json(
         { error: "Failed to parse AI response as JSON" },
         { status: 500 },
@@ -1095,7 +1139,7 @@ export async function POST(req: NextRequest) {
         .from("order_ivr")
         .upsert(ivrPayload, { onConflict: "order_id" });
       if (ivrErr) {
-        console.error("[extract] order_ivr FAILED:", JSON.stringify(ivrErr));
+        safeLogError("extract", ivrErr, { phase: "order_ivr insert", orderId });
       }
     }
 
@@ -1172,7 +1216,7 @@ export async function POST(req: NextRequest) {
       .from("order_form")
       .upsert(orderFormPayload, { onConflict: "order_id" });
     if (ofErr) {
-      console.error("[extract] order_form FAILED:", JSON.stringify(ofErr));
+      safeLogError("extract", ofErr, { phase: "order_form insert", orderId });
     } else {
       console.log(
         "[extract] order_form saved — patient_name:",

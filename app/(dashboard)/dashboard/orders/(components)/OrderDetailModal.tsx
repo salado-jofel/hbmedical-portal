@@ -181,17 +181,18 @@ export function OrderDetailModal({
 
   /* -- Status-aware edit gate (overlays the role-based `canEdit` prop) --
      Non-admins lose edit rights once the order is past manufacturer_review.
-     Admin bypasses entirely. The patient-signature lock is enforced inside
-     the Invoice tab itself (and server-side in order_items actions), so
-     cross-tab gating only needs to track status. */
+     Admin can edit at every status — the previous version returned `canEdit`
+     here, which was false for admin (because `canCreate` excluded admin)
+     and silently locked them out of every form. Now admin always edits. */
   const effectiveCanEdit = useMemo(() => {
-    if (isAdmin) return canEdit;
+    if (isAdmin) return true;
     return canEdit && isItemsEditable(liveOrder.order_status);
   }, [canEdit, isAdmin, liveOrder.order_status]);
 
   // Signing of Order Form / IVR is only meaningful before admin approval.
   // Once the order hits manufacturer_review+, the provider can no longer
-  // sign/unsign — admin can still see sign controls for audit correction.
+  // sign/unsign. Admin keeps `canSign` as passed (admin doesn't actually
+  // sign as a clinical_provider, so canSign=false for admin is correct).
   const effectiveCanSign = useMemo(() => {
     if (isAdmin) return canSign;
     return canSign && isItemsEditable(liveOrder.order_status);
@@ -1363,19 +1364,32 @@ export function OrderDetailModal({
   // Invoice tab + doc card only show once the order is past the early
   // drafting stages — see INVOICE_VISIBLE_STATUSES.
   const invoiceUnlocked = isInvoiceVisibleForStatus(status);
-  const visibleTabs = (isProvider ? TABS.filter((t) => t.value !== "hcfa") : TABS).filter(
-    (t) => t.value !== "invoice" || invoiceUnlocked,
-  );
+  // HCFA / 1500 tab gate: only visible once the order has been delivered, and
+  // only to roles that participate in the billing workflow. Sales reps are
+  // intentionally excluded — they don't touch claim forms. The form is
+  // pre-populated server-side when the order transitions to "delivered" and
+  // editable by anyone who can see it (no separate edit-only check).
+  const hcfaVisible =
+    status === "delivered" && (isClinical || isAdmin || isSupport);
+  const visibleTabs = TABS.filter((t) => {
+    if (t.value === "hcfa") return hcfaVisible;
+    if (t.value === "invoice") return invoiceUnlocked;
+    return true;
+  });
   const visibleRequiredDocTypes = (isProvider
     ? REQUIRED_DOC_TYPES.filter((d) => {
-        if (d.type === "form_1500") return false;
         if (d.type === "facesheet" || d.type === "clinical_docs") {
           return localDocuments.some((ld) => ld.documentType === d.type);
         }
         return true;
       })
     : REQUIRED_DOC_TYPES
-  ).filter((d) => d.type !== "delivery_invoice" || invoiceUnlocked);
+  )
+    .filter((d) => d.type !== "delivery_invoice" || invoiceUnlocked)
+    // form_1500 doc card mirrors the HCFA tab visibility — only relevant
+    // once the order is delivered, and only to billing-workflow roles. Sales
+    // reps still don't reach this code path.
+    .filter((d) => d.type !== "form_1500" || hcfaVisible);
   const isOverviewDirty =
     draftItems.some((i) => i.isNew) ||
     draftItems.some((draft) => {
@@ -1642,6 +1656,7 @@ export function OrderDetailModal({
                       order={liveOrder}
                       canEdit={effectiveCanEdit}
                       canSign={effectiveCanSign}
+                      isAdmin={isAdmin}
                       currentUserName={currentUserName ?? null}
                       patientName={patientName}
                       onSaved={(updated) => {
@@ -1669,8 +1684,12 @@ export function OrderDetailModal({
                     <HCFATab
                       isActive={tab === "hcfa"}
                       order={liveOrder}
-                      canEdit={effectiveCanEdit}
-                      canSign={effectiveCanSign}
+                      // HCFA edit/visibility is gated only by the role + status
+                      // rule in `hcfaVisible`. Anyone who can see the tab can
+                      // edit it. Box 31 (physician signature) is intentionally
+                      // left blank — billers handle that downstream.
+                      canEdit={hcfaVisible}
+                      canSign={false}
                       currentUserName={currentUserName ?? null}
                       hcfaData={hcfaData}
                       resetHcfaKey={resetHcfaKey}
@@ -1686,6 +1705,7 @@ export function OrderDetailModal({
                       <InvoiceTab
                         isActive={tab === "invoice"}
                         order={liveOrder}
+                        currentUserName={currentUserName ?? null}
                         isAdmin={isAdmin}
                         isProvider={isProvider}
                         // Clinical staff = anyone on the clinic side who isn't
@@ -2321,6 +2341,7 @@ export function OrderDetailModal({
                                   href={shipmentData.tracking_url}
                                   target="_blank"
                                   rel="noopener noreferrer"
+                                  referrerPolicy="no-referrer"
                                   className="font-medium text-[var(--blue)] hover:underline break-all text-right"
                                 >
                                   {shipmentData?.tracking_number ?? liveOrder.tracking_number}

@@ -6,7 +6,7 @@ import {
   getCurrentUserOrThrow,
   getUserRole,
 } from "@/lib/supabase/auth";
-import { isClinicSide } from "@/utils/helpers/role";
+import { isAdmin, isClinicSide, isSalesRep, isSupport } from "@/utils/helpers/role";
 import type {
   DashboardOrder,
   INotification,
@@ -30,6 +30,8 @@ import {
   type PaginatedResult,
 } from "@/utils/interfaces/paginated";
 import { ORDER_SORT_COLUMNS, type OrderSortColumn } from "@/utils/constants/orders";
+import { logPhiAccess } from "@/lib/audit/log-phi-access";
+import { safeLogError } from "@/lib/logging/safe-log";
 
 /* -------------------------------------------------------------------------- */
 /* getOrders                                                                  */
@@ -56,7 +58,7 @@ export async function getOrders(): Promise<DashboardOrder[]> {
   const { data, error } = await query;
 
   if (error) {
-    console.error("[getOrders]", JSON.stringify(error));
+    safeLogError("getOrders", error);
     throw new Error(error.message ?? "Failed to fetch orders.");
   }
 
@@ -169,9 +171,26 @@ export async function getOrdersPaginated(
   const { data, error, count } = await builder.range(from, to);
 
   if (error) {
-    console.error("[getOrdersPaginated]", JSON.stringify(error));
+    safeLogError("getOrdersPaginated", error);
     throw new Error(error.message ?? "Failed to fetch orders.");
   }
+
+  // Audit log — list reads count as PHI access. Metadata captures the
+  // filter context (NOT the search term, since search can contain patient
+  // names) so the admin can later see which slice of the list was viewed.
+  void logPhiAccess({
+    action: "order.list",
+    resource: "orders",
+    metadata: {
+      sort,
+      dir,
+      status: query.filters?.status ?? null,
+      facility: query.filters?.facility ?? null,
+      total: count ?? 0,
+      page,
+      pageSize,
+    },
+  });
 
   return {
     rows: mapOrders((data ?? []) as unknown as RawOrderRecord[]),
@@ -195,6 +214,43 @@ function escapeIlikeWildcards(s: string): string {
 export async function getOrdersByFacility(
   facilityId: string,
 ): Promise<DashboardOrder[]> {
+  // Authorization gate. Admin / support can query any facility; clinic-side
+  // users can only query their own facility; sales reps can only query a
+  // facility assigned to themselves or one of their sub-reps.
+  const supabase = await createClient();
+  const user = await getCurrentUserOrThrow(supabase);
+  const role = await getUserRole(supabase);
+
+  if (!isAdmin(role) && !isSupport(role)) {
+    if (isClinicSide(role)) {
+      const ownFacilityId = await getUserFacilityId(user.id);
+      if (ownFacilityId !== facilityId) {
+        return [];
+      }
+    } else if (isSalesRep(role)) {
+      const adminClient = createAdminClient();
+      const { data: facility } = await adminClient
+        .from("facilities")
+        .select("assigned_rep")
+        .eq("id", facilityId)
+        .maybeSingle();
+      const assigned = facility?.assigned_rep as string | null | undefined;
+      let allowed = assigned === user.id;
+      if (!allowed && assigned) {
+        const { data: hierarchy } = await adminClient
+          .from("rep_hierarchy")
+          .select("child_rep_id")
+          .eq("parent_rep_id", user.id)
+          .eq("child_rep_id", assigned)
+          .maybeSingle();
+        allowed = !!hierarchy;
+      }
+      if (!allowed) return [];
+    } else {
+      return [];
+    }
+  }
+
   const adminClient = createAdminClient();
 
   const { data, error } = await adminClient
@@ -204,7 +260,7 @@ export async function getOrdersByFacility(
     .order("placed_at", { ascending: false });
 
   if (error) {
-    console.error("[getOrdersByFacility]", JSON.stringify(error));
+    safeLogError("getOrdersByFacility", error, { facilityId });
     return [];
   }
 
@@ -236,7 +292,7 @@ export async function getFacilitiesForOrderFilter(): Promise<
     .order("name", { ascending: true });
 
   if (error) {
-    console.error("[getFacilitiesForOrderFilter]", JSON.stringify(error));
+    safeLogError("getFacilitiesForOrderFilter", error);
     return [];
   }
   return (data ?? []).map((f) => ({ id: f.id as string, name: f.name as string }));
@@ -256,11 +312,21 @@ export async function getOrderById(orderId: string): Promise<DashboardOrder | nu
     .maybeSingle();
 
   if (error) {
-    console.error("[getOrderById]", JSON.stringify(error));
+    safeLogError("getOrderById", error, { orderId });
     return null;
   }
 
   if (!data) return null;
+
+  // Single-order read = a user opened the detail modal or deep-linked to
+  // an order. Logged with order_id for fast "who saw this patient?" lookups.
+  void logPhiAccess({
+    action: "order.read",
+    resource: "orders",
+    resourceId: orderId,
+    orderId,
+  });
+
   return mapOrder(data as unknown as RawOrderRecord);
 }
 
@@ -338,7 +404,7 @@ export async function getOrderDocuments(
     .order("created_at", { ascending: false });
 
   if (error) {
-    console.error("[getOrderDocuments]", JSON.stringify(error));
+    safeLogError("getOrderDocuments", error, { orderId });
     return [];
   }
 
@@ -374,7 +440,7 @@ export async function getOrderMessages(
     .order("created_at", { ascending: true });
 
   if (error) {
-    console.error("[getOrderMessages]", JSON.stringify(error));
+    safeLogError("getOrderMessages", error, { orderId });
     return [];
   }
   if (!data || data.length === 0) return [];
@@ -446,8 +512,6 @@ export async function getNotifications(): Promise<INotification[]> {
   const supabase = await createClient();
   const user = await getCurrentUserOrThrow(supabase);
 
-  console.log("[getNotifications] user id:", user.id);
-
   // Use adminClient with explicit user_id filter — auth.uid() is unreliable
   // in server action context with publishable key (same issue as getOrderMessages)
   const adminClient = createAdminClient();
@@ -458,10 +522,8 @@ export async function getNotifications(): Promise<INotification[]> {
     .order("created_at", { ascending: false })
     .limit(50);
 
-  console.log("[getNotifications] data:", data?.length, "error:", error?.message ?? null);
-
   if (error) {
-    console.error("[getNotifications] error:", JSON.stringify(error));
+    safeLogError("getNotifications", error, { userId: user.id });
     return [];
   }
 
@@ -485,8 +547,6 @@ export async function getUnreadNotificationCount(): Promise<number> {
   const supabase = await createClient();
   const user = await getCurrentUserOrThrow(supabase);
 
-  console.log("[getUnreadCount] user:", user.id);
-
   const admin = createAdminClient();
   const { count } = await admin
     .from("notifications")
@@ -494,6 +554,5 @@ export async function getUnreadNotificationCount(): Promise<number> {
     .eq("user_id", user.id)
     .eq("is_read", false);
 
-  console.log("[getUnreadCount] count:", count);
   return count ?? 0;
 }

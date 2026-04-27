@@ -8,6 +8,8 @@ import {
   ORDERS_PATH,
   createNotifications,
 } from "./_shared";
+import { requireOrderAccess } from "@/lib/supabase/order-access";
+import { safeLogError } from "@/lib/logging/safe-log";
 
 /* -------------------------------------------------------------------------- */
 /* sendOrderMessage                                                           */
@@ -17,8 +19,8 @@ export async function sendOrderMessage(
   orderId: string,
   message: string,
 ): Promise<{ success: boolean; error: string | null }> {
-  const supabase = await createClient();
-  const user = await getCurrentUserOrThrow(supabase);
+  const { userId } = await requireOrderAccess(orderId);
+  const user = { id: userId };
 
   if (!message.trim()) {
     return { error: "Message cannot be empty.", success: false };
@@ -38,7 +40,7 @@ export async function sendOrderMessage(
     .single();
 
   if (insertError || !newMsg) {
-    console.error("[sendOrderMessage]", JSON.stringify(insertError));
+    safeLogError("sendOrderMessage", insertError, { orderId });
     return {
       error:   insertError?.message ?? "Failed to send message.",
       success: false,

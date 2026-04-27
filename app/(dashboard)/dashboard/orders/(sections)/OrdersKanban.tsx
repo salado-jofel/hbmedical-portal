@@ -402,12 +402,17 @@ export function OrdersKanban({
     "shipped",
     "delivered",
   ];
+  // Admin sees the full pipeline — every order at every status, including
+  // drafts and pending_signature so they can intervene anywhere.
   const ADMIN_VISIBLE_STATUSES: OrderStatus[] = [
+    "draft",
+    "pending_signature",
     "manufacturer_review",
     "additional_info_needed",
     "approved",
     "shipped",
     "delivered",
+    "canceled",
   ];
   const VISIBLE_STATUSES = (isAdmin || isSupport)
     ? ADMIN_VISIBLE_STATUSES
@@ -484,7 +489,10 @@ export function OrdersKanban({
       canSign={canSign}
       isAdmin={isAdmin}
       isClinical={canCreate}
-      canEdit={canCreate}
+      // Admin can edit at any stage — `canCreate` is for clinical-only
+      // gating (Create Order button etc.). `effectiveCanEdit` inside the
+      // modal still applies status checks for non-admin users.
+      canEdit={canCreate || isAdmin}
       isRep={isRep}
       isSupport={isSupport}
       isProvider={canSign}

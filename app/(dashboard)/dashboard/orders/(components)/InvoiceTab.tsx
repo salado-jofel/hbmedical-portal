@@ -9,6 +9,8 @@ import type { DashboardOrder, IDeliveryInvoice } from "@/utils/interfaces/orders
 interface InvoiceTabProps {
   isActive: boolean;
   order: DashboardOrder;
+  /** Display name for the current viewer — drives presence chips. */
+  currentUserName?: string | null;
   onDirtyChange?: (dirty: boolean) => void;
   // Role flags used to gate the patient-signature capture button. Admin
   // bypasses other lock rules but is NOT allowed to capture patient
@@ -104,6 +106,7 @@ function InvoiceSkeleton() {
 export function InvoiceTab({
   isActive,
   order,
+  currentUserName = null,
   onDirtyChange,
   isAdmin = false,
   isProvider = false,
@@ -152,6 +155,7 @@ export function InvoiceTab({
           key={invoice.lineItems.map((i) => `${i.hcpc ?? ""}:${i.qty ?? ""}:${i.perEach ?? ""}`).join("|")}
           order={order}
           initialInvoice={invoice}
+          currentUserName={currentUserName}
           onDirtyChange={onDirtyChange}
           isAdmin={isAdmin}
           isProvider={isProvider}

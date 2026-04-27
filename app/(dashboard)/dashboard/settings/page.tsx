@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole } from "@/lib/supabase/auth";
 import { isSalesRep, isClinicalProvider } from "@/utils/helpers/role";
+import { isMfaMandatoryRole } from "@/lib/supabase/mfa-gate";
 import { PageHeader } from "@/app/(components)/PageHeader";
 import type { UserRole } from "@/utils/helpers/role";
 
@@ -81,8 +82,21 @@ export default async function SettingsPage({
   const providerName = `${profile.first_name} ${profile.last_name}`.trim();
   const providerNpi = credentials?.npi_number ?? "";
 
+  // Roles that mandate MFA per the dashboard gate. Keep in sync with
+  // MFA_MANDATORY_ROLES in lib/supabase/mfa-gate.ts.
+  // Source of truth lives in lib/supabase/mfa-gate.ts so the Settings UI
+  // and the dashboard gate can never disagree.
+  const mfaMandatory = isMfaMandatoryRole(role as UserRole);
+
   const { tab } = await searchParams;
-  const validTabs = ["profile", "team", "credentials", "enrollment", "payouts"] as const;
+  const validTabs = [
+    "profile",
+    "team",
+    "credentials",
+    "enrollment",
+    "payouts",
+    "security",
+  ] as const;
   const initialTab = validTabs.includes(tab as (typeof validTabs)[number])
     ? (tab as (typeof validTabs)[number])
     : undefined;
@@ -106,6 +120,7 @@ export default async function SettingsPage({
           showPayouts={showPayouts}
           connectStatus={connectStatus}
           lastPayout={lastPayout}
+          mfaMandatory={mfaMandatory}
           initialTab={initialTab}
           enrollmentData={enrollmentData}
           facilityName={facilityName}

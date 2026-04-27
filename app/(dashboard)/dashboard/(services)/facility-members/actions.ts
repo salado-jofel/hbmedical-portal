@@ -146,8 +146,28 @@ export async function addFacilityMember(
   roleType: string,
   options?: { isPrimary?: boolean; invitedBy?: string | null },
 ): Promise<void> {
-  const supabaseAdmin = createAdminClient();
+  // Authorization gate. This action is exposed via Next's RPC because the
+  // file is marked "use server", so any signed-in user could hit it directly
+  // and inject themselves into a facility. Allowed callers:
+  //   - admin / support_staff making a manual addition (signed in)
+  //   - the invite-signup flow (caller is unauthenticated — the new user
+  //     just got created by createUser() but no session is established yet)
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (user) {
+    const supabaseAdmin = createAdminClient();
+    const { data: profile } = await supabaseAdmin
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+    const role = (profile?.role as string | null | undefined) ?? null;
+    if (role !== "admin" && role !== "support_staff") {
+      throw new Error("You are not authorized to add facility members.");
+    }
+  }
 
+  const supabaseAdmin = createAdminClient();
   const payload = {
     facility_id: facilityId,
     user_id: userId,
@@ -156,8 +176,6 @@ export async function addFacilityMember(
     is_primary: options?.isPrimary ?? false,
     invited_by: options?.invitedBy ?? null,
   };
-
-  console.log("[addFacilityMember] inserting:", payload);
 
   const { error } = await supabaseAdmin
     .from(FACILITY_MEMBERS_TABLE)

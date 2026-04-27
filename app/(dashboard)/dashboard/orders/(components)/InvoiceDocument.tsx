@@ -1,13 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MapPin, Mail, Globe, Phone, PenLine, Check, Info } from "lucide-react";
 import toast from "react-hot-toast";
 import { HBLogo } from "@/app/(components)/HBLogo";
 import { FormActionBar } from "./FormActionBar";
 import { CapturePatientSignatureModal } from "./CapturePatientSignatureModal";
-import { upsertOrderDeliveryInvoice } from "../(services)/order-delivery-invoice-actions";
+import {
+  upsertOrderDeliveryInvoice,
+  getOrderDeliveryInvoice,
+} from "../(services)/order-delivery-invoice-actions";
 import { canCapturePatientSignature, isOrderFullyLocked } from "@/utils/constants/orders";
+import { useFormCollaboration } from "./useFormCollaboration";
+import { FormCollaborationStatus } from "./FormCollaborationStatus";
 import type {
   AcknowledgementMap,
   DashboardOrder,
@@ -53,6 +58,8 @@ const ACKNOWLEDGEMENTS: Array<{ key: string; label: string }> = [
 interface InvoiceDocumentProps {
   order: DashboardOrder;
   initialInvoice: IDeliveryInvoice;
+  /** Display name for the current viewer — drives presence chips. */
+  currentUserName?: string | null;
   onDirtyChange?: (dirty: boolean) => void;
   isAdmin?: boolean;
   isProvider?: boolean;
@@ -68,6 +75,7 @@ interface InvoiceDocumentProps {
 export function InvoiceDocument({
   order,
   initialInvoice,
+  currentUserName = null,
   onDirtyChange,
   isAdmin = false,
   isProvider = false,
@@ -78,6 +86,12 @@ export function InvoiceDocument({
   // pattern used by OrderFormDocument / IVRFormDocument.
   const [invoice, setInvoice] = useState<IDeliveryInvoice>(initialInvoice);
   const [isPending, setIsPending] = useState(false);
+  const [reloading, setReloading] = useState(false);
+  // Conflict cursor — last `updated_at` we synced with. Drives the
+  // ifMatch check on save and equality check on incoming realtime updates.
+  const [localUpdatedAt, setLocalUpdatedAt] = useState<string | null>(
+    initialInvoice.updatedAt ?? null,
+  );
   const baselineRef = useRef<IDeliveryInvoice>(initialInvoice);
 
   const isDirty = useMemo(
@@ -88,6 +102,74 @@ export function InvoiceDocument({
   useEffect(() => {
     onDirtyChange?.(isDirty);
   }, [isDirty, onDirtyChange]);
+
+  /* ── Realtime collaboration ── subscribes to UPDATEs on
+     order_delivery_invoices for this order and tracks who else is viewing. */
+  const collab = useFormCollaboration({
+    table: "order_delivery_invoices",
+    channelKey: "invoice",
+    orderId: order.id,
+    userName: currentUserName,
+    localUpdatedAt,
+  });
+
+  /* ── Invoice PDF regen helper. Mirrors the same `pdf-regenerating` events
+     the right-side document card listens for. */
+  const regenerateInvoicePdf = useCallback(async (): Promise<{
+    ok: boolean;
+    error?: string;
+  }> => {
+    window.dispatchEvent(
+      new CustomEvent("pdf-regenerating", {
+        detail: { type: "delivery_invoice", status: "start" },
+      }),
+    );
+    try {
+      const pdfRes = await fetch("/api/generate-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: order.id, formType: "delivery_invoice" }),
+      });
+      if (!pdfRes.ok) {
+        return { ok: false, error: `PDF generation failed (${pdfRes.status})` };
+      }
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : "Unknown" };
+    } finally {
+      window.dispatchEvent(
+        new CustomEvent("pdf-regenerating", {
+          detail: { type: "delivery_invoice", status: "done" },
+        }),
+      );
+    }
+  }, [order.id]);
+
+  /* ── Reload from server ── refetches the invoice (including the prefill
+     heal pass), refreshes the conflict cursor, and triggers PDF regen. */
+  const handleReload = useCallback(async () => {
+    setReloading(true);
+    try {
+      const { invoice: fresh } = await getOrderDeliveryInvoice(order.id);
+      if (fresh) {
+        baselineRef.current = fresh;
+        setInvoice(fresh);
+        setLocalUpdatedAt(fresh.updatedAt ?? null);
+        onInvoiceUpdated?.(fresh);
+      }
+      collab.acknowledgeRemoteChange();
+      void regenerateInvoicePdf();
+    } finally {
+      setReloading(false);
+    }
+  }, [order.id, collab, regenerateInvoicePdf, onInvoiceUpdated]);
+
+  // Silent auto-refresh when no local edits are pending.
+  useEffect(() => {
+    if (collab.remoteChangedSinceLoad && !isDirty) {
+      void handleReload();
+    }
+  }, [collab.remoteChangedSinceLoad, isDirty, handleReload]);
 
   // Controls the patient-signature capture modal.
   const [captureOpen, setCaptureOpen] = useState(false);
@@ -148,55 +230,50 @@ export function InvoiceDocument({
   async function save() {
     setIsPending(true);
     try {
-      const res = await upsertOrderDeliveryInvoice(order.id, {
-        invoiceNumber:    invoice.invoiceNumber,
-        invoiceDate:      invoice.invoiceDate,
-        customerName:     invoice.customerName,
-        addressLine1:     invoice.addressLine1,
-        addressLine2:     invoice.addressLine2,
-        city:             invoice.city,
-        state:            invoice.state,
-        postalCode:       invoice.postalCode,
-        insuranceName:    invoice.insuranceName,
-        insuranceNumber:  invoice.insuranceNumber,
-        doctorName:       invoice.doctorName,
-        deliveryMethod:   invoice.deliveryMethod,
-        lineItems:        invoice.lineItems,
-        // Rent is no longer offered — we only sell. Always persist "purchase".
-        rentOrPurchase:   "purchase",
-        dueCopay:         invoice.dueCopay,
-        totalReceived:    invoice.totalReceived,
-        acknowledgements: invoice.acknowledgements,
-      });
+      const res = await upsertOrderDeliveryInvoice(
+        order.id,
+        {
+          invoiceNumber:    invoice.invoiceNumber,
+          invoiceDate:      invoice.invoiceDate,
+          customerName:     invoice.customerName,
+          addressLine1:     invoice.addressLine1,
+          addressLine2:     invoice.addressLine2,
+          city:             invoice.city,
+          state:            invoice.state,
+          postalCode:       invoice.postalCode,
+          insuranceName:    invoice.insuranceName,
+          insuranceNumber:  invoice.insuranceNumber,
+          doctorName:       invoice.doctorName,
+          deliveryMethod:   invoice.deliveryMethod,
+          lineItems:        invoice.lineItems,
+          // Rent is no longer offered — we only sell. Always persist "purchase".
+          rentOrPurchase:   "purchase",
+          dueCopay:         invoice.dueCopay,
+          totalReceived:    invoice.totalReceived,
+          acknowledgements: invoice.acknowledgements,
+        },
+        localUpdatedAt,
+      );
       if (!res.success || !res.invoice) {
-        toast.error(res.error ?? "Failed to save invoice.");
+        // Conflict: another user saved while we were editing. Keep local
+        // edits and surface the banner via FormCollaborationStatus.
+        if (res.conflict) {
+          toast.error(
+            res.error ?? "Someone else just saved this form. Reload to see their changes.",
+          );
+        } else {
+          toast.error(res.error ?? "Failed to save invoice.");
+        }
         return;
       }
       baselineRef.current = res.invoice;
       setInvoice(res.invoice);
+      if (res.updatedAt) setLocalUpdatedAt(res.updatedAt);
       toast.success("Invoice saved.");
 
-      // Kick PDF regen from the client so the right-side doc card can show
-      // its blue "Generating…" state via the pdf-regenerating events —
-      // same pattern OrderFormDocument uses. Fire-and-forget.
-      window.dispatchEvent(
-        new CustomEvent("pdf-regenerating", {
-          detail: { type: "delivery_invoice", status: "start" },
-        }),
-      );
-      fetch("/api/generate-pdf", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId: order.id, formType: "delivery_invoice" }),
-      })
-        .catch((err) => console.error("[Invoice] PDF regen failed:", err))
-        .finally(() => {
-          window.dispatchEvent(
-            new CustomEvent("pdf-regenerating", {
-              detail: { type: "delivery_invoice", status: "done" },
-            }),
-          );
-        });
+      // Kick PDF regen via the shared helper — same `pdf-regenerating`
+      // events the document card listens for. Fire-and-forget.
+      void regenerateInvoicePdf();
     } finally {
       setIsPending(false);
     }
@@ -228,6 +305,13 @@ export function InvoiceDocument({
         isPending={isPending}
         onSave={save}
         onDiscard={discard}
+      />
+
+      <FormCollaborationStatus
+        viewers={collab.viewers}
+        conflict={collab.remoteChangedSinceLoad && isDirty}
+        reloading={reloading}
+        onReload={handleReload}
       />
 
       {/* PAPER DOCUMENT */}

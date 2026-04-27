@@ -5,6 +5,7 @@ import {
   useMemo,
   useEffect,
   useRef,
+  useCallback,
   type InputHTMLAttributes,
 } from "react";
 import {
@@ -17,7 +18,7 @@ import {
   PenLine,
 } from "lucide-react";
 import { HBLogo } from "@/app/(components)/HBLogo";
-import { upsertOrderIVR } from "../(services)/order-ivr-actions";
+import { upsertOrderIVR, getOrderIVR } from "../(services)/order-ivr-actions";
 import {
   verifyProviderPin,
   signIVRWithSpecimen,
@@ -29,6 +30,8 @@ import toast from "react-hot-toast";
 import { FormDeficiencyBanner } from "./FormDeficiencyBanner";
 import { FormActionBar } from "./FormActionBar";
 import { SignOrderModal } from "./SignOrderModal";
+import { useFormCollaboration } from "./useFormCollaboration";
+import { FormCollaborationStatus } from "./FormCollaborationStatus";
 
 /* ── Design tokens ── */
 const NAVY = "#0f2d4a";
@@ -501,6 +504,12 @@ export function IVRFormDocument({
     buildFormState(ivrData),
   );
   const [isSaving, setIsSaving] = useState(false);
+  const [reloading, setReloading] = useState(false);
+  // Conflict cursor — last `updated_at` we synced with. Drives the
+  // ifMatch check on save and equality check on incoming realtime updates.
+  const [localUpdatedAt, setLocalUpdatedAt] = useState<string | null>(
+    ivrData?.updatedAt ?? null,
+  );
   const [signModalOpen, setSignModalOpen] = useState(false);
   // Anchor for the "please sign before saving" auto-scroll behavior.
   const signatureSectionRef = useRef<HTMLDivElement | null>(null);
@@ -519,6 +528,7 @@ export function IVRFormDocument({
     const snap = buildFormState(ivrData);
     setFormData(snap);
     setBaseline(snap);
+    setLocalUpdatedAt(ivrData?.updatedAt ?? null);
   }, [ivrData?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isDirty = useMemo(
@@ -529,6 +539,72 @@ export function IVRFormDocument({
   useEffect(() => {
     onDirtyChange?.(isDirty);
   }, [isDirty]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ── Realtime collaboration ── subscribes to UPDATEs on order_ivr for
+     this order and tracks who else is viewing. */
+  const collab = useFormCollaboration({
+    table: "order_ivr",
+    channelKey: "ivr",
+    orderId,
+    userName: currentUserName,
+    localUpdatedAt,
+  });
+
+  /* ── IVR PDF regen helper. Same `pdf-regenerating` events used elsewhere
+     (the IVR card listens on `additional_ivr`). */
+  const regenerateIvrPdf = useCallback(async (): Promise<{
+    ok: boolean;
+    error?: string;
+  }> => {
+    window.dispatchEvent(
+      new CustomEvent("pdf-regenerating", {
+        detail: { type: "additional_ivr", status: "start" },
+      }),
+    );
+    try {
+      const pdfRes = await fetch("/api/generate-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId, formType: "ivr" }),
+      });
+      if (!pdfRes.ok) {
+        return { ok: false, error: `PDF generation failed (${pdfRes.status})` };
+      }
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : "Unknown" };
+    } finally {
+      window.dispatchEvent(
+        new CustomEvent("pdf-regenerating", {
+          detail: { type: "additional_ivr", status: "done" },
+        }),
+      );
+    }
+  }, [orderId]);
+
+  /* ── Reload from server ── pulls a fresh IVR row, rebuilds state, clears
+     the conflict flag, and kicks off a fresh PDF render. */
+  const handleReload = useCallback(async () => {
+    setReloading(true);
+    try {
+      const { ivr: fresh } = await getOrderIVR(orderId);
+      const next = buildFormState(fresh);
+      setFormData(next);
+      setBaseline(next);
+      setLocalUpdatedAt(fresh?.updatedAt ?? null);
+      collab.acknowledgeRemoteChange();
+      void regenerateIvrPdf();
+    } finally {
+      setReloading(false);
+    }
+  }, [orderId, collab, regenerateIvrPdf]);
+
+  // Silent auto-refresh when no local edits are pending.
+  useEffect(() => {
+    if (collab.remoteChangedSinceLoad && !isDirty) {
+      void handleReload();
+    }
+  }, [collab.remoteChangedSinceLoad, isDirty, handleReload]);
 
   // Stable — set once on mount from the initial ivrData; survives parent re-renders
   // caused by onSaved callbacks that replace ivrData with a payload lacking aiExtracted.
@@ -687,12 +763,21 @@ export function IVRFormDocument({
       verificationReference: ns(formData.verificationReference),
       notes: ns(formData.notes),
     };
-    const result = await upsertOrderIVR(orderId, payload);
+    const result = await upsertOrderIVR(orderId, payload, localUpdatedAt);
     if (!result.success) {
       setIsSaving(false);
-      toast.error(result.error ?? "Failed to save.");
+      // Conflict means another user saved while we were editing. Keep local
+      // edits and let the FormCollaborationStatus banner offer a reload.
+      if (result.conflict) {
+        toast.error(
+          result.error ?? "Someone else just saved this form. Reload to see their changes.",
+        );
+      } else {
+        toast.error(result.error ?? "Failed to save.");
+      }
       return;
     }
+    if (result.updatedAt) setLocalUpdatedAt(result.updatedAt);
 
     // Commit sign/unsign if the local diff implies one — each branch also
     // regenerates the IVR PDF with the correct signed/unsigned rendering.
@@ -791,6 +876,13 @@ export function IVRFormDocument({
         isPending={isSaving}
         onSave={handleSave}
         onDiscard={handleDiscard}
+      />
+
+      <FormCollaborationStatus
+        viewers={collab.viewers}
+        conflict={collab.remoteChangedSinceLoad && isDirty}
+        reloading={reloading}
+        onReload={handleReload}
       />
 
       {/* ── Deficiency banner ── */}

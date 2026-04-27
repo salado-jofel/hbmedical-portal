@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useTopLoader } from "nextjs-toploader";
-import { Settings, LogOut, CheckSquare, UserPlus, ChevronDown } from "lucide-react";
+import { Settings, LogOut, CheckSquare, UserPlus, ChevronDown, ScrollText } from "lucide-react";
 import { cn } from "@/utils/utils";
 import { useAppSelector } from "@/store/hooks";
 import { HBLogo } from "@/app/(components)/HBLogo";
@@ -163,6 +163,16 @@ export function TopBar() {
                     <UserPlus className="h-4 w-4 shrink-0" />
                     Onboarding
                   </Link>
+                  {isAdmin(role) && (
+                    <Link
+                      href="/dashboard/audit"
+                      onClick={() => setOpen(false)}
+                      className="flex w-full cursor-pointer items-center gap-2.5 rounded-[7px] px-3 py-2 text-[13px] font-medium text-[var(--navy)] transition hover:bg-[var(--bg)]"
+                    >
+                      <ScrollText className="h-4 w-4 shrink-0" />
+                      Audit Log
+                    </Link>
+                  )}
                 </div>
               )}
 
