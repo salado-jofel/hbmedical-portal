@@ -11,12 +11,11 @@ import { EmptyState } from "@/app/(components)/EmptyState";
 import { useListParams } from "@/utils/hooks/useListParams";
 import { useBriefBusy } from "@/utils/hooks/useBriefBusy";
 import { DEFAULT_PAGE_SIZE, type PaginatedResult } from "@/utils/interfaces/paginated";
+import { getPhiAccessLog, getPhiAccessLogActions } from "../(services)/actions";
 import {
-  getPhiAccessLog,
-  getPhiAccessLogActions,
   PHI_LOG_SORT_COLUMNS,
   type PhiAccessLogRow,
-} from "../(services)/actions";
+} from "../(services)/types";
 import { cn } from "@/utils/utils";
 
 /**

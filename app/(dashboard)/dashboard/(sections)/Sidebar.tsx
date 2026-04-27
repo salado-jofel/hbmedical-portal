@@ -14,7 +14,6 @@ import {
   ChevronLeft,
   DollarSign,
   TrendingUp,
-  ScrollText,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -153,20 +152,6 @@ export const NAV_GROUPS: NavGroupDef[] = [
         label: "My Performance",
         href: "/dashboard/rep-performance",
         visible: isSalesRep,
-      },
-    ],
-  },
-  {
-    label: "Compliance",
-    items: [
-      // HIPAA audit log — admin only. The portal records every PHI access
-      // (read/write) into phi_access_log; this UI is the breach-investigation
-      // and routine-monitoring entry point.
-      {
-        icon: ScrollText,
-        label: "Audit Log",
-        href: "/dashboard/audit",
-        visible: isAdmin,
       },
     ],
   },

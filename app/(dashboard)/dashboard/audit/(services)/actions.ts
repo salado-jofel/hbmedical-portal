@@ -13,31 +13,12 @@ import {
   type PaginatedResult,
 } from "@/utils/interfaces/paginated";
 import { safeLogError } from "@/lib/logging/safe-log";
-
-export interface PhiAccessLogRow {
-  id: string;
-  user_id: string | null;
-  user_email: string | null;
-  user_role: string | null;
-  action: string;
-  resource: string;
-  resource_id: string | null;
-  order_id: string | null;
-  ip: string | null;
-  user_agent: string | null;
-  metadata: Record<string, unknown>;
-  created_at: string;
-}
-
-export const PHI_LOG_SORT_COLUMNS = ["created_at", "action", "user_email"] as const;
-export type PhiLogSortColumn = (typeof PHI_LOG_SORT_COLUMNS)[number];
-
-export type PhiLogFilters = {
-  action: string | null;
-  resource: string | null;
-  user: string | null; // user_email contains
-  order: string | null; // order_id exact
-};
+import {
+  PHI_LOG_SORT_COLUMNS,
+  type PhiAccessLogRow,
+  type PhiLogFilters,
+  type PhiLogSortColumn,
+} from "./types";
 
 export async function getPhiAccessLog(
   query: PaginatedQuery<PhiLogFilters>,
