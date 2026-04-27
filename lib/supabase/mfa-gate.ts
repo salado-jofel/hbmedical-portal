@@ -2,17 +2,20 @@ import type { UserRole } from "@/utils/helpers/role";
 import { createClient } from "@/lib/supabase/server";
 
 /**
- * Roles where TOTP MFA is mandatory. These roles can read or modify PHI
- * across many patients (admin sees everything, clinical_provider signs
- * orders + reads their facility's patients), so HIPAA "reasonable
- * authentication" pushes them above single-factor.
- *
- * Other roles (clinical_staff, sales_representative, support_staff) can
- * voluntarily enroll on the Settings → Security tab.
+ * Roles where TOTP MFA is mandatory. Every workforce role in this app reads
+ * PHI in some form — admin and support_staff see every facility's orders,
+ * clinical_provider/clinical_staff see their facility's patient records,
+ * and sales_representative sees orders for their assigned facilities
+ * (including patient name, DOB, address, ICD-10). HIPAA's "reasonable
+ * authentication" standard plus HHS's 2025 update treat MFA as the floor
+ * for any account with PHI access, so all five roles are mandatory here.
  */
 export const MFA_MANDATORY_ROLES = new Set<UserRole>([
   "admin",
+  "support_staff",
   "clinical_provider",
+  "clinical_staff",
+  "sales_representative",
 ]);
 
 export function isMfaMandatoryRole(role: UserRole): boolean {

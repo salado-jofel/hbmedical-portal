@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { getUserRole } from "@/lib/supabase/auth";
-import { isSalesRep, isClinicalProvider, isAdmin } from "@/utils/helpers/role";
+import { isSalesRep, isClinicalProvider } from "@/utils/helpers/role";
+import { isMfaMandatoryRole } from "@/lib/supabase/mfa-gate";
 import { PageHeader } from "@/app/(components)/PageHeader";
 import type { UserRole } from "@/utils/helpers/role";
 
@@ -83,7 +84,9 @@ export default async function SettingsPage({
 
   // Roles that mandate MFA per the dashboard gate. Keep in sync with
   // MFA_MANDATORY_ROLES in lib/supabase/mfa-gate.ts.
-  const mfaMandatory = isAdmin(role as UserRole) || providerUser;
+  // Source of truth lives in lib/supabase/mfa-gate.ts so the Settings UI
+  // and the dashboard gate can never disagree.
+  const mfaMandatory = isMfaMandatoryRole(role as UserRole);
 
   const { tab } = await searchParams;
   const validTabs = [
