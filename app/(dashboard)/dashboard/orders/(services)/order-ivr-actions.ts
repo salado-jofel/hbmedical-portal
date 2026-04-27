@@ -147,10 +147,32 @@ export async function getOrderIVR(
 export async function upsertOrderIVR(
   orderId: string,
   data: Partial<IOrderIVR>,
-): Promise<{ success: boolean; error: string | null }> {
+  ifMatchUpdatedAt?: string | null,
+): Promise<{
+  success: boolean;
+  error: string | null;
+  conflict?: boolean;
+  updatedAt?: string;
+}> {
   try {
     await requireIVREditRole();
     const adminClient = createAdminClient();
+
+    if (ifMatchUpdatedAt) {
+      const { data: current } = await adminClient
+        .from("order_ivr")
+        .select("updated_at")
+        .eq("order_id", orderId)
+        .maybeSingle();
+      if (current && current.updated_at !== ifMatchUpdatedAt) {
+        return {
+          success: false,
+          conflict: true,
+          error:
+            "Someone else saved this form while you were editing. Reload to see their changes.",
+        };
+      }
+    }
 
     const payload: Record<string, unknown> = { order_id: orderId };
     // Primary insurance
@@ -237,9 +259,13 @@ export async function upsertOrderIVR(
     if (data.physicianSignedAt !== undefined)    payload.physician_signed_at    = data.physicianSignedAt;
     if (data.physicianSignedBy !== undefined)    payload.physician_signed_by    = data.physicianSignedBy;
 
-    const { error } = await adminClient
+    const nowIso = new Date().toISOString();
+    payload.updated_at = nowIso;
+    const { data: saved, error } = await adminClient
       .from("order_ivr")
-      .upsert(payload, { onConflict: "order_id" });
+      .upsert(payload, { onConflict: "order_id" })
+      .select("updated_at")
+      .single();
 
     if (error) {
       safeLogError("upsertOrderIVR", error, { orderId });
@@ -252,7 +278,7 @@ export async function upsertOrderIVR(
       err => safeLogError("IVR PDF", err, { orderId }),
     );
 
-    return { success: true, error: null };
+    return { success: true, error: null, updatedAt: saved?.updated_at ?? nowIso };
   } catch (err) {
     safeLogError("upsertOrderIVR", err, { orderId });
     return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
@@ -344,6 +370,87 @@ export async function getOrderAiStatus(
       isLocked:                    form.is_locked ?? false,
       lockedAt:                    form.locked_at ?? null,
       lockedBy:                    form.locked_by ?? null,
+      updatedAt:                   form.updated_at ?? null,
     },
   };
+}
+
+/* -------------------------------------------------------------------------- */
+/* getOrderForm — lean re-fetch used by collaborative-edit reload flow         */
+/* -------------------------------------------------------------------------- */
+
+export async function getOrderForm(
+  orderId: string,
+): Promise<IOrderForm | null> {
+  try {
+    await requireOrderAccess(orderId);
+    const adminClient = createAdminClient();
+
+    const { data: form } = await adminClient
+      .from("order_form")
+      .select("*")
+      .eq("order_id", orderId)
+      .maybeSingle();
+
+    if (!form) return null;
+
+    return {
+      id:                          form.id,
+      orderId:                     form.order_id,
+      woundVisitNumber:            form.wound_visit_number ?? null,
+      chiefComplaint:              form.chief_complaint ?? null,
+      hasVasculitisOrBurns:        form.has_vasculitis_or_burns ?? false,
+      isReceivingHomeHealth:       form.is_receiving_home_health ?? false,
+      isPatientAtSnf:              form.is_patient_at_snf ?? false,
+      icd10Code:                   form.icd10_code ?? null,
+      followupDays:                form.followup_days ?? null,
+      woundSite:                   form.wound_site ?? null,
+      woundStage:                  form.wound_stage ?? null,
+      woundLengthCm:               form.wound_length_cm ?? null,
+      woundWidthCm:                form.wound_width_cm ?? null,
+      woundDepthCm:                form.wound_depth_cm ?? null,
+      subjectiveSymptoms:          form.subjective_symptoms ?? [],
+      clinicalNotes:               form.clinical_notes ?? null,
+      conditionDecreasedMobility:  form.condition_decreased_mobility ?? false,
+      conditionDiabetes:           form.condition_diabetes ?? false,
+      conditionInfection:          form.condition_infection ?? false,
+      conditionCvd:                form.condition_cvd ?? false,
+      conditionCopd:               form.condition_copd ?? false,
+      conditionChf:                form.condition_chf ?? false,
+      conditionAnemia:             form.condition_anemia ?? false,
+      useBloodThinners:            form.use_blood_thinners ?? false,
+      bloodThinnerDetails:         form.blood_thinner_details ?? null,
+      woundLocationSide:           (form.wound_location_side as "RT" | "LT" | "bilateral" | null) ?? null,
+      granulationTissuePct:        form.granulation_tissue_pct ?? null,
+      exudateAmount:               (form.exudate_amount as "none" | "minimal" | "moderate" | "heavy" | null) ?? null,
+      thirdDegreeBurns:            form.third_degree_burns ?? false,
+      activeVasculitis:            form.active_vasculitis ?? false,
+      activeCharcot:               form.active_charcot ?? false,
+      skinCondition:               (form.skin_condition as "normal" | "thin" | "atrophic" | "stasis" | "ischemic" | null) ?? null,
+      wound2LengthCm:              form.wound2_length_cm ?? null,
+      wound2WidthCm:               form.wound2_width_cm ?? null,
+      wound2DepthCm:               form.wound2_depth_cm ?? null,
+      surgicalDressingType:        form.surgical_dressing_type ?? null,
+      anticipatedLengthDays:       form.anticipated_length_days ?? null,
+      followupWeeks:               form.followup_weeks ?? null,
+      drainageDescription:         form.drainage_description ?? null,
+      treatmentPlan:               form.treatment_plan ?? null,
+      patientName:                 form.patient_name ?? null,
+      patientDate:                 form.patient_date ?? null,
+      physicianSignature:          form.physician_signature ?? null,
+      physicianSignatureDate:      form.physician_signature_date ?? null,
+      physicianSignedAt:           form.physician_signed_at ?? null,
+      physicianSignedBy:           form.physician_signed_by ?? null,
+      physicianSignatureImage:     form.physician_signature_image ?? null,
+      aiExtracted:                 form.ai_extracted ?? false,
+      aiExtractedAt:               form.ai_extracted_at ?? null,
+      isLocked:                    form.is_locked ?? false,
+      lockedAt:                    form.locked_at ?? null,
+      lockedBy:                    form.locked_by ?? null,
+      updatedAt:                   form.updated_at ?? null,
+    };
+  } catch (err) {
+    safeLogError("getOrderForm", err, { orderId });
+    return null;
+  }
 }

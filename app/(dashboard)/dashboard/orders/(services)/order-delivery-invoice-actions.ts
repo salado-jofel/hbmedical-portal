@@ -188,12 +188,37 @@ export interface UpsertDeliveryInvoiceInput {
 export async function upsertOrderDeliveryInvoice(
   orderId: string,
   input: UpsertDeliveryInvoiceInput,
-): Promise<{ success: boolean; invoice: IDeliveryInvoice | null; error: string | null }> {
+  ifMatchUpdatedAt?: string | null,
+): Promise<{
+  success: boolean;
+  invoice: IDeliveryInvoice | null;
+  error: string | null;
+  conflict?: boolean;
+  updatedAt?: string;
+}> {
   try {
     await requireOrderAccess(orderId);
 
     const adminClient = createAdminClient();
 
+    if (ifMatchUpdatedAt) {
+      const { data: current } = await adminClient
+        .from("order_delivery_invoices")
+        .select("updated_at")
+        .eq("order_id", orderId)
+        .maybeSingle();
+      if (current && current.updated_at !== ifMatchUpdatedAt) {
+        return {
+          success: false,
+          invoice: null,
+          conflict: true,
+          error:
+            "Someone else saved this form while you were editing. Reload to see their changes.",
+        };
+      }
+    }
+
+    const nowIso = new Date().toISOString();
     const payload = {
       order_id:            orderId,
       invoice_number:      input.invoiceNumber,
@@ -215,6 +240,7 @@ export async function upsertOrderDeliveryInvoice(
       due_copay:           input.dueCopay,
       total_received:      input.totalReceived,
       acknowledgements:    input.acknowledgements ?? DEFAULT_ACKNOWLEDGEMENTS,
+      updated_at:          nowIso,
     };
 
     const { data, error } = await adminClient
@@ -235,7 +261,12 @@ export async function upsertOrderDeliveryInvoice(
 
     revalidatePath(ORDERS_PATH);
 
-    return { success: true, invoice: rowToInterface(data), error: null };
+    return {
+      success: true,
+      invoice: rowToInterface(data),
+      error: null,
+      updatedAt: data?.updated_at ?? nowIso,
+    };
   } catch (err) {
     console.error("[upsertOrderDeliveryInvoice]", err);
     return {

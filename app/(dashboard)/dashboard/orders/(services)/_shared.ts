@@ -1,3 +1,4 @@
+import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -5,6 +6,7 @@ import {
   getUserRole,
 } from "@/lib/supabase/auth";
 import {
+  isAdmin,
   isClinicSide,
   isSupport,
 } from "@/utils/helpers/role";
@@ -12,6 +14,21 @@ import { safeLogError, safeLogInfo } from "@/lib/logging/safe-log";
 
 export const ORDERS_PATH = "/dashboard/orders";
 export const BUCKET = "hbmedical-bucket-private";
+
+/**
+ * Build a Cookie header from the current request so server-to-server fetches
+ * to /api/ai/extract-document and /api/generate-pdf carry the caller's
+ * session. Without this, the auth gates on those routes (requireOrderAccess)
+ * see an unauthenticated request and 401. Internal Next.js fetches do NOT
+ * automatically forward cookies — we have to copy them over manually.
+ */
+async function forwardCookieHeader(): Promise<string> {
+  const store = await cookies();
+  return store
+    .getAll()
+    .map((c) => `${c.name}=${encodeURIComponent(c.value)}`)
+    .join("; ");
+}
 
 export const ORDER_WITH_RELATIONS_SELECT = `
   id, order_number, facility_id, order_status,
@@ -53,15 +70,28 @@ export async function getUserFacilityId(userId: string): Promise<string | null> 
 
 export async function requireClinicRole(): Promise<{
   userId: string;
-  facilityId: string;
+  /** Facility scope. Clinic-side users always have one (validated below).
+   *  Admins/support staff have no facility membership, so this is `null`
+   *  for them — callers that need a facility id (e.g. createOrder) must
+   *  guard against null themselves. Most order-mutation callers only need
+   *  `userId` and so accept the broader role set transparently. */
+  facilityId: string | null;
   role: string;
 }> {
   const supabase = await createClient();
   const user = await getCurrentUserOrThrow(supabase);
   const role = await getUserRole(supabase);
 
+  // Admin + support get unconditional pass — they're org-wide and edit
+  // orders across facilities. Clinical roles still need a facility.
+  if (isAdmin(role) || isSupport(role)) {
+    return { userId: user.id, facilityId: null, role: role! };
+  }
+
   if (!isClinicSide(role)) {
-    throw new Error("Only clinical providers and staff can perform this action.");
+    throw new Error(
+      "Only clinical providers, staff, admins, or support can perform this action.",
+    );
   }
 
   const facilityId = await getUserFacilityId(user.id);
@@ -82,9 +112,10 @@ export async function requireIVREditRole(): Promise<{
 
   const allowed =
     isClinicSide(role) ||
-    isSupport(role);
+    isSupport(role) ||
+    isAdmin(role);
   if (!allowed) {
-    throw new Error("Only clinical staff, providers, or support staff can edit IVR records.");
+    throw new Error("Only clinical staff, providers, admins, or support staff can edit IVR records.");
   }
 
   return { userId: user.id, role: role! };
@@ -226,10 +257,14 @@ export async function triggerCombinedExtraction(
     }
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+    const cookieHeader = await forwardCookieHeader();
 
     const response = await fetch(`${baseUrl}/api/ai/extract-document`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: cookieHeader,
+      },
       body: JSON.stringify({
         orderId,
         documents: extractable.map((d) => ({
@@ -279,10 +314,14 @@ export async function triggerAiExtraction(
     }
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+    const cookieHeader = await forwardCookieHeader();
 
     const response = await fetch(`${baseUrl}/api/ai/extract-document`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: cookieHeader,
+      },
       body: JSON.stringify({ orderId, documentType, filePath, bucket: BUCKET }),
     });
 
@@ -307,12 +346,16 @@ export async function generateOrderPDFs(
 ): Promise<{ success: boolean; error: string | null }> {
   try {
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+    const cookieHeader = await forwardCookieHeader();
 
     await Promise.allSettled(
       formTypes.map(formType =>
         fetch(`${baseUrl}/api/generate-pdf`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Cookie: cookieHeader,
+          },
           body: JSON.stringify({ orderId, formType }),
         })
           .then(r => r.json())

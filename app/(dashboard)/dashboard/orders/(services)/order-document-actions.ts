@@ -218,33 +218,296 @@ export async function deleteOrderDocument(
 }
 
 /* -------------------------------------------------------------------------- */
+/* seedForm1500ForDelivery                                                    */
+/*                                                                            */
+/* Called from markOrderDelivered when an order transitions to "delivered".  */
+/* Pre-populates the CMS-1500 with everything we already know so the biller  */
+/* lands on a mostly-complete form.                                           */
+/*                                                                            */
+/* Sources:                                                                   */
+/*   - patients (first/last name, DOB)                                        */
+/*   - order_ivr (insurance, member_id, patient address/phone)                */
+/*   - orders (icd10_code, date_of_service)                                   */
+/*   - order_items (service lines: HCPCS, quantity, charges)                  */
+/*   - facility + facility_enrollment (billing provider, NPI, TIN, address)   */
+/*                                                                            */
+/* Skips if a row already exists — never overwrites manual edits. Box 31     */
+/* (physician_signature) is intentionally left blank per spec; billers handle */
+/* signing in their billing software (signature-on-file or similar).          */
+/* -------------------------------------------------------------------------- */
+
+export async function seedForm1500ForDelivery(
+  orderId: string,
+): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
+  try {
+    await requireOrderAccess(orderId);
+    const adminClient = createAdminClient();
+
+    // Bail early if the row already exists. Don't overwrite manual edits or
+    // a previously seeded snapshot.
+    const { data: existing } = await adminClient
+      .from("order_form_1500")
+      .select("id")
+      .eq("order_id", orderId)
+      .maybeSingle();
+    if (existing) return { success: true, skipped: true };
+
+    // Pull all source data in parallel.
+    const [orderRes, ivrRes, itemsRes] = await Promise.all([
+      adminClient
+        .from("orders")
+        .select(`
+          id, icd10_code, date_of_service,
+          patient:patients!orders_patient_id_fkey(
+            first_name, last_name, date_of_birth
+          ),
+          facility:facilities!orders_facility_id_fkey(
+            name, phone, address_line_1,
+            facility_enrollment(
+              facility_npi, facility_tin, facility_ein,
+              billing_address, billing_city, billing_state, billing_zip,
+              billing_phone
+            )
+          )
+        `)
+        .eq("id", orderId)
+        .maybeSingle(),
+      adminClient
+        .from("order_ivr")
+        .select(
+          "insurance_provider, member_id, group_number, plan_name, " +
+          "subscriber_name, subscriber_dob, subscriber_relationship, " +
+          "patient_address, patient_phone",
+        )
+        .eq("order_id", orderId)
+        .maybeSingle(),
+      adminClient
+        .from("order_items")
+        .select("product_name, hcpcs_code, quantity, unit_price, total_amount")
+        .eq("order_id", orderId),
+    ]);
+
+    const order = orderRes.data as {
+      icd10_code: string | null;
+      date_of_service: string | null;
+      patient: { first_name: string | null; last_name: string | null; date_of_birth: string | null } | null;
+      facility: {
+        name: string | null;
+        phone: string | null;
+        address_line_1: string | null;
+        facility_enrollment:
+          | {
+              facility_npi: string | null;
+              facility_tin: string | null;
+              facility_ein: string | null;
+              billing_address: string | null;
+              billing_city: string | null;
+              billing_state: string | null;
+              billing_zip: string | null;
+              billing_phone: string | null;
+            }[]
+          | null;
+      } | null;
+    } | null;
+
+    if (!order) return { success: false, error: "Order not found." };
+
+    // Supabase joins return facility_enrollment as an array — take the first.
+    const enrollmentRaw = order.facility?.facility_enrollment;
+    const enrollment = Array.isArray(enrollmentRaw) ? enrollmentRaw[0] : enrollmentRaw;
+
+    // Compose a single billing address line from the enrollment fields.
+    const billingAddress = enrollment
+      ? [
+          enrollment.billing_address,
+          [enrollment.billing_city, enrollment.billing_state]
+            .filter(Boolean)
+            .join(", "),
+          enrollment.billing_zip,
+        ]
+          .filter(Boolean)
+          .join(" ") || null
+      : null;
+
+    const ivr = ivrRes.data as {
+      insurance_provider: string | null;
+      member_id: string | null;
+      group_number: string | null;
+      plan_name: string | null;
+      subscriber_name: string | null;
+      subscriber_dob: string | null;
+      subscriber_relationship: string | null;
+      patient_address: string | null;
+      patient_phone: string | null;
+    } | null;
+    const items = (itemsRes.data ?? []) as Array<{
+      product_name: string | null;
+      hcpcs_code: string | null;
+      quantity: number | null;
+      unit_price: number | null;
+      total_amount: number | null;
+    }>;
+
+    // Build service lines (Box 24). One row per order_item. Place of
+    // service "11" (office) is a sensible default — biller can change it.
+    const serviceLines = items.map((item) => ({
+      id: crypto.randomUUID(),
+      dos_from: order.date_of_service ?? "",
+      dos_to: order.date_of_service ?? "",
+      place_of_service: "11",
+      emg: false,
+      cpt_code: item.hcpcs_code ?? "",
+      modifier_1: "",
+      modifier_2: "",
+      modifier_3: "",
+      modifier_4: "",
+      diagnosis_pointer: "A",
+      charges: item.total_amount != null ? String(item.total_amount) : "",
+      days_units: item.quantity != null ? String(item.quantity) : "1",
+      epsdt: "",
+      id_qualifier: "",
+      rendering_npi: "",
+    }));
+
+    // Total charge = sum of line items.
+    const totalCharge = items.reduce(
+      (sum, it) => sum + Number(it.total_amount ?? 0),
+      0,
+    );
+
+    const payload = {
+      order_id: orderId,
+      // Box 1a / 11 — insurance
+      insured_id_number: ivr?.member_id ?? null,
+      insurance_name: ivr?.insurance_provider ?? null,
+      insured_policy_group: ivr?.group_number ?? null,
+      insured_plan_name: ivr?.plan_name ?? null,
+      // Box 4 / 11 — insured (subscriber). If the patient IS the subscriber,
+      // we'd need to set patient_relationship = "Self" — leaving for biller.
+      insured_last_name:
+        ivr?.subscriber_name?.split(/\s+/).slice(-1)[0] ?? null,
+      insured_first_name:
+        ivr?.subscriber_name?.split(/\s+/).slice(0, -1).join(" ") ?? null,
+      insured_dob: ivr?.subscriber_dob ?? null,
+      patient_relationship: ivr?.subscriber_relationship ?? null,
+      // Box 2 / 3 — patient
+      patient_first_name: order.patient?.first_name ?? null,
+      patient_last_name: order.patient?.last_name ?? null,
+      patient_dob: order.patient?.date_of_birth ?? null,
+      // Box 5 — patient contact
+      patient_address: ivr?.patient_address ?? null,
+      patient_phone: ivr?.patient_phone ?? null,
+      // Box 21 — diagnosis
+      diagnosis_a: order.icd10_code ?? null,
+      // Box 24 — service lines
+      service_lines: serviceLines,
+      // Box 25 — federal tax ID
+      federal_tax_id: enrollment?.facility_tin ?? enrollment?.facility_ein ?? null,
+      // Box 28 — total charge
+      total_charge: totalCharge > 0 ? String(totalCharge.toFixed(2)) : null,
+      // Box 32 — service facility
+      service_facility_name: order.facility?.name ?? null,
+      service_facility_address: billingAddress,
+      service_facility_npi: enrollment?.facility_npi ?? null,
+      // Box 33 — billing provider
+      billing_provider_name: order.facility?.name ?? null,
+      billing_provider_address: billingAddress,
+      billing_provider_phone: enrollment?.billing_phone ?? order.facility?.phone ?? null,
+      billing_provider_npi: enrollment?.facility_npi ?? null,
+      billing_provider_tax_id: enrollment?.facility_tin ?? null,
+      // Box 31 — physician signature: intentionally left blank per spec.
+      // Biller handles signing in their billing software.
+    };
+
+    const { error } = await adminClient
+      .from("order_form_1500")
+      .insert(payload);
+
+    if (error) {
+      safeLogError("seedForm1500ForDelivery", error, { orderId });
+      return { success: false, error: "Failed to seed CMS-1500 form." };
+    }
+
+    return { success: true };
+  } catch (err) {
+    safeLogError("seedForm1500ForDelivery", err, { orderId });
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Unexpected error.",
+    };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
 /* upsertForm1500                                                             */
+/*                                                                            */
+/* Concurrency model — last-writer-wins with a conflict check.                */
+/*   - The caller passes the `ifMatchUpdatedAt` it originally read.           */
+/*   - We compare against the current row's `updated_at` before writing.      */
+/*   - If someone else saved between read and write, we return `conflict`     */
+/*     so the client can show "Reload" instead of silently overwriting.       */
+/*   - First-time save (no row yet) skips the check.                          */
+/*                                                                            */
+/* The returned `updatedAt` becomes the new baseline for the client's next    */
+/* save attempt.                                                              */
 /* -------------------------------------------------------------------------- */
 
 export async function upsertForm1500(
   orderId: string,
   formData: Record<string, unknown>,
-): Promise<{ success: boolean; error?: string }> {
+  ifMatchUpdatedAt?: string | null,
+): Promise<{
+  success: boolean;
+  error?: string;
+  conflict?: boolean;
+  updatedAt?: string;
+}> {
   try {
     await requireOrderAccess(orderId);
     const adminClient = createAdminClient();
 
-    const { error } = await adminClient.from("order_form_1500").upsert(
-      {
-        order_id: orderId,
-        ...formData,
-      },
-      { onConflict: "order_id" },
-    );
+    if (ifMatchUpdatedAt) {
+      const { data: current } = await adminClient
+        .from("order_form_1500")
+        .select("updated_at")
+        .eq("order_id", orderId)
+        .maybeSingle();
+
+      if (current && current.updated_at !== ifMatchUpdatedAt) {
+        return {
+          success: false,
+          conflict: true,
+          error:
+            "Someone else saved this form while you were editing. Reload to see their changes.",
+        };
+      }
+    }
+
+    const nowIso = new Date().toISOString();
+    const { data: saved, error } = await adminClient
+      .from("order_form_1500")
+      .upsert(
+        {
+          order_id: orderId,
+          ...formData,
+          updated_at: nowIso,
+        },
+        { onConflict: "order_id" },
+      )
+      .select("updated_at")
+      .single();
 
     if (error) {
       safeLogError("upsertForm1500", error, { orderId });
       return { success: false, error: "Failed to save form." };
     }
 
-    return { success: true };
+    return { success: true, updatedAt: saved?.updated_at ?? nowIso };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Unexpected error.",
+    };
   }
 }
 

@@ -538,6 +538,8 @@ export interface IOrderForm {
   isLocked: boolean;
   lockedAt: string | null;
   lockedBy: string | null;
+  /** Row-level concurrency cursor used by collaborative editing. */
+  updatedAt?: string | null;
 }
 
 export interface IOrder {

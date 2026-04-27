@@ -73,22 +73,34 @@ export async function beginMfaEnrollment(): Promise<BeginEnrollmentResult> {
   const supabase = await createClient();
   await getCurrentUserOrThrow(supabase);
 
-  // Clear any stale unverified factor. listFactors() typings only surface
-  // verified factors, but the underlying API returns every factor regardless
-  // of status — cast through unknown so we can filter by the runtime value.
+  // Clear ALL unverified factors before starting a fresh enrollment. Two
+  // attempts on the same UTC day previously collided on the date-based
+  // friendly name; this loop unenrolls every lingering unverified factor
+  // (typically just one) so the new enroll can't conflict with itself.
+  // Verified factors are left alone — if the user already has one, the
+  // page-level gate would have routed them to the challenge form, not here.
+  // listFactors() typings only surface verified factors, but the underlying
+  // API returns every factor regardless of status — cast through unknown so
+  // we can filter by the runtime value.
   const { data: existing } = await supabase.auth.mfa.listFactors();
   const allTotp = ((existing?.totp ?? []) as unknown) as Array<{
     id: string;
     status: string;
   }>;
-  const stale = allTotp.find((f) => f.status !== "verified");
-  if (stale) {
-    await supabase.auth.mfa.unenroll({ factorId: stale.id });
+  for (const f of allTotp) {
+    if (f.status !== "verified") {
+      await supabase.auth.mfa.unenroll({ factorId: f.id });
+    }
   }
 
+  // Friendly name needs a unique component so two enrollment attempts on
+  // the same UTC day can't collide (Supabase rejects duplicate names per
+  // user). Include the full ISO timestamp + a short random suffix.
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const rand = Math.random().toString(36).slice(2, 6);
   const { data, error } = await supabase.auth.mfa.enroll({
     factorType: "totp",
-    friendlyName: `Authenticator (${new Date().toISOString().slice(0, 10)})`,
+    friendlyName: `Authenticator ${stamp}-${rand}`,
   });
 
   if (error || !data) {

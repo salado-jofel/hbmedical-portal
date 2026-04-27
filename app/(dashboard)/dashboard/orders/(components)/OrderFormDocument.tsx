@@ -5,6 +5,7 @@ import {
   useMemo,
   useEffect,
   useRef,
+  useCallback,
   type InputHTMLAttributes,
 } from "react";
 import {
@@ -34,12 +35,15 @@ import {
   deleteOrderItem,
   getProducts,
 } from "../(services)/order-misc-actions";
+import { getOrderForm } from "../(services)/order-ivr-actions";
 import type { IOrderForm, DashboardOrder, ProductRecord } from "@/utils/interfaces/orders";
 import { isItemsEditable } from "@/utils/constants/orders";
 import type { AiStatus } from "./OrderFormTab";
 import { FormDeficiencyBanner } from "./FormDeficiencyBanner";
 import { FormActionBar } from "./FormActionBar";
 import { SignOrderModal } from "./SignOrderModal";
+import { useFormCollaboration } from "./useFormCollaboration";
+import { FormCollaborationStatus } from "./FormCollaborationStatus";
 import { cn } from "@/utils/utils";
 import toast from "react-hot-toast";
 
@@ -386,6 +390,8 @@ interface OrderFormDocumentProps {
   order: DashboardOrder;
   canEdit: boolean;
   canSign: boolean;
+  /** Admin bypasses status-based item-edit locks. */
+  isAdmin: boolean;
   currentUserName: string | null;
   aiStatus: AiStatus;
   patientName: string | null;
@@ -399,6 +405,7 @@ export function OrderFormDocument({
   order,
   canEdit,
   canSign,
+  isAdmin,
   currentUserName,
   aiStatus,
   patientName,
@@ -423,6 +430,12 @@ export function OrderFormDocument({
     buildFormState(orderForm, formFallbacks),
   );
   const [isSaving, setIsSaving] = useState(false);
+  const [reloading, setReloading] = useState(false);
+  // Tracks the row's `updated_at` we last synced with — used as the conflict
+  // cursor on save and the equality target for realtime change detection.
+  const [localUpdatedAt, setLocalUpdatedAt] = useState<string | null>(
+    orderForm?.updatedAt ?? null,
+  );
 
   // Signing does NOT lock the form. Provider can edit + save freely at any
   // time. The signed state is purely informational (and drives whether the
@@ -454,6 +467,7 @@ export function OrderFormDocument({
     const snap = buildFormState(orderForm, formFallbacks);
     setFormData(snap);
     setBaseline(snap);
+    setLocalUpdatedAt(orderForm?.updatedAt ?? null);
   }, [orderForm?.id, orderForm?.aiExtractedAt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const ai = orderForm?.aiExtracted ?? false;
@@ -493,7 +507,9 @@ export function OrderFormDocument({
   const [products, setProducts] = useState<ProductRecord[]>([]);
   const [productsLoading, setProductsLoading] = useState<boolean>(true);
   const [productSearch, setProductSearch] = useState<string>("");
-  const itemsEditable = isItemsEditable(order.order_status) && !isReadOnly;
+  // Admin can edit items at any status (e.g., correcting an order after
+  // it's been delivered). Non-admins follow the standard status lock.
+  const itemsEditable = (isAdmin || isItemsEditable(order.order_status)) && !isReadOnly;
 
   // Load products catalog once.
   useEffect(() => {
@@ -579,6 +595,83 @@ export function OrderFormDocument({
   useEffect(() => {
     onDirtyChange?.(isDirty && !isReadOnly);
   }, [isDirty, isReadOnly]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ── Realtime collaboration ── subscribes to UPDATEs on order_form for
+     this order and tracks who else is viewing. The conflict cursor
+     `localUpdatedAt` flips on each successful save / silent reload. */
+  const collab = useFormCollaboration({
+    table: "order_form",
+    channelKey: "order_form",
+    orderId,
+    userName: currentUserName,
+    localUpdatedAt,
+  });
+
+  /* ── Order Form PDF regen helper. Same `pdf-regenerating` events the
+     OrderDetailModal listens for so the right-side document card flips to
+     its blue "Generating…" state. */
+  const regenerateOrderFormPdf = useCallback(async (): Promise<{
+    ok: boolean;
+    error?: string;
+  }> => {
+    window.dispatchEvent(
+      new CustomEvent("pdf-regenerating", {
+        detail: { type: "order_form", status: "start" },
+      }),
+    );
+    try {
+      const pdfRes = await fetch("/api/generate-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId, formType: "order_form" }),
+      });
+      if (!pdfRes.ok) {
+        return { ok: false, error: `PDF generation failed (${pdfRes.status})` };
+      }
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : "Unknown" };
+    } finally {
+      window.dispatchEvent(
+        new CustomEvent("pdf-regenerating", {
+          detail: { type: "order_form", status: "done" },
+        }),
+      );
+    }
+  }, [orderId]);
+
+  /* ── Reload from server ── used by the conflict banner and the silent
+     auto-refresh when no local edits are in flight. Refetches the form row,
+     rebuilds local form state via buildFormState, refreshes the conflict
+     cursor, and kicks a fresh PDF render. */
+  const handleReload = useCallback(async () => {
+    setReloading(true);
+    try {
+      const fresh = await getOrderForm(orderId);
+      const next = buildFormState(fresh, formFallbacks);
+      setFormData(next);
+      setBaseline(next);
+      setLocalUpdatedAt(fresh?.updatedAt ?? null);
+      collab.acknowledgeRemoteChange();
+      // Fire and forget — the document card listens for regen events
+      // independently. Don't block the form on the PDF round-trip.
+      void regenerateOrderFormPdf();
+    } finally {
+      setReloading(false);
+    }
+    // formFallbacks is rebuilt every render from order props, so omit it
+    // from deps to avoid restarting reloads as the parent re-renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderId, collab, regenerateOrderFormPdf]);
+
+  // Silent auto-refresh: when someone else saves and we have nothing
+  // unsaved, just pull the latest. Banner is reserved for the dirty case
+  // where blowing away local edits needs explicit confirmation.
+  useEffect(() => {
+    if (collab.remoteChangedSinceLoad && !isDirty) {
+      void handleReload();
+    }
+  }, [collab.remoteChangedSinceLoad, isDirty, handleReload]);
 
   // Deficiency count: every empty field after AI extraction
   const deficiencyCount = useMemo(() => {
@@ -828,13 +921,24 @@ export function OrderFormDocument({
       patient_date: strOrNull(formData.patientDate),
       physician_signature: strOrNull(formData.physicianSignature),
       physician_signature_date: strOrNull(formData.physicianSignatureDate),
-    });
+    }, localUpdatedAt);
 
     if (!result.success) {
       setIsSaving(false);
-      toast.error(result.error ?? "Failed to save order form.");
+      // Conflict means another user saved while we were editing. Keep local
+      // edits intact and let the user decide whether to reload via the
+      // FormCollaborationStatus banner.
+      if (result.conflict) {
+        toast.error(
+          result.error ?? "Someone else just saved this form. Reload to see their changes.",
+        );
+      } else {
+        toast.error(result.error ?? "Failed to save order form.");
+      }
       return;
     }
+
+    if (result.updatedAt) setLocalUpdatedAt(result.updatedAt);
 
     // Commit sign-state change (if any) — each action also regenerates
     // the Order Form PDF with the correct signed/unsigned rendering.
@@ -991,6 +1095,13 @@ export function OrderFormDocument({
         isPending={isSaving}
         onSave={handleSave}
         onDiscard={handleDiscard}
+      />
+
+      <FormCollaborationStatus
+        viewers={collab.viewers}
+        conflict={collab.remoteChangedSinceLoad && isDirty}
+        reloading={reloading}
+        onReload={handleReload}
       />
 
       {/* ── AI extraction banners ── */}

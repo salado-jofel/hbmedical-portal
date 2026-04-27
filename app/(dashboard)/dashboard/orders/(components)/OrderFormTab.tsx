@@ -15,6 +15,8 @@ interface OrderFormTabProps {
   order: DashboardOrder;
   canEdit: boolean;
   canSign: boolean;
+  /** Admin bypasses status-based item-edit locks. */
+  isAdmin: boolean;
   currentUserName: string | null;
   patientName: string | null;
   onSaved?: (updated: IOrderForm) => void;
@@ -69,6 +71,7 @@ export function OrderFormTab({
   order,
   canEdit,
   canSign,
+  isAdmin,
   currentUserName,
   patientName,
   onSaved,
@@ -113,6 +116,7 @@ export function OrderFormTab({
         order={order}
         canEdit={canEdit}
         canSign={canSign}
+        isAdmin={isAdmin}
         currentUserName={currentUserName}
         aiStatus={aiStatus}
         patientName={patientName}

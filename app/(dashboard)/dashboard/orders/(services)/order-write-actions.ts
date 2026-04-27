@@ -384,7 +384,13 @@ export async function saveOrderForm(
     physician_signed_at?: string | null;
     physician_signed_by?: string | null;
   },
-): Promise<{ success: boolean; error?: string }> {
+  ifMatchUpdatedAt?: string | null,
+): Promise<{
+  success: boolean;
+  error?: string;
+  conflict?: boolean;
+  updatedAt?: string;
+}> {
   try {
     await requireIVREditRole();
     const adminClient = createAdminClient();
@@ -392,9 +398,31 @@ export async function saveOrderForm(
     // wound_type lives on the orders table — separate update
     const { wound_type, ...formData } = data;
 
-    const { error } = await adminClient
+    if (ifMatchUpdatedAt) {
+      const { data: current } = await adminClient
+        .from("order_form")
+        .select("updated_at")
+        .eq("order_id", orderId)
+        .maybeSingle();
+      if (current && current.updated_at !== ifMatchUpdatedAt) {
+        return {
+          success: false,
+          conflict: true,
+          error:
+            "Someone else saved this form while you were editing. Reload to see their changes.",
+        };
+      }
+    }
+
+    const nowIso = new Date().toISOString();
+    const { data: saved, error } = await adminClient
       .from("order_form")
-      .upsert({ order_id: orderId, ...formData }, { onConflict: "order_id" });
+      .upsert(
+        { order_id: orderId, ...formData, updated_at: nowIso },
+        { onConflict: "order_id" },
+      )
+      .select("updated_at")
+      .single();
 
     if (error) {
       safeLogError("saveOrderForm", error, { orderId });
@@ -412,7 +440,7 @@ export async function saveOrderForm(
     generateOrderPDFs(orderId, ["order_form"]).catch((err) =>
       safeLogError("OrderForm PDF", err, { orderId }),
     );
-    return { success: true };
+    return { success: true, updatedAt: saved?.updated_at ?? nowIso };
   } catch (err) {
     return {
       success: false,

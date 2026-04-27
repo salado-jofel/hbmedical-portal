@@ -17,7 +17,9 @@ import {
   requireClinicRole,
   insertOrderHistory,
   createNotifications,
+  generateOrderPDFs,
 } from "./_shared";
+import { seedForm1500ForDelivery } from "./order-document-actions";
 import { safeLogError } from "@/lib/logging/safe-log";
 
 /* -------------------------------------------------------------------------- */
@@ -854,6 +856,18 @@ export async function markOrderDelivered(
       notifyRoles:    ["clinical_staff", "clinical_provider"],
       excludeUserId:  user.id,
     }).catch(() => {});
+
+    // Auto-prefill the CMS-1500 with everything we know now that the order
+    // is delivered, then regenerate the PDF so the Documents card has a
+    // download-ready file. seedForm1500ForDelivery is idempotent — it skips
+    // when a row already exists, so manual edits are never overwritten.
+    const seed = await seedForm1500ForDelivery(orderId);
+    if (seed.success && !seed.skipped) {
+      generateOrderPDFs(orderId, ["hcfa_1500"]).catch((err) =>
+        safeLogError("markOrderDelivered", err, { phase: "hcfa_1500 PDF regen", orderId }),
+      );
+    }
+
     revalidatePath(ORDERS_PATH);
     return { success: true, error: null };
   } catch (err) {
