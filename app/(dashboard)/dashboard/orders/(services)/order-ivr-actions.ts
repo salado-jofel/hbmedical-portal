@@ -365,12 +365,140 @@ export async function getOrderAiStatus(
       physicianSignedAt:           form.physician_signed_at ?? null,
       physicianSignedBy:           form.physician_signed_by ?? null,
       physicianSignatureImage:     form.physician_signature_image ?? null,
+      ...mapFortifyFields(form),
       aiExtracted:                 form.ai_extracted ?? false,
       aiExtractedAt:               form.ai_extracted_at ?? null,
       isLocked:                    form.is_locked ?? false,
       lockedAt:                    form.locked_at ?? null,
       lockedBy:                    form.locked_by ?? null,
       updatedAt:                   form.updated_at ?? null,
+    },
+  };
+}
+
+/**
+ * Maps the Fortify-expansion fields (~50 columns added 2026-04-30) from
+ * snake_case row shape to the camelCase IOrderForm interface. Extracted as
+ * a helper so the two callers (`getOrderAiStatus` and `getOrderForm`) stay
+ * in sync — adding a field in one place but not the other is a hard-to-spot
+ * bug.
+ */
+function mapFortifyFields(
+  form: Record<string, unknown>,
+): Pick<
+  IOrderForm,
+  | "patientMrn" | "patientMbi" | "insuranceTypeLabel"
+  | "anticipatedDosStart" | "anticipatedDosEnd"
+  | "a1cValue" | "a1cDate" | "conditionPad" | "padDetails"
+  | "conditionVenousInsufficiency" | "conditionNeuropathy"
+  | "conditionImmunosuppression" | "immunosuppressionDetails"
+  | "conditionMalnutrition" | "albuminValue" | "conditionSmoking"
+  | "conditionRenalDisease" | "egfrValue" | "conditionOther"
+  | "etiologyDfu" | "etiologyVenousStasis" | "etiologyPressureUlcer"
+  | "pressureUlcerStage" | "etiologyArterial" | "etiologySurgical"
+  | "etiologyTraumatic" | "etiologyOther" | "woundOnsetDate" | "woundDurationText"
+  | "woundBedSloughPct" | "woundBedEscharPct" | "painLevel"
+  | "infectionSignsDescribe" | "woundPhotoTaken"
+  | "priorTreatments" | "advancementReason"
+  | "goalOfTherapy" | "goalOfTherapyOther" | "adjunctOffloading"
+  | "adjunctCompression" | "adjunctDebridement" | "adjunctOther"
+  | "specialtyConsults"
+  | "applicationFrequency" | "specialModifiers" | "priorAuthObtained"
+  | "lcdReference" | "woundMeetsLcd" | "conservativeTxPeriodMet"
+  | "qtyWithinLcdLimits" | "kxCriteriaMet" | "posEligible" | "coverageConcerns"
+  | "physicianNpi" | "attestExaminedPatient" | "attestMedicallyNecessary"
+  | "attestConservativeTxInadequate" | "attestFreqQtyClinicalJudgment"
+  | "attestLcdSupported"
+  | "officeTracking"
+> {
+  const priorRaw = Array.isArray(form.prior_treatments)
+    ? (form.prior_treatments as Array<Record<string, unknown>>)
+    : [];
+  const priorTreatments = priorRaw.map((row) => ({
+    treatment: typeof row.treatment === "string" ? row.treatment : "",
+    datesUsed: typeof row.dates_used === "string" ? row.dates_used : "",
+    outcome:   typeof row.outcome === "string" ? row.outcome : "",
+  }));
+
+  const ot =
+    form.office_tracking && typeof form.office_tracking === "object"
+      ? (form.office_tracking as Record<string, unknown>)
+      : {};
+
+  const num = (v: unknown): number | null =>
+    v === null || v === undefined ? null : Number(v);
+
+  return {
+    patientMrn:                    (form.patient_mrn as string | null) ?? null,
+    patientMbi:                    (form.patient_mbi as string | null) ?? null,
+    insuranceTypeLabel:            (form.insurance_type_label as IOrderForm["insuranceTypeLabel"]) ?? null,
+    anticipatedDosStart:           (form.anticipated_dos_start as string | null) ?? null,
+    anticipatedDosEnd:             (form.anticipated_dos_end as string | null) ?? null,
+    a1cValue:                      num(form.a1c_value),
+    a1cDate:                       (form.a1c_date as string | null) ?? null,
+    conditionPad:                  (form.condition_pad as boolean | null) ?? false,
+    padDetails:                    (form.pad_details as string | null) ?? null,
+    conditionVenousInsufficiency:  (form.condition_venous_insufficiency as boolean | null) ?? false,
+    conditionNeuropathy:           (form.condition_neuropathy as boolean | null) ?? false,
+    conditionImmunosuppression:    (form.condition_immunosuppression as boolean | null) ?? false,
+    immunosuppressionDetails:      (form.immunosuppression_details as string | null) ?? null,
+    conditionMalnutrition:         (form.condition_malnutrition as boolean | null) ?? false,
+    albuminValue:                  num(form.albumin_value),
+    conditionSmoking:              (form.condition_smoking as boolean | null) ?? false,
+    conditionRenalDisease:         (form.condition_renal_disease as boolean | null) ?? false,
+    egfrValue:                     num(form.egfr_value),
+    conditionOther:                (form.condition_other as string | null) ?? null,
+    etiologyDfu:                   (form.etiology_dfu as boolean | null) ?? false,
+    etiologyVenousStasis:          (form.etiology_venous_stasis as boolean | null) ?? false,
+    etiologyPressureUlcer:         (form.etiology_pressure_ulcer as boolean | null) ?? false,
+    pressureUlcerStage:            (form.pressure_ulcer_stage as string | null) ?? null,
+    etiologyArterial:              (form.etiology_arterial as boolean | null) ?? false,
+    etiologySurgical:              (form.etiology_surgical as boolean | null) ?? false,
+    etiologyTraumatic:             (form.etiology_traumatic as boolean | null) ?? false,
+    etiologyOther:                 (form.etiology_other as string | null) ?? null,
+    woundOnsetDate:                (form.wound_onset_date as string | null) ?? null,
+    woundDurationText:             (form.wound_duration_text as string | null) ?? null,
+    woundBedSloughPct:             num(form.wound_bed_slough_pct),
+    woundBedEscharPct:             num(form.wound_bed_eschar_pct),
+    painLevel:                     num(form.pain_level),
+    infectionSignsDescribe:        (form.infection_signs_describe as string | null) ?? null,
+    woundPhotoTaken:               (form.wound_photo_taken as boolean | null) ?? false,
+    priorTreatments,
+    advancementReason:             (form.advancement_reason as string | null) ?? null,
+    goalOfTherapy:                 (form.goal_of_therapy as IOrderForm["goalOfTherapy"]) ?? null,
+    goalOfTherapyOther:            (form.goal_of_therapy_other as string | null) ?? null,
+    adjunctOffloading:             (form.adjunct_offloading as boolean | null) ?? false,
+    adjunctCompression:            (form.adjunct_compression as boolean | null) ?? false,
+    adjunctDebridement:            (form.adjunct_debridement as boolean | null) ?? false,
+    adjunctOther:                  (form.adjunct_other as string | null) ?? null,
+    specialtyConsults:             (form.specialty_consults as string | null) ?? null,
+    applicationFrequency:          (form.application_frequency as string | null) ?? null,
+    specialModifiers:              (form.special_modifiers as string | null) ?? null,
+    priorAuthObtained:             (form.prior_auth_obtained as boolean | null) ?? false,
+    lcdReference:                  (form.lcd_reference as string | null) ?? null,
+    woundMeetsLcd:                 (form.wound_meets_lcd as boolean | null) ?? null,
+    conservativeTxPeriodMet:       (form.conservative_tx_period_met as boolean | null) ?? null,
+    qtyWithinLcdLimits:            (form.qty_within_lcd_limits as boolean | null) ?? null,
+    kxCriteriaMet:                 (form.kx_criteria_met as IOrderForm["kxCriteriaMet"]) ?? null,
+    posEligible:                   (form.pos_eligible as boolean | null) ?? null,
+    coverageConcerns:              (form.coverage_concerns as string | null) ?? null,
+    physicianNpi:                  (form.physician_npi as string | null) ?? null,
+    attestExaminedPatient:           (form.attest_examined_patient as boolean | null) ?? false,
+    attestMedicallyNecessary:        (form.attest_medically_necessary as boolean | null) ?? false,
+    attestConservativeTxInadequate:  (form.attest_conservative_tx_inadequate as boolean | null) ?? false,
+    attestFreqQtyClinicalJudgment:   (form.attest_freq_qty_clinical_judgment as boolean | null) ?? false,
+    attestLcdSupported:              (form.attest_lcd_supported as boolean | null) ?? false,
+    officeTracking: {
+      methodOfReceipt:          (ot.method_of_receipt as string | null) ?? null,
+      baaInPlace:               (ot.baa_in_place as boolean | null) ?? null,
+      reviewedBy:               (ot.reviewed_by as string | null) ?? null,
+      documentationComplete:    (ot.documentation_complete as boolean | null) ?? null,
+      gapsIdentified:           (ot.gaps_identified as string | null) ?? null,
+      gapsCommunicatedAt:       (ot.gaps_communicated_at as string | null) ?? null,
+      gapsResolvedAt:           (ot.gaps_resolved_at as string | null) ?? null,
+      releasedToFulfillment:    (ot.released_to_fulfillment as boolean | null) ?? null,
+      releasedToFulfillmentAt:  (ot.released_to_fulfillment_at as string | null) ?? null,
+      filedInRepository:        (ot.filed_in_repository as boolean | null) ?? null,
     },
   };
 }
@@ -442,6 +570,7 @@ export async function getOrderForm(
       physicianSignedAt:           form.physician_signed_at ?? null,
       physicianSignedBy:           form.physician_signed_by ?? null,
       physicianSignatureImage:     form.physician_signature_image ?? null,
+      ...mapFortifyFields(form),
       aiExtracted:                 form.ai_extracted ?? false,
       aiExtractedAt:               form.ai_extracted_at ?? null,
       isLocked:                    form.is_locked ?? false,

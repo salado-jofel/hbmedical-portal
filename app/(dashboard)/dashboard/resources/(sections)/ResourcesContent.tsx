@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Megaphone, ScrollText, BookOpen, Hospital, FileText, CheckSquare } from "lucide-react";
 import { useAppSelector, useAppDispatch } from "@/store/hooks";
 import { isAdmin as checkIsAdmin } from "@/utils/helpers/role";
@@ -102,7 +102,7 @@ const TAB_CATEGORY: Record<string, Category | null> = {
 };
 
 const SIGNED_TAB_MY = "My Documents";
-const SIGNED_TAB_ADMIN = "Rep Signatures";
+const SIGNED_TAB_ADMIN = "Onboarding Signatures";
 
 export default function ResourcesContent({
   activeTab,
@@ -134,6 +134,13 @@ export default function ResourcesContent({
   const role = useAppSelector((s) => s.dashboard.role);
   const isAdmin = checkIsAdmin(role);
   const isSalesRep = role === "sales_representative";
+  const isClinicalProvider = role === "clinical_provider";
+
+  // `role` lives in Redux, which is empty during SSR — so any role-conditional
+  // tab would mismatch on hydration. Render the static base tabs first, then
+  // expand to the role-specific ones after mount. Same pattern as TabNav.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   const tabs = [
     "All",
@@ -141,8 +148,8 @@ export default function ResourcesContent({
     "Contracts",
     "Training",
     "Onboarding",
-    ...(isSalesRep ? [SIGNED_TAB_MY] : []),
-    ...(isAdmin ? [SIGNED_TAB_ADMIN] : []),
+    ...(mounted && (isSalesRep || isClinicalProvider) ? [SIGNED_TAB_MY] : []),
+    ...(mounted && isAdmin ? [SIGNED_TAB_ADMIN] : []),
   ];
 
   const allItems: ResourceItem[] = [
@@ -265,7 +272,10 @@ export default function ResourcesContent({
           tabs={tabs}
         />
         {activeTab === SIGNED_TAB_MY ? (
-          <MySignedContractsView rows={signedContracts} />
+          <MySignedContractsView
+            rows={signedContracts}
+            kind={isClinicalProvider ? "provider" : "rep"}
+          />
         ) : (
           <AdminSignedContractsView
             rows={signedContracts}

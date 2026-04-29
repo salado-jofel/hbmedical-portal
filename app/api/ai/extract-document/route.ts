@@ -67,6 +67,64 @@ const ORDER_FORM_ALLOWED_FIELDS = new Set([
   // Treatment
   "drainage_description",
   "treatment_plan",
+  /* ── Fortify expansion (added 2026-04-30) ──
+     The 5-attestation booleans (`attest_*`) are intentionally NOT in this
+     allowlist — those must be physician-affirmed and never AI-prefilled.
+     Office-tracking JSONB likewise stays admin-only. */
+  "patient_mrn",
+  "patient_mbi",
+  "insurance_type_label",
+  "anticipated_dos_start",
+  "anticipated_dos_end",
+  "a1c_value",
+  "a1c_date",
+  "condition_pad",
+  "pad_details",
+  "condition_venous_insufficiency",
+  "condition_neuropathy",
+  "condition_immunosuppression",
+  "immunosuppression_details",
+  "condition_malnutrition",
+  "albumin_value",
+  "condition_smoking",
+  "condition_renal_disease",
+  "egfr_value",
+  "condition_other",
+  "etiology_dfu",
+  "etiology_venous_stasis",
+  "etiology_pressure_ulcer",
+  "pressure_ulcer_stage",
+  "etiology_arterial",
+  "etiology_surgical",
+  "etiology_traumatic",
+  "etiology_other",
+  "wound_onset_date",
+  "wound_duration_text",
+  "wound_bed_slough_pct",
+  "wound_bed_eschar_pct",
+  "pain_level",
+  "infection_signs_describe",
+  "wound_photo_taken",
+  "prior_treatments",
+  "advancement_reason",
+  "goal_of_therapy",
+  "goal_of_therapy_other",
+  "adjunct_offloading",
+  "adjunct_compression",
+  "adjunct_debridement",
+  "adjunct_other",
+  "specialty_consults",
+  "application_frequency",
+  "special_modifiers",
+  "prior_auth_obtained",
+  "lcd_reference",
+  "wound_meets_lcd",
+  "conservative_tx_period_met",
+  "qty_within_lcd_limits",
+  "kx_criteria_met",
+  "pos_eligible",
+  "coverage_concerns",
+  "physician_npi",
 ]);
 
 const ORDER_FORM_FIELD_ALIASES: Record<string, string> = {
@@ -129,6 +187,88 @@ const ORDER_FORM_FIELD_ALIASES: Record<string, string> = {
   wound_drainage: "drainage_description",
   plan: "treatment_plan",
   dressing_plan: "treatment_plan",
+  /* ── Fortify expansion aliases ── */
+  mrn: "patient_mrn",
+  medical_record_number: "patient_mrn",
+  medicare_id: "patient_mbi",
+  mbi: "patient_mbi",
+  beneficiary_id: "patient_mbi",
+  insurance_class: "insurance_type_label",
+  coverage_type: "insurance_type_label",
+  anticipated_service_start: "anticipated_dos_start",
+  anticipated_service_end: "anticipated_dos_end",
+  service_start: "anticipated_dos_start",
+  service_end: "anticipated_dos_end",
+  date_of_service_start: "anticipated_dos_start",
+  date_of_service_end: "anticipated_dos_end",
+  a1c: "a1c_value",
+  hba1c: "a1c_value",
+  hemoglobin_a1c: "a1c_value",
+  albumin: "albumin_value",
+  serum_albumin: "albumin_value",
+  egfr: "egfr_value",
+  pad: "condition_pad",
+  peripheral_arterial_disease: "condition_pad",
+  vascular_insufficiency: "condition_pad",
+  venous_insufficiency: "condition_venous_insufficiency",
+  neuropathy: "condition_neuropathy",
+  immunosuppressed: "condition_immunosuppression",
+  immunosuppression: "condition_immunosuppression",
+  malnutrition: "condition_malnutrition",
+  smoking: "condition_smoking",
+  smoker: "condition_smoking",
+  active_smoker: "condition_smoking",
+  renal_disease: "condition_renal_disease",
+  ckd: "condition_renal_disease",
+  diabetic_foot_ulcer: "etiology_dfu",
+  dfu: "etiology_dfu",
+  venous_stasis: "etiology_venous_stasis",
+  venous_stasis_ulcer: "etiology_venous_stasis",
+  pressure_ulcer: "etiology_pressure_ulcer",
+  arterial_ulcer: "etiology_arterial",
+  surgical_wound: "etiology_surgical",
+  traumatic_wound: "etiology_traumatic",
+  ulcer_stage: "pressure_ulcer_stage",
+  pu_stage: "pressure_ulcer_stage",
+  onset_date: "wound_onset_date",
+  wound_onset: "wound_onset_date",
+  duration: "wound_duration_text",
+  wound_age: "wound_duration_text",
+  slough_pct: "wound_bed_slough_pct",
+  slough_percentage: "wound_bed_slough_pct",
+  eschar_pct: "wound_bed_eschar_pct",
+  eschar_percentage: "wound_bed_eschar_pct",
+  pain: "pain_level",
+  pain_score: "pain_level",
+  pain_scale: "pain_level",
+  infection_description: "infection_signs_describe",
+  signs_of_infection: "infection_signs_describe",
+  prior_treatment: "prior_treatments",
+  previous_treatments: "prior_treatments",
+  conservative_treatments: "prior_treatments",
+  advancement: "advancement_reason",
+  reason_for_advancing: "advancement_reason",
+  therapy_goal: "goal_of_therapy",
+  goal: "goal_of_therapy",
+  offloading: "adjunct_offloading",
+  compression: "adjunct_compression",
+  debridement: "adjunct_debridement",
+  consults: "specialty_consults",
+  specialist_consults: "specialty_consults",
+  consultations: "specialty_consults",
+  frequency: "application_frequency",
+  application_freq: "application_frequency",
+  dressing_frequency: "application_frequency",
+  modifiers: "special_modifiers",
+  hcpcs_modifiers: "special_modifiers",
+  prior_auth: "prior_auth_obtained",
+  prior_authorization: "prior_auth_obtained",
+  pa_obtained: "prior_auth_obtained",
+  lcd: "lcd_reference",
+  ncd: "lcd_reference",
+  lcd_ref: "lcd_reference",
+  npi: "physician_npi",
+  ordering_physician_npi: "physician_npi",
 };
 
 function sanitizeOrderFormFields(
@@ -421,7 +561,62 @@ Use false for boolean fields not mentioned. No text outside the JSON.
   "wound2_width_cm": number | null,
   "wound2_depth_cm": number | null,
   "drainage_description": string | null,
-  "treatment_plan": string | null
+  "treatment_plan": string | null,
+
+  "patient_mrn": string | null,
+  "patient_mbi": string | null,
+  "insurance_type_label": "medicare_part_b" | "medicare_dme" | "medicare_advantage" | "commercial" | "medicaid" | "other" | null,
+  "anticipated_dos_start": "YYYY-MM-DD" | null,
+  "anticipated_dos_end": "YYYY-MM-DD" | null,
+  "a1c_value": number | null,
+  "a1c_date": "YYYY-MM-DD" | null,
+  "condition_pad": boolean,
+  "pad_details": string | null,
+  "condition_venous_insufficiency": boolean,
+  "condition_neuropathy": boolean,
+  "condition_immunosuppression": boolean,
+  "immunosuppression_details": string | null,
+  "condition_malnutrition": boolean,
+  "albumin_value": number | null,
+  "condition_smoking": boolean,
+  "condition_renal_disease": boolean,
+  "egfr_value": number | null,
+  "condition_other": string | null,
+  "etiology_dfu": boolean,
+  "etiology_venous_stasis": boolean,
+  "etiology_pressure_ulcer": boolean,
+  "pressure_ulcer_stage": "I" | "II" | "III" | "IV" | "Unstageable" | "DTI" | null,
+  "etiology_arterial": boolean,
+  "etiology_surgical": boolean,
+  "etiology_traumatic": boolean,
+  "etiology_other": string | null,
+  "wound_onset_date": "YYYY-MM-DD" | null,
+  "wound_duration_text": string | null,
+  "wound_bed_slough_pct": number | null,
+  "wound_bed_eschar_pct": number | null,
+  "pain_level": number | null,
+  "infection_signs_describe": string | null,
+  "wound_photo_taken": boolean,
+  "prior_treatments": Array<{ "treatment": string, "dates_used": string, "outcome": string }>,
+  "advancement_reason": string | null,
+  "goal_of_therapy": "complete_healing" | "wound_bed_prep" | "palliative" | "infection_control" | "other" | null,
+  "goal_of_therapy_other": string | null,
+  "adjunct_offloading": boolean,
+  "adjunct_compression": boolean,
+  "adjunct_debridement": boolean,
+  "adjunct_other": string | null,
+  "specialty_consults": string | null,
+  "application_frequency": string | null,
+  "special_modifiers": string | null,
+  "prior_auth_obtained": boolean,
+  "lcd_reference": string | null,
+  "wound_meets_lcd": boolean | null,
+  "conservative_tx_period_met": boolean | null,
+  "qty_within_lcd_limits": boolean | null,
+  "kx_criteria_met": "yes" | "no" | "na" | null,
+  "pos_eligible": boolean | null,
+  "coverage_concerns": string | null,
+  "physician_npi": string | null
 }
 
 FACESHEET fields (patient_last_name … secondary_subscriber_relationship):
@@ -439,7 +634,24 @@ CLINICAL fields (chief_complaint … treatment_plan):
 - use_blood_thinners: true if any blood thinner is listed in the medication list.
 - wound_location_side: "RT" for right, "LT" for left, "bilateral" if both sides.
 - subjective_symptoms: only use values from ["Pain", "Numbness", "Fever", "Chills", "Nausea"].
-- diagnosis codes (icd10_code): use the primary ICD-10 code from clinical docs (e.g. "L97.319").`.trim();
+- diagnosis codes (icd10_code): use the primary ICD-10 code from clinical docs (e.g. "L97.319").
+
+FORTIFY EXTENSION fields (patient_mrn … physician_npi):
+- "patient_mrn" = the clinic's medical record number printed on the chart (NOT the same as Medicare MBI).
+- "patient_mbi" = the 11-character Medicare Beneficiary Identifier; extract from the facesheet.
+- "insurance_type_label" — pick from the enum based on the insurance section.
+- "etiology_*" booleans CAN co-exist (e.g. a diabetic foot ulcer that is also venous). Set every applicable etiology to true.
+- "pressure_ulcer_stage" — only if etiology_pressure_ulcer is true. Use Roman numerals or "Unstageable" / "DTI".
+- "a1c_value", "albumin_value", "egfr_value" — extract from labs section if present, else null.
+- "prior_treatments" — array of { treatment, dates_used, outcome }. Look for a "Prior treatments tried" / "Conservative measures" / "Treatment history" section. Empty array if none found. ONE OBJECT PER TREATMENT TRIED — do not concatenate.
+- "advancement_reason" — explanation of why prior treatments were inadequate, if stated.
+- "wound_onset_date" — best-effort YYYY-MM-DD; if doc only says "3 weeks ago", leave null and put text in "wound_duration_text".
+- "pain_level" — 0 to 10 integer if a pain scale is documented.
+- "wound_photo_taken" — true ONLY if a photo is explicitly referenced.
+- "goal_of_therapy" — pick from the enum if a treatment goal is stated; otherwise null.
+- "lcd_reference", coverage flags, "physician_npi" — only set if explicitly present in the docs.
+- DO NOT extract or infer any "attest_*" fields. Those are physician attestations and must be checked manually in-app.
+- DO NOT extract any "office_tracking" fields. Those are admin-only fields filled after the order is received.`.trim();
 }
 
 /* ── Combined extraction handler ── */
@@ -637,6 +849,19 @@ async function handleCombinedExtraction(
   const aiIvr = sanitizeIvrFields(extractedFields);
   const ai1500 = sanitizeForm1500Fields(extractedFields);
   const aiOf = sanitizeOrderFormFields(extractedFields);
+
+  // Derive a single best-effort patient full name from AI-extracted first/last
+  // (lives on order_form_1500). Steps 6/8 below run BEFORE Step 9 creates the
+  // patient row, so the existing-patient `patientName` is null for new orders.
+  // Without this, order_form.patient_name + order_ivr.patient_name end up null
+  // on every freshly-AI-extracted order, even though the patient record itself
+  // gets created and the order header (`patient_full_name` join) shows the name.
+  const aiPatientName: string | null = (() => {
+    const fn = ai1500.patient_first_name as string | null | undefined;
+    const ln = ai1500.patient_last_name as string | null | undefined;
+    const composed = `${fn ?? ""} ${ln ?? ""}`.trim();
+    return composed || null;
+  })();
   const icd10 = aiOf.icd10_code as string | null | undefined;
 
   /* ── STEP 6: Upsert order_ivr ── */
@@ -660,7 +885,7 @@ async function handleCombinedExtraction(
       physician_fax:    (aiIvr.physician_fax as string | null)    || enr?.billing_fax    || null,
       physician_address: (aiIvr.physician_address as string | null) || addr              || null,
       physician_phone:  (aiIvr.physician_phone as string | null)  || physician?.phone    || null,
-      patient_name:     (aiIvr.patient_name as string | null)     || patientName         || null,
+      patient_name:     (aiIvr.patient_name as string | null)     || aiPatientName       || patientName         || null,
       patient_dob:      (aiIvr.patient_dob as string | null)      || patient?.date_of_birth || null,
       sales_rep_name:   repName                                                            || null,
     };
@@ -700,9 +925,13 @@ async function handleCombinedExtraction(
   const orderFormPayload = {
     order_id: orderId,
     ...aiOf,
-    patient_name:        (aiOf.patient_name as string | null)  || patientName  || null,
+    patient_name:        (aiOf.patient_name as string | null)  || aiPatientName || patientName || null,
     patient_date:        (orderCtx as Record<string, unknown>).date_of_service || null,
     physician_signature: physicianName                                         || null,
+    // Mirror order_ivr / order_form_1500: prefer the AI-extracted NPI when
+    // present, fall back to the assigned provider's stored credential so the
+    // signature block + Fortify physician-attestation row aren't blank.
+    physician_npi:       (aiOf.physician_npi as string | null) || creds?.npi_number || null,
     ai_extracted:        true,
     ai_extracted_at:     new Date().toISOString(),
   };
@@ -1087,6 +1316,16 @@ export async function POST(req: NextRequest) {
         : {};
     const icd10 = aiOf.icd10_code as string | null | undefined;
 
+    // See note in the combined route — derive a best-effort patient name from
+    // AI-extracted first/last so order_form.patient_name + order_ivr.patient_name
+    // populate even on the very first extraction (before the patient row exists).
+    const aiPatientName: string | null = (() => {
+      const fn = ai1500.patient_first_name as string | null | undefined;
+      const ln = ai1500.patient_last_name as string | null | undefined;
+      const composed = `${fn ?? ""} ${ln ?? ""}`.trim();
+      return composed || null;
+    })();
+
     /* ── STEP 7: Upsert order_ivr ── */
     {
       const ivrPayload = {
@@ -1129,7 +1368,7 @@ export async function POST(req: NextRequest) {
         physician_phone:
           (aiIvr.physician_phone as string | null) || physician?.phone || null,
         patient_name:
-          (aiIvr.patient_name as string | null) || patientName || null,
+          (aiIvr.patient_name as string | null) || aiPatientName || patientName || null,
         patient_dob:
           (aiIvr.patient_dob as string | null) || patient?.date_of_birth || null,
         sales_rep_name: repName || null,
@@ -1205,9 +1444,10 @@ export async function POST(req: NextRequest) {
     const orderFormPayload = {
       order_id: orderId,
       ...aiOf,
-      patient_name: (aiOf.patient_name as string | null) || patientName || null,
+      patient_name: (aiOf.patient_name as string | null) || aiPatientName || patientName || null,
       patient_date: (orderCtx as any).date_of_service || null,
       physician_signature: physicianName || null,
+      physician_npi: (aiOf.physician_npi as string | null) || creds?.npi_number || null,
       ai_extracted: true,
       ai_extracted_at: new Date().toISOString(),
     };
@@ -1452,7 +1692,62 @@ No text outside the JSON.
   "wound2_depth_cm": number | null,
 
   "drainage_description": string | null,
-  "treatment_plan": string | null
+  "treatment_plan": string | null,
+
+  "patient_mrn": string | null,
+  "patient_mbi": string | null,
+  "insurance_type_label": "medicare_part_b" | "medicare_dme" | "medicare_advantage" | "commercial" | "medicaid" | "other" | null,
+  "anticipated_dos_start": "YYYY-MM-DD" | null,
+  "anticipated_dos_end": "YYYY-MM-DD" | null,
+  "a1c_value": number | null,
+  "a1c_date": "YYYY-MM-DD" | null,
+  "condition_pad": boolean,
+  "pad_details": string | null,
+  "condition_venous_insufficiency": boolean,
+  "condition_neuropathy": boolean,
+  "condition_immunosuppression": boolean,
+  "immunosuppression_details": string | null,
+  "condition_malnutrition": boolean,
+  "albumin_value": number | null,
+  "condition_smoking": boolean,
+  "condition_renal_disease": boolean,
+  "egfr_value": number | null,
+  "condition_other": string | null,
+  "etiology_dfu": boolean,
+  "etiology_venous_stasis": boolean,
+  "etiology_pressure_ulcer": boolean,
+  "pressure_ulcer_stage": "I" | "II" | "III" | "IV" | "Unstageable" | "DTI" | null,
+  "etiology_arterial": boolean,
+  "etiology_surgical": boolean,
+  "etiology_traumatic": boolean,
+  "etiology_other": string | null,
+  "wound_onset_date": "YYYY-MM-DD" | null,
+  "wound_duration_text": string | null,
+  "wound_bed_slough_pct": number | null,
+  "wound_bed_eschar_pct": number | null,
+  "pain_level": number | null,
+  "infection_signs_describe": string | null,
+  "wound_photo_taken": boolean,
+  "prior_treatments": Array<{ "treatment": string, "dates_used": string, "outcome": string }>,
+  "advancement_reason": string | null,
+  "goal_of_therapy": "complete_healing" | "wound_bed_prep" | "palliative" | "infection_control" | "other" | null,
+  "goal_of_therapy_other": string | null,
+  "adjunct_offloading": boolean,
+  "adjunct_compression": boolean,
+  "adjunct_debridement": boolean,
+  "adjunct_other": string | null,
+  "specialty_consults": string | null,
+  "application_frequency": string | null,
+  "special_modifiers": string | null,
+  "prior_auth_obtained": boolean,
+  "lcd_reference": string | null,
+  "wound_meets_lcd": boolean | null,
+  "conservative_tx_period_met": boolean | null,
+  "qty_within_lcd_limits": boolean | null,
+  "kx_criteria_met": "yes" | "no" | "na" | null,
+  "pos_eligible": boolean | null,
+  "coverage_concerns": string | null,
+  "physician_npi": string | null
 }
 
 CRITICAL: Use the EXACT field names above including all underscores. For example:

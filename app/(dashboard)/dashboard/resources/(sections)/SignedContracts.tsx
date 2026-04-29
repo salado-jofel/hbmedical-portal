@@ -15,7 +15,37 @@ import type {
   SignedContractRow,
   RepOfficeOption,
   SalesRepOption,
+  ContractKind,
 } from "../(services)/signed-contracts-actions";
+
+/** Provider onboarding catalog. Kept here (in a client component) so the
+ *  surrounding "use server" file in (services)/ doesn't have to export a
+ *  non-async constant — Next.js disallows that for server-action modules. */
+const PROVIDER_CONTRACTS: ReadonlyArray<{ key: string; label: string }> = [
+  { key: "baa", label: "Business Associate Agreement" },
+  { key: "product_services", label: "Product & Services Agreement" },
+];
+
+const TYPE_BADGE_LABEL: Record<ContractKind, string> = {
+  rep: "Sales Rep",
+  provider: "Provider",
+};
+
+function TypeBadge({ kind }: { kind: ContractKind }) {
+  const isProvider = kind === "provider";
+  return (
+    <span
+      className={
+        "shrink-0 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded " +
+        (isProvider
+          ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+          : "bg-blue-50 text-blue-700 border border-blue-200")
+      }
+    >
+      {TYPE_BADGE_LABEL[kind]}
+    </span>
+  );
+}
 
 function fmtDate(iso: string): string {
   try {
@@ -29,16 +59,25 @@ function fmtDate(iso: string): string {
   }
 }
 
-function ContractCard({ row }: { row: SignedContractRow }) {
+function ContractCard({
+  row,
+  showTypeBadge = false,
+}: {
+  row: SignedContractRow;
+  showTypeBadge?: boolean;
+}) {
   return (
     <div className="rounded-xl border border-[var(--border)] bg-white p-4 flex items-start gap-3 transition-colors hover:border-[var(--navy)]/30">
       <div className="shrink-0 w-10 h-10 rounded-lg bg-[var(--navy)]/5 text-[var(--navy)] flex items-center justify-center">
         <FileCheck className="w-5 h-5" />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold text-[var(--text1)] truncate">
-          {row.label}
-        </p>
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-semibold text-[var(--text1)] truncate">
+            {row.label}
+          </p>
+          {showTypeBadge && <TypeBadge kind={row.kind} />}
+        </div>
         <p className="mt-0.5 text-xs text-[var(--text3)]">
           Signed {fmtDate(row.signedAt)} by {row.typedName}
         </p>
@@ -75,13 +114,20 @@ function MissingContractCard({ label }: { label: string }) {
 
 export function MySignedContractsView({
   rows,
+  kind,
 }: {
   rows: SignedContractRow[];
+  /** Drives which catalog of "expected" contracts to render placeholders for.
+   *  Sales reps see the full SALES_REP_CONTRACTS list (Code of Conduct, COI,
+   *  HepB consent, etc.); providers see just the BAA + Product & Services
+   *  pair captured at invite signup. */
+  kind: ContractKind;
 }) {
   const byType = new Map(rows.map((r) => [r.contractType, r]));
+  const catalog = kind === "provider" ? PROVIDER_CONTRACTS : SALES_REP_CONTRACTS;
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-      {SALES_REP_CONTRACTS.map((def) => {
+      {catalog.map((def) => {
         const row = byType.get(def.key);
         return row ? (
           <ContractCard key={def.key} row={row} />
@@ -218,7 +264,7 @@ export function AdminSignedContractsView({
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                 {group.docs.map((row) => (
-                  <ContractCard key={row.id} row={row} />
+                  <ContractCard key={row.id} row={row} showTypeBadge />
                 ))}
               </div>
             </div>

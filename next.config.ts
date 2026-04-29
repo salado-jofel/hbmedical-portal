@@ -18,7 +18,12 @@ const nextConfig: NextConfig = {
    * - HSTS: forces HTTPS for 2 years; `preload` allows inclusion in the
    *   browser preload list. Only enable preload once you're certain the
    *   site is fully HTTPS — Vercel deployments are.
-   * - X-Frame-Options: prevents clickjacking by disallowing iframe embedding.
+   * - X-Frame-Options: blocks CROSS-ORIGIN embedding (the real clickjacking
+   *   threat) but allows same-origin iframes. We need SAMEORIGIN — not DENY
+   *   — because the onboarding flow at `/invite/[token]/signup` embeds the
+   *   contract template route (`/api/contract-template/[file]`) in an
+   *   iframe for inline document review; DENY would block it and force the
+   *   "preview failed to connect" UX seen during sales-rep + provider sign.
    * - X-Content-Type-Options: stops MIME sniffing (defense vs. uploaded-
    *   content type confusion).
    * - Referrer-Policy: prevents leaking PHI-bearing URLs to external
@@ -41,7 +46,7 @@ const nextConfig: NextConfig = {
             key: "Strict-Transport-Security",
             value: "max-age=63072000; includeSubDomains; preload",
           },
-          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           {

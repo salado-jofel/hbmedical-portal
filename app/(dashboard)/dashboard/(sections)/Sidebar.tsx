@@ -68,7 +68,8 @@ export const NAV_GROUPS: NavGroupDef[] = [
         icon: FolderOpen,
         label: "Resources",
         href: "/dashboard/resources",
-        visible: (role) => isAdmin(role) || isSalesRep(role),
+        visible: (role) =>
+          isAdmin(role) || isSalesRep(role) || isClinicalProvider(role),
       },
     ],
   },

@@ -475,6 +475,48 @@ export interface IOrderForm1500 {
   updatedAt: string;
 }
 
+/* Prior-treatment row inside `priorTreatments` JSONB array. */
+export interface IPriorTreatmentRow {
+  treatment: string;
+  datesUsed: string;
+  outcome: string;
+}
+
+export type GoalOfTherapy =
+  | "complete_healing"
+  | "wound_bed_prep"
+  | "palliative"
+  | "infection_control"
+  | "other";
+
+export type KxCriteriaMet = "yes" | "no" | "na";
+
+export type InsuranceTypeLabel =
+  | "medicare_part_b"
+  | "medicare_dme"
+  | "medicare_advantage"
+  | "commercial"
+  | "medicaid"
+  | "other";
+
+/**
+ * Admin-only office-tracking block. Stored as JSONB on `order_form.office_tracking`.
+ * Never rendered on the patient-facing PDF — only on the in-app collapsible
+ * "Internal Tracking" panel, gated to admin/support roles.
+ */
+export interface IOfficeTracking {
+  methodOfReceipt?: string | null;
+  baaInPlace?: boolean | null;
+  reviewedBy?: string | null;
+  documentationComplete?: boolean | null;
+  gapsIdentified?: string | null;
+  gapsCommunicatedAt?: string | null;
+  gapsResolvedAt?: string | null;
+  releasedToFulfillment?: boolean | null;
+  releasedToFulfillmentAt?: string | null;
+  filedInRepository?: boolean | null;
+}
+
 export interface IOrderForm {
   id: string;
   orderId: string;
@@ -532,6 +574,87 @@ export interface IOrderForm {
   physicianSignedBy: string | null;
   /** PNG data URL. Set by Sign; cleared by Unsign. */
   physicianSignatureImage: string | null;
+
+  // ── Fortify expansion: Patient + order metadata (Section 2) ──
+  patientMrn: string | null;
+  patientMbi: string | null;
+  insuranceTypeLabel: InsuranceTypeLabel | null;
+  anticipatedDosStart: string | null;
+  anticipatedDosEnd: string | null;
+
+  // ── Fortify expansion: Comorbidities + labs (Section 7) ──
+  a1cValue: number | null;
+  a1cDate: string | null;
+  conditionPad: boolean;
+  padDetails: string | null;
+  conditionVenousInsufficiency: boolean;
+  conditionNeuropathy: boolean;
+  conditionImmunosuppression: boolean;
+  immunosuppressionDetails: string | null;
+  conditionMalnutrition: boolean;
+  albuminValue: number | null;
+  conditionSmoking: boolean;
+  conditionRenalDisease: boolean;
+  egfrValue: number | null;
+  conditionOther: string | null;
+
+  // ── Fortify expansion: Etiology + onset (Section 8) ──
+  etiologyDfu: boolean;
+  etiologyVenousStasis: boolean;
+  etiologyPressureUlcer: boolean;
+  pressureUlcerStage: string | null;
+  etiologyArterial: boolean;
+  etiologySurgical: boolean;
+  etiologyTraumatic: boolean;
+  etiologyOther: string | null;
+  woundOnsetDate: string | null;
+  woundDurationText: string | null;
+
+  // ── Fortify expansion: Wound bed + pain + photo (Section 10-11) ──
+  woundBedSloughPct: number | null;
+  woundBedEscharPct: number | null;
+  painLevel: number | null;
+  infectionSignsDescribe: string | null;
+  woundPhotoTaken: boolean;
+
+  // ── Fortify expansion: Prior treatments (nested in Section 15) ──
+  priorTreatments: IPriorTreatmentRow[];
+  advancementReason: string | null;
+
+  // ── Fortify expansion: Treatment plan structure (Section 15) ──
+  goalOfTherapy: GoalOfTherapy | null;
+  goalOfTherapyOther: string | null;
+  adjunctOffloading: boolean;
+  adjunctCompression: boolean;
+  adjunctDebridement: boolean;
+  adjunctOther: string | null;
+  specialtyConsults: string | null;
+
+  // ── Fortify expansion: Product (Section 17) ──
+  applicationFrequency: string | null;
+  specialModifiers: string | null;
+  priorAuthObtained: boolean;
+
+  // ── Fortify expansion: Coverage self-check (between 18 and 19) ──
+  lcdReference: string | null;
+  woundMeetsLcd: boolean | null;
+  conservativeTxPeriodMet: boolean | null;
+  qtyWithinLcdLimits: boolean | null;
+  kxCriteriaMet: KxCriteriaMet | null;
+  posEligible: boolean | null;
+  coverageConcerns: string | null;
+
+  // ── Fortify expansion: Signature additions (Section 19) ──
+  physicianNpi: string | null;
+  attestExaminedPatient: boolean;
+  attestMedicallyNecessary: boolean;
+  attestConservativeTxInadequate: boolean;
+  attestFreqQtyClinicalJudgment: boolean;
+  attestLcdSupported: boolean;
+
+  // ── Fortify expansion: Office tracking (admin-only, below Section 19) ──
+  officeTracking: IOfficeTracking;
+
   // Meta
   aiExtracted: boolean;
   aiExtractedAt: string | null;
