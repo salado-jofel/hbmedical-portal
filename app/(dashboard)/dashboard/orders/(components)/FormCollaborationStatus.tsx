@@ -36,14 +36,11 @@ export function FormCollaborationStatus({
     .filter((v, i, arr) => arr.findIndex((x) => x.name === v.name) === i);
 
   if (others.length === 0 && !conflict) return null;
-
+  // test
   return (
     <>
       {others.length > 0 && (
-        <div
-          className="mx-auto pt-3 pb-1"
-          style={{ maxWidth: 1400 }}
-        >
+        <div className="mx-auto pt-3 pb-1" style={{ maxWidth: 1400 }}>
           <div className="flex items-center gap-2 text-[11px]">
             <span className="text-[var(--text3)] font-medium">
               Currently viewing
