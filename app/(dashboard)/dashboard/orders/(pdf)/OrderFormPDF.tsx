@@ -197,6 +197,19 @@ export function OrderFormPDF({
           <UField label="Wound Visit #" value={v(form?.wound_visit_number)} width={30} />
         </View>
 
+        {/* ── Fortify: Patient identifiers (MRN / MBI / Insurance) ── */}
+        <View style={s.row}>
+          <UField label="MRN" value={v(form?.patient_mrn)} width={70} />
+          <UField label="Medicare ID (MBI)" value={v(form?.patient_mbi)} width={90} />
+          <UField label="Insurance" value={v(form?.insurance_type_label)} width={120} />
+        </View>
+
+        {/* ── Fortify: Anticipated DOS ── */}
+        <View style={s.row}>
+          <UField label="Anticipated DOS Start" value={v(form?.anticipated_dos_start)} width={70} />
+          <UField label="Anticipated DOS End" value={v(form?.anticipated_dos_end)} width={70} />
+        </View>
+
         {/* ── Medicare notice ── */}
         <Text style={s.notice}>
           MEDICARE PT CANNOT BE CURRENTLY RECEIVING HOMECARE (PT, OT, HHA, NURSING)
@@ -260,7 +273,50 @@ export function OrderFormPDF({
             <CB checked={form?.condition_copd === true} label="COPD" />
             <CB checked={form?.condition_chf === true} label="CHF" />
             <CB checked={form?.condition_anemia === true} label="Anemia" />
+            {/* ── Fortify: extended comorbidities ── */}
+            <CB checked={form?.condition_pad === true} label="PAD / Vasc Insuff" />
+            <CB checked={form?.condition_venous_insufficiency === true} label="Venous Insuff" />
+            <CB checked={form?.condition_neuropathy === true} label="Neuropathy" />
+            <CB checked={form?.condition_immunosuppression === true} label="Immunosuppression" />
+            <CB checked={form?.condition_malnutrition === true} label="Malnutrition" />
+            <CB checked={form?.condition_smoking === true} label="Active Smoker" />
+            <CB checked={form?.condition_renal_disease === true} label="Renal Disease" />
           </View>
+          {/* ── Fortify: conditional labs ── */}
+          {(form?.condition_diabetes === true ||
+            form?.condition_pad === true ||
+            form?.condition_immunosuppression === true ||
+            form?.condition_malnutrition === true ||
+            form?.condition_renal_disease === true) && (
+            <View style={[cbRowStyle, { marginTop: 4 }]}>
+              {form?.condition_diabetes === true && (
+                <>
+                  <UField label="A1C" value={v(form?.a1c_value)} width={28} />
+                  <UField label="A1C Date" value={v(form?.a1c_date)} width={60} />
+                </>
+              )}
+              {form?.condition_pad === true && (
+                <UField label="PAD details" value={v(form?.pad_details)} width={120} />
+              )}
+              {form?.condition_immunosuppression === true && (
+                <UField label="Immunosup." value={v(form?.immunosuppression_details)} width={120} />
+              )}
+              {form?.condition_malnutrition === true && (
+                <UField label="Albumin" value={v(form?.albumin_value)} width={28} />
+              )}
+              {form?.condition_renal_disease === true && (
+                <UField label="eGFR" value={v(form?.egfr_value)} width={28} />
+              )}
+            </View>
+          )}
+          {form?.condition_other ? (
+            <View style={{ flexDirection: "row", alignItems: "flex-end", marginTop: 3 }}>
+              <Text style={s.label}>Other Conditions: </Text>
+              <View style={[s.uline, { flex: 1 }]}>
+                <Text style={s.val}>{v(form?.condition_other)}</Text>
+              </View>
+            </View>
+          ) : null}
         </View>
 
         {/* ── Wound Type ── */}
@@ -275,6 +331,40 @@ export function OrderFormPDF({
             <CBVal current={woundType} value="other" label="Other" />
           </View>
         </View>
+
+        {/* ── Fortify: Wound Etiology breakdown ── */}
+        <View style={s.section}>
+          <Text style={s.label}>Wound Etiology (check all that apply):</Text>
+          <View style={[cbRowStyle, { marginTop: 3 }]}>
+            <CB checked={form?.etiology_dfu === true} label="Diabetic foot ulcer" />
+            <CB checked={form?.etiology_venous_stasis === true} label="Venous / stasis" />
+            <CB checked={form?.etiology_pressure_ulcer === true} label="Pressure ulcer" />
+            {form?.etiology_pressure_ulcer === true && form?.pressure_ulcer_stage ? (
+              <Text style={{ fontSize: 7.5, marginLeft: 2, marginRight: 6 }}>
+                (Stage: {String(form.pressure_ulcer_stage)})
+              </Text>
+            ) : null}
+            <CB checked={form?.etiology_arterial === true} label="Arterial" />
+            <CB checked={form?.etiology_surgical === true} label="Surgical" />
+            <CB checked={form?.etiology_traumatic === true} label="Traumatic" />
+          </View>
+          {form?.etiology_other ? (
+            <View style={{ flexDirection: "row", alignItems: "flex-end", marginTop: 2 }}>
+              <Text style={s.label}>Other etiology: </Text>
+              <View style={[s.uline, { flex: 1 }]}>
+                <Text style={s.val}>{v(form?.etiology_other)}</Text>
+              </View>
+            </View>
+          ) : null}
+        </View>
+
+        {/* ── Fortify: Wound onset / duration ── */}
+        {form?.wound_onset_date || form?.wound_duration_text ? (
+          <View style={s.row}>
+            <UField label="Wound Onset" value={v(form?.wound_onset_date)} width={70} />
+            <UField label="Duration" value={v(form?.wound_duration_text)} width={100} />
+          </View>
+        ) : null}
 
         {/* ── Location + Granulation ── */}
         <View style={s.section}>
@@ -355,6 +445,29 @@ export function OrderFormPDF({
           </View>
         </View>
 
+        {/* ── Fortify: Wound bed composition + pain + photo ── */}
+        <View style={s.section}>
+          <View style={[cbRowStyle]}>
+            <Text style={[s.label, { marginRight: 4 }]}>Wound Bed:</Text>
+            <UField label="Slough %" value={v(form?.wound_bed_slough_pct)} width={28} />
+            <UField label="Eschar %" value={v(form?.wound_bed_eschar_pct)} width={28} />
+            <Text style={[s.label, { marginRight: 4 }]}>Pain (0-10):</Text>
+            <View style={[s.uline, { width: 22 }]}>
+              <Text style={s.val}>{v(form?.pain_level)}</Text>
+            </View>
+            <View style={{ width: 8 }} />
+            <CB checked={form?.wound_photo_taken === true} label="Photo on file" />
+          </View>
+          {form?.condition_infection === true && form?.infection_signs_describe ? (
+            <View style={{ flexDirection: "row", alignItems: "flex-end", marginTop: 3 }}>
+              <Text style={s.label}>Infection signs: </Text>
+              <View style={[s.uline, { flex: 1 }]}>
+                <Text style={s.val}>{v(form?.infection_signs_describe)}</Text>
+              </View>
+            </View>
+          ) : null}
+        </View>
+
         {/* ── Skin Condition ── */}
         <View style={s.section}>
           <View style={cbRowStyle}>
@@ -393,6 +506,82 @@ export function OrderFormPDF({
           <Text style={s.sectionLabel}>Drainage</Text>
           <Text style={s.textArea}>{v(form?.drainage_description)}</Text>
         </View>
+
+        {/* ── Fortify: Prior Treatments Tried (table) + Advancement Reason ── */}
+        {(Array.isArray(form?.prior_treatments) && (form.prior_treatments as unknown[]).length > 0) ||
+        form?.advancement_reason ? (
+          <View style={s.section}>
+            <Text style={s.sectionLabel}>Prior Treatments Tried</Text>
+            {Array.isArray(form?.prior_treatments) &&
+              (form.prior_treatments as unknown[]).length > 0 && (
+                <View style={{ marginTop: 2 }}>
+                  <View style={s.tableHeader}>
+                    <Text style={[s.tableCell, { flex: 1.2, fontFamily: "Helvetica-Bold" }]}>Treatment / Product</Text>
+                    <Text style={[s.tableCell, { flex: 1, fontFamily: "Helvetica-Bold" }]}>Dates Used</Text>
+                    <Text style={[s.tableCell, { flex: 1.5, fontFamily: "Helvetica-Bold" }]}>Outcome</Text>
+                  </View>
+                  {(form.prior_treatments as Array<Record<string, unknown>>).map((row, idx) => (
+                    <View key={idx} style={s.tableRow}>
+                      <Text style={[s.tableCell, { flex: 1.2 }]}>{v(row.treatment)}</Text>
+                      <Text style={[s.tableCell, { flex: 1 }]}>{v(row.dates_used)}</Text>
+                      <Text style={[s.tableCell, { flex: 1.5 }]}>{v(row.outcome)}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+            {form?.advancement_reason ? (
+              <View style={{ flexDirection: "row", alignItems: "flex-end", marginTop: 3 }}>
+                <Text style={s.label}>Reason for advancing: </Text>
+                <View style={[s.uline, { flex: 1 }]}>
+                  <Text style={s.val}>{v(form?.advancement_reason)}</Text>
+                </View>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
+        {/* ── Fortify: Goal of Therapy + Adjuncts + Consults ── */}
+        {form?.goal_of_therapy ||
+        form?.adjunct_offloading === true ||
+        form?.adjunct_compression === true ||
+        form?.adjunct_debridement === true ||
+        form?.adjunct_other ||
+        form?.specialty_consults ? (
+          <View style={s.section}>
+            <View style={cbRowStyle}>
+              <Text style={[s.label, { marginRight: 4 }]}>Goal of Therapy:</Text>
+              <CBVal current={form?.goal_of_therapy} value="complete_healing" label="Complete healing" />
+              <CBVal current={form?.goal_of_therapy} value="wound_bed_prep" label="Wound bed prep" />
+              <CBVal current={form?.goal_of_therapy} value="palliative" label="Palliative" />
+              <CBVal current={form?.goal_of_therapy} value="infection_control" label="Infection control" />
+              <CBVal current={form?.goal_of_therapy} value="other" label="Other" />
+              {form?.goal_of_therapy === "other" && form?.goal_of_therapy_other ? (
+                <Text style={{ fontSize: 7.5, marginLeft: 2 }}>
+                  ({String(form.goal_of_therapy_other)})
+                </Text>
+              ) : null}
+            </View>
+            <View style={[cbRowStyle, { marginTop: 3 }]}>
+              <Text style={[s.label, { marginRight: 4 }]}>Adjuncts:</Text>
+              <CB checked={form?.adjunct_offloading === true} label="Offloading" />
+              <CB checked={form?.adjunct_compression === true} label="Compression" />
+              <CB checked={form?.adjunct_debridement === true} label="Debridement" />
+              {form?.adjunct_other ? (
+                <Text style={{ fontSize: 7.5, marginLeft: 2 }}>
+                  Other: {String(form.adjunct_other)}
+                </Text>
+              ) : null}
+            </View>
+            {form?.specialty_consults ? (
+              <View style={{ flexDirection: "row", alignItems: "flex-end", marginTop: 3 }}>
+                <Text style={s.label}>Specialty consults: </Text>
+                <View style={[s.uline, { flex: 1 }]}>
+                  <Text style={s.val}>{v(form?.specialty_consults)}</Text>
+                </View>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
 
         {/* ── Treatment Plan ── */}
         <View style={s.section}>
@@ -497,6 +686,17 @@ export function OrderFormPDF({
           )}
         </View>
 
+        {/* ── Fortify: Product metadata (frequency / modifiers / prior auth) ── */}
+        {form?.application_frequency ||
+        form?.special_modifiers ||
+        form?.prior_auth_obtained === true ? (
+          <View style={s.row}>
+            <UField label="Application Frequency" value={v(form?.application_frequency)} width={90} />
+            <UField label="Modifiers (KX/GA)" value={v(form?.special_modifiers)} width={70} />
+            <CB checked={form?.prior_auth_obtained === true} label="Prior auth obtained" />
+          </View>
+        ) : null}
+
         {/* ── Follow Up ── */}
         <View style={s.row}>
           <Text style={[s.label, { marginRight: 4 }]}>Follow Up: </Text>
@@ -509,6 +709,102 @@ export function OrderFormPDF({
           </View>
           <Text style={{ fontSize: 8 }}> weeks</Text>
         </View>
+
+        {/* ── Fortify: Coverage Self-Check (LCD/NCD) ── */}
+        {form?.lcd_reference ||
+        form?.wound_meets_lcd != null ||
+        form?.conservative_tx_period_met != null ||
+        form?.qty_within_lcd_limits != null ||
+        form?.kx_criteria_met ||
+        form?.pos_eligible != null ||
+        form?.coverage_concerns ? (
+          <View style={s.section}>
+            <Text style={s.sectionLabel}>Coverage Self-Check (LCD/NCD)</Text>
+            {form?.lcd_reference ? (
+              <View style={{ flexDirection: "row", alignItems: "flex-end", marginTop: 2 }}>
+                <Text style={s.label}>LCD/NCD ref: </Text>
+                <View style={[s.uline, { flex: 1 }]}>
+                  <Text style={s.val}>{v(form?.lcd_reference)}</Text>
+                </View>
+              </View>
+            ) : null}
+            <View style={[cbRowStyle, { marginTop: 3 }]}>
+              <Text style={[s.label, { marginRight: 6 }]}>Wound meets LCD?</Text>
+              <CB checked={form?.wound_meets_lcd === true} label="Yes" />
+              <CB checked={form?.wound_meets_lcd === false} label="No" />
+              <Text style={[s.label, { marginLeft: 8, marginRight: 6 }]}>Conservative tx period met?</Text>
+              <CB checked={form?.conservative_tx_period_met === true} label="Yes" />
+              <CB checked={form?.conservative_tx_period_met === false} label="No" />
+            </View>
+            <View style={[cbRowStyle, { marginTop: 3 }]}>
+              <Text style={[s.label, { marginRight: 6 }]}>Qty within LCD limits?</Text>
+              <CB checked={form?.qty_within_lcd_limits === true} label="Yes" />
+              <CB checked={form?.qty_within_lcd_limits === false} label="No" />
+              <Text style={[s.label, { marginLeft: 8, marginRight: 6 }]}>KX criteria:</Text>
+              <CBVal current={form?.kx_criteria_met} value="yes" label="Yes" />
+              <CBVal current={form?.kx_criteria_met} value="no" label="No" />
+              <CBVal current={form?.kx_criteria_met} value="na" label="N/A" />
+              <Text style={[s.label, { marginLeft: 8, marginRight: 6 }]}>POS eligible?</Text>
+              <CB checked={form?.pos_eligible === true} label="Yes" />
+              <CB checked={form?.pos_eligible === false} label="No" />
+            </View>
+            {form?.coverage_concerns ? (
+              <View style={{ flexDirection: "row", alignItems: "flex-end", marginTop: 3 }}>
+                <Text style={s.label}>Concerns: </Text>
+                <View style={[s.uline, { flex: 1 }]}>
+                  <Text style={s.val}>{v(form?.coverage_concerns)}</Text>
+                </View>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
+        {/* ── Fortify: Physician 5-point Attestation ── */}
+        <View style={s.section} wrap={false}>
+          <Text style={s.sectionLabel}>Physician Attestation</Text>
+          <Text style={{ fontSize: 7.5, color: BLACK, marginBottom: 3, fontFamily: "Helvetica-Bold" }}>
+            I, the undersigned physician, certify that:
+          </Text>
+          <View style={{ paddingLeft: 6 }}>
+            <View style={{ flexDirection: "row", marginBottom: 1.5 }}>
+              <CB checked={form?.attest_examined_patient === true} label="" />
+              <Text style={{ fontSize: 7.5, color: BLACK, flex: 1 }}>
+                1. I have personally examined the patient and assessed the wound described above.
+              </Text>
+            </View>
+            <View style={{ flexDirection: "row", marginBottom: 1.5 }}>
+              <CB checked={form?.attest_medically_necessary === true} label="" />
+              <Text style={{ fontSize: 7.5, color: BLACK, flex: 1 }}>
+                2. The product(s) ordered above are medically necessary for the treatment of this wound.
+              </Text>
+            </View>
+            <View style={{ flexDirection: "row", marginBottom: 1.5 }}>
+              <CB checked={form?.attest_conservative_tx_inadequate === true} label="" />
+              <Text style={{ fontSize: 7.5, color: BLACK, flex: 1 }}>
+                3. Conservative treatments have been tried and are inadequate for this wound.
+              </Text>
+            </View>
+            <View style={{ flexDirection: "row", marginBottom: 1.5 }}>
+              <CB checked={form?.attest_freq_qty_clinical_judgment === true} label="" />
+              <Text style={{ fontSize: 7.5, color: BLACK, flex: 1 }}>
+                4. The frequency and quantity ordered reflect my clinical judgment of what is needed for this patient.
+              </Text>
+            </View>
+            <View style={{ flexDirection: "row", marginBottom: 1.5 }}>
+              <CB checked={form?.attest_lcd_supported === true} label="" />
+              <Text style={{ fontSize: 7.5, color: BLACK, flex: 1 }}>
+                5. To my knowledge, the documentation in this form and the patient&apos;s medical record supports the criteria of the applicable LCD or NCD.
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* ── Fortify: Physician NPI ── */}
+        {form?.physician_npi ? (
+          <View style={s.row}>
+            <UField label="Physician NPI" value={v(form?.physician_npi)} width={100} />
+          </View>
+        ) : null}
 
         {/* ── Signature + Patient block ──
             Unified layout: each cell has value-above-line, caption-below.
