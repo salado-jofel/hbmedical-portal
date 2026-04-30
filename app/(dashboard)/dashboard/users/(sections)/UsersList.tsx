@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import toast from "react-hot-toast";
 import { deactivateUser, reactivateUser, deleteUser, resendInvite } from "@/app/(dashboard)/dashboard/users/(services)/actions";
 import { adminResetProviderPin } from "@/app/(dashboard)/dashboard/settings/(services)/actions";
+import { adminUnenrollUserMfa } from "@/app/(dashboard)/dashboard/settings/(services)/mfa-actions";
 import { useAppSelector, useAppDispatch } from "@/store/hooks";
 import { updateUserInStore, removeUserFromStore } from "@/app/(dashboard)/dashboard/users/(redux)/users-slice";
 import { CreateUserModal } from "../(components)/CreateUserModal";
@@ -41,6 +42,7 @@ export function UsersList() {
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [resetPinUserId, setResetPinUserId] = useState<string | null>(null);
+  const [resetMfaUserId, setResetMfaUserId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
   // Live user list — reflects invites, status changes, role edits from
@@ -233,6 +235,25 @@ export function UsersList() {
     }
   }
 
+  async function handleResetMfa(userId: string) {
+    setPendingId(userId);
+    try {
+      const result = await adminUnenrollUserMfa(userId);
+      if (result.success) {
+        toast.success(
+          "MFA reset. The user will set up a new authenticator on their next sign-in.",
+        );
+      } else {
+        toast.error(result.error ?? "Failed to reset MFA.");
+      }
+    } catch {
+      toast.error("Failed to reset MFA.");
+    } finally {
+      setPendingId(null);
+      setResetMfaUserId(null);
+    }
+  }
+
   // Columns are now inlined in the <tbody> render below (needed for sortable
   // headers wired to useListParams). Keeping the helpers that compose a cell.
   function renderUserCell(user: (typeof users)[number]) {
@@ -394,6 +415,7 @@ export function UsersList() {
                           onResendInvite={handleResendInvite}
                           onDeleteClick={setDeleteConfirmId}
                           onResetPin={(u) => setResetPinUserId(u.id)}
+                          onResetMfa={(u) => setResetMfaUserId(u.id)}
                         />
                       </td>
                     </tr>
@@ -432,6 +454,16 @@ export function UsersList() {
         confirmLabel="Reset PIN"
         isLoading={pendingId === resetPinUserId && resetPinUserId !== null}
         onConfirm={() => { if (resetPinUserId) handleResetPin(resetPinUserId); }}
+      />
+
+      <ConfirmModal
+        open={resetMfaUserId !== null}
+        onOpenChange={(open) => { if (!open) setResetMfaUserId(null); }}
+        title="Reset two-factor authentication?"
+        description="This wipes ALL of the user's authenticator factors AND every backup recovery code, signs out every active session they have, and forces them to set up MFA from scratch on next sign-in. Use only when the user has lost their authenticator AND their backup codes. This action is logged to the audit trail."
+        confirmLabel="Reset MFA"
+        isLoading={pendingId === resetMfaUserId && resetMfaUserId !== null}
+        onConfirm={() => { if (resetMfaUserId) handleResetMfa(resetMfaUserId); }}
       />
     </div>
   );

@@ -1,33 +1,50 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { ShieldCheck, ShieldAlert, KeyRound, Loader2, Copy, Check } from "lucide-react";
+import {
+  ShieldCheck,
+  ShieldAlert,
+  KeyRound,
+  Loader2,
+  Copy,
+  Check,
+  RefreshCw,
+  AlertTriangle,
+  X,
+} from "lucide-react";
+import * as RadixDialog from "@radix-ui/react-dialog";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { BackupCodesPanel } from "@/app/(components)/BackupCodesPanel";
+import { cn } from "@/utils/utils";
 import {
   beginMfaEnrollment,
-  disableMfa,
   finishMfaEnrollment,
   getMfaStatus,
+  regenerateBackupCodes,
   type MfaStatus,
 } from "../(services)/mfa-actions";
+import { BACKUP_CODE_COUNT } from "@/utils/constants/mfa";
 
 interface MfaTabProps {
-  /** When true, the user's role mandates MFA — disabling shows a stronger warning. */
+  /** When true, the user's role mandates MFA. Currently every role does, so
+   *  this is effectively always true; kept as a prop for future flexibility. */
   mandatory: boolean;
 }
 
 /**
- * Two-factor enrollment UI. Three states:
- *   1. Idle (not enrolled) — show "Set up two-factor authentication" button
- *   2. Pending verification — QR code + secret + 6-digit input
- *   3. Enrolled — show "Two-factor is on" + Disable button
+ * Two-factor enrollment + management UI. Four states:
+ *   1. IDLE / not enrolled    — "Set up two-factor authentication" button
+ *   2. ENROLLING              — QR + secret + 6-digit input (verify)
+ *   3. SHOWING_BACKUP_CODES   — display 10 codes (one-time, must acknowledge)
+ *   4. ENROLLED               — status + codes-remaining + Regenerate + Replace
  *
- * The `mandatory` prop controls the wording around disabling. For roles
- * where MFA is required (admin, clinical_provider), disabling triggers an
- * immediate redirect back here on the next dashboard load — see the
- * MfaGate in dashboard layout.
+ * The flow never destroys the working factor before the new one is verified
+ * (`finishMfaEnrollment` handles that atomically server-side). For mandatory
+ * roles there's no "Disable" — only "Replace authenticator", which goes
+ * through the same enrollment path. Loss-of-device recovery happens via
+ * backup codes at the sign-in challenge or admin reset.
  */
 export function MfaTab({ mandatory }: MfaTabProps) {
   const [status, setStatus] = useState<MfaStatus | null>(null);
@@ -36,8 +53,11 @@ export function MfaTab({ mandatory }: MfaTabProps) {
     qrCode?: string;
     secret?: string;
     uri?: string;
+    isReplace: boolean;
   } | null>(null);
   const [code, setCode] = useState("");
+  const [pendingBackupCodes, setPendingBackupCodes] = useState<string[] | null>(null);
+  const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [copiedSecret, setCopiedSecret] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
@@ -66,6 +86,7 @@ export function MfaTab({ mandatory }: MfaTabProps) {
         qrCode: res.qrCode,
         secret: res.secret,
         uri: res.uri,
+        isReplace: !!res.isReplace,
       });
     });
   }
@@ -78,27 +99,44 @@ export function MfaTab({ mandatory }: MfaTabProps) {
         toast.error(res.error ?? "Verification failed.");
         return;
       }
-      toast.success("Two-factor authentication enabled.");
       setEnrollment(null);
       setCode("");
-      setRefreshTick((n) => n + 1);
+
+      // First-time enrollment returns backup codes — must be shown to the
+      // user once. Replace flows return undefined; nothing to display.
+      if (res.backupCodes && res.backupCodes.length > 0) {
+        setPendingBackupCodes(res.backupCodes);
+      } else {
+        toast.success(
+          res.wasReplace
+            ? "Authenticator replaced. Old device is now signed out."
+            : "Two-factor authentication enabled.",
+        );
+        setRefreshTick((n) => n + 1);
+      }
     });
   }
 
-  function handleDisable() {
-    const confirmMsg = mandatory
-      ? "Your role requires two-factor authentication. Disabling now will sign you out and require re-enrollment on next sign-in. Continue?"
-      : "Disable two-factor authentication?";
-    if (!window.confirm(confirmMsg)) return;
+  function handleRegenerateBackupCodes() {
+    setShowRegenerateConfirm(true);
+  }
+
+  function confirmRegenerateBackupCodes() {
     startTransition(async () => {
-      const res = await disableMfa();
-      if (!res.success) {
-        toast.error(res.error ?? "Failed to disable.");
+      const res = await regenerateBackupCodes();
+      setShowRegenerateConfirm(false);
+      if (!res.success || !res.codes) {
+        toast.error(res.error ?? "Failed to regenerate codes.");
         return;
       }
-      toast.success("Two-factor authentication disabled.");
-      setRefreshTick((n) => n + 1);
+      setPendingBackupCodes(res.codes);
     });
+  }
+
+  function handleAcknowledgeBackupCodes() {
+    setPendingBackupCodes(null);
+    toast.success("Backup codes saved.");
+    setRefreshTick((n) => n + 1);
   }
 
   if (!status) {
@@ -110,7 +148,17 @@ export function MfaTab({ mandatory }: MfaTabProps) {
     );
   }
 
-  // Pending enrollment — QR code + verification input
+  // ── State 3: showing backup codes (one-time display) ───────────────────
+  if (pendingBackupCodes) {
+    return (
+      <BackupCodesPanel
+        codes={pendingBackupCodes}
+        onAcknowledge={handleAcknowledgeBackupCodes}
+      />
+    );
+  }
+
+  // ── State 2: pending enrollment (QR + verify) ─────────────────────────
   if (enrollment) {
     return (
       <div className="space-y-4">
@@ -118,11 +166,14 @@ export function MfaTab({ mandatory }: MfaTabProps) {
           <ShieldCheck className="h-5 w-5 shrink-0 text-[var(--navy)]" />
           <div>
             <h3 className="text-[14px] font-semibold text-[var(--navy)]">
-              Scan with your authenticator app
+              {enrollment.isReplace
+                ? "Scan with your new authenticator"
+                : "Scan with your authenticator app"}
             </h3>
             <p className="mt-1 text-[12px] text-[var(--text2)]">
-              Use Google Authenticator, 1Password, Authy, or any TOTP app. Once
-              the code shows up, type it below to confirm enrollment.
+              {enrollment.isReplace
+                ? "Your existing authenticator stays active until you confirm the new code below — so you can't lock yourself out by abandoning this flow."
+                : "Use Google Authenticator, 1Password, Authy, or any TOTP app. Once the code shows up, type it below to confirm enrollment."}
             </p>
           </div>
         </div>
@@ -130,7 +181,6 @@ export function MfaTab({ mandatory }: MfaTabProps) {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-[auto_1fr]">
           {enrollment.qrCode && (
             <div className="rounded-md border border-[var(--border)] bg-white p-3">
-              {/* Supabase returns the QR as a data: URI; render as <img>. */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={enrollment.qrCode}
@@ -193,7 +243,7 @@ export function MfaTab({ mandatory }: MfaTabProps) {
                 disabled={code.length !== 6 || isPending}
                 className="bg-[var(--navy)] text-white hover:bg-[var(--navy)]/90"
               >
-                {isPending ? "Verifying…" : "Verify and enable"}
+                {isPending ? "Verifying…" : enrollment.isReplace ? "Verify and replace" : "Verify and enable"}
               </Button>
               <Button
                 variant="ghost"
@@ -212,10 +262,11 @@ export function MfaTab({ mandatory }: MfaTabProps) {
     );
   }
 
-  // Enrolled
+  // ── State 4: enrolled — manage existing factor ────────────────────────
   if (status.enrolled) {
+    const lowCodes = status.backupCodesRemaining < 3;
     return (
-      <div className="space-y-3">
+      <div className="space-y-4">
         <div className="flex items-start gap-3">
           <ShieldCheck className="h-5 w-5 shrink-0 text-[var(--green)]" />
           <div>
@@ -227,21 +278,72 @@ export function MfaTab({ mandatory }: MfaTabProps) {
             </p>
           </div>
         </div>
+
+        {/* Backup codes status panel */}
+        <div
+          className={
+            "rounded-md border p-3 " +
+            (lowCodes
+              ? "border-[var(--red)]/30 bg-[#fef2f2]"
+              : "border-[var(--border)] bg-[var(--bg)]")
+          }
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-2">
+              {lowCodes ? (
+                <AlertTriangle className="h-4 w-4 shrink-0 text-[var(--red)] mt-0.5" />
+              ) : (
+                <KeyRound className="h-4 w-4 shrink-0 text-[var(--text3)] mt-0.5" />
+              )}
+              <div>
+                <p className="text-[13px] font-semibold text-[var(--navy)]">
+                  {status.backupCodesRemaining} of {BACKUP_CODE_COUNT} backup codes remaining
+                </p>
+                <p className="mt-0.5 text-[11px] text-[var(--text2)]">
+                  {lowCodes
+                    ? "You're running low. Regenerate now so you don't get locked out if you lose your authenticator."
+                    : "Single-use recovery codes. Use one if you ever lose your phone."}
+                </p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleRegenerateBackupCodes}
+              disabled={isPending}
+              className="shrink-0"
+            >
+              <RefreshCw className="h-3 w-3 mr-1" />
+              Regenerate
+            </Button>
+          </div>
+        </div>
+
         <div className="pt-1">
           <Button
             variant="outline"
-            onClick={handleDisable}
+            onClick={handleBegin}
             disabled={isPending}
-            className="text-[var(--red)] hover:bg-[#fef2f2]"
           >
-            {isPending ? "Working…" : "Disable two-factor"}
+            {isPending ? "Working…" : "Replace authenticator"}
           </Button>
+          <p className="mt-1 text-[11px] text-[var(--text3)]">
+            Got a new phone? Lost your old authenticator app? Replace your device — your existing setup stays active until the new one is confirmed.
+          </p>
         </div>
+
+        <RegenerateConfirmModal
+          open={showRegenerateConfirm}
+          remaining={status.backupCodesRemaining}
+          isPending={isPending}
+          onConfirm={confirmRegenerateBackupCodes}
+          onCancel={() => setShowRegenerateConfirm(false)}
+        />
       </div>
     );
   }
 
-  // Not enrolled
+  // ── State 1: not enrolled ─────────────────────────────────────────────
   return (
     <div className="space-y-3">
       <div className="flex items-start gap-3">
@@ -275,3 +377,131 @@ export function MfaTab({ mandatory }: MfaTabProps) {
     </div>
   );
 }
+
+/**
+ * Polished confirmation modal for the "Regenerate backup codes" action.
+ * Built on Radix Dialog primitives (focus trap, ESC, click-outside) but
+ * with a custom amber/warning visual — replaces the native window.confirm
+ * which looked dated and bypassed our design system.
+ */
+function RegenerateConfirmModal({
+  open,
+  remaining,
+  isPending,
+  onConfirm,
+  onCancel,
+}: {
+  open: boolean;
+  remaining: number;
+  isPending: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <RadixDialog.Root
+      open={open}
+      onOpenChange={(v) => {
+        if (!v && !isPending) onCancel();
+      }}
+    >
+      <RadixDialog.Portal>
+        <RadixDialog.Overlay
+          className={cn(
+            "fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm",
+            "data-[state=open]:animate-in data-[state=open]:fade-in-0",
+            "data-[state=closed]:animate-out data-[state=closed]:fade-out-0",
+          )}
+        />
+        <RadixDialog.Content
+          aria-describedby={undefined}
+          className={cn(
+            "fixed left-1/2 top-1/2 z-50 w-[min(440px,calc(100vw-32px))]",
+            "-translate-x-1/2 -translate-y-1/2 outline-none",
+            "data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
+            "data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95",
+          )}
+        >
+          <div className="rounded-2xl bg-white shadow-2xl border border-slate-200/60 overflow-hidden">
+            {/* Top strip — subtle amber gradient signals warning, not destruction */}
+            <div className="h-1 bg-gradient-to-r from-amber-300 via-amber-400 to-amber-500" />
+
+            {/* Close button (top-right) */}
+            <RadixDialog.Close
+              disabled={isPending}
+              className="absolute right-4 top-4 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors disabled:opacity-40"
+              aria-label="Close"
+            >
+              <X className="h-4 w-4" />
+            </RadixDialog.Close>
+
+            {/* Body */}
+            <div className="px-6 pt-6 pb-2">
+              <div className="flex items-start gap-3">
+                <div className="shrink-0 w-10 h-10 rounded-full bg-amber-50 border border-amber-100 flex items-center justify-center">
+                  <RefreshCw className="w-4.5 h-4.5 text-amber-600" strokeWidth={2.2} />
+                </div>
+                <div className="min-w-0 flex-1 pt-0.5">
+                  <RadixDialog.Title className="text-[15px] font-semibold text-slate-900 leading-tight">
+                    Regenerate backup codes?
+                  </RadixDialog.Title>
+                  <p className="mt-1.5 text-[13px] leading-relaxed text-slate-600">
+                    Your existing codes will{" "}
+                    <strong className="text-slate-800">stop working immediately</strong>
+                    {" "}and we&apos;ll give you 10 fresh ones. Save them somewhere safe — this is the only time we&apos;ll show them.
+                  </p>
+                </div>
+              </div>
+
+              {/* Context card — what's being thrown away */}
+              {remaining > 0 && (
+                <div className="mt-4 ml-13 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-[12px] text-slate-600 flex items-center gap-2">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                  <span>
+                    You currently have <strong className="text-slate-800">{remaining} unused</strong>{" "}
+                    {remaining === 1 ? "code" : "codes"} that will be invalidated.
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-end gap-2 px-6 py-4 mt-2 bg-slate-50/50 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={onCancel}
+                disabled={isPending}
+                className="h-9 px-4 rounded-lg text-[13px] font-medium text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-40"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={onConfirm}
+                disabled={isPending}
+                className={cn(
+                  "h-9 px-4 rounded-lg text-[13px] font-semibold inline-flex items-center gap-1.5",
+                  "bg-amber-500 text-white hover:bg-amber-600 transition-colors",
+                  "shadow-sm shadow-amber-500/30",
+                  "disabled:opacity-60 disabled:cursor-not-allowed",
+                )}
+              >
+                {isPending ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Regenerating…
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    Regenerate codes
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </RadixDialog.Content>
+      </RadixDialog.Portal>
+    </RadixDialog.Root>
+  );
+}
+

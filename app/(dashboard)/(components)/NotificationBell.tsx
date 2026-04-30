@@ -116,6 +116,12 @@ export function NotificationBell({
     setUnreadCount(0);
   }
 
+  // The collapsed (TopBar) variant is rendered inside a navy-bg header that
+  // applies !important text/svg color overrides via parent CSS — see
+  // TopBar.tsx's `[&_svg]:!text-white/60`. The open-state styles for that
+  // variant therefore use a dark translucent bg (`bg-white/15`) that reads
+  // correctly with the parent's forced-white icon, instead of the light-blue
+  // sidebar bg which made the white icon invisible against a near-white bg.
   const bellButton = (
     <button
       type="button"
@@ -126,7 +132,9 @@ export function NotificationBell({
           ? "justify-center w-10 h-10 mx-auto"
           : "gap-2.5 px-3 py-[7px]",
         open
-          ? "bg-[#EBF4FF] text-[var(--navy)] font-medium"
+          ? collapsed
+            ? "bg-white/15 font-medium"
+            : "bg-[#EBF4FF] text-[var(--navy)] font-medium"
           : "text-[#475569] hover:bg-[#F5F8FB] hover:text-[var(--navy)]",
       )}
     >
@@ -134,7 +142,10 @@ export function NotificationBell({
         className={cn(
           "shrink-0 transition-colors duration-150",
           collapsed ? "w-5 h-5" : "w-[15px] h-[15px]",
-          open ? "text-[var(--navy)]" : "text-[var(--text3)]",
+          // In collapsed mode the parent header forces the SVG color via
+          // !important — leave it alone so the override wins consistently.
+          // Sidebar (non-collapsed) variant: explicit color tracking open state.
+          !collapsed && (open ? "text-[var(--navy)]" : "text-[var(--text3)]"),
         )}
         strokeWidth={open ? 2.2 : 1.8}
       />
