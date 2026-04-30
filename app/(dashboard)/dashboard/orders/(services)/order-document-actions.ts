@@ -23,6 +23,19 @@ import { safeLogError } from "@/lib/logging/safe-log";
 /* uploadOrderDocument                                                        */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Upper bound for any uploaded order document. Set just below Anthropic's
+ * Claude API hard limit (32MB per file) so AI-extractable docs never get
+ * sent to the model only to be rejected. For non-AI document types the
+ * limit also makes sense — files this large are almost always poorly-
+ * compressed scans, and storing them eats Supabase quota fast.
+ */
+const MAX_DOCUMENT_SIZE_MB = 25;
+const MAX_DOCUMENT_SIZE_BYTES = MAX_DOCUMENT_SIZE_MB * 1024 * 1024;
+
+/** Document types that get fed into Claude for AI extraction. */
+const AI_EXTRACTED_DOCUMENT_TYPES = new Set(["facesheet", "clinical_docs"]);
+
 export async function uploadOrderDocument(
   orderId: string,
   documentType: string,
@@ -35,6 +48,21 @@ export async function uploadOrderDocument(
 
     const fileEntry = file.get("file") as File | null;
     if (!fileEntry) return { success: false, error: "No file provided." };
+
+    // Size guard — for AI-extracted document types this prevents the
+    // catastrophic "AI extraction timed out" failure mode that comes from
+    // sending Claude a giant PDF it'll either reject (>32MB) or take 90+
+    // seconds to process (which exceeds the Vercel function timeout).
+    if (fileEntry.size > MAX_DOCUMENT_SIZE_BYTES) {
+      const sizeMB = (fileEntry.size / 1024 / 1024).toFixed(1);
+      const aiNote = AI_EXTRACTED_DOCUMENT_TYPES.has(documentType)
+        ? " AI extraction can't process files this large reliably."
+        : "";
+      return {
+        success: false,
+        error: `This file is ${sizeMB}MB — too large (max ${MAX_DOCUMENT_SIZE_MB}MB).${aiNote} Please compress the PDF (try "reduce file size" in Preview/Adobe) or split it into smaller sections.`,
+      };
+    }
 
     const timestamp = Date.now();
     const safeName = fileEntry.name.replace(/[^a-zA-Z0-9._-]/g, "_");

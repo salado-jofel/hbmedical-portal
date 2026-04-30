@@ -17,7 +17,15 @@ export const dynamic = "force-dynamic";
  *
  * Redirects:
  *   - not signed in → /sign-in
- *   - already aal2  → /dashboard (gate is already satisfied)
+ *   - aal2 AND verified factor exists → /dashboard (gate already satisfied)
+ *
+ * Defensive note: the aal2 redirect ALSO requires a verified factor. There's
+ * an inconsistent state where the session JWT still claims aal2 but the
+ * factor was deleted server-side (e.g. the user just disabled MFA from a
+ * still-aal2 session, or an admin reset their factor). Without the factor
+ * check, this page would redirect them back to /dashboard, the dashboard
+ * MFA gate would see no factor and bounce them back here, and we'd loop.
+ * This was the original "URL flicker" bug observed during testing.
  */
 export default async function MfaPage() {
   const supabase = await createClient();
@@ -26,11 +34,13 @@ export default async function MfaPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/sign-in");
 
-  const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-  if (aal?.currentLevel === "aal2") redirect("/dashboard");
-
   const { data: factors } = await supabase.auth.mfa.listFactors();
   const verified = factors?.totp?.find((f) => f.status === "verified");
+
+  const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (aal?.currentLevel === "aal2" && verified) {
+    redirect("/dashboard");
+  }
 
   if (!verified) {
     return <MfaEnrollForm />;

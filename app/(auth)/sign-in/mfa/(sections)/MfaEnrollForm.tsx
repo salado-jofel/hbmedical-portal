@@ -7,6 +7,7 @@ import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { HBLogo } from "@/app/(components)/HBLogo";
+import { BackupCodesPanel } from "@/app/(components)/BackupCodesPanel";
 import {
   beginMfaEnrollment,
   finishMfaEnrollment,
@@ -33,6 +34,7 @@ export function MfaEnrollForm() {
   const [code, setCode] = useState("");
   const [isPending, startTransition] = useTransition();
   const [copiedSecret, setCopiedSecret] = useState(false);
+  const [pendingBackupCodes, setPendingBackupCodes] = useState<string[] | null>(null);
 
   // Auto-start enrollment on mount — the user is here because the gate
   // bounced them, so don't make them tap an extra button first.
@@ -68,9 +70,23 @@ export function MfaEnrollForm() {
         setCode("");
         return;
       }
-      toast.success("Two-factor authentication enabled.");
-      router.replace("/dashboard");
+      // First-time enrollment ALWAYS returns backup codes (this page only
+      // renders for users with no existing factor). Show them once before
+      // letting the user into the dashboard — losing this view = losing the
+      // recovery path until they regenerate from settings.
+      if (res.backupCodes && res.backupCodes.length > 0) {
+        setPendingBackupCodes(res.backupCodes);
+      } else {
+        toast.success("Two-factor authentication enabled.");
+        router.replace("/dashboard");
+      }
     });
+  }
+
+  function handleAcknowledgeBackupCodes() {
+    setPendingBackupCodes(null);
+    toast.success("Two-factor authentication enabled.");
+    router.replace("/dashboard");
   }
 
   function handleCancel() {
@@ -81,6 +97,26 @@ export function MfaEnrollForm() {
         router.replace("/sign-in");
       }
     });
+  }
+
+  // Once verification succeeded and the server returned backup codes, the
+  // user MUST acknowledge the codes before being let into the dashboard.
+  // This is a fresh-enrollment screen so the codes panel takes the full
+  // card; no QR / verify input visible here.
+  if (pendingBackupCodes) {
+    return (
+      <div className="flex min-h-screen items-center justify-center px-4 py-6">
+        <div className="w-full max-w-2xl rounded-2xl border border-[#E2E8F0] bg-white p-8 shadow-[0_8px_40px_rgba(0,0,0,0.1)]">
+          <div className="mb-6 flex items-center justify-center">
+            <HBLogo variant="light" size="lg" />
+          </div>
+          <BackupCodesPanel
+            codes={pendingBackupCodes}
+            onAcknowledge={handleAcknowledgeBackupCodes}
+          />
+        </div>
+      </div>
+    );
   }
 
   return (

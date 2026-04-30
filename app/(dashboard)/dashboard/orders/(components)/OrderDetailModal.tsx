@@ -345,14 +345,19 @@ export function OrderDetailModal({
       } catch (err) {
         console.error("[polling]", err);
       }
-      if (pollCountRef.current >= 20) {
+      // Cap matches the AI extraction route's maxDuration (300s) plus a
+      // small buffer for the realtime tick. 60 polls × 5s = 300s. Extension
+      // from the previous 60s window: large clinical PDFs (20+ pages) can
+      // take Anthropic 60-90s of inference alone, plus DB writes. The old
+      // 60s cap was racing the server's own deadline.
+      if (pollCountRef.current >= 60) {
         if (pollingIntervalRef.current) {
           clearInterval(pollingIntervalRef.current);
           pollingIntervalRef.current = null;
         }
         setAiStatus("error");
       }
-    }, 3000);
+    }, 5000);
   }
 
   /* -- Dirty tracking for child tabs -- */
