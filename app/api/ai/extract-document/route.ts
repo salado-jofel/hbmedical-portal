@@ -22,7 +22,60 @@ import {
 import { logPhiAccess } from "@/lib/audit/log-phi-access";
 import { safeLogError } from "@/lib/logging/safe-log";
 
-export const maxDuration = 60;
+// Vercel Pro plan supports up to 300s. The combined extraction (download
+// docs → Claude inference → DB writes → mark ai_extracted=true) usually
+// finishes inside 30-45s but can spike to 90-120s on a 30-page clinical
+// chart. PDF generation is fire-and-forget after the flag flip, so the
+// 5-minute ceiling is plenty of headroom.
+export const maxDuration = 300;
+
+/* ── Retry + timeout helpers ────────────────────────────────────────────── */
+
+/** Bounded sleep helper. */
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/**
+ * Download a file from Supabase Storage with one retry on transient errors.
+ * The failure mode it guards against is a brief Supabase storage hiccup
+ * (5xx or connection reset) that resolves within ~1s — without this, a
+ * single transient error blows up the whole extraction pipeline. Two
+ * attempts is sufficient for transient noise; persistent failures bubble
+ * up after the second try.
+ */
+async function downloadWithRetry(
+  adminClient: ReturnType<typeof createAdminClient>,
+  bucket: string,
+  filePath: string,
+): Promise<Blob> {
+  let lastError: unknown = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const { data, error } = await adminClient.storage
+      .from(bucket)
+      .download(filePath);
+    if (data) return data;
+    lastError = error;
+    if (attempt === 1) {
+      console.warn(
+        `[downloadWithRetry] attempt 1 failed for ${filePath}, retrying:`,
+        error?.message,
+      );
+      await sleep(1000);
+    }
+  }
+  throw new Error(
+    `Failed to download ${filePath} after 2 attempts: ${
+      lastError instanceof Error ? lastError.message : String(lastError)
+    }`,
+  );
+}
+
+/**
+ * Anthropic call timeout — set just below the Vercel maxDuration so we
+ * fail with a clean abort error instead of a hard process kill. 240s
+ * gives Claude enough time for very large chronic-care docs while still
+ * leaving 60s of headroom for DB writes + flag flip.
+ */
+const CLAUDE_TIMEOUT_MS = 240_000;
 
 /* ── Field sanitizers ── */
 
@@ -779,15 +832,14 @@ async function handleCombinedExtraction(
       ? [facility.address_line_1, facility.city, facility.state, facility.postal_code].filter(Boolean).join(", ") || null
       : null;
 
-  /* ── STEP 2: Download all files in parallel ── */
+  /* ── STEP 2: Download all files in parallel (with 1-retry on transient errors) ── */
   const fileContents = await Promise.all(
     extractable.map(async (d) => {
-      const { data: fileData, error } = await adminClient.storage
-        .from(d.bucket ?? "hbmedical-bucket-private")
-        .download(d.filePath);
-      if (error || !fileData) {
-        throw new Error(`Failed to download ${d.documentType}: ${error?.message}`);
-      }
+      const fileData = await downloadWithRetry(
+        adminClient,
+        d.bucket ?? "hbmedical-bucket-private",
+        d.filePath,
+      );
       const arrayBuffer = await fileData.arrayBuffer();
       const base64 = Buffer.from(arrayBuffer).toString("base64");
       const lower = d.filePath.toLowerCase();
@@ -832,6 +884,7 @@ async function handleCombinedExtraction(
   const { text } = await generateText({
     model: aiModel("claude-haiku-4-5-20251001"),
     messages: [{ role: "user", content: contentBlocks }],
+    abortSignal: AbortSignal.timeout(CLAUDE_TIMEOUT_MS),
   });
 
   /* ── STEP 4: Parse JSON ── */
@@ -978,16 +1031,31 @@ async function handleCombinedExtraction(
     }
   }
 
-  /* ── STEP 10: Generate all 3 PDFs (in-process, parallel) ── */
-  console.log("[extract-combined] generating PDFs for order:", orderId);
-  await generateAllPdfsInParallel(orderId);
-
-  /* ── STEP 11: Mark order AI-extracted (single write — no races) ── */
+  /* ── STEP 10: Mark order AI-extracted ──
+     CRITICAL ORDERING: this flag must flip BEFORE PDF generation kicks off.
+     The client polls `orders.ai_extracted` to know when the form is ready
+     to populate. PDFs are downstream artifacts the user doesn't need
+     immediately — they get auto-regenerated on save anyway. Setting the
+     flag first means the user sees their pre-filled form within ~30-45s
+     of upload (Claude + DB writes), instead of waiting another 15-30s for
+     PDFs to render. This was the root cause of the "AI extraction timed
+     out" complaints — PDFs blocking the response was pushing total time
+     past the Vercel 60s wall, and the flag never got set when it was. */
   await adminClient
     .from("orders")
     .update({ ai_extracted: true, ai_extracted_at: new Date().toISOString() })
     .eq("id", orderId);
   console.log("[extract-combined] orders.ai_extracted=true for:", orderId);
+
+  /* ── STEP 11: Generate all 3 PDFs (fire-and-forget) ──
+     We DON'T await this — it can take 15-30s and isn't on the critical
+     path. The next save (any field edit, sign, etc.) regenerates the
+     same PDFs anyway. If this fails for any reason, the order is still
+     usable and saving will recover. */
+  console.log("[extract-combined] kicking off PDF generation (background) for:", orderId);
+  generateAllPdfsInParallel(orderId).catch((err) => {
+    console.error("[extract-combined] background PDF gen failed:", err);
+  });
 
   /* ── STEP 12: History log ── */
   adminClient
@@ -1218,14 +1286,17 @@ export async function POST(req: NextRequest) {
       creds?.npi_number ?? null,
     );
 
-    /* ── STEP 2: Download file ── */
-    const { data: fileData, error: downloadError } = await adminClient.storage
-      .from(bucket ?? "hbmedical-bucket-private")
-      .download(filePath);
-
-    if (downloadError || !fileData) {
+    /* ── STEP 2: Download file (with 1-retry on transient storage errors) ── */
+    let fileData: Blob;
+    try {
+      fileData = await downloadWithRetry(
+        adminClient,
+        bucket ?? "hbmedical-bucket-private",
+        filePath,
+      );
+    } catch (err) {
       return NextResponse.json(
-        { error: `Failed to download file: ${downloadError?.message}` },
+        { error: err instanceof Error ? err.message : "Failed to download file." },
         { status: 500 },
       );
     }
@@ -1287,6 +1358,7 @@ export async function POST(req: NextRequest) {
           ],
         },
       ],
+      abortSignal: AbortSignal.timeout(CLAUDE_TIMEOUT_MS),
     });
 
     /* ── STEP 5: Parse JSON response ── */
@@ -1512,16 +1584,21 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    /* ── STEP 11: Generate all 3 PDFs (in-process, parallel) ── */
-    console.log("[extract] generating PDFs for order:", orderId);
-    await generateAllPdfsInParallel(orderId);
-
-    /* ── STEP 12: Mark order AI-extracted AFTER PDFs are ready (this triggers frontend poll) ── */
+    /* ── STEP 11: Mark order AI-extracted (flag flip BEFORE PDFs) ──
+       Same ordering rationale as the combined path — see comment there.
+       Polling target flips as soon as data is in DB; PDFs render in the
+       background without blocking the response. */
     await adminClient
       .from("orders")
       .update({ ai_extracted: true, ai_extracted_at: new Date().toISOString() })
       .eq("id", orderId);
     console.log("[extract] orders.ai_extracted=true for:", orderId);
+
+    /* ── STEP 12: Generate PDFs (fire-and-forget background work) ── */
+    console.log("[extract] kicking off PDF generation (background) for:", orderId);
+    generateAllPdfsInParallel(orderId).catch((err) => {
+      console.error("[extract] background PDF gen failed:", err);
+    });
 
     /* ── STEP 13: History log (fire-and-forget) ── */
     adminClient

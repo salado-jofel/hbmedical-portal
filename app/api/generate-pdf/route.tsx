@@ -8,7 +8,11 @@ import {
 } from "@/lib/supabase/order-access";
 import { logPhiAccess } from "@/lib/audit/log-phi-access";
 
-export const maxDuration = 30;
+// Vercel Pro plan ceiling is 300s. Bumped from 30s — react-pdf can take
+// 20-30s on a complex order_form with many items + the embedded signature
+// image + HCPCS modifiers. 30s was too tight, especially when this route
+// is called after-the-fact during the auto-regen flow on item changes.
+export const maxDuration = 300;
 
 const ALLOWED_FORM_TYPES: ReadonlySet<OrderPdfFormType> = new Set([
   "order_form",
