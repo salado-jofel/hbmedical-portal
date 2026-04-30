@@ -4,11 +4,11 @@ import type { Metadata } from "next";
 import React from "react";
 import VerifyEmailForm from "./(sections)/VerifyEmailForm";
 import { BackgroundDots } from "@/app/(components)/BackgroundDots";
-import { HBLogo } from "../../(components)/HBLogo";
+import { MeridianLogo } from "../../(components)/MeridianLogo";
 
 export const metadata: Metadata = {
-  title: "Verify Email", // renders → "Verify Email | HB Medical"
-  description: "Verify your HB Medical account email address.",
+  title: "Verify Email", // renders → "Verify Email | Meridian Portal"
+  description: "Verify your Meridian Portal account email address.",
 };
 
 export default function Page() {

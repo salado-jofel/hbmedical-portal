@@ -6,7 +6,7 @@ import { ShieldCheck, KeyRound, LifeBuoy } from "lucide-react";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { HBLogo } from "@/app/(components)/HBLogo";
+import { MeridianLogo } from "@/app/(components)/MeridianLogo";
 import {
   challengeAndVerifyMfa,
   verifyBackupCode,
@@ -75,7 +75,7 @@ export function MfaChallengeForm() {
     <div className="flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-md select-none rounded-2xl border border-[#E2E8F0] bg-white p-8 shadow-[0_8px_40px_rgba(0,0,0,0.1)]">
         <div className="mb-6 flex items-center justify-center">
-          <HBLogo variant="light" size="lg" />
+          <MeridianLogo variant="light" size="lg" />
         </div>
 
         <div className="mb-5 flex items-start gap-3">

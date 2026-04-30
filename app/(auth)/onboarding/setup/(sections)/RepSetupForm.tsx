@@ -5,7 +5,7 @@ import { Building2, MapPin } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { PhoneInputField } from "@/app/(components)/PhoneInputField";
-import { HBLogo } from "@/app/(components)/HBLogo";
+import { MeridianLogo } from "@/app/(components)/MeridianLogo";
 import { AuthField } from "@/app/(components)/AuthField";
 import SubmitButton from "@/app/(components)/SubmitButton";
 import { AuthCard } from "@/app/(components)/AuthCard";
@@ -127,7 +127,7 @@ export default function RepSetupForm() {
   return (
     <AuthCard>
       <div className="mb-6 flex items-center justify-center">
-        <HBLogo variant="light" size="lg" />
+        <MeridianLogo variant="light" size="lg" />
       </div>
 
       <h2 className="text-2xl font-bold text-[#0F172A] text-center">Sales Rep Account</h2>

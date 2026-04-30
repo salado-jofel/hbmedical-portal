@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ArrowLeft, Mail } from "lucide-react";
 import { BackgroundDots } from "../../(components)/BackgroundDots";
-import { HBLogo } from "../../(components)/HBLogo";
+import { MeridianLogo } from "../../(components)/MeridianLogo";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -14,7 +14,7 @@ export default function Page() {
       <div className="bg-white rounded-2xl shadow-[0_8px_40px_rgba(0,0,0,0.1)] border border-[#E2E8F0] p-8 w-full max-w-md select-none">
         {/* Logo */}
         <div className="mb-6 flex items-center justify-center">
-          <HBLogo variant="light" size="lg" />
+          <MeridianLogo variant="light" size="lg" />
         </div>
 
         {/* Title */}
@@ -23,9 +23,9 @@ export default function Page() {
             Account Access by Invitation Only
           </h1>
           <p className="text-sm text-[#64748B] leading-relaxed">
-            HB Medical portal accounts are created by invitation only.
+            Meridian Portal accounts are created by invitation only.
             If you are a clinic provider or staff member, please use the
-            invitation link sent to you by your HB Medical representative.
+            invitation link sent to you by your Meridian representative.
             If you believe you should have access, contact your representative.
           </p>
         </div>

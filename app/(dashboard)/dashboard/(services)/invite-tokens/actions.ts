@@ -321,7 +321,7 @@ export async function inviteSubRep(
       await resend.emails.send({
         from: PAYMENTS_FROM_EMAIL,
         to: email,
-        subject: "You've been invited to join HB Medical as a Sales Rep",
+        subject: "You've been invited to join Meridian as a Sales Rep",
         html: `
 <!DOCTYPE html>
 <html>
@@ -341,15 +341,15 @@ p{margin:0 0 14px;font-size:14px;}
 </style></head>
 <body>
 <div class="wrapper"><div class="container">
-<div class="header"><img src="${LOGO_URL}" alt="HB Medical" width="176" class="logo-img" /></div>
+<div class="header"><img src="${LOGO_URL}" alt="Meridian" width="176" class="logo-img" /></div>
 <div class="content">
-<h1 class="h1">You're invited to HB Medical Portal</h1>
-<p>You've been invited to join the <strong>HB Medical Portal</strong> as a <strong>Sales Representative</strong>. Click below to set your password and get started.</p>
+<h1 class="h1">You're invited to Meridian Portal</h1>
+<p>You've been invited to join the <strong>Meridian Portal</strong> as a <strong>Sales Representative</strong>. Click below to set your password and get started.</p>
 <div class="btn-row"><a href="${actionLink}" class="btn" target="_blank" rel="noopener noreferrer">Accept Invitation &rarr;</a></div>
 <p>This invitation expires in 7 days. If you did not expect this, you can safely ignore it.</p>
-<p class="muted">Questions? Contact your HB Medical admin.</p>
+<p class="muted">Questions? Contact your Meridian admin.</p>
 </div>
-<div class="footer">&copy; 2026 HB Medical Portal.</div>
+<div class="footer">&copy; 2026 Meridian Portal.</div>
 </div></div>
 </body></html>
         `.trim(),

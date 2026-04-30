@@ -3,7 +3,7 @@ import Link from "next/link";
 type Variant = "light" | "dark";
 type Size = "sm" | "md" | "lg";
 
-interface HBLogoProps {
+interface MeridianLogoProps {
   variant?: Variant; // "light" = blue peaks (white bg)  |  "dark" = white peaks (blue bg)
   size?: Size; // "sm" | "md" | "lg"
   className?: string;
@@ -16,21 +16,28 @@ const sizeMap: Record<Size, { icon: number; text: string; sub: string }> = {
   lg: { icon: 42, text: "text-lg", sub: "text-[10px]" },
 };
 
-export function HBLogo({
+/**
+ * Brand wordmark: mountain-peaks icon + "MERIDIAN PORTAL" text.
+ *
+ * Renamed from HBLogo on 2026-04-30 as part of the rebrand to Meridian
+ * Portal. The mountain-peaks SVG was already brand-neutral so it survives
+ * the rename — only the wordmark text changed.
+ */
+export function MeridianLogo({
   variant = "light",
   size = "md",
   className = "",
   asLink = true,
-}: HBLogoProps) {
-  const { icon, text, sub } = sizeMap[size];
+}: MeridianLogoProps) {
+  const { icon, text } = sizeMap[size];
 
   const peakColor = variant === "dark" ? "white" : "#0f2d4a";
-  const hbColor = variant === "dark" ? "text-white" : "text-[var(--navy)]";
-  const medColor = variant === "dark" ? "text-white/60" : "text-[var(--navy)]/70";
+  const primaryColor = variant === "dark" ? "text-white" : "text-[var(--navy)]";
+  const subColor = variant === "dark" ? "text-white/60" : "text-[var(--navy)]/70";
 
   const content = (
     <span className={`flex items-center gap-2.5 ${className}`}>
-      {/* ── SVG icon ── */}
+      {/* ── SVG icon — brand-neutral mountain peaks, kept across rebrand ── */}
       <svg
         viewBox="0 0 56 56"
         width={icon}
@@ -39,7 +46,7 @@ export function HBLogo({
         xmlns="http://www.w3.org/2000/svg"
       >
         <defs>
-          <linearGradient id="hbArcGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+          <linearGradient id="meridianArcGrad" x1="0%" y1="100%" x2="100%" y2="0%">
             <stop offset="0%" stopColor="#f5a87a" />
             <stop offset="100%" stopColor="#e85d0a" />
           </linearGradient>
@@ -48,7 +55,7 @@ export function HBLogo({
         {/* Orange arc */}
         <path
           d="M 14 44 A 22 22 0 1 1 46 36"
-          stroke="url(#hbArcGrad)"
+          stroke="url(#meridianArcGrad)"
           strokeWidth="2.8"
           strokeLinecap="round"
           fill="none"
@@ -75,15 +82,15 @@ export function HBLogo({
         />
       </svg>
 
-      {/* ── Text ── */}
+      {/* ── Text — Meridian wordmark ── */}
       <span className="flex flex-row items-center gap-1.5 leading-none">
-        <span className={`font-bold tracking-widest ${text} ${hbColor}`}>
-          HB
+        <span className={`font-bold tracking-widest ${text} ${primaryColor}`}>
+          MERIDIAN
         </span>
         <span
-          className={`font-medium tracking-[0.35em] uppercase ${text} ${medColor}`}
+          className={`font-medium tracking-[0.35em] uppercase ${text} ${subColor}`}
         >
-          Medical
+          Portal
         </span>
       </span>
     </span>

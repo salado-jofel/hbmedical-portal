@@ -131,7 +131,7 @@ export async function sendNet30ReminderEmail({
   const subject = `${content.subjectPrefix} for order #${orderNumber || orderId}`;
 
   const logoUrl =
-    "https://ersdsmuybpfvgvaiwcgl.supabase.co/storage/v1/object/public/hbmedical-bucket-public/assets/hb-logo-name-2%20(1).png";
+    "https://ersdsmuybpfvgvaiwcgl.supabase.co/storage/v1/object/public/hbmedical-bucket-public/assets/meridian-logo.png";
 
   const html = `
 <!DOCTYPE html>
@@ -276,7 +276,7 @@ export async function sendNet30ReminderEmail({
       <div class="header">
         <img
           src="${logoUrl}"
-          alt="HB Medical"
+          alt="Meridian"
           width="176"
           class="logo-img"
         />
@@ -340,12 +340,12 @@ export async function sendNet30ReminderEmail({
         </p>
 
         <p class="muted">
-          Thank you for choosing HB Medical Portal.
+          Thank you for choosing Meridian Portal.
         </p>
       </div>
 
       <div class="footer">
-        &copy; 2026 HB Medical Portal. Secure & Confidential.
+        &copy; 2026 Meridian Portal. Secure & Confidential.
       </div>
     </div>
   </div>

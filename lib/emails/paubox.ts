@@ -27,12 +27,26 @@ if (!PAUBOX_USERNAME) {
 
 const PAUBOX_API_URL = `https://api.paubox.net/v1/${PAUBOX_USERNAME}/messages`;
 
+// FROM addresses — fallback values reference the new Meridian domain.
+// In env where the new domain isn't yet verified at Paubox, override via
+// PAYMENTS_FROM_EMAIL / ACCOUNTS_FROM_EMAIL env vars to keep using the
+// old hbmedicalportal.com sender during the rebrand transition.
 export const PAYMENTS_FROM_EMAIL =
-  process.env.PAYMENTS_FROM_EMAIL || "payments@hbmedicalportal.com";
+  process.env.PAYMENTS_FROM_EMAIL || "payments@meridianportal.io";
 
 export const ACCOUNTS_FROM_EMAIL =
   process.env.ACCOUNTS_FROM_EMAIL ||
-  "HB Medical <accounts@hbmedicalportal.com>";
+  "Meridian Portal <accounts@meridianportal.io>";
+
+/**
+ * Default Reply-To. Outbound transactional mails are sent from accounts@
+ * and payments@ which are virtual/no-reply. When a user hits Reply, we
+ * route them to the real human-monitored support inbox at PrivateEmail.
+ * The support inbox is intentionally non-PHI per docs — see the rebrand
+ * plan in docs/. Callers can override per-send by passing `replyTo`.
+ */
+const DEFAULT_REPLY_TO =
+  process.env.SUPPORT_REPLY_TO || "support@meridianportal.io";
 
 /**
  * Resend-compatible send-email signature. The codebase passes `from`, `to`,
@@ -117,8 +131,9 @@ async function sendEmail(params: SendEmailParams): Promise<SendEmailResult> {
     subject: params.subject,
     from: params.from,
   };
-  if (params.replyTo) {
-    headers["reply-to"] = params.replyTo;
+  const replyTo = params.replyTo ?? DEFAULT_REPLY_TO;
+  if (replyTo) {
+    headers["reply-to"] = replyTo;
   }
 
   // Map the Resend-shape attachment array onto Paubox's required shape:

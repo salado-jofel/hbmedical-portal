@@ -71,7 +71,7 @@ export function Hero() {
           variants={fadeUp}
           transition={{ delay: 0.35 }}
         >
-          HB Medical is seeking elite independent reps to own exclusive markets
+          Meridian is seeking elite independent reps to own exclusive markets
           with our breakthrough{" "}
           <span className="text-[#f5a255] font-semibold">
             Non-Hydrolyzed Collagen

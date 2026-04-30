@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MapPin, Mail, Globe, Phone, PenLine, Check, Info } from "lucide-react";
 import toast from "react-hot-toast";
-import { HBLogo } from "@/app/(components)/HBLogo";
+import { MeridianLogo } from "@/app/(components)/MeridianLogo";
 import { FormActionBar } from "./FormActionBar";
 import { CapturePatientSignatureModal } from "./CapturePatientSignatureModal";
 import {
@@ -323,7 +323,7 @@ export function InvoiceDocument({
         <div className="flex items-start justify-between pb-3 border-b border-[#e5e5e5]">
           <div className="flex items-center gap-3">
             <div className="[&>span>span:last-child]:hidden shrink-0">
-              <HBLogo variant="light" size="lg" asLink={false} />
+              <MeridianLogo variant="light" size="lg" asLink={false} />
             </div>
             <div>
               <div className="text-[17px] font-bold tracking-widest leading-none" style={{ color: NAVY }}>

@@ -1,7 +1,7 @@
 import { resend, ACCOUNTS_FROM_EMAIL } from "@/lib/emails/resend";
 
 const LOGO_URL =
-  "https://ersdsmuybpfvgvaiwcgl.supabase.co/storage/v1/object/public/hbmedical-bucket-public/assets/hb-logo-name-2%20(1).png";
+  "https://ersdsmuybpfvgvaiwcgl.supabase.co/storage/v1/object/public/hbmedical-bucket-public/assets/meridian-logo.png";
 
 const PRIORITY_COLORS: Record<string, { bg: string; text: string; label: string }> = {
   high:   { bg: "#fef2f2", text: "#ef4444", label: "High" },
@@ -80,7 +80,7 @@ function buildHtml({
   <div class="wrapper">
     <div class="container">
       <div class="header">
-        <img src="${LOGO_URL}" alt="HB Medical" width="176" class="logo-img" />
+        <img src="${LOGO_URL}" alt="Meridian" width="176" class="logo-img" />
       </div>
       <div class="content">
         <h1 class="h1">Task due tomorrow</h1>
@@ -109,10 +109,10 @@ function buildHtml({
         </div>
 
         <p class="muted">
-          You're receiving this because a task was assigned to you in HB Medical Portal.
+          You're receiving this because a task was assigned to you in Meridian Portal.
         </p>
       </div>
-      <div class="footer">&copy; 2026 HB Medical Portal. Secure &amp; Confidential.</div>
+      <div class="footer">&copy; 2026 Meridian Portal. Secure &amp; Confidential.</div>
     </div>
   </div>
 </body>

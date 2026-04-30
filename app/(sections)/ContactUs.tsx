@@ -50,7 +50,7 @@ export function Contact() {
               Scottie Jennings
             </h3>
             <span className="text-[var(--navy)] text-xs font-bold tracking-widest uppercase">
-              HB Medical — Rep Partnerships
+              Meridian — Rep Partnerships
             </span>
           </div>
 

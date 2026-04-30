@@ -29,7 +29,7 @@ export const KANBAN_STATUS_CONFIG: Record<
   },
   manufacturer_review: {
     // Plainer wording for non-technical users — "Mfr." was jargon. Meaning is
-    // unchanged: HB Medical's team is reviewing the order.
+    // unchanged: Meridian's team is reviewing the order.
     label: "Under Review",
     badge: "bg-purple-50 text-purple-700",
     dot: "bg-purple-500",

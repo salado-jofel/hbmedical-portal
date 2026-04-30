@@ -34,7 +34,7 @@ const benefits = [
     ),
     title: "Protected Sales Area",
     description:
-      "Your market is yours. We enforce geographic exclusivity so you're never competing against another HB Medical rep.",
+      "Your market is yours. We enforce geographic exclusivity so you're never competing against another Meridian rep.",
     badge: "ZIP-Level Protection",
     highlight: false,
   },
@@ -176,7 +176,7 @@ export function WhyUs() {
           variants={badgePop}
         >
           <span className="bg-white/10 text-[#f5a255] text-xs font-semibold tracking-widest uppercase px-4 py-1.5 rounded-full border border-white/20">
-            Why HB Medical
+            Why Meridian
           </span>
         </motion.div>
 
@@ -193,7 +193,7 @@ export function WhyUs() {
           </h2>
           <p className="text-white/60 max-w-xl mx-auto text-lg leading-relaxed">
             We don&apos;t just hand you a product — we hand you a business.
-            Here&apos;s what you unlock when you partner with HB Medical.
+            Here&apos;s what you unlock when you partner with Meridian.
           </p>
         </motion.div>
 

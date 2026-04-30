@@ -14,7 +14,7 @@ import { AuthField } from "@/app/(components)/AuthField";
 import { RoleButton } from "@/app/(components)/RoleButton";
 import ErrorAlert from "@/app/(components)/ErrorAlert";
 import SubmitButton from "@/app/(components)/SubmitButton";
-import { HBLogo } from "@/app/(components)/HBLogo";
+import { MeridianLogo } from "@/app/(components)/MeridianLogo";
 import { validatePasswordsMatch } from "@/utils/validators/signup";
 import { PhoneInputField } from "@/app/(components)/PhoneInputField";
 
@@ -81,7 +81,7 @@ export default function SignUpForm() {
   return (
     <div className="w-full max-w-md select-none rounded-2xl border border-white/15 bg-white/8 p-8 backdrop-blur-2xl shadow-[0_8px_32px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.06)] md:p-10">
       <div className="relative z-10 mb-8 flex items-center justify-center py-6">
-        <HBLogo variant="dark" size="lg" />
+        <MeridianLogo variant="dark" size="lg" />
       </div>
 
       <form action={formAction} onSubmit={handleSubmit} className="space-y-4">

@@ -285,7 +285,7 @@ export function UsersList() {
       {/* ── Header ── */}
       <PageHeader
         title="Users"
-        subtitle="Check and manage all HB Medical portal users"
+        subtitle="Check and manage all Meridian Portal users"
         action={
           <Button
             size="sm"

@@ -1,7 +1,7 @@
 import { resend, ACCOUNTS_FROM_EMAIL } from "@/lib/emails/resend";
 
 const LOGO_URL =
-  "https://ersdsmuybpfvgvaiwcgl.supabase.co/storage/v1/object/public/hbmedical-bucket-public/assets/hb-logo-name-2%20(1).png";
+  "https://ersdsmuybpfvgvaiwcgl.supabase.co/storage/v1/object/public/hbmedical-bucket-public/assets/meridian-logo.png";
 
 export interface SalesRepContractsSignedEmailParams {
   to: string[];
@@ -85,7 +85,7 @@ function buildHtml({
   <div class="wrapper">
     <div class="container">
       <div class="header">
-        <img src="${LOGO_URL}" alt="HB Medical" width="176" class="logo-img" />
+        <img src="${LOGO_URL}" alt="Meridian" width="176" class="logo-img" />
       </div>
       <div class="content">
         <h1 class="h1">New sales rep completed onboarding</h1>
@@ -107,7 +107,7 @@ function buildHtml({
         </ul>
         <p class="muted">This email was generated automatically when the rep completed signup.</p>
       </div>
-      <div class="footer">&copy; 2026 HB Medical Portal. Secure &amp; Confidential.</div>
+      <div class="footer">&copy; 2026 Meridian Portal. Secure &amp; Confidential.</div>
     </div>
   </div>
 </body>

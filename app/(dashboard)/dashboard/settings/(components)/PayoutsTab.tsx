@@ -152,7 +152,7 @@ export function PayoutsTab({ status, lastPayout = null }: PayoutsTabProps) {
       )}
 
       <p className="text-[11px] text-[var(--text3)]">
-        Payouts are processed by Stripe. HB Medical never sees or stores your bank account details.
+        Payouts are processed by Stripe. Meridian never sees or stores your bank account details.
       </p>
     </div>
   );
