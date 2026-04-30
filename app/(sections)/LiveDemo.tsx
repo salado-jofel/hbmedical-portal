@@ -23,7 +23,7 @@ const demoTopics = [
   "Clinical data and real-world case studies",
   "The sales process and objection handling",
   "Commission structure and market area terms",
-  "Q&A with the HB Medical team",
+  "Q&A with the Meridian team",
 ];
 
 export function LiveDemo() {

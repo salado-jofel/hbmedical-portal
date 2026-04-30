@@ -8,7 +8,7 @@ import { forgotPassword } from "../(services)/actions";
 import SubmitButton from "@/app/(components)/SubmitButton";
 import ErrorAlert from "@/app/(components)/ErrorAlert";
 import { AuthField } from "@/app/(components)/AuthField";
-import { HBLogo } from "@/app/(components)/HBLogo";
+import { MeridianLogo } from "@/app/(components)/MeridianLogo";
 import { MailCheck } from "lucide-react";
 
 export default function ForgotPasswordForm() {
@@ -28,7 +28,7 @@ export default function ForgotPasswordForm() {
       <div className="bg-white rounded-2xl shadow-[0_8px_40px_rgba(0,0,0,0.1)] border border-[#E2E8F0] p-8 w-full max-w-md select-none text-center">
         {/* Logo */}
         <div className="mb-6 flex items-center justify-center">
-          <HBLogo variant="light" size="lg" />
+          <MeridianLogo variant="light" size="lg" />
         </div>
 
         {/* Mail icon */}
@@ -41,7 +41,7 @@ export default function ForgotPasswordForm() {
         <p className="text-sm text-[#64748B] mb-8 leading-relaxed">
           We&apos;ve sent a password reset link to your email. Click the link to
           set a new password for your{" "}
-          <span className="text-[var(--navy)] font-medium">HB Medical</span> account.
+          <span className="text-[var(--navy)] font-medium">Meridian Portal</span> account.
         </p>
 
         <div className="space-y-4">
@@ -72,7 +72,7 @@ export default function ForgotPasswordForm() {
     <div className="bg-white rounded-2xl shadow-[0_8px_40px_rgba(0,0,0,0.1)] border border-[#E2E8F0] p-8 w-full max-w-md select-none">
       {/* Logo */}
       <div className="mb-6 flex items-center justify-center">
-        <HBLogo variant="light" size="lg" />
+        <MeridianLogo variant="light" size="lg" />
       </div>
 
       <h2 className="text-2xl font-bold text-[#0F172A] text-center">Forgot password?</h2>

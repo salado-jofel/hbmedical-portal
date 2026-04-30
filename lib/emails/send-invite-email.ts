@@ -3,7 +3,7 @@ import { ROLE_LABELS } from "@/utils/helpers/role";
 import type { InviteTokenRole } from "@/utils/interfaces/invite-tokens";
 
 const LOGO_URL =
-  "https://ersdsmuybpfvgvaiwcgl.supabase.co/storage/v1/object/public/hbmedical-bucket-public/assets/hb-logo-name-2%20(1).png";
+  "https://ersdsmuybpfvgvaiwcgl.supabase.co/storage/v1/object/public/hbmedical-bucket-public/assets/meridian-logo.png";
 
 type SendInviteEmailParams = {
   to: string;
@@ -49,23 +49,23 @@ function buildContent(
   switch (roleType) {
     case "clinical_provider":
       return {
-        subject: "You've been invited to join HB Medical Portal as a Clinical Provider",
-        body: `You've been invited by <strong>${inviterName}</strong> to join the <strong>HB Medical Portal</strong> as a <strong>Clinical Provider</strong>. Click below to set up your account and clinic.`,
+        subject: "You've been invited to join Meridian Portal as a Clinical Provider",
+        body: `You've been invited by <strong>${inviterName}</strong> to join the <strong>Meridian Portal</strong> as a <strong>Clinical Provider</strong>. Click below to set up your account and clinic.`,
       };
     case "clinical_staff":
       return {
-        subject: "You've been invited to join HB Medical Portal as Clinical Staff",
-        body: `You've been invited by <strong>${inviterName}</strong> to join their clinic on the <strong>HB Medical Portal</strong> as <strong>Clinical Staff</strong>. Click below to set up your account.`,
+        subject: "You've been invited to join Meridian Portal as Clinical Staff",
+        body: `You've been invited by <strong>${inviterName}</strong> to join their clinic on the <strong>Meridian Portal</strong> as <strong>Clinical Staff</strong>. Click below to set up your account.`,
       };
     case "sales_representative":
       return {
-        subject: "You've been invited to join HB Medical Portal as a Sales Representative",
-        body: `You've been invited by <strong>${inviterName}</strong> to join the <strong>HB Medical Portal</strong> as a <strong>Sales Representative</strong>. Click below to set up your account.`,
+        subject: "You've been invited to join Meridian Portal as a Sales Representative",
+        body: `You've been invited by <strong>${inviterName}</strong> to join the <strong>Meridian Portal</strong> as a <strong>Sales Representative</strong>. Click below to set up your account.`,
       };
     default:
       return {
-        subject: `You've been invited to join HB Medical Portal as ${roleLabel}`,
-        body: `You've been invited by <strong>${inviterName}</strong> to join the <strong>HB Medical Portal</strong> as <strong>${roleLabel}</strong>. Click below to set up your account.`,
+        subject: `You've been invited to join Meridian Portal as ${roleLabel}`,
+        body: `You've been invited by <strong>${inviterName}</strong> to join the <strong>Meridian Portal</strong> as <strong>${roleLabel}</strong>. Click below to set up your account.`,
       };
   }
 }
@@ -94,10 +94,10 @@ function buildHtml({ body, inviteUrl }: { body: string; inviteUrl: string }) {
   <div class="wrapper">
     <div class="container">
       <div class="header">
-        <img src="${LOGO_URL}" alt="HB Medical" width="176" class="logo-img" />
+        <img src="${LOGO_URL}" alt="Meridian" width="176" class="logo-img" />
       </div>
       <div class="content">
-        <h1 class="h1">You've been invited to HB Medical Portal</h1>
+        <h1 class="h1">You've been invited to Meridian Portal</h1>
         <p>${body}</p>
         <div class="btn-row">
           <a href="${inviteUrl}" class="btn" target="_blank" rel="noopener noreferrer">
@@ -106,10 +106,10 @@ function buildHtml({ body, inviteUrl }: { body: string; inviteUrl: string }) {
         </div>
         <p>This invitation will expire. If you did not expect this email, you can safely ignore it.</p>
         <p class="muted">
-          Questions? Reply to this email or contact your HB Medical admin.
+          Questions? Reply to this email or contact your Meridian admin.
         </p>
       </div>
-      <div class="footer">&copy; 2026 HB Medical Portal. Secure &amp; Confidential.</div>
+      <div class="footer">&copy; 2026 Meridian Portal. Secure &amp; Confidential.</div>
     </div>
   </div>
 </body>

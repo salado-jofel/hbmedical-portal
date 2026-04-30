@@ -103,8 +103,8 @@ export async function inviteSubRep(
       .maybeSingle();
     const parentName = parentProfile
       ? `${parentProfile.first_name ?? ""} ${parentProfile.last_name ?? ""}`.trim() ||
-        "HB Medical"
-      : "HB Medical";
+        "Meridian"
+      : "Meridian";
 
     const inviteUrl = `${getBaseUrl()}/invite/${inserted.token}`;
 
@@ -346,7 +346,7 @@ export async function resendSubRepInvite(
       .single();
     const inviterName = inviterProfile
       ? `${inviterProfile.first_name} ${inviterProfile.last_name}`
-      : "HB Medical";
+      : "Meridian";
 
     await sendInviteEmail({
       to: email,

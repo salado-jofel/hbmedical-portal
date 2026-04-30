@@ -20,7 +20,7 @@ const testimonials = [
   },
   {
     quote:
-      "HB Medical gave me a protected market with a clear lane. The commission structure is unlike anything I've seen — and the reorder rate is extraordinary. I'm building real residual income.",
+      "Meridian gave me a protected market with a clear lane. The commission structure is unlike anything I've seen — and the reorder rate is extraordinary. I'm building real residual income.",
     name: "Sarah R.",
     role: "Senior Rep — Midwest",
     initials: "SR",

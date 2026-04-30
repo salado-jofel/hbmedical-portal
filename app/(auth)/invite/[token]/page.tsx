@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CheckCircle, UserCheck, XCircle, Clock } from "lucide-react";
 import { getInviteTokenStatus } from "@/app/(dashboard)/dashboard/(services)/invite-tokens/actions";
-import { HBLogo } from "@/app/(components)/HBLogo";
+import { MeridianLogo } from "@/app/(components)/MeridianLogo";
 import { ROLE_LABELS } from "@/utils/helpers/role";
 
 interface PageProps {
@@ -25,7 +25,7 @@ export default async function InviteLandingPage({ params }: PageProps) {
       <main className="min-h-screen bg-gradient-to-br from-[#F0F7FF] to-[#F8FAFC] flex items-center justify-center p-4">
         <div className="w-full max-w-md space-y-6">
           <div className="flex justify-center">
-            <HBLogo variant="light" size="md" />
+            <MeridianLogo variant="light" size="md" />
           </div>
           <div className="bg-white rounded-2xl shadow-[0_8px_40px_rgba(0,0,0,0.1)] border border-[#E2E8F0] p-8 space-y-6 text-center">
             <div className="flex justify-center">
@@ -63,14 +63,14 @@ export default async function InviteLandingPage({ params }: PageProps) {
 
   const invitedBy = inviteToken.created_by_profile
     ? `${inviteToken.created_by_profile.first_name} ${inviteToken.created_by_profile.last_name}`
-    : "HB Medical";
+    : "Meridian Portal";
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-[#F0F7FF] to-[#F8FAFC] flex items-center justify-center p-4">
       <div className="w-full max-w-md space-y-6">
         {/* Logo */}
         <div className="flex justify-center">
-          <HBLogo variant="light" size="md" />
+          <MeridianLogo variant="light" size="md" />
         </div>
 
         {/* Card */}
@@ -87,7 +87,7 @@ export default async function InviteLandingPage({ params }: PageProps) {
             <h1 className="text-2xl font-bold text-[#0F172A]">You&apos;re invited!</h1>
             <p className="text-[#64748B] text-sm">
               <span className="text-[#0F172A] font-medium">{invitedBy}</span> has invited you
-              to join HB Medical Portal.
+              to join Meridian Portal.
             </p>
           </div>
 

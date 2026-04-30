@@ -27,12 +27,58 @@ if (!PAUBOX_USERNAME) {
 
 const PAUBOX_API_URL = `https://api.paubox.net/v1/${PAUBOX_USERNAME}/messages`;
 
+// FROM addresses — fallback values reference the new Meridian domain.
+// In env where the new domain isn't yet verified at Paubox, override via
+// PAYMENTS_FROM_EMAIL / ACCOUNTS_FROM_EMAIL env vars to keep using the
+// old hbmedicalportal.com sender during the rebrand transition.
 export const PAYMENTS_FROM_EMAIL =
-  process.env.PAYMENTS_FROM_EMAIL || "payments@hbmedicalportal.com";
+  process.env.PAYMENTS_FROM_EMAIL || "payments@meridianportal.io";
 
 export const ACCOUNTS_FROM_EMAIL =
   process.env.ACCOUNTS_FROM_EMAIL ||
-  "HB Medical <accounts@hbmedicalportal.com>";
+  "Meridian Portal <accounts@meridianportal.io>";
+
+/**
+ * Default Reply-To. Outbound transactional mails are sent from accounts@
+ * and payments@ which are virtual/no-reply. When a user hits Reply, we
+ * route them to the real human-monitored support inbox at PrivateEmail.
+ * The support inbox is intentionally non-PHI per docs — see the rebrand
+ * plan in docs/. Callers can override per-send by passing `replyTo`.
+ */
+const DEFAULT_REPLY_TO =
+  process.env.SUPPORT_REPLY_TO || "support@meridiansurgicalsupplies.com";
+
+/**
+ * Disclaimer auto-injected into every outbound email. The Reply-To inbox is
+ * a non-PHI PrivateEmail mailbox used only for portal-access / login / bug
+ * report inquiries — replying with patient or health information would land
+ * PHI in a mailbox that is NOT covered by a HIPAA BAA. The notice tells the
+ * recipient where to send PHI instead (in-portal Conversations tab).
+ */
+const REPLY_TO_NOTICE_HTML = `
+<div style="margin:24px auto 8px;max-width:560px;padding:12px 16px;background:#fff8e1;border-left:3px solid #f5a255;border-radius:4px;font:13px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#5a4500;">
+  <strong>Please do not reply to this email with patient or health information.</strong><br/>
+  Replies route to <a href="mailto:support@meridiansurgicalsupplies.com" style="color:#5a4500;text-decoration:underline;">support@meridiansurgicalsupplies.com</a>, which is monitored by Meridian Portal support for account, login, and bug-report questions only — it is <strong>not</strong> a HIPAA-secure channel. For anything involving PHI, please use the <strong>Conversations</strong> tab inside the portal.
+</div>
+`.trim();
+
+const REPLY_TO_NOTICE_TEXT = [
+  "",
+  "----------------------------------------",
+  "Please do not reply to this email with patient or health information.",
+  "Replies route to support@meridiansurgicalsupplies.com, which is monitored",
+  "by Meridian Portal support for account, login, and bug-report questions",
+  "only — it is NOT a HIPAA-secure channel. For anything involving PHI,",
+  "please use the Conversations tab inside the portal.",
+  "----------------------------------------",
+].join("\n");
+
+function injectReplyToNoticeHtml(html: string): string {
+  if (/<\/body>/i.test(html)) {
+    return html.replace(/<\/body>/i, `${REPLY_TO_NOTICE_HTML}</body>`);
+  }
+  return html + REPLY_TO_NOTICE_HTML;
+}
 
 /**
  * Resend-compatible send-email signature. The codebase passes `from`, `to`,
@@ -111,14 +157,21 @@ function inferContentType(filename: string): string {
 
 async function sendEmail(params: SendEmailParams): Promise<SendEmailResult> {
   const recipients = Array.isArray(params.to) ? params.to : [params.to];
-  const text = params.text ?? htmlToText(params.html);
+
+  // Auto-inject the do-not-reply-with-PHI notice into both the HTML and
+  // plain-text bodies of every outbound email. Single source of truth so we
+  // can't accidentally ship a template that omits the disclaimer.
+  const htmlWithNotice = injectReplyToNoticeHtml(params.html);
+  const baseText = params.text ?? htmlToText(params.html);
+  const text = `${baseText}\n${REPLY_TO_NOTICE_TEXT}`;
 
   const headers: Record<string, string> = {
     subject: params.subject,
     from: params.from,
   };
-  if (params.replyTo) {
-    headers["reply-to"] = params.replyTo;
+  const replyTo = params.replyTo ?? DEFAULT_REPLY_TO;
+  if (replyTo) {
+    headers["reply-to"] = replyTo;
   }
 
   // Map the Resend-shape attachment array onto Paubox's required shape:
@@ -144,7 +197,7 @@ async function sendEmail(params: SendEmailParams): Promise<SendEmailResult> {
         headers,
         content: {
           "text/plain": text,
-          "text/html": params.html,
+          "text/html": htmlWithNotice,
         },
         ...(pauboxAttachments.length > 0
           ? { attachments: pauboxAttachments }

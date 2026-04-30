@@ -27,9 +27,9 @@ const dmMono = DM_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "HB Medical",
+  title: "Meridian",
   description:
-    "HB Medical is seeking elite independent reps to own exclusive markets with our breakthrough Non-Hydrolyzed Collagen product — a clinically differentiated solution that sells itself.",
+    "Meridian is seeking elite independent reps to own exclusive markets with our breakthrough Non-Hydrolyzed Collagen product — a clinically differentiated solution that sells itself.",
 };
 
 export default function RootLayout({

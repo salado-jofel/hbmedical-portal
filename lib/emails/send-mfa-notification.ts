@@ -1,7 +1,7 @@
 import { resend, ACCOUNTS_FROM_EMAIL } from "@/lib/emails/resend";
 
 const LOGO_URL =
-  "https://ersdsmuybpfvgvaiwcgl.supabase.co/storage/v1/object/public/hbmedical-bucket-public/assets/hb-logo-name-2%20(1).png";
+  "https://ersdsmuybpfvgvaiwcgl.supabase.co/storage/v1/object/public/hbmedical-bucket-public/assets/meridian-logo.png";
 
 /**
  * Type of MFA-related security event the recipient is being told about.
@@ -78,9 +78,9 @@ function buildContent({
         subject: "Your two-factor authenticator was replaced",
         body: `
           <p>${greeting}</p>
-          <p>Your authenticator app for <strong>HB Medical Portal</strong> was replaced ${when}. Your previous device has been signed out and the new one is now the only valid 2FA source on your account.</p>
+          <p>Your authenticator app for <strong>Meridian Portal</strong> was replaced ${when}. Your previous device has been signed out and the new one is now the only valid 2FA source on your account.</p>
           <p><strong>If this was you</strong> — no action needed. You're all set.</p>
-          <p><strong>If this was NOT you</strong> — your account may be compromised. Sign in immediately, change your password, and contact an HB Medical administrator. Your saved backup codes are still valid and may be needed to recover access.</p>
+          <p><strong>If this was NOT you</strong> — your account may be compromised. Sign in immediately, change your password, and contact an Meridian administrator. Your saved backup codes are still valid and may be needed to recover access.</p>
           <p class="muted">Sent automatically when an authenticator change is detected on your account.</p>
         `,
       };
@@ -90,19 +90,19 @@ function buildContent({
         subject: "An administrator reset your two-factor authentication",
         body: `
           <p>${greeting}</p>
-          <p>An HB Medical administrator${adminName ? ` (<strong>${adminName}</strong>)` : ""} just reset the two-factor authentication on your account.</p>
+          <p>An Meridian administrator${adminName ? ` (<strong>${adminName}</strong>)` : ""} just reset the two-factor authentication on your account.</p>
           <p>Your previous authenticator and any backup recovery codes have been removed. The next time you sign in, you'll be prompted to set up a new authenticator app and you'll receive a fresh set of backup codes — save them safely.</p>
-          <p>If you did not request this reset, contact HB Medical immediately to confirm it was authorized.</p>
+          <p>If you did not request this reset, contact Meridian immediately to confirm it was authorized.</p>
           <p class="muted">Sent automatically as part of a HIPAA-required security audit trail.</p>
         `,
       };
 
     case "failed_attempts":
       return {
-        subject: "Multiple failed sign-in attempts on your HB Medical account",
+        subject: "Multiple failed sign-in attempts on your Meridian account",
         body: `
           <p>${greeting}</p>
-          <p>We detected ${failedAttemptCount ?? "several"} failed two-factor authentication attempts on your <strong>HB Medical Portal</strong> account in a short window.</p>
+          <p>We detected ${failedAttemptCount ?? "several"} failed two-factor authentication attempts on your <strong>Meridian Portal</strong> account in a short window.</p>
           <p>If this was you (typo, wrong device, etc.) you can ignore this message. If it wasn't, your account may be under attack — change your password and consider regenerating your backup codes immediately.</p>
           <p class="muted">Sent automatically when unusual sign-in activity is detected.</p>
         `,
@@ -131,10 +131,10 @@ function buildHtml({ body }: { body: string }): string {
   <div class="wrapper">
     <div class="container">
       <div class="header">
-        <img src="${LOGO_URL}" alt="HB Medical" width="176" class="logo-img" />
+        <img src="${LOGO_URL}" alt="Meridian" width="176" class="logo-img" />
       </div>
       <div class="content">${body}</div>
-      <div class="footer">&copy; 2026 HB Medical Portal. Secure &amp; Confidential.</div>
+      <div class="footer">&copy; 2026 Meridian Portal. Secure &amp; Confidential.</div>
     </div>
   </div>
 </body>

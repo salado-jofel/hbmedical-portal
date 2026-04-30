@@ -1,4 +1,4 @@
-# HB Medical Portal — Security & Performance Audit Report
+# Meridian Portal — Security & Performance Audit Report
 
 > Generated: 2026-04-08  
 > Scope: Full frontend codebase — `app/`, `lib/`, `utils/`, `store/`, `middleware.ts`  

@@ -291,7 +291,7 @@ export async function createUser(
     const emailResult = await resend.emails.send({
       from: ACCOUNTS_FROM_EMAIL,
       to: email,
-      subject: "You've been invited to HB Medical Portal",
+      subject: "You've been invited to Meridian Portal",
       html: buildResetPasswordEmail({ first_name, last_name, role, resetLink }),
     });
 
@@ -565,7 +565,7 @@ export async function resendInvite(
       to: email,
       inviteUrl: resetLink,
       roleType: role,
-      inviterName: "HB Medical",
+      inviterName: "Meridian",
     });
 
     return { success: true, error: null };

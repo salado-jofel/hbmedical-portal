@@ -1,4 +1,4 @@
-# MFA Recovery — HB Medical Portal
+# MFA Recovery — Meridian Portal
 
 > Last updated: 2026-04-30
 > Owner: _Privacy Officer / Security Officer (designate one)_
@@ -22,7 +22,7 @@ printed paper, screenshot).
 
 **Steps the user takes:**
 
-1. Go to `https://hbmedicalportal.com/sign-in` and enter email + password
+1. Go to `https://meridianportal.io/sign-in` and enter email + password
 2. On the 2FA challenge screen, click **"Lost your authenticator? Use a
    backup code →"**
 3. Type one of their saved 8-character codes (format: `XXXX-XXXX`)
@@ -71,7 +71,7 @@ re-enroll on a new device.
 
 **Steps the admin takes:**
 
-1. Go to `https://hbmedicalportal.com/dashboard/users`
+1. Go to `https://meridianportal.io/dashboard/users`
 2. Find the locked-out user (search by email or name)
 3. Hover the user's row — click the **"Reset MFA"** button (shield-off icon)
 4. Confirm in the modal: *"This wipes ALL of the user's authenticator factors AND every backup recovery code, signs out every active session..."*

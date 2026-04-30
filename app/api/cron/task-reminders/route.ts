@@ -41,7 +41,7 @@ async function handleTaskReminderCron(request: Request) {
   const appUrl =
     process.env.NEXT_PUBLIC_APP_URL ??
     process.env.NEXT_PUBLIC_SITE_URL ??
-    "https://hbmedicalportal.com";
+    "https://meridianportal.io";
 
   const admin = createAdminClient();
 

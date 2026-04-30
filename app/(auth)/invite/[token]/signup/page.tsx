@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { XCircle, Clock } from "lucide-react";
 import { getInviteTokenStatus } from "@/app/(dashboard)/dashboard/(services)/invite-tokens/actions";
-import { HBLogo } from "@/app/(components)/HBLogo";
+import { MeridianLogo } from "@/app/(components)/MeridianLogo";
 import { BackgroundDots } from "@/app/(components)/BackgroundDots";
 import InviteSignUpForm from "./(sections)/InviteSignUpForm";
 
@@ -26,7 +26,7 @@ export default async function InviteSignUpPage({ params }: PageProps) {
       <main className="min-h-screen bg-gradient-to-br from-[#F0F7FF] to-[#F8FAFC] flex items-center justify-center p-4">
         <div className="w-full max-w-md space-y-6">
           <div className="flex justify-center">
-            <HBLogo variant="light" size="md" />
+            <MeridianLogo variant="light" size="md" />
           </div>
           <div className="bg-white rounded-2xl shadow-[0_8px_40px_rgba(0,0,0,0.1)] border border-[#E2E8F0] p-8 space-y-6 text-center">
             <div className="flex justify-center">
@@ -69,7 +69,7 @@ export default async function InviteSignUpPage({ params }: PageProps) {
       <main className="min-h-screen bg-gradient-to-br from-[#F0F7FF] to-[#F8FAFC] flex items-center justify-center p-4">
         <div className="w-full max-w-md space-y-6">
           <div className="flex justify-center">
-            <HBLogo variant="light" size="md" />
+            <MeridianLogo variant="light" size="md" />
           </div>
           <div className="bg-white rounded-2xl shadow-[0_8px_40px_rgba(0,0,0,0.1)] border border-[#E2E8F0] p-8 space-y-6 text-center">
             <div className="flex justify-center">
@@ -97,7 +97,7 @@ export default async function InviteSignUpPage({ params }: PageProps) {
 
   const invitedBy = inviteToken.created_by_profile
     ? `${inviteToken.created_by_profile.first_name} ${inviteToken.created_by_profile.last_name}`
-    : "HB Medical";
+    : "Meridian Portal";
 
   // Contract preview URLs are fetched client-side on entering step 6, so the
   // user sees one loading state while MERIDIAN-prestamped PDFs are generated

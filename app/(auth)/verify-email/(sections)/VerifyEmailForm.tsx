@@ -4,7 +4,7 @@ import { MailCheck } from "lucide-react";
 import Link from "next/link";
 import SubmitButton from "@/app/(components)/SubmitButton";
 import { FormHeader } from "@/app/(components)/FormHeader";
-import { HBLogo } from "@/app/(components)/HBLogo";
+import { MeridianLogo } from "@/app/(components)/MeridianLogo";
 
 export default function VerifyEmailForm() {
   return (
@@ -12,7 +12,7 @@ export default function VerifyEmailForm() {
 
       {/* Logo above form */}
       <div className="mb-6 flex items-center justify-center">
-        <HBLogo variant="light" size="lg" />
+        <MeridianLogo variant="light" size="lg" />
       </div>
 
       {/* Mail icon */}
@@ -27,7 +27,7 @@ export default function VerifyEmailForm() {
       <p className="text-sm text-[#64748B] mb-8 leading-relaxed">
         We&apos;ve sent a verification link to your email address. Please click the
         link to activate your{" "}
-        <span className="text-[var(--navy)] font-medium">HB Medical</span> account.
+        <span className="text-[var(--navy)] font-medium">Meridian Portal</span> account.
       </p>
 
       <div className="space-y-4">

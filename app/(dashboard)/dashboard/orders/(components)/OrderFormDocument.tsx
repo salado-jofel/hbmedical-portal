@@ -22,7 +22,7 @@ import {
   X,
   Search,
 } from "lucide-react";
-import { HBLogo } from "@/app/(components)/HBLogo";
+import { MeridianLogo } from "@/app/(components)/MeridianLogo";
 import { saveOrderForm } from "../(services)/order-write-actions";
 import {
   verifyProviderPin,
@@ -1504,7 +1504,7 @@ export function OrderFormDocument({
           {/* Left: Brand */}
           <div className="flex items-center gap-3">
             <div className="[&>span>span:last-child]:hidden shrink-0">
-              <HBLogo variant="light" size="lg" asLink={false} />
+              <MeridianLogo variant="light" size="lg" asLink={false} />
             </div>
             <div>
               <div

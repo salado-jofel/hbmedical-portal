@@ -29,7 +29,7 @@ export function BackupCodesPanel({
   function handleDownload() {
     const blob = new Blob(
       [
-        "HB Medical Portal — Backup Codes\n",
+        "Meridian Portal — Backup Codes\n",
         "================================\n\n",
         `Generated: ${new Date().toISOString()}\n\n`,
         "Each code can be used ONCE if you lose your authenticator.\n",
@@ -50,7 +50,7 @@ export function BackupCodesPanel({
     const w = window.open("", "_blank");
     if (!w) return;
     w.document.write(`
-      <html><head><title>HB Medical Backup Codes</title>
+      <html><head><title>Meridian Backup Codes</title>
       <style>
         body { font-family: monospace; padding: 40px; }
         h1 { font-family: sans-serif; }
@@ -58,7 +58,7 @@ export function BackupCodesPanel({
         .code { padding: 8px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 16px; }
         .note { font-family: sans-serif; margin-top: 30px; color: #555; max-width: 540px; }
       </style></head><body>
-      <h1>HB Medical Portal — Backup Codes</h1>
+      <h1>Meridian Portal — Backup Codes</h1>
       <p>Generated: ${new Date().toISOString()}</p>
       <div class="codes">${codes.map((c) => `<div class="code">${c}</div>`).join("")}</div>
       <p class="note">Each code can be used once if you lose access to your authenticator. Keep these somewhere only you can find — anyone holding a code can sign in if they also know your password.</p>

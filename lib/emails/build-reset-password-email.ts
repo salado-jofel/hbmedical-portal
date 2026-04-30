@@ -2,7 +2,7 @@ import { ROLE_LABELS } from "@/utils/helpers/role";
 import type { UserRole } from "@/utils/helpers/role";
 
 const LOGO_URL =
-  "https://ersdsmuybpfvgvaiwcgl.supabase.co/storage/v1/object/public/hbmedical-bucket-public/assets/hb-logo-name-2%20(1).png";
+  "https://ersdsmuybpfvgvaiwcgl.supabase.co/storage/v1/object/public/hbmedical-bucket-public/assets/meridian-logo.png";
 
 export function buildResetPasswordEmail({
   first_name,
@@ -41,13 +41,13 @@ export function buildResetPasswordEmail({
   <div class="wrapper">
     <div class="container">
       <div class="header">
-        <img src="${LOGO_URL}" alt="HB Medical" width="176" class="logo-img" />
+        <img src="${LOGO_URL}" alt="Meridian" width="176" class="logo-img" />
       </div>
       <div class="content">
-        <h1 class="h1">You've been invited to HB Medical Portal</h1>
+        <h1 class="h1">You've been invited to Meridian Portal</h1>
         <p>Hi ${first_name},</p>
         <p>
-          You have been added to the <strong>HB Medical Portal</strong> as a
+          You have been added to the <strong>Meridian Portal</strong> as a
           <strong> ${roleLabel}</strong>. Click the button below to set your
           password and get started.
         </p>
@@ -58,10 +58,10 @@ export function buildResetPasswordEmail({
         </div>
         <p>This link expires in 24 hours. If you did not expect this email, you can safely ignore it.</p>
         <p class="muted">
-          Questions? Reply to this email or contact your HB Medical admin.
+          Questions? Reply to this email or contact your Meridian admin.
         </p>
       </div>
-      <div class="footer">&copy; 2026 HB Medical Portal. Secure &amp; Confidential.</div>
+      <div class="footer">&copy; 2026 Meridian Portal. Secure &amp; Confidential.</div>
     </div>
   </div>
 </body>

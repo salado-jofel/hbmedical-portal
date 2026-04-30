@@ -17,7 +17,7 @@ import {
   Check,
   PenLine,
 } from "lucide-react";
-import { HBLogo } from "@/app/(components)/HBLogo";
+import { MeridianLogo } from "@/app/(components)/MeridianLogo";
 import { upsertOrderIVR, getOrderIVR } from "../(services)/order-ivr-actions";
 import {
   verifyProviderPin,
@@ -913,7 +913,7 @@ export function IVRFormDocument({
         <div className="flex items-start justify-between pb-3 border-b border-[#e5e5e5]">
           <div className="flex items-center gap-3">
             <div className="[&>span>span:last-child]:hidden shrink-0">
-              <HBLogo variant="light" size="lg" asLink={false} />
+              <MeridianLogo variant="light" size="lg" asLink={false} />
             </div>
             <div>
               <div

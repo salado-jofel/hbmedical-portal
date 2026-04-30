@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { Banknote, ArrowRight, LogOut, Loader2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
-import { HBLogo } from "@/app/(components)/HBLogo";
+import { MeridianLogo } from "@/app/(components)/MeridianLogo";
 import { AuthCard } from "@/app/(components)/AuthCard";
 import { createConnectOnboardingLink } from "@/app/(dashboard)/dashboard/settings/(services)/stripe-connect-actions";
 import { signOut } from "@/app/(dashboard)/dashboard/(services)/actions";
@@ -47,7 +47,7 @@ export default function PayoutsGateForm({
   return (
     <AuthCard>
       <div className="flex flex-col items-center text-center mb-6">
-        <HBLogo variant="light" size="md" asLink={false} />
+        <MeridianLogo variant="light" size="md" asLink={false} />
       </div>
 
       <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-[#EFF6FF]">
