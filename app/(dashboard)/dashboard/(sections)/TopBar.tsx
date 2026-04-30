@@ -3,10 +3,10 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useTopLoader } from "nextjs-toploader";
-import { Settings, LogOut, CheckSquare, UserPlus, ChevronDown } from "lucide-react";
+import { Settings, LogOut, CheckSquare, UserPlus, ChevronDown, ScrollText } from "lucide-react";
 import { cn } from "@/utils/utils";
 import { useAppSelector } from "@/store/hooks";
-import { HBLogo } from "@/app/(components)/HBLogo";
+import { MeridianLogo } from "@/app/(components)/MeridianLogo";
 import { NotificationBell } from "@/app/(dashboard)/(components)/NotificationBell";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ROLE_LABELS, type UserRole, isSalesRep, isAdmin, isClinicalProvider } from "@/utils/helpers/role";
@@ -45,17 +45,17 @@ export function TopBar() {
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[7px] [&>span>span:last-child]:hidden"
           style={{ background: "rgba(255,255,255,0.15)" }}
         >
-          <HBLogo variant="dark" size="sm" asLink={false} />
+          <MeridianLogo variant="dark" size="sm" asLink={false} />
         </div>
         <div>
           <p
             className="text-[15px] font-semibold leading-none text-white"
             style={{ letterSpacing: "-0.2px" }}
           >
-            HB Medical Portal
+            Meridian Portal
           </p>
           <p className="mt-[1px] text-[11px]" style={{ color: "#7fb3cc" }}>
-            hbmedicalportal.com
+            meridianportal.io
           </p>
         </div>
       </div>
@@ -163,6 +163,16 @@ export function TopBar() {
                     <UserPlus className="h-4 w-4 shrink-0" />
                     Onboarding
                   </Link>
+                  {isAdmin(role) && (
+                    <Link
+                      href="/dashboard/audit"
+                      onClick={() => setOpen(false)}
+                      className="flex w-full cursor-pointer items-center gap-2.5 rounded-[7px] px-3 py-2 text-[13px] font-medium text-[var(--navy)] transition hover:bg-[var(--bg)]"
+                    >
+                      <ScrollText className="h-4 w-4 shrink-0" />
+                      Audit Log
+                    </Link>
+                  )}
                 </div>
               )}
 

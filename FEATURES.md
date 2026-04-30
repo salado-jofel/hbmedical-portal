@@ -1,4 +1,4 @@
-# HB Medical Portal — Feature Reference
+# Meridian Portal — Feature Reference
 
 > Complete audit of every feature in the frontend codebase.
 > Generated: 2026-04-08. Read against actual source files before acting on specific line numbers or function signatures — this document is a point-in-time snapshot.
@@ -48,7 +48,7 @@
 ## 1. Products
 
 ### Purpose
-Shared product catalog for HB Medical. Admins manage products; all authenticated users can view them. Products are referenced by order line items (with name/SKU/price snapshotted at order time).
+Shared product catalog for Meridian. Admins manage products; all authenticated users can view them. Products are referenced by order line items (with name/SKU/price snapshotted at order time).
 
 ### User Roles
 
@@ -116,7 +116,7 @@ Shared product catalog for HB Medical. Admins manage products; all authenticated
 ## 2. Orders
 
 ### Purpose
-Core clinical workflow for HB Medical. Clinic staff create wound-care orders; they go through a multi-step approval and fulfillment pipeline before being shipped to the patient. Supports two payment paths (Stripe checkout or Net-30 invoice).
+Core clinical workflow for Meridian. Clinic staff create wound-care orders; they go through a multi-step approval and fulfillment pipeline before being shipped to the patient. Supports two payment paths (Stripe checkout or Net-30 invoice).
 
 ### User Roles
 
@@ -362,7 +362,7 @@ Opened from kanban card click or `open-order-modal` custom event.
 ## 3. Accounts
 
 ### Purpose
-CRM-style account management for HB Medical's clinic relationships. Each "account" is a clinic facility. Admins manage all accounts; sales reps manage their assigned clinics.
+CRM-style account management for Meridian's clinic relationships. Each "account" is a clinic facility. Admins manage all accounts; sales reps manage their assigned clinics.
 
 ### User Roles
 
@@ -1163,7 +1163,7 @@ Deleted
 
 | Role | Side | Description |
 |------|------|-------------|
-| `admin` | distribution | HB Medical admin — full access |
+| `admin` | distribution | Meridian admin — full access |
 | `sales_representative` | distribution | Field rep — accounts, tasks, onboarding |
 | `support_staff` | distribution | Tech support — accounts, orders |
 | `clinical_provider` | clinic | Physician — can create and sign orders |

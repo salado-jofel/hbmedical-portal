@@ -431,7 +431,7 @@ async function firePinChangedEmail(
       ipAddress,
       userAgent,
       method,
-      appUrl: process.env.NEXT_PUBLIC_APP_URL ?? "https://hbmedicalportal.com",
+      appUrl: process.env.NEXT_PUBLIC_APP_URL ?? "https://meridianportal.io",
     });
   } catch (err) {
     console.error("[firePinChangedEmail]", err);

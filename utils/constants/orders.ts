@@ -145,7 +145,7 @@ export const WOUND_TYPES = [
 
 export const REQUIRED_DOC_TYPES = [
   { type: "facesheet",        label: "Facesheet" },
-  { type: "additional_ivr",   label: "Additional IVR Info" },
+  { type: "additional_ivr",   label: "IVR Form" },
   { type: "clinical_docs",    label: "Clinical Docs" },
   { type: "form_1500",        label: "1500 Form" },
   { type: "order_form",       label: "Order Form" },
@@ -156,7 +156,7 @@ export const ALL_DOC_TYPES: Array<{ type: string; label: string }> = [
   { type: "facesheet",        label: "Facesheet" },
   { type: "clinical_docs",    label: "Clinical Docs" },
   { type: "order_form",       label: "Order Form" },
-  { type: "additional_ivr",   label: "Additional IVR Info" },
+  { type: "additional_ivr",   label: "IVR Form" },
   { type: "form_1500",        label: "1500 Form" },
   { type: "delivery_invoice", label: "Invoice" },
   { type: "wound_pictures",   label: "Wound Pictures" },
@@ -178,6 +178,94 @@ export const INVOICE_VISIBLE_STATUSES = new Set<string>([
 export function isInvoiceVisibleForStatus(status: string | null | undefined): boolean {
   return !!status && INVOICE_VISIBLE_STATUSES.has(status);
 }
+
+// Items (order_items) are editable only before the order has moved into
+// manufacturer review. Once an admin/reviewer is looking at it, the product
+// list is locked — any change requires the admin to bounce it back to
+// `additional_info_needed`, which re-opens editing.
+export const ITEMS_EDITABLE_STATUSES = new Set<string>([
+  "draft",
+  "pending_signature",
+  "additional_info_needed",
+]);
+
+export function isItemsEditable(status: string | null | undefined): boolean {
+  return !!status && ITEMS_EDITABLE_STATUSES.has(status);
+}
+
+// Non-admin roles lose all edit rights once the admin has accepted the
+// order (manufacturer_review onwards). The single exception is `shipped`,
+// where the provider still needs to capture the patient's proof-of-delivery
+// signature on the Invoice tab. Once the patient has signed, everything
+// locks — the signature IS the point-of-no-return.
+const POST_APPROVAL_STATUSES = new Set<string>([
+  "manufacturer_review",
+  "approved",
+  "shipped",
+  "delivered",
+  "canceled",
+]);
+
+/**
+ * True when all fields + actions on the order must be read-only for
+ * non-admin roles. Admin bypasses this entirely (they can always edit).
+ *
+ * Semantics:
+ *   - Patient signed → fully locked regardless of status.
+ *   - Status ≥ manufacturer_review → locked.
+ *   - Otherwise editable.
+ */
+export function isOrderFullyLocked(
+  status: string | null | undefined,
+  patientSignedAt: string | null | undefined,
+  isAdmin: boolean,
+): boolean {
+  if (isAdmin) return false;
+  if (patientSignedAt) return true;
+  return !!status && POST_APPROVAL_STATUSES.has(status);
+}
+
+/**
+ * Gates the "Capture Patient Signature" (and Recapture) affordance on the
+ * Invoice tab. Patient signing is a clinic-side action — the clinical
+ * provider hands the device to the patient at delivery, or the clinical
+ * staff handles it on the provider's behalf. Admin / support / sales-rep
+ * are explicitly NOT allowed to capture, even though admin bypasses other
+ * lock rules: the signature is HIPAA-grade proof-of-delivery and must
+ * originate from someone in the patient's care chain.
+ *
+ * Applies to both first-time capture and re-capture: clinic users can fix
+ * a bad signature while the order is still in `shipped`. Once admin flips
+ * to `delivered`, the status gate hides the affordance.
+ */
+export function canCapturePatientSignature(args: {
+  status: string | null | undefined;
+  role: string | null | undefined;
+  /** Reserved for symmetry with other gate helpers — admin still cannot
+   *  capture patient signatures, so this argument is intentionally ignored. */
+  isAdmin: boolean;
+}): boolean {
+  void args.isAdmin;
+  if (args.role !== "clinical_provider" && args.role !== "clinical_staff") {
+    return false;
+  }
+  return args.status === "shipped";
+}
+
+// Allowlist for server-side order sort column. Exported from a non-"use
+// server" module so both the client (as allowedSorts) and the server action
+// (as a sanitize target) can import it. Keep in sync with the sortable
+// columns in OrdersTable / ClinicOrdersTable.
+export const ORDER_SORT_COLUMNS = [
+  "updated_at",
+  "placed_at",
+  "created_at",
+  "order_number",
+  "order_status",
+  "date_of_service",
+  "payment_status",
+] as const;
+export type OrderSortColumn = (typeof ORDER_SORT_COLUMNS)[number];
 
 export const ORDER_STATUS_FILTER_OPTIONS: { value: string; label: string }[] = [
   { value: "all",                    label: "All Statuses" },

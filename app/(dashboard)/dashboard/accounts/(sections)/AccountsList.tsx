@@ -8,11 +8,12 @@ import { isSalesRep } from "@/utils/helpers/role";
 import type { UserRole } from "@/utils/helpers/role";
 import { AccountsFilters } from "../(components)/AccountsFilters";
 import { AccountsKpiRow } from "./AccountsKpiRow";
-import { DataTable } from "@/app/(components)/DataTable";
 import { EmptyState } from "@/app/(components)/EmptyState";
+import { Pagination } from "@/app/(components)/Pagination";
+import { SortableHeader } from "@/app/(components)/SortableHeader";
+import { TableBusyBar } from "@/app/(components)/TableBusyBar";
 import { cn } from "@/utils/utils";
 import { formatDate } from "@/utils/helpers/formatter";
-import type { TableColumn } from "@/utils/interfaces/table-column";
 import type {
   IRepProfile,
   AccountStatus,
@@ -21,6 +22,11 @@ import type {
   IAccountWithMetrics,
 } from "@/utils/interfaces/accounts";
 import { AccountTierBadge } from "../(components)/AccountTierBadge";
+import { useTableRealtimeRefresh } from "@/utils/hooks/useOrderRealtime";
+import { useListParams } from "@/utils/hooks/useListParams";
+import { useBriefBusy } from "@/utils/hooks/useBriefBusy";
+import { ACCOUNT_SORT_COLUMNS } from "@/utils/constants/accounts-list";
+import { pageToRange } from "@/utils/interfaces/paginated";
 
 export function AccountsList({ salesReps, isAdmin, period }: {
   salesReps: IRepProfile[];
@@ -34,17 +40,53 @@ export function AccountsList({ salesReps, isAdmin, period }: {
   const userId = useAppSelector((s) => s.dashboard.userId);
   const isRep = isSalesRep(role);
 
+  // Search is ephemeral (PHI-sensitive — account names / contacts should
+  // not land in URL / browser history / logs).
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<AccountStatus | "all">("all");
-  const [repFilter, setRepFilter] = useState<string>("all");
-  const [ownerFilter, setOwnerFilter] = useState<"all" | "mine" | "sub_reps">("all");
-  const [tierFilter, setTierFilter] = useState<AccountTier | "all">("all");
+
+  // URL-backed list params (pagination / sort / structured filters).
+  // Tier is server-wide-ranked so filter/sort on tier is done post-hydration
+  // against the full accounts list — we only paginate the visible rows.
+  const listParams = useListParams<
+    typeof ACCOUNT_SORT_COLUMNS,
+    readonly ["status", "tier", "rep", "owner"]
+  >({
+    defaultSort: "created_at",
+    defaultDir: "desc",
+    allowedSorts: ACCOUNT_SORT_COLUMNS,
+    filterKeys: ["status", "tier", "rep", "owner"] as const,
+  });
+
+  // Mirror URL filters into the existing AccountsFilters control state so
+  // the filter chips look the same as before.
+  const statusFilter = (listParams.filters.status as AccountStatus | null) ?? "all";
+  const repFilter = listParams.filters.rep ?? "all";
+  const tierFilter = (listParams.filters.tier as AccountTier | null) ?? "all";
+  const ownerFilter = (listParams.filters.owner as "mine" | "sub_reps" | null) ?? "all";
+  const setStatusFilter = (v: AccountStatus | "all") =>
+    listParams.setFilter("status", v === "all" ? null : v);
+  const setRepFilter = (v: string) =>
+    listParams.setFilter("rep", v === "all" ? null : v);
+  const setTierFilter = (v: AccountTier | "all") =>
+    listParams.setFilter("tier", v === "all" ? null : v);
+  const setOwnerFilter = (v: "all" | "mine" | "sub_reps") =>
+    listParams.setFilter("owner", v === "all" ? null : v);
+
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
+
+  // Account list is collaborative — admins approve new facilities, reps
+  // see assignments change, status flips between active/pending. Subscribe
+  // to facilities (the row itself) and profiles (rep assignments).
+  useTableRealtimeRefresh("facilities");
+  useTableRealtimeRefresh("profiles");
 
   const myCount = isRep ? accounts.filter((a) => a.assigned_rep === userId).length : 0;
   const subRepCount = isRep ? accounts.filter((a) => a.assigned_rep && a.assigned_rep !== userId).length : 0;
 
+  // Full filtered view (pre-pagination) — needed for "X of Y" totals and so
+  // tier/filter interactions compose correctly with the global tier ranking
+  // already computed in Redux.
   const filtered = useMemo(() => {
     let result = accounts;
     if (isRep && ownerFilter === "mine") result = result.filter((a) => a.assigned_rep === userId);
@@ -65,79 +107,55 @@ export function AccountsList({ salesReps, isAdmin, period }: {
     return result;
   }, [accounts, search, statusFilter, repFilter, tierFilter, isAdmin, isRep, ownerFilter, userId]);
 
+  // Apply sort. Tier sort uses A/B/C ordering. Revenue/count sort is
+  // numeric; name/status is locale-aware.
+  const sorted = useMemo(() => {
+    const asc = listParams.dir === "asc" ? 1 : -1;
+    const tierRank: Record<string, number> = { A: 0, B: 1, C: 2 };
+    return [...filtered].sort((a, b) => {
+      let primary = 0;
+      switch (listParams.sort) {
+        case "name":
+          primary = a.name.localeCompare(b.name) * asc;
+          break;
+        case "status":
+          primary = (a.status ?? "").localeCompare(b.status ?? "") * asc;
+          break;
+        case "tier":
+          primary = ((tierRank[a.tier] ?? 3) - (tierRank[b.tier] ?? 3)) * asc;
+          break;
+        case "delivered_revenue":
+          primary = ((a.delivered_revenue ?? 0) - (b.delivered_revenue ?? 0)) * asc;
+          break;
+        case "signed_count":
+          primary = ((a.signed_count ?? 0) - (b.signed_count ?? 0)) * asc;
+          break;
+        case "created_at":
+          primary =
+            (new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) * asc;
+          break;
+      }
+      return primary !== 0 ? primary : a.name.localeCompare(b.name);
+    });
+  }, [filtered, listParams.sort, listParams.dir]);
+
+  // Clamp page when filters shrink the dataset below the current page.
+  const pageCount = Math.max(1, Math.ceil(sorted.length / listParams.pageSize));
+  const clampedPage = Math.min(listParams.page, pageCount);
+  const { from, to } = pageToRange(clampedPage, listParams.pageSize);
+  const pageRows = sorted.slice(from, to + 1);
+
+  // listParams.isPending flips synchronously on URL-changing actions
+  // (sort / filter / page) so the bar appears the same render as the click.
+  // useBriefBusy on `search` covers the non-URL-backed search input.
+  const searchBusy = useBriefBusy([search], 250);
+  const isBusy = listParams.isPending || searchBusy;
+
   function handlePeriodChange(newPeriod: AccountPeriod) {
     const params = new URLSearchParams(searchParams?.toString() ?? "");
     params.set("period", newPeriod);
     router.push(`/dashboard/accounts?${params.toString()}`);
   }
-
-  const columns: TableColumn<IAccountWithMetrics>[] = [
-    {
-      key: "account",
-      label: "Account / Provider",
-      render: (a) => (
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-[var(--navy)] truncate">{a.name}</p>
-          <p className="text-xs text-[var(--text3)] truncate mt-0.5">{a.city}, {a.state}</p>
-        </div>
-      ),
-    },
-    {
-      key: "tier",
-      label: "Tier",
-      headerClassName: "text-center",
-      cellClassName: "text-center",
-      render: (a) => (
-        <div className="inline-flex">
-          <AccountTierBadge tier={a.tier} />
-        </div>
-      ),
-    },
-    {
-      key: "signed",
-      label: "Signed",
-      headerClassName: "text-right",
-      cellClassName: "text-right",
-      render: (a) => {
-        const n = a.signed_count ?? 0;
-        return n > 0
-          ? <span className="text-sm text-[var(--navy)]">{n}</span>
-          : <span className="text-sm text-[var(--text3)]">—</span>;
-      },
-    },
-    // Avg/Day, Avg/Week, 1 Year Est. columns removed — they were statistician
-    // noise (mostly zeros with no actionable insight for a sales rep).
-    {
-      key: "delivered",
-      label: "Delivered",
-      headerClassName: "text-right",
-      cellClassName: "text-right",
-      render: (a) => {
-        const n = a.delivered_count ?? 0;
-        return n > 0
-          ? <span className="text-sm font-medium text-[var(--green)]">{n}</span>
-          : <span className="text-sm text-[var(--text3)]">—</span>;
-      },
-    },
-    {
-      key: "invited_by",
-      label: "Invited By",
-      headerClassName: "hidden lg:table-cell",
-      cellClassName: "hidden lg:table-cell",
-      render: (a) => (
-        <span className="text-sm text-[var(--text2)]">{a.invited_by_name ?? "—"}</span>
-      ),
-    },
-    {
-      key: "onboarded",
-      label: "Onboarded",
-      headerClassName: "hidden xl:table-cell",
-      cellClassName: "hidden xl:table-cell",
-      render: (a) => (
-        <span className="text-sm text-[var(--text2)]">{formatDate(a.onboarded_at)}</span>
-      ),
-    },
-  ];
 
   return (
     <div className="space-y-4">
@@ -199,23 +217,151 @@ export function AccountsList({ salesReps, isAdmin, period }: {
           message="No sub-rep accounts"
           description="Accounts assigned to your sub-representatives will appear here"
         />
+      ) : pageRows.length === 0 ? (
+        <EmptyState
+          icon={<Building2 className="w-10 h-10 stroke-1" />}
+          message="No accounts found"
+          description="Adjust your filters."
+        />
       ) : (
-        <>
-          <div className="overflow-hidden rounded-[var(--r)] border border-[var(--border)] bg-[var(--surface)]">
-            <DataTable
-              columns={columns}
-              data={filtered}
-              keyExtractor={(a) => a.id}
-              emptyMessage="No accounts found"
-              emptyIcon={<Building2 className="w-10 h-10 stroke-1" />}
-              onRowClick={(a) => router.push(`/dashboard/accounts/${a.id}`)}
-              rowClassName="group"
-            />
+        <div className="overflow-hidden rounded-[var(--r)] border border-[var(--border)] bg-[var(--surface)]">
+          <TableBusyBar busy={isBusy} />
+          <div className={cn("overflow-x-auto transition-opacity", isBusy && "opacity-70")}>
+            <table className="w-full text-sm text-left">
+              <thead>
+                <tr className="bg-[var(--bg)] border-b border-[var(--border)]">
+                  <th className="px-4 py-[9px]">
+                    <SortableHeader
+                      label="Account / Provider"
+                      column="name"
+                      currentSort={listParams.sort}
+                      currentDir={listParams.dir}
+                      onToggle={(c) =>
+                        listParams.toggleSort(
+                          c as typeof ACCOUNT_SORT_COLUMNS[number],
+                        )
+                      }
+                    />
+                  </th>
+                  <th className="px-4 py-[9px]">
+                    <SortableHeader
+                      label="Tier"
+                      column="tier"
+                      currentSort={listParams.sort}
+                      currentDir={listParams.dir}
+                      onToggle={(c) =>
+                        listParams.toggleSort(
+                          c as typeof ACCOUNT_SORT_COLUMNS[number],
+                        )
+                      }
+                      align="center"
+                    />
+                  </th>
+                  <th className="px-4 py-[9px]">
+                    <SortableHeader
+                      label="Signed"
+                      column="signed_count"
+                      currentSort={listParams.sort}
+                      currentDir={listParams.dir}
+                      onToggle={(c) =>
+                        listParams.toggleSort(
+                          c as typeof ACCOUNT_SORT_COLUMNS[number],
+                        )
+                      }
+                      align="right"
+                    />
+                  </th>
+                  <th className="px-4 py-[9px]">
+                    <SortableHeader
+                      label="Delivered"
+                      column="delivered_revenue"
+                      currentSort={listParams.sort}
+                      currentDir={listParams.dir}
+                      onToggle={(c) =>
+                        listParams.toggleSort(
+                          c as typeof ACCOUNT_SORT_COLUMNS[number],
+                        )
+                      }
+                      align="right"
+                    />
+                  </th>
+                  <th className="px-4 py-[9px] text-[10px] uppercase tracking-[0.6px] font-semibold text-[var(--text3)] hidden lg:table-cell">
+                    Invited By
+                  </th>
+                  <th className="px-4 py-[9px] hidden xl:table-cell">
+                    <SortableHeader
+                      label="Onboarded"
+                      column="created_at"
+                      currentSort={listParams.sort}
+                      currentDir={listParams.dir}
+                      onToggle={(c) =>
+                        listParams.toggleSort(
+                          c as typeof ACCOUNT_SORT_COLUMNS[number],
+                        )
+                      }
+                    />
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {pageRows.map((a) => (
+                  <tr
+                    key={a.id}
+                    onClick={() => router.push(`/dashboard/accounts/${a.id}`)}
+                    className="group cursor-pointer border-b border-[var(--border)] last:border-0 transition-colors hover:bg-[var(--bg)]"
+                  >
+                    <td className="px-4 py-2.5 min-w-0">
+                      <p className="text-sm font-medium text-[var(--navy)] truncate">
+                        {a.name}
+                      </p>
+                      <p className="text-xs text-[var(--text3)] truncate mt-0.5">
+                        {a.city}, {a.state}
+                      </p>
+                    </td>
+                    <td className="px-4 py-2.5 text-center">
+                      <div className="inline-flex">
+                        <AccountTierBadge tier={a.tier} />
+                      </div>
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      {(a.signed_count ?? 0) > 0 ? (
+                        <span className="text-sm text-[var(--navy)]">{a.signed_count}</span>
+                      ) : (
+                        <span className="text-sm text-[var(--text3)]">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      {(a.delivered_count ?? 0) > 0 ? (
+                        <span className="text-sm font-medium text-[var(--green)]">
+                          {a.delivered_count}
+                        </span>
+                      ) : (
+                        <span className="text-sm text-[var(--text3)]">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5 hidden lg:table-cell">
+                      <span className="text-sm text-[var(--text2)]">
+                        {a.invited_by_name ?? "—"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 hidden xl:table-cell">
+                      <span className="text-sm text-[var(--text2)]">
+                        {formatDate(a.onboarded_at)}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-          <p className="text-xs text-[var(--text3)] text-right">
-            {filtered.length} of {accounts.length} account{accounts.length !== 1 ? "s" : ""}
-          </p>
-        </>
+          <Pagination
+            page={clampedPage}
+            pageSize={listParams.pageSize}
+            total={sorted.length}
+            onPageChange={listParams.setPage}
+            onPageSizeChange={listParams.setPageSize}
+          />
+        </div>
       )}
     </div>
   );

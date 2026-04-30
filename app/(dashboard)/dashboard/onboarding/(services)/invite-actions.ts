@@ -190,7 +190,7 @@ export async function generateInviteToken(
       .select("first_name, last_name")
       .eq("id", user.id)
       .single();
-    const inviterName = profile ? `${profile.first_name} ${profile.last_name}` : "HB Medical";
+    const inviterName = profile ? `${profile.first_name} ${profile.last_name}` : "Meridian";
 
     const { data: inserted, error } = await supabase
       .from(INVITE_TOKENS_TABLE)
@@ -316,7 +316,7 @@ export async function resendInviteEmail(
       .single();
     const inviterName = profile
       ? `${profile.first_name} ${profile.last_name}`
-      : "HB Medical";
+      : "Meridian";
 
     const inviteUrl = `${getBaseUrl()}/invite/${token.token}`;
 
@@ -416,7 +416,7 @@ export async function generateClinicMemberInvite(
       .single();
     const inviterName = providerProfile
       ? `${providerProfile.first_name} ${providerProfile.last_name}`
-      : "HB Medical";
+      : "Meridian";
 
     const expiresAt = new Date(Date.now() + expires_in_days * 24 * 60 * 60 * 1000).toISOString();
 

@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { User, Users, ShieldCheck, ClipboardList, Banknote } from "lucide-react";
+import { User, Users, ShieldCheck, ClipboardList, Banknote, KeyRound } from "lucide-react";
 import { cn } from "@/utils/utils";
 import { ProfileTab } from "../(components)/ProfileTab";
 import { TeamTab } from "../(components)/TeamTab";
 import { CredentialsTab } from "../(components)/CredentialsTab";
 import { EnrollmentTab } from "../(components)/EnrollmentTab";
 import { PayoutsTab } from "../(components)/PayoutsTab";
+import { MfaTab } from "../(components)/MfaTab";
 import type { Profile } from "@/utils/interfaces/profiles";
 import type { IFacilityMember } from "@/utils/interfaces/facility-members";
 import type { IProviderCredentials } from "@/utils/interfaces/provider-credentials";
@@ -20,7 +21,7 @@ import type {
 } from "@/app/(dashboard)/dashboard/settings/(services)/actions";
 import type { ConnectStatus, LastPayout } from "@/app/(dashboard)/dashboard/settings/(services)/stripe-connect-actions";
 
-type TabKey = "profile" | "team" | "credentials" | "enrollment" | "payouts";
+type TabKey = "profile" | "team" | "credentials" | "enrollment" | "payouts" | "security";
 
 interface Tab {
   key: TabKey;
@@ -43,6 +44,8 @@ interface SettingsTabsProps {
   showPayouts: boolean;
   connectStatus: ConnectStatus | null;
   lastPayout?: LastPayout | null;
+  /** True for roles where MFA is required by HIPAA gating (admin, provider). */
+  mfaMandatory: boolean;
   initialTab?: TabKey;
   enrollmentData: FacilityEnrollmentData | null;
   facilityName: string;
@@ -70,6 +73,7 @@ export function SettingsTabs({
   showPayouts,
   connectStatus,
   lastPayout = null,
+  mfaMandatory,
   initialTab,
   enrollmentData,
   facilityName,
@@ -95,6 +99,9 @@ export function SettingsTabs({
     ...(showPayouts
       ? [{ key: "payouts" as TabKey, label: "Payouts", icon: Banknote }]
       : []),
+    // Security tab — TOTP enrollment. Available to every role; mandatory
+    // for those listed in the dashboard MFA gate.
+    { key: "security" as TabKey, label: "Security", icon: KeyRound },
   ];
 
   const [active, setActive] = useState<TabKey>(initialTab ?? "profile");
@@ -165,6 +172,9 @@ export function SettingsTabs({
             <PayoutsTab status={connectStatus} lastPayout={lastPayout} />
           </div>
         )}
+        <div hidden={active !== "security"}>
+          <MfaTab mandatory={mfaMandatory} />
+        </div>
       </div>
     </div>
   );

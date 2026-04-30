@@ -69,7 +69,7 @@ export async function sendNet30InvoiceCreatedEmail({
   const subject = `Net 30 invoice ready for order #${orderNumber || orderId}`;
 
   const logoUrl =
-    "https://ersdsmuybpfvgvaiwcgl.supabase.co/storage/v1/object/public/hbmedical-bucket-public/assets/hb-logo-name-2%20(1).png";
+    "https://ersdsmuybpfvgvaiwcgl.supabase.co/storage/v1/object/public/hbmedical-bucket-public/assets/meridian-logo.png";
 
   const html = `
 <!DOCTYPE html>
@@ -215,7 +215,7 @@ export async function sendNet30InvoiceCreatedEmail({
       <div class="header">
         <img
           src="${logoUrl}"
-          alt="HB Medical"
+          alt="Meridian"
           width="176"
           class="logo-img"
         />
@@ -226,7 +226,7 @@ export async function sendNet30InvoiceCreatedEmail({
 
         <p>
           A new <strong>Net 30 invoice</strong> has been created for your order with
-          <strong>HB Medical Portal</strong>.
+          <strong>Meridian Portal</strong>.
         </p>
 
         <div class="info-box">
@@ -282,12 +282,12 @@ export async function sendNet30InvoiceCreatedEmail({
         </p>
 
         <p class="muted">
-          If you have any questions about this invoice, please contact the HB Medical team.
+          If you have any questions about this invoice, please contact the Meridian team.
         </p>
       </div>
 
       <div class="footer">
-        &copy; 2026 HB Medical Portal. Secure & Confidential.
+        &copy; 2026 Meridian Portal. Secure & Confidential.
       </div>
     </div>
   </div>

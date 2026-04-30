@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Loader2, Building2, Calendar, Package, Receipt, FileText } from "lucide-react";
 import {
   Dialog,
@@ -15,6 +15,7 @@ import {
 } from "@/app/(dashboard)/dashboard/orders/(services)/order-payment-actions";
 import { formatAmount, formatDate } from "@/utils/helpers/formatter";
 import { getDisplayOrderStatus } from "@/utils/helpers/orders";
+import { useSingleOrderRealtime } from "@/utils/hooks/useOrderRealtime";
 import type { DashboardOrder } from "@/utils/interfaces/orders";
 import type { IPayment, IInvoice } from "@/utils/interfaces/orders";
 
@@ -39,6 +40,24 @@ export default function OrderQuickView({ orderId, onClose }: OrderQuickViewProps
   const [invoice, setInvoice] = useState<IInvoice | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // Shared fetch — used for initial load and realtime refresh. Wrapped in
+  // useCallback so the realtime hook's callback ref stays stable.
+  const refetch = useCallback(async (id: string, withSpinner: boolean) => {
+    if (withSpinner) setLoading(true);
+    try {
+      const [o, p, i] = await Promise.all([
+        getOrderById(id),
+        getOrderPayment(id),
+        getOrderInvoice(id),
+      ]);
+      setOrder(o);
+      setPayment(p);
+      setInvoice(i);
+    } finally {
+      if (withSpinner) setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!orderId) {
       setOrder(null);
@@ -46,19 +65,15 @@ export default function OrderQuickView({ orderId, onClose }: OrderQuickViewProps
       setInvoice(null);
       return;
     }
-    setLoading(true);
-    Promise.all([
-      getOrderById(orderId),
-      getOrderPayment(orderId),
-      getOrderInvoice(orderId),
-    ])
-      .then(([o, p, i]) => {
-        setOrder(o);
-        setPayment(p);
-        setInvoice(i);
-      })
-      .finally(() => setLoading(false));
-  }, [orderId]);
+    refetch(orderId, true);
+  }, [orderId, refetch]);
+
+  // Realtime: keep this dialog in sync when someone else updates the order
+  // (status change, payment received, shipment added, etc). Silent refetch
+  // — no spinner — so the dialog doesn't flicker.
+  useSingleOrderRealtime(orderId ?? null, () => {
+    if (orderId) refetch(orderId, false);
+  });
 
   const displayStatus = order ? getDisplayOrderStatus(order) : null;
   const statusCfg = displayStatus ? STATUS_LABEL[displayStatus] ?? STATUS_LABEL.pending : null;

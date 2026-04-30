@@ -8,7 +8,7 @@ import SubmitButton from "@/app/(components)/SubmitButton";
 import ErrorAlert from "@/app/(components)/ErrorAlert";
 import { AuthField } from "@/app/(components)/AuthField";
 import { PasswordToggle } from "@/app/(components)/PasswordToggle";
-import { HBLogo } from "@/app/(components)/HBLogo";
+import { MeridianLogo } from "@/app/(components)/MeridianLogo";
 import { validatePasswordsMatch } from "@/utils/validators/signup";
 
 export default function SetPasswordForm() {
@@ -134,7 +134,7 @@ export default function SetPasswordForm() {
     return (
       <div className="bg-white rounded-2xl shadow-[0_8px_40px_rgba(0,0,0,0.1)] border border-[#E2E8F0] p-8 w-full max-w-md select-none flex flex-col items-center justify-center gap-4">
         <div className="mb-2 flex items-center justify-center">
-          <HBLogo variant="light" size="lg" />
+          <MeridianLogo variant="light" size="lg" />
         </div>
         <Loader2 className="w-8 h-8 animate-spin text-[var(--navy)]" />
         <p className="text-sm text-[#64748B]">Loading...</p>
@@ -147,7 +147,7 @@ export default function SetPasswordForm() {
     return (
       <div className="bg-white rounded-2xl shadow-[0_8px_40px_rgba(0,0,0,0.1)] border border-[#E2E8F0] p-8 w-full max-w-md select-none text-center">
         <div className="mb-6 flex items-center justify-center">
-          <HBLogo variant="light" size="lg" />
+          <MeridianLogo variant="light" size="lg" />
         </div>
 
         <div className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-6">
@@ -183,12 +183,12 @@ export default function SetPasswordForm() {
     <div className="bg-white rounded-2xl shadow-[0_8px_40px_rgba(0,0,0,0.1)] border border-[#E2E8F0] p-8 w-full max-w-md select-none">
       {/* Logo */}
       <div className="mb-6 flex items-center justify-center">
-        <HBLogo variant="light" size="lg" />
+        <MeridianLogo variant="light" size="lg" />
       </div>
 
       <h2 className="text-2xl font-bold text-[#0F172A] text-center">Set Your Password</h2>
       <p className="text-sm text-[#64748B] text-center mt-1.5 mb-8">
-        Welcome to HB Medical Portal. Create your password to get started.
+        Welcome to Meridian Portal. Create your password to get started.
       </p>
 
       <form onSubmit={handleSubmit} className="space-y-5">

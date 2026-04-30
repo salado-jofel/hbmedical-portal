@@ -21,7 +21,7 @@ import { useAppSelector, useAppDispatch } from "@/store/hooks";
 import { SidebarNavItem, type NavItemDef } from "../(components)/SidebarNavItem";
 import { SidebarUserCard } from "@/app/(components)/SidebarUserCard";
 import { NotificationBell } from "@/app/(dashboard)/(components)/NotificationBell";
-import { HBLogo } from "@/app/(components)/HBLogo";
+import { MeridianLogo } from "@/app/(components)/MeridianLogo";
 import SubmitButton from "@/app/(components)/SubmitButton";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { signOut } from "../(services)/actions";
@@ -68,7 +68,8 @@ export const NAV_GROUPS: NavGroupDef[] = [
         icon: FolderOpen,
         label: "Resources",
         href: "/dashboard/resources",
-        visible: (role) => isAdmin(role) || isSalesRep(role),
+        visible: (role) =>
+          isAdmin(role) || isSalesRep(role) || isClinicalProvider(role),
       },
     ],
   },
@@ -79,7 +80,11 @@ export const NAV_GROUPS: NavGroupDef[] = [
         icon: ShoppingCart,
         label: "Orders",
         href: "/dashboard/orders",
-        visible: (role) => isClinicalProvider(role) || isClinicalStaff(role),
+        visible: (role) =>
+          isClinicalProvider(role) ||
+          isClinicalStaff(role) ||
+          isAdmin(role) ||
+          isSupport(role),
       },
     ],
   },
@@ -239,12 +244,12 @@ export function Sidebar() {
           )}
         >
           {/*
-            Single HBLogo — text span hidden via CSS selector when collapsed.
-            HBLogo renders: <span.flex.gap-2.5> <svg/> <span>HB Medical</span> </span>
+            Single MeridianLogo — text span hidden via CSS selector when collapsed.
+            MeridianLogo renders: <span.flex.gap-2.5> <svg/> <span>MERIDIAN</span> </span>
             [&>span>span:last-child]:hidden targets that inner text span.
           */}
           <div className={cn(collapsed && "[&>span>span:last-child]:hidden")}>
-            <HBLogo
+            <MeridianLogo
               variant="light"
               size={collapsed ? "sm" : "md"}
               asLink={false}

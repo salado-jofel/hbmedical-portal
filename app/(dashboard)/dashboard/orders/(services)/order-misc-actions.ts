@@ -19,7 +19,11 @@ import {
   getUserFacilityId,
   insertOrderHistory,
   createNotifications,
+  generateOrderPDFs,
 } from "./_shared";
+import { isItemsEditable } from "@/utils/constants/orders";
+import { safeLogError } from "@/lib/logging/safe-log";
+import { requireOrderAccess } from "@/lib/supabase/order-access";
 
 /* -------------------------------------------------------------------------- */
 /* addShippingInfo                                                            */
@@ -67,7 +71,7 @@ export async function addShippingInfo(
     });
 
     if (shipErr) {
-      console.error("[addShippingInfo] shipments insert:", JSON.stringify(shipErr));
+      safeLogError("addShippingInfo", shipErr, { phase: "shipments insert", orderId });
       // Non-fatal, continue
     }
 
@@ -83,7 +87,7 @@ export async function addShippingInfo(
       .eq("id", orderId);
 
     if (error) {
-      console.error("[addShippingInfo]", JSON.stringify(error));
+      safeLogError("addShippingInfo", error, { orderId });
       return { success: false, error: "Failed to update order shipping info." };
     }
 
@@ -141,8 +145,12 @@ export async function addOrderItems(
       .maybeSingle();
 
     if (!order) return { success: false, error: "Order not found." };
-    if (order.order_status !== "draft") {
-      return { success: false, error: "Products can only be added to draft orders." };
+    if (!isItemsEditable(order.order_status)) {
+      return {
+        success: false,
+        error:
+          "Products can only be added while the order is a draft, awaiting signature, or in Needs More Info.",
+      };
     }
 
     const itemPayloads = items.map((item) => ({
@@ -162,7 +170,7 @@ export async function addOrderItems(
     const { error } = await adminClient.from("order_items").insert(itemPayloads);
 
     if (error) {
-      console.error("[addOrderItems]", JSON.stringify(error));
+      safeLogError("addOrderItems", error, { orderId });
       return { success: false, error: "Failed to add products." };
     }
 
@@ -175,10 +183,14 @@ export async function addOrderItems(
       userId,
       items.map((i) => `${i.product_name} ×${i.quantity}`).join(", "),
     );
+    // Keep the invoice PDF in sync with the current order items.
+    generateOrderPDFs(orderId, ["delivery_invoice"]).catch((err) =>
+      safeLogError("addOrderItems", err, { phase: "invoice PDF regen", orderId }),
+    );
     revalidatePath(ORDERS_PATH);
     return { success: true, error: null };
   } catch (err) {
-    console.error("[addOrderItems] unexpected:", err);
+    safeLogError("addOrderItems", err, { orderId });
     return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
   }
 }
@@ -207,8 +219,12 @@ export async function updateOrderItemQuantity(
     if (!item) return { success: false, error: "Item not found." };
     const rawOrders = (item as { orders: unknown }).orders;
     const orderRecord = Array.isArray(rawOrders) ? rawOrders[0] : rawOrders;
-    if ((orderRecord as { order_status: string } | null)?.order_status !== "draft") {
-      return { success: false, error: "Can only edit items on draft orders." };
+    const status = (orderRecord as { order_status: string } | null)?.order_status;
+    if (!isItemsEditable(status)) {
+      return {
+        success: false,
+        error: "Items are locked once the order moves into manufacturer review or beyond.",
+      };
     }
 
     const { error } = await adminClient
@@ -217,15 +233,18 @@ export async function updateOrderItemQuantity(
       .eq("id", itemId);
 
     if (error) {
-      console.error("[updateOrderItemQuantity]", JSON.stringify(error));
+      safeLogError("updateOrderItemQuantity", error, { itemId });
       return { success: false, error: "Failed to update quantity." };
     }
 
     await insertOrderHistory(adminClient, (item as { order_id: string }).order_id, "Item quantity updated", null, null, userId);
+    generateOrderPDFs((item as { order_id: string }).order_id, ["delivery_invoice"]).catch((err) =>
+      safeLogError("updateOrderItemQuantity", err, { phase: "invoice PDF regen" }),
+    );
     revalidatePath(ORDERS_PATH);
     return { success: true, error: null };
   } catch (err) {
-    console.error("[updateOrderItemQuantity] unexpected:", err);
+    safeLogError("updateOrderItemQuantity", err, { itemId });
     return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
   }
 }
@@ -250,8 +269,12 @@ export async function deleteOrderItem(
     if (!item) return { success: false, error: "Item not found." };
     const rawOrders2 = (item as { orders: unknown }).orders;
     const orderRecord2 = Array.isArray(rawOrders2) ? rawOrders2[0] : rawOrders2;
-    if ((orderRecord2 as { order_status: string } | null)?.order_status !== "draft") {
-      return { success: false, error: "Can only remove items from draft orders." };
+    const status2 = (orderRecord2 as { order_status: string } | null)?.order_status;
+    if (!isItemsEditable(status2)) {
+      return {
+        success: false,
+        error: "Items are locked once the order moves into manufacturer review or beyond.",
+      };
     }
 
     const { error } = await adminClient
@@ -260,15 +283,18 @@ export async function deleteOrderItem(
       .eq("id", itemId);
 
     if (error) {
-      console.error("[deleteOrderItem]", JSON.stringify(error));
+      safeLogError("deleteOrderItem", error, { itemId });
       return { success: false, error: "Failed to remove item." };
     }
 
     await insertOrderHistory(adminClient, (item as { order_id: string }).order_id, "Item removed from order", null, null, userId);
+    generateOrderPDFs((item as { order_id: string }).order_id, ["delivery_invoice"]).catch((err) =>
+      safeLogError("deleteOrderItem", err, { phase: "invoice PDF regen" }),
+    );
     revalidatePath(ORDERS_PATH);
     return { success: true, error: null };
   } catch (err) {
-    console.error("[deleteOrderItem] unexpected:", err);
+    safeLogError("deleteOrderItem", err, { itemId });
     return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
   }
 }
@@ -289,7 +315,7 @@ export async function getPatients(): Promise<IPatient[]> {
     .order("last_name");
 
   if (error) {
-    console.error("[getPatients]", JSON.stringify(error));
+    safeLogError("getPatients", error, { facilityId });
     throw new Error("Failed to fetch patients.");
   }
 
@@ -347,7 +373,7 @@ export async function createPatient(
       .single();
 
     if (error || !row) {
-      console.error("[createPatient]", JSON.stringify(error));
+      safeLogError("createPatient", error, { facilityId });
       return { success: false, error: "Failed to create patient." };
     }
 
@@ -430,7 +456,7 @@ export async function getProducts(): Promise<ProductRecord[]> {
     .order("name", { ascending: true });
 
   if (error) {
-    console.error("[getProducts]", JSON.stringify(error));
+    safeLogError("getProducts", error);
     return [];
   }
 
@@ -473,22 +499,28 @@ export async function getUserFacility() {
 
 export interface OrderShipmentInfo {
   carrier: string | null;
+  service_level: string | null;
   tracking_number: string | null;
+  tracking_url: string | null;
   status: string | null;
   shipped_at: string | null;
   delivered_at: string | null;
   estimated_delivery_at: string | null;
+  /** Shipment row creation time — useful as "Label created" when the
+   *  carrier-side shipped_at hasn't been set yet. */
+  created_at: string | null;
 }
 
 export async function getOrderShipment(
   orderId: string,
 ): Promise<OrderShipmentInfo | null> {
   try {
+    await requireOrderAccess(orderId);
     const adminClient = createAdminClient();
     const { data } = await adminClient
       .from("shipments")
       .select(
-        "carrier, tracking_number, status, shipped_at, delivered_at, estimated_delivery_at",
+        "carrier, service_level, tracking_number, tracking_url, status, shipped_at, delivered_at, estimated_delivery_at, created_at",
       )
       .eq("order_id", orderId)
       .order("shipped_at", { ascending: false, nullsFirst: false })

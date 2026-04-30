@@ -1,4 +1,4 @@
-# HB Medical Portal — Claude Code Instructions
+# Meridian Portal — Claude Code Instructions
 
 ## Tech Stack
 

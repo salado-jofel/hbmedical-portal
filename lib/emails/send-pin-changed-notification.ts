@@ -1,7 +1,7 @@
 import { resend, ACCOUNTS_FROM_EMAIL } from "@/lib/emails/resend";
 
 const LOGO_URL =
-  "https://ersdsmuybpfvgvaiwcgl.supabase.co/storage/v1/object/public/hbmedical-bucket-public/assets/hb-logo-name-2%20(1).png";
+  "https://ersdsmuybpfvgvaiwcgl.supabase.co/storage/v1/object/public/hbmedical-bucket-public/assets/meridian-logo.png";
 
 type SendPinChangedNotificationParams = {
   to: string;
@@ -38,7 +38,7 @@ function formatTime(iso: string): string {
 
 function methodLabel(m: "change" | "reset" | "admin"): string {
   if (m === "reset") return "reset via the forgot-PIN flow (password re-authentication)";
-  if (m === "admin") return "reset by an HB Medical administrator";
+  if (m === "admin") return "reset by an Meridian administrator";
   return "changed";
 }
 
@@ -71,14 +71,14 @@ function buildHtml({
   <body style="margin:0;padding:0;background:#F8FAFC;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
     <div style="max-width:560px;margin:0 auto;padding:32px 16px;">
       <div style="text-align:center;margin-bottom:24px;">
-        <img src="${LOGO_URL}" alt="HB Medical" style="height:32px;" />
+        <img src="${LOGO_URL}" alt="Meridian" style="height:32px;" />
       </div>
       <div style="background:#ffffff;border:1px solid #E2E8F0;border-radius:16px;padding:28px;">
         <h1 style="margin:0 0 8px 0;font-size:20px;color:#0F172A;">Your signing PIN was ${
           method === "change" ? "changed" : "reset"
         }</h1>
         <p style="margin:0 0 20px 0;color:#334155;font-size:14px;line-height:1.55;">
-          Hi ${escapeHtml(firstName)}, your HB Medical digital-signature PIN was just ${action}.
+          Hi ${escapeHtml(firstName)}, your Meridian digital-signature PIN was just ${action}.
         </p>
         <table style="width:100%;border-collapse:collapse;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;">
           ${details}
@@ -96,7 +96,7 @@ function buildHtml({
         </div>
       </div>
       <p style="text-align:center;color:#94A3B8;font-size:11px;margin-top:16px;">
-        HB Medical Portal · Automated security notification
+        Meridian Portal · Automated security notification
       </p>
     </div>
   </body>
@@ -108,8 +108,8 @@ export async function sendPinChangedNotificationEmail(
 ): Promise<void> {
   const subject =
     params.method === "change"
-      ? "Your HB Medical signing PIN was changed"
-      : "Your HB Medical signing PIN was reset";
+      ? "Your Meridian signing PIN was changed"
+      : "Your Meridian signing PIN was reset";
   const html = buildHtml(params);
   try {
     await resend.emails.send({

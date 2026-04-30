@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useAppSelector, useAppDispatch } from "@/store/hooks";
 import { updateOrderInStore } from "../(redux)/orders-slice";
 import type { DashboardOrder, OrderStatus } from "@/utils/interfaces/orders";
@@ -10,13 +10,23 @@ import {
   KANBAN_STATUS_CONFIG,
   groupOrdersByStatus,
 } from "../(components)/kanban-config";
-import { getUnreadMessageCounts, getOrderById } from "../(services)/order-read-actions";
+import {
+  getUnreadMessageCounts,
+  getOrderById,
+  getOrdersPaginated,
+  getFacilitiesForOrderFilter,
+} from "../(services)/order-read-actions";
+import { ORDER_SORT_COLUMNS } from "@/utils/constants/orders";
 import { createClient } from "@/lib/supabase/client";
 import toast from "react-hot-toast";
 import { OrdersTable } from "./OrdersTable";
 import { OrdersKanbanView } from "./OrdersKanbanView";
 import { ClinicOrdersTable } from "./ClinicOrdersTable";
 import type { KanbanColumn } from "@/utils/interfaces/orders";
+import { useListParams } from "@/utils/hooks/useListParams";
+import { useBriefBusy } from "@/utils/hooks/useBriefBusy";
+import { DEFAULT_PAGE_SIZE } from "@/utils/interfaces/paginated";
+import type { PaginatedResult } from "@/utils/interfaces/paginated";
 
 export function OrdersKanban({
   canCreate,
@@ -198,30 +208,9 @@ export function OrdersKanban({
     };
   }, [currentUserId, canCreate, isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Realtime: re-fetch and update order card when status changes
-  useEffect(() => {
-    const supabase = createClient();
-    const channel = supabase
-      .channel("orders-status-changes")
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "orders" },
-        async (payload) => {
-          const updated = payload.new as Record<string, unknown>;
-          const old = payload.old as Record<string, unknown>;
-          if (updated.order_status === old.order_status) return;
-
-          const fullOrder = await getOrderById(updated.id as string);
-          if (!fullOrder) return;
-          dispatch(updateOrderInStore(fullOrder));
-        },
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [dispatch]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Realtime subscription for orders.UPDATE / .INSERT lives further down —
+  // declared AFTER refetchPaged so the ref forward-declare works. See
+  // "Realtime: keep Kanban cards in sync…" below.
 
   function handleClearUnread(orderId: string) {
     setUnreadCounts((prev) => {
@@ -231,12 +220,160 @@ export function OrdersKanban({
     });
   }
 
+  // Search — kept in ephemeral state (NOT URL). Can contain PHI (patient
+  // names, facility names); URLs end up in browser history / logs.
   const [search, setSearch] = useState("");
+  // Local quick-filter for Kanban view (stays in sync with URL for table).
   const [statusFilter, setStatusFilter] = useState<OrderStatus | "all">("all");
   const [mobileTab, setMobileTab] = useState<OrderStatus | "paid">(
     (isAdmin || isSupport) ? "manufacturer_review" : "draft",
   );
   const [tableMode, setTableMode] = useState(true);
+
+  // URL-backed pagination / sort / filter for the table view. Kanban view
+  // ignores these; they sit dormant in the URL until the user flips to table.
+  const listParams = useListParams<
+    typeof ORDER_SORT_COLUMNS,
+    readonly ["status", "facility"]
+  >({
+    defaultSort: "updated_at",
+    defaultDir: "desc",
+    allowedSorts: ORDER_SORT_COLUMNS,
+    filterKeys: ["status", "facility"] as const,
+  });
+
+  // Facility filter only makes sense for admin/support — clinic users are
+  // already scoped to their own facility, and reps see the whole list. List
+  // is fetched once on mount.
+  const [facilityOptions, setFacilityOptions] = useState<
+    Array<{ id: string; name: string }>
+  >([]);
+  useEffect(() => {
+    if (!isAdmin && !isSupport) return;
+    let cancelled = false;
+    getFacilitiesForOrderFilter()
+      .then((list) => {
+        if (!cancelled) setFacilityOptions(list);
+      })
+      .catch((err) =>
+        console.error("[OrdersKanban] facility list fetch failed:", err),
+      );
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdmin, isSupport]);
+
+  // Status filter is URL-synced for table users; Kanban filter button writes
+  // the same param so the two stay in sync when flipping views.
+  useEffect(() => {
+    const urlStatus = listParams.filters.status;
+    const next: OrderStatus | "all" = (urlStatus as OrderStatus | null) ?? "all";
+    setStatusFilter((prev) => (prev === next ? prev : next));
+  }, [listParams.filters.status]);
+
+  // Paginated data for the Table view. Kanban reads from `orders` (Redux).
+  const [pagedData, setPagedData] = useState<PaginatedResult<DashboardOrder>>({
+    rows: [],
+    total: 0,
+    page: 1,
+    pageSize: DEFAULT_PAGE_SIZE,
+  });
+  const [isFetching, setIsFetching] = useState(false);
+
+  // Debounce search so keystrokes don't fire a query each. 300ms feels
+  // responsive without being wasteful.
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Cancellation via an incrementing ref — prevents an older slower fetch
+  // from overwriting a newer faster one when the user paginates quickly.
+  const fetchIdRef = useRef(0);
+  const refetchPaged = useCallback(async () => {
+    const myFetchId = ++fetchIdRef.current;
+    setIsFetching(true);
+    try {
+      const res = await getOrdersPaginated({
+        page: listParams.page,
+        pageSize: listParams.pageSize,
+        sort: listParams.sort,
+        dir: listParams.dir,
+        filters: {
+          status: listParams.filters.status,
+          facility: listParams.filters.facility,
+        },
+        search: debouncedSearch,
+      });
+      if (myFetchId !== fetchIdRef.current) return; // stale response, drop
+      setPagedData(res);
+    } catch (err) {
+      if (myFetchId !== fetchIdRef.current) return;
+      console.error("[OrdersKanban] paginated fetch failed:", err);
+      toast.error("Failed to load orders.");
+    } finally {
+      if (myFetchId === fetchIdRef.current) setIsFetching(false);
+    }
+  }, [
+    listParams.page,
+    listParams.pageSize,
+    listParams.sort,
+    listParams.dir,
+    listParams.filters.status,
+    listParams.filters.facility,
+    debouncedSearch,
+  ]);
+
+  // Fire the fetch whenever the params or search change. No-op for Kanban
+  // mode — Kanban's grouping is client-side off Redux.
+  useEffect(() => {
+    void refetchPaged();
+  }, [refetchPaged]);
+
+  // Visible busy indicator combining three signals so the bar is on
+  // continuously from click → fetch settle:
+  //   - listParams.isPending  → flips synchronously when the user clicks
+  //                             sort/filter/page (covers the URL-update lag)
+  //   - paramsBusy            → flips when search debounce settles into a
+  //                             new value (search isn't URL-backed)
+  //   - isFetching            → covers the actual server call
+  const paramsBusy = useBriefBusy([debouncedSearch], 250);
+  const tableBusy = isFetching || listParams.isPending || paramsBusy;
+
+  // Realtime: keep Kanban cards in sync (row-level Redux update) AND
+  // trigger a paged refetch for table-view users. Both callbacks live on
+  // one subscription so we don't double-channel. `refetchPagedRef` stays
+  // pinned to the latest `refetchPaged` closure without rebuilding the
+  // channel on every re-render.
+  const refetchPagedRef = useRef(refetchPaged);
+  refetchPagedRef.current = refetchPaged;
+
+  useEffect(() => {
+    const supabase = createClient();
+    const channel = supabase
+      .channel("orders-realtime-kanban")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "orders" },
+        async (payload) => {
+          const updated = payload.new as Record<string, unknown>;
+          const fullOrder = await getOrderById(updated.id as string);
+          if (fullOrder) dispatch(updateOrderInStore(fullOrder));
+          refetchPagedRef.current();
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "orders" },
+        () => refetchPagedRef.current(),
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [dispatch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Clinic users get a persistent Table/Board toggle (defaults to table)
   const isClinic = canCreate && !isAdmin && !isSupport;
@@ -265,12 +402,17 @@ export function OrdersKanban({
     "shipped",
     "delivered",
   ];
+  // Admin sees the full pipeline — every order at every status, including
+  // drafts and pending_signature so they can intervene anywhere.
   const ADMIN_VISIBLE_STATUSES: OrderStatus[] = [
+    "draft",
+    "pending_signature",
     "manufacturer_review",
     "additional_info_needed",
     "approved",
     "shipped",
     "delivered",
+    "canceled",
   ];
   const VISIBLE_STATUSES = (isAdmin || isSupport)
     ? ADMIN_VISIBLE_STATUSES
@@ -347,7 +489,10 @@ export function OrdersKanban({
       canSign={canSign}
       isAdmin={isAdmin}
       isClinical={canCreate}
-      canEdit={canCreate}
+      // Admin can edit at any stage — `canCreate` is for clinical-only
+      // gating (Create Order button etc.). `effectiveCanEdit` inside the
+      // modal still applies status checks for non-admin users.
+      canEdit={canCreate || isAdmin}
       isRep={isRep}
       isSupport={isSupport}
       isProvider={canSign}
@@ -359,16 +504,32 @@ export function OrdersKanban({
     />
   );
 
-  // Clinic table view
+  // Shared handler: status filter changes flow to both the URL (for the
+  // table's paginated query) and local state (used by Kanban client filter).
+  function handleStatusFilterChange(next: OrderStatus | "all") {
+    setStatusFilter(next);
+    listParams.setFilter("status", next === "all" ? null : next);
+  }
+
+  // Clinic table view — server-paginated rows + sort from URL params.
   if (isClinic && clinicView === "table") {
     return (
       <>
         <ClinicOrdersTable
-          filtered={filtered}
+          rows={pagedData.rows}
+          total={pagedData.total}
+          page={pagedData.page}
+          pageSize={pagedData.pageSize}
+          sort={listParams.sort}
+          dir={listParams.dir}
+          onToggleSort={(col) => listParams.toggleSort(col as typeof ORDER_SORT_COLUMNS[number])}
+          onPageChange={listParams.setPage}
+          onPageSizeChange={listParams.setPageSize}
+          isFetching={tableBusy}
           search={search}
           onSearchChange={setSearch}
           statusFilter={statusFilter}
-          onStatusFilterChange={setStatusFilter}
+          onStatusFilterChange={handleStatusFilterChange}
           view={clinicView}
           onViewChange={setClinicView}
           canCreate={canCreate}
@@ -383,11 +544,23 @@ export function OrdersKanban({
     return (
       <>
         <OrdersTable
-          filtered={filtered}
+          rows={pagedData.rows}
+          total={pagedData.total}
+          page={pagedData.page}
+          pageSize={pagedData.pageSize}
+          sort={listParams.sort}
+          dir={listParams.dir}
+          onToggleSort={(col) => listParams.toggleSort(col as typeof ORDER_SORT_COLUMNS[number])}
+          onPageChange={listParams.setPage}
+          onPageSizeChange={listParams.setPageSize}
+          isFetching={tableBusy}
           search={search}
           onSearchChange={setSearch}
           statusFilter={statusFilter}
-          onStatusFilterChange={setStatusFilter}
+          onStatusFilterChange={handleStatusFilterChange}
+          facilityFilter={listParams.filters.facility}
+          onFacilityFilterChange={(v) => listParams.setFilter("facility", v)}
+          facilityOptions={facilityOptions}
           tableMode={tableMode}
           onTableModeChange={setTableMode}
           isAdmin={isAdmin}
@@ -421,7 +594,7 @@ export function OrdersKanban({
         search={search}
         onSearchChange={setSearch}
         statusFilter={statusFilter}
-        onStatusFilterChange={setStatusFilter}
+        onStatusFilterChange={handleStatusFilterChange}
       />
       {modal}
     </>

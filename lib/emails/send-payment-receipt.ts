@@ -41,7 +41,7 @@ export async function sendPaymentReceiptEmail({
   const subject = `Payment Receipt for Order #${orderNumber || orderId}`;
 
   const logoUrl =
-    "https://ersdsmuybpfvgvaiwcgl.supabase.co/storage/v1/object/public/hbmedical-bucket-public/assets/hb-logo-name-2%20(1).png";
+    "https://ersdsmuybpfvgvaiwcgl.supabase.co/storage/v1/object/public/hbmedical-bucket-public/assets/meridian-logo.png";
 
   const html = `
 <!DOCTYPE html>
@@ -187,7 +187,7 @@ export async function sendPaymentReceiptEmail({
       <div class="header">
         <img
           src="${logoUrl}"
-          alt="HB Medical"
+          alt="Meridian"
           width="176"
           class="logo-img"
         />
@@ -197,7 +197,7 @@ export async function sendPaymentReceiptEmail({
         <h1 class="h1">Payment received</h1>
 
         <p>
-          Thank you for your payment to <strong>HB Medical Portal</strong>.
+          Thank you for your payment to <strong>Meridian Portal</strong>.
           Your transaction was successfully processed and your receipt is now available.
         </p>
 
@@ -230,7 +230,7 @@ export async function sendPaymentReceiptEmail({
 
         <p>
           Please keep this email for your records. If you have any questions
-          regarding this payment, feel free to contact the HB Medical team.
+          regarding this payment, feel free to contact the Meridian team.
         </p>
 
         <p class="muted">
@@ -239,7 +239,7 @@ export async function sendPaymentReceiptEmail({
       </div>
 
       <div class="footer">
-        &copy; 2026 HB Medical Portal. Secure & Confidential.
+        &copy; 2026 Meridian Portal. Secure & Confidential.
       </div>
     </div>
   </div>

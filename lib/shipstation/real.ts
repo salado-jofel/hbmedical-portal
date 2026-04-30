@@ -396,7 +396,7 @@ function buildCreateOrUpdateOrderPayload(input: ShipStationOrderInput) {
     ],
     advancedOptions: {
       customField1: input.localOrderId,
-      source: "HB Medical Portal",
+      source: "Meridian Portal",
     },
   };
 }

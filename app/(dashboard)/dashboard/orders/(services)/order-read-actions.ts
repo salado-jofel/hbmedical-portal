@@ -6,7 +6,7 @@ import {
   getCurrentUserOrThrow,
   getUserRole,
 } from "@/lib/supabase/auth";
-import { isClinicSide } from "@/utils/helpers/role";
+import { isAdmin, isClinicSide, isSalesRep, isSupport } from "@/utils/helpers/role";
 import type {
   DashboardOrder,
   INotification,
@@ -20,6 +20,18 @@ import {
   ORDER_WITH_RELATIONS_SELECT,
   getUserFacilityId,
 } from "./_shared";
+import {
+  pageToRange,
+  sanitizeDir,
+  sanitizePage,
+  sanitizePageSize,
+  sanitizeSort,
+  type PaginatedQuery,
+  type PaginatedResult,
+} from "@/utils/interfaces/paginated";
+import { ORDER_SORT_COLUMNS, type OrderSortColumn } from "@/utils/constants/orders";
+import { logPhiAccess } from "@/lib/audit/log-phi-access";
+import { safeLogError } from "@/lib/logging/safe-log";
 
 /* -------------------------------------------------------------------------- */
 /* getOrders                                                                  */
@@ -46,7 +58,7 @@ export async function getOrders(): Promise<DashboardOrder[]> {
   const { data, error } = await query;
 
   if (error) {
-    console.error("[getOrders]", JSON.stringify(error));
+    safeLogError("getOrders", error);
     throw new Error(error.message ?? "Failed to fetch orders.");
   }
 
@@ -57,12 +69,188 @@ export async function getOrders(): Promise<DashboardOrder[]> {
 export const getAllOrders = getOrders;
 
 /* -------------------------------------------------------------------------- */
+/* getOrdersPaginated                                                         */
+/*                                                                            */
+/* Server-side paginated / sorted / filtered orders list for the Orders hub   */
+/* table view. Unpaginated `getOrders()` is still used by dashboards that     */
+/* aggregate across the full list and by the Kanban view (grouped by status). */
+/*                                                                            */
+/* Sortable columns are limited to direct orders-table columns — sorting by   */
+/* patient name or facility name would require a cross-table query or view    */
+/* and is explicitly out-of-scope for v1. The table's "Patient" / "Facility"  */
+/* columns render as plain (non-sortable) headers.                            */
+/*                                                                            */
+/* Search is multi-field via a prefetch pattern: resolve matching patient_ids */
+/* and facility_ids via their own ILIKE, then OR together with order_number   */
+/* + notes on the main query. Keeps PostgREST predicate complexity bounded.   */
+/* -------------------------------------------------------------------------- */
+
+export type OrderListFilters = {
+  status: string | null;
+  /**
+   * Admin / support filter to narrow the list to one facility. Ignored for
+   * clinic users — their query is already scoped to their facility, so an
+   * extra `facility` predicate would either match (no-op) or yield zero
+   * rows (a filter they shouldn't be able to set).
+   */
+  facility: string | null;
+};
+
+export async function getOrdersPaginated(
+  query: PaginatedQuery<OrderListFilters>,
+): Promise<PaginatedResult<DashboardOrder>> {
+  const supabase = await createClient();
+  const user = await getCurrentUserOrThrow(supabase);
+  const role = await getUserRole(supabase);
+
+  const page = sanitizePage(query.page);
+  const pageSize = sanitizePageSize(query.pageSize);
+  const sort = sanitizeSort<readonly OrderSortColumn[]>(
+    query.sort,
+    ORDER_SORT_COLUMNS,
+    "updated_at",
+  );
+  const dir = sanitizeDir(query.dir);
+  const status = query.filters?.status ?? null;
+  const facility = query.filters?.facility ?? null;
+  const searchRaw = (query.search ?? "").trim();
+
+  let builder = supabase
+    .from("orders")
+    .select(ORDER_WITH_RELATIONS_SELECT, { count: "exact" })
+    .order(sort, { ascending: dir === "asc" });
+
+  // Clinic-side scope — a clinic user only sees their own facility's orders.
+  if (isClinicSide(role)) {
+    const facilityId = await getUserFacilityId(user.id);
+    if (!facilityId) {
+      return { rows: [], total: 0, page, pageSize };
+    }
+    builder = builder.eq("facility_id", facilityId);
+  }
+
+  if (status) {
+    builder = builder.eq("order_status", status);
+  }
+
+  // Admin / support facility filter — silently ignored for clinic users
+  // whose query is already scoped to their own facility above.
+  if (facility && !isClinicSide(role)) {
+    builder = builder.eq("facility_id", facility);
+  }
+
+  // Multi-field search — PHI-safe (term comes from ephemeral client state,
+  // never persisted in URL). Escape SQL ILIKE wildcards so a patient named
+  // "Smith%" doesn't turn into a wildcard query.
+  if (searchRaw.length > 0) {
+    const term = escapeIlikeWildcards(searchRaw);
+    const like = `%${term}%`;
+
+    // Patient IDs matching first/last name.
+    const { data: patientHits } = await supabase
+      .from("patients")
+      .select("id")
+      .or(`first_name.ilike.${like},last_name.ilike.${like}`);
+    const patientIds = (patientHits ?? []).map((p) => p.id as string);
+
+    // Facility IDs matching name.
+    const { data: facilityHits } = await supabase
+      .from("facilities")
+      .select("id")
+      .ilike("name", like);
+    const facilityIds = (facilityHits ?? []).map((f) => f.id as string);
+
+    // Compose OR across the direct orders columns + the resolved ID lists.
+    const orParts: string[] = [`order_number.ilike.${like}`];
+    if (patientIds.length > 0) orParts.push(`patient_id.in.(${patientIds.join(",")})`);
+    if (facilityIds.length > 0) orParts.push(`facility_id.in.(${facilityIds.join(",")})`);
+    builder = builder.or(orParts.join(","));
+  }
+
+  const { from, to } = pageToRange(page, pageSize);
+  const { data, error, count } = await builder.range(from, to);
+
+  if (error) {
+    safeLogError("getOrdersPaginated", error);
+    throw new Error(error.message ?? "Failed to fetch orders.");
+  }
+
+  // Audit log — list reads count as PHI access. Metadata captures the
+  // filter context (NOT the search term, since search can contain patient
+  // names) so the admin can later see which slice of the list was viewed.
+  void logPhiAccess({
+    action: "order.list",
+    resource: "orders",
+    metadata: {
+      sort,
+      dir,
+      status: query.filters?.status ?? null,
+      facility: query.filters?.facility ?? null,
+      total: count ?? 0,
+      page,
+      pageSize,
+    },
+  });
+
+  return {
+    rows: mapOrders((data ?? []) as unknown as RawOrderRecord[]),
+    total: count ?? 0,
+    page,
+    pageSize,
+  };
+}
+
+/** PostgREST ILIKE interprets `%` and `_` as wildcards; escape them so a
+ *  user-typed term with those characters matches literally. Commas are also
+ *  special inside `.or()` expressions. */
+function escapeIlikeWildcards(s: string): string {
+  return s.replace(/[%_,]/g, (c) => `\\${c}`);
+}
+
+/* -------------------------------------------------------------------------- */
 /* getOrdersByFacility                                                        */
 /* -------------------------------------------------------------------------- */
 
 export async function getOrdersByFacility(
   facilityId: string,
 ): Promise<DashboardOrder[]> {
+  // Authorization gate. Admin / support can query any facility; clinic-side
+  // users can only query their own facility; sales reps can only query a
+  // facility assigned to themselves or one of their sub-reps.
+  const supabase = await createClient();
+  const user = await getCurrentUserOrThrow(supabase);
+  const role = await getUserRole(supabase);
+
+  if (!isAdmin(role) && !isSupport(role)) {
+    if (isClinicSide(role)) {
+      const ownFacilityId = await getUserFacilityId(user.id);
+      if (ownFacilityId !== facilityId) {
+        return [];
+      }
+    } else if (isSalesRep(role)) {
+      const adminClient = createAdminClient();
+      const { data: facility } = await adminClient
+        .from("facilities")
+        .select("assigned_rep")
+        .eq("id", facilityId)
+        .maybeSingle();
+      const assigned = facility?.assigned_rep as string | null | undefined;
+      let allowed = assigned === user.id;
+      if (!allowed && assigned) {
+        const { data: hierarchy } = await adminClient
+          .from("rep_hierarchy")
+          .select("child_rep_id")
+          .eq("parent_rep_id", user.id)
+          .eq("child_rep_id", assigned)
+          .maybeSingle();
+        allowed = !!hierarchy;
+      }
+      if (!allowed) return [];
+    } else {
+      return [];
+    }
+  }
+
   const adminClient = createAdminClient();
 
   const { data, error } = await adminClient
@@ -72,11 +260,42 @@ export async function getOrdersByFacility(
     .order("placed_at", { ascending: false });
 
   if (error) {
-    console.error("[getOrdersByFacility]", JSON.stringify(error));
+    safeLogError("getOrdersByFacility", error, { facilityId });
     return [];
   }
 
   return mapOrders((data ?? []) as unknown as RawOrderRecord[]);
+}
+
+/* -------------------------------------------------------------------------- */
+/* getFacilitiesForOrderFilter                                                */
+/*                                                                            */
+/* Lightweight {id, name} list for the admin/support orders-list facility     */
+/* filter dropdown. Returns clinic facilities only (the type that actually    */
+/* places orders) sorted alphabetically. Clinic users get an empty list —     */
+/* the filter is hidden in their UI.                                          */
+/* -------------------------------------------------------------------------- */
+
+export async function getFacilitiesForOrderFilter(): Promise<
+  Array<{ id: string; name: string }>
+> {
+  const supabase = await createClient();
+  const role = await getUserRole(supabase);
+
+  if (isClinicSide(role)) return [];
+
+  const adminClient = createAdminClient();
+  const { data, error } = await adminClient
+    .from("facilities")
+    .select("id, name")
+    .eq("facility_type", "clinic")
+    .order("name", { ascending: true });
+
+  if (error) {
+    safeLogError("getFacilitiesForOrderFilter", error);
+    return [];
+  }
+  return (data ?? []).map((f) => ({ id: f.id as string, name: f.name as string }));
 }
 
 /* -------------------------------------------------------------------------- */
@@ -93,11 +312,21 @@ export async function getOrderById(orderId: string): Promise<DashboardOrder | nu
     .maybeSingle();
 
   if (error) {
-    console.error("[getOrderById]", JSON.stringify(error));
+    safeLogError("getOrderById", error, { orderId });
     return null;
   }
 
   if (!data) return null;
+
+  // Single-order read = a user opened the detail modal or deep-linked to
+  // an order. Logged with order_id for fast "who saw this patient?" lookups.
+  void logPhiAccess({
+    action: "order.read",
+    resource: "orders",
+    resourceId: orderId,
+    orderId,
+  });
+
   return mapOrder(data as unknown as RawOrderRecord);
 }
 
@@ -175,7 +404,7 @@ export async function getOrderDocuments(
     .order("created_at", { ascending: false });
 
   if (error) {
-    console.error("[getOrderDocuments]", JSON.stringify(error));
+    safeLogError("getOrderDocuments", error, { orderId });
     return [];
   }
 
@@ -211,7 +440,7 @@ export async function getOrderMessages(
     .order("created_at", { ascending: true });
 
   if (error) {
-    console.error("[getOrderMessages]", JSON.stringify(error));
+    safeLogError("getOrderMessages", error, { orderId });
     return [];
   }
   if (!data || data.length === 0) return [];
@@ -283,8 +512,6 @@ export async function getNotifications(): Promise<INotification[]> {
   const supabase = await createClient();
   const user = await getCurrentUserOrThrow(supabase);
 
-  console.log("[getNotifications] user id:", user.id);
-
   // Use adminClient with explicit user_id filter — auth.uid() is unreliable
   // in server action context with publishable key (same issue as getOrderMessages)
   const adminClient = createAdminClient();
@@ -295,10 +522,8 @@ export async function getNotifications(): Promise<INotification[]> {
     .order("created_at", { ascending: false })
     .limit(50);
 
-  console.log("[getNotifications] data:", data?.length, "error:", error?.message ?? null);
-
   if (error) {
-    console.error("[getNotifications] error:", JSON.stringify(error));
+    safeLogError("getNotifications", error, { userId: user.id });
     return [];
   }
 
@@ -322,8 +547,6 @@ export async function getUnreadNotificationCount(): Promise<number> {
   const supabase = await createClient();
   const user = await getCurrentUserOrThrow(supabase);
 
-  console.log("[getUnreadCount] user:", user.id);
-
   const admin = createAdminClient();
   const { count } = await admin
     .from("notifications")
@@ -331,6 +554,5 @@ export async function getUnreadNotificationCount(): Promise<number> {
     .eq("user_id", user.id)
     .eq("is_read", false);
 
-  console.log("[getUnreadCount] count:", count);
   return count ?? 0;
 }

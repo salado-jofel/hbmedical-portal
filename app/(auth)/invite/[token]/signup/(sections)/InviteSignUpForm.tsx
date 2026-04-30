@@ -3,7 +3,7 @@
 import { useActionState, useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronRight, ChevronLeft, UserCheck, User, Lock, FileCheck, Building2, Loader2, AlertCircle, Check, ClipboardList } from "lucide-react";
-import { HBLogo } from "@/app/(components)/HBLogo";
+import { MeridianLogo } from "@/app/(components)/MeridianLogo";
 import { AuthField } from "@/app/(components)/AuthField";
 import { AuthCard } from "@/app/(components)/AuthCard";
 import { PasswordInput } from "@/app/(components)/PasswordInput";
@@ -468,7 +468,7 @@ export default function InviteSignUpForm({
     >
       {/* Logo */}
       <div className="flex justify-center">
-        <HBLogo variant="light" size="sm" />
+        <MeridianLogo variant="light" size="sm" />
       </div>
 
       {/* Step indicator */}
@@ -972,9 +972,9 @@ export default function InviteSignUpForm({
                 ) : (
                   <>
                     <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 max-h-36 overflow-y-auto text-xs text-[#64748B] leading-relaxed">
-                      By creating an account, you agree to HB Medical&apos;s Terms of Service
+                      By creating an account, you agree to Meridian Portal&apos;s Terms of Service
                       and Privacy Policy. You confirm that the information provided is accurate
-                      and that you are authorized to access the HB Medical portal on behalf of
+                      and that you are authorized to access Meridian Portal on behalf of
                       your organization. Unauthorized use of this platform is strictly prohibited.
                     </div>
                     <label className="flex items-start gap-3 cursor-pointer group">

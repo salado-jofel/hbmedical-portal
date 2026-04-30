@@ -185,7 +185,7 @@ function ProviderTeamTab({
           <EmptyState
             icon={<Briefcase className="w-10 h-10 stroke-1" />}
             message="No sales rep assigned"
-            description="Your clinic isn't linked to a sales rep yet. Contact HB Medical support if you were expecting one."
+            description="Your clinic isn't linked to a sales rep yet. Contact Meridian support if you were expecting one."
             className="py-8"
           />
         )}

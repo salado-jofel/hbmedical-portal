@@ -25,6 +25,7 @@ import {
   generateOrderPDFs,
   insertOrderHistory,
 } from "./_shared";
+import { safeLogError } from "@/lib/logging/safe-log";
 
 /* -------------------------------------------------------------------------- */
 /* createOrder                                                                */
@@ -68,7 +69,7 @@ export async function createOrder(data: {
         .select("id")
         .single();
       if (patientErr || !patientRow) {
-        console.error("[createOrder] patient insert:", JSON.stringify(patientErr));
+        safeLogError("createOrder", patientErr, { phase: "patient insert" });
         return { success: false, error: "Failed to save patient information." };
       }
       patientId = patientRow.id;
@@ -104,7 +105,7 @@ export async function createOrder(data: {
       .single();
 
     if (orderErr || !orderRow) {
-      console.error("[createOrder] order insert:", JSON.stringify(orderErr));
+      safeLogError("createOrder", orderErr, { phase: "order insert" });
       return { success: false, error: "Failed to create order." };
     }
 
@@ -117,14 +118,14 @@ export async function createOrder(data: {
     // order_type is now purely a product classification with no effect on form behavior.
     if (data.manual_input) {
       generateOrderPDFs(orderId, ["order_form", "ivr", "hcfa_1500"]).catch((err) =>
-        console.error("[createOrder] PDF generation (manual):", err),
+        safeLogError("createOrder", err, { phase: "PDF generation (manual)", orderId }),
       );
     }
 
     revalidatePath(ORDERS_PATH);
     return { success: true, error: null, orderId };
   } catch (err) {
-    console.error("[createOrder] unexpected:", err);
+    safeLogError("createOrder", err);
     return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
   }
 }
@@ -168,7 +169,7 @@ export async function assignProvider(
       .eq("id", orderId);
 
     if (error) {
-      console.error("[assignProvider]", JSON.stringify(error));
+      safeLogError("assignProvider", error, { orderId, providerId });
       return { success: false, error: "Failed to assign provider." };
     }
 
@@ -229,7 +230,7 @@ export async function cancelOrder(
       .eq("id", orderId);
 
     if (error) {
-      console.error("[cancelOrder]", JSON.stringify(error));
+      safeLogError("cancelOrder", error, { orderId });
       return { success: false, error: "Failed to cancel order." };
     }
 
@@ -276,7 +277,7 @@ export async function deleteOrder(orderId: string): Promise<void> {
   const { error } = await adminClient.from("orders").delete().eq("id", orderId);
 
   if (error) {
-    console.error("[deleteOrder]", JSON.stringify(error));
+    safeLogError("deleteOrder", error, { orderId });
     throw new Error("Failed to delete order.");
   }
 
@@ -382,8 +383,75 @@ export async function saveOrderForm(
     physician_signature_date?: string | null;
     physician_signed_at?: string | null;
     physician_signed_by?: string | null;
+    /* ── Fortify expansion (added 2026-04-30) ── */
+    patient_mrn?: string | null;
+    patient_mbi?: string | null;
+    insurance_type_label?: string | null;
+    anticipated_dos_start?: string | null;
+    anticipated_dos_end?: string | null;
+    a1c_value?: number | null;
+    a1c_date?: string | null;
+    condition_pad?: boolean;
+    pad_details?: string | null;
+    condition_venous_insufficiency?: boolean;
+    condition_neuropathy?: boolean;
+    condition_immunosuppression?: boolean;
+    immunosuppression_details?: string | null;
+    condition_malnutrition?: boolean;
+    albumin_value?: number | null;
+    condition_smoking?: boolean;
+    condition_renal_disease?: boolean;
+    egfr_value?: number | null;
+    condition_other?: string | null;
+    etiology_dfu?: boolean;
+    etiology_venous_stasis?: boolean;
+    etiology_pressure_ulcer?: boolean;
+    pressure_ulcer_stage?: string | null;
+    etiology_arterial?: boolean;
+    etiology_surgical?: boolean;
+    etiology_traumatic?: boolean;
+    etiology_other?: string | null;
+    wound_onset_date?: string | null;
+    wound_duration_text?: string | null;
+    wound_bed_slough_pct?: number | null;
+    wound_bed_eschar_pct?: number | null;
+    pain_level?: number | null;
+    infection_signs_describe?: string | null;
+    wound_photo_taken?: boolean;
+    prior_treatments?: Array<{ treatment: string; dates_used: string; outcome: string }>;
+    advancement_reason?: string | null;
+    goal_of_therapy?: string | null;
+    goal_of_therapy_other?: string | null;
+    adjunct_offloading?: boolean;
+    adjunct_compression?: boolean;
+    adjunct_debridement?: boolean;
+    adjunct_other?: string | null;
+    specialty_consults?: string | null;
+    application_frequency?: string | null;
+    special_modifiers?: string | null;
+    prior_auth_obtained?: boolean;
+    lcd_reference?: string | null;
+    wound_meets_lcd?: boolean | null;
+    conservative_tx_period_met?: boolean | null;
+    qty_within_lcd_limits?: boolean | null;
+    kx_criteria_met?: string | null;
+    pos_eligible?: boolean | null;
+    coverage_concerns?: string | null;
+    physician_npi?: string | null;
+    attest_examined_patient?: boolean;
+    attest_medically_necessary?: boolean;
+    attest_conservative_tx_inadequate?: boolean;
+    attest_freq_qty_clinical_judgment?: boolean;
+    attest_lcd_supported?: boolean;
+    office_tracking?: Record<string, unknown>;
   },
-): Promise<{ success: boolean; error?: string }> {
+  ifMatchUpdatedAt?: string | null,
+): Promise<{
+  success: boolean;
+  error?: string;
+  conflict?: boolean;
+  updatedAt?: string;
+}> {
   try {
     await requireIVREditRole();
     const adminClient = createAdminClient();
@@ -391,12 +459,34 @@ export async function saveOrderForm(
     // wound_type lives on the orders table — separate update
     const { wound_type, ...formData } = data;
 
-    const { error } = await adminClient
+    if (ifMatchUpdatedAt) {
+      const { data: current } = await adminClient
+        .from("order_form")
+        .select("updated_at")
+        .eq("order_id", orderId)
+        .maybeSingle();
+      if (current && current.updated_at !== ifMatchUpdatedAt) {
+        return {
+          success: false,
+          conflict: true,
+          error:
+            "Someone else saved this form while you were editing. Reload to see their changes.",
+        };
+      }
+    }
+
+    const nowIso = new Date().toISOString();
+    const { data: saved, error } = await adminClient
       .from("order_form")
-      .upsert({ order_id: orderId, ...formData }, { onConflict: "order_id" });
+      .upsert(
+        { order_id: orderId, ...formData, updated_at: nowIso },
+        { onConflict: "order_id" },
+      )
+      .select("updated_at")
+      .single();
 
     if (error) {
-      console.error("[saveOrderForm]", JSON.stringify(error));
+      safeLogError("saveOrderForm", error, { orderId });
       return { success: false, error: error.message ?? "Failed to save." };
     }
 
@@ -409,9 +499,9 @@ export async function saveOrderForm(
 
     revalidatePath(ORDERS_PATH);
     generateOrderPDFs(orderId, ["order_form"]).catch((err) =>
-      console.error("[OrderForm PDF]", err),
+      safeLogError("OrderForm PDF", err, { orderId }),
     );
-    return { success: true };
+    return { success: true, updatedAt: saved?.updated_at ?? nowIso };
   } catch (err) {
     return {
       success: false,

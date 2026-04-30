@@ -5,6 +5,7 @@ import {
   useMemo,
   useEffect,
   useRef,
+  useCallback,
   type InputHTMLAttributes,
 } from "react";
 import {
@@ -16,15 +17,21 @@ import {
   Check,
   PenLine,
 } from "lucide-react";
-import { HBLogo } from "@/app/(components)/HBLogo";
-import { upsertOrderIVR } from "../(services)/order-ivr-actions";
-import { verifyProviderPin } from "../(services)/order-workflow-actions";
+import { MeridianLogo } from "@/app/(components)/MeridianLogo";
+import { upsertOrderIVR, getOrderIVR } from "../(services)/order-ivr-actions";
+import {
+  verifyProviderPin,
+  signIVRWithSpecimen,
+  unsignIVR,
+} from "../(services)/order-workflow-actions";
 import type { IOrderIVR, DashboardOrder } from "@/utils/interfaces/orders";
 import { cn } from "@/utils/utils";
 import toast from "react-hot-toast";
 import { FormDeficiencyBanner } from "./FormDeficiencyBanner";
 import { FormActionBar } from "./FormActionBar";
 import { SignOrderModal } from "./SignOrderModal";
+import { useFormCollaboration } from "./useFormCollaboration";
+import { FormCollaborationStatus } from "./FormCollaborationStatus";
 
 /* ── Design tokens ── */
 const NAVY = "#0f2d4a";
@@ -81,6 +88,36 @@ type IVRFormState = {
   physicianSignatureDate: string;
   physicianSignedAt: string | null;
   physicianSignedBy: string | null;
+  // ── Chronic-only fields ──
+  // Rendered only when order.wound_type === "chronic". Post-surgical leaves
+  // these untouched (values persist in DB if set previously, but the UI +
+  // PDF don't display them). Allows chronic IVR to carry full back-office
+  // data (benefits, verification, detailed auth) while post-surgical
+  // matches the physician-facing template.
+  groupNumber: string;
+  planName: string;
+  subscriberRelationship: string;
+  coverageStartDate: string;
+  coverageEndDate: string;
+  secondaryGroupNumber: string;
+  secondarySubscriberRelationship: string;
+  deductibleAmount: string;
+  deductibleMet: string;
+  outOfPocketMax: string;
+  outOfPocketMet: string;
+  copayAmount: string;
+  coinsurancePercent: string;
+  dmeCovered: boolean | null;
+  woundCareCovered: boolean | null;
+  priorAuthRequired: boolean | null;
+  priorAuthNumber: string;
+  unitsAuthorized: string;
+  priorAuthStartDate: string;
+  priorAuthEndDate: string;
+  verifiedBy: string;
+  verifiedDate: string;
+  verificationReference: string;
+  notes: string;
 };
 
 function buildFormState(ivr: Partial<IOrderIVR> | null): IVRFormState {
@@ -135,6 +172,31 @@ function buildFormState(ivr: Partial<IOrderIVR> | null): IVRFormState {
     physicianSignatureDate: s(ivr?.physicianSignatureDate),
     physicianSignedAt:  ivr?.physicianSignedAt  ?? null,
     physicianSignedBy:  ivr?.physicianSignedBy  ?? null,
+    // Chronic-only — numbers stringified for input controls.
+    groupNumber: s(ivr?.groupNumber),
+    planName: s(ivr?.planName),
+    subscriberRelationship: s(ivr?.subscriberRelationship),
+    coverageStartDate: s(ivr?.coverageStartDate),
+    coverageEndDate: s(ivr?.coverageEndDate),
+    secondaryGroupNumber: s(ivr?.secondaryGroupNumber),
+    secondarySubscriberRelationship: s(ivr?.secondarySubscriberRelationship),
+    deductibleAmount: ivr?.deductibleAmount != null ? String(ivr.deductibleAmount) : "",
+    deductibleMet: ivr?.deductibleMet != null ? String(ivr.deductibleMet) : "",
+    outOfPocketMax: ivr?.outOfPocketMax != null ? String(ivr.outOfPocketMax) : "",
+    outOfPocketMet: ivr?.outOfPocketMet != null ? String(ivr.outOfPocketMet) : "",
+    copayAmount: ivr?.copayAmount != null ? String(ivr.copayAmount) : "",
+    coinsurancePercent: ivr?.coinsurancePercent != null ? String(ivr.coinsurancePercent) : "",
+    dmeCovered: typeof ivr?.dmeCovered === "boolean" ? ivr.dmeCovered : null,
+    woundCareCovered: typeof ivr?.woundCareCovered === "boolean" ? ivr.woundCareCovered : null,
+    priorAuthRequired: typeof ivr?.priorAuthRequired === "boolean" ? ivr.priorAuthRequired : null,
+    priorAuthNumber: s(ivr?.priorAuthNumber),
+    unitsAuthorized: ivr?.unitsAuthorized != null ? String(ivr.unitsAuthorized) : "",
+    priorAuthStartDate: s(ivr?.priorAuthStartDate),
+    priorAuthEndDate: s(ivr?.priorAuthEndDate),
+    verifiedBy: s(ivr?.verifiedBy),
+    verifiedDate: s(ivr?.verifiedDate),
+    verificationReference: s(ivr?.verificationReference),
+    notes: s(ivr?.notes),
   };
 }
 
@@ -429,6 +491,12 @@ export function IVRFormDocument({
   onDirtyChange,
 }: IVRFormDocumentProps) {
   const orderId = order.id;
+  // Template variant — chronic gets the full back-office IVR (Benefits &
+  // Coverage, Verification, extended insurance, detailed Prior Auth).
+  // Post-surgical renders the lean physician-facing form per the client's
+  // template. Bound to order.wound_type so subtype edits in the form don't
+  // flip the variant mid-session.
+  const isPostSurgical = order.wound_type === "post_surgical";
   const [formData, setFormData] = useState<IVRFormState>(() =>
     buildFormState(ivrData),
   );
@@ -436,12 +504,31 @@ export function IVRFormDocument({
     buildFormState(ivrData),
   );
   const [isSaving, setIsSaving] = useState(false);
+  const [reloading, setReloading] = useState(false);
+  // Conflict cursor — last `updated_at` we synced with. Drives the
+  // ifMatch check on save and equality check on incoming realtime updates.
+  const [localUpdatedAt, setLocalUpdatedAt] = useState<string | null>(
+    ivrData?.updatedAt ?? null,
+  );
   const [signModalOpen, setSignModalOpen] = useState(false);
+  // Anchor for the "please sign before saving" auto-scroll behavior.
+  const signatureSectionRef = useRef<HTMLDivElement | null>(null);
+  // Session-only specimen signature. Same rationale as OrderFormDocument.
+  const [specimenSignatureUrl, setSpecimenSignatureUrl] = useState<string | null>(
+    ivrData?.physicianSignatureImage ?? null,
+  );
+  // Resync from the server copy on load / parent refresh.
+  useEffect(() => {
+    setSpecimenSignatureUrl(ivrData?.physicianSignatureImage ?? null);
+  }, [ivrData?.physicianSignatureImage]);
+  // PIN buffered from the sign modal, committed at save-time.
+  const [pendingPin, setPendingPin] = useState<string | null>(null);
 
   useEffect(() => {
     const snap = buildFormState(ivrData);
     setFormData(snap);
     setBaseline(snap);
+    setLocalUpdatedAt(ivrData?.updatedAt ?? null);
   }, [ivrData?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isDirty = useMemo(
@@ -452,6 +539,72 @@ export function IVRFormDocument({
   useEffect(() => {
     onDirtyChange?.(isDirty);
   }, [isDirty]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ── Realtime collaboration ── subscribes to UPDATEs on order_ivr for
+     this order and tracks who else is viewing. */
+  const collab = useFormCollaboration({
+    table: "order_ivr",
+    channelKey: "ivr",
+    orderId,
+    userName: currentUserName,
+    localUpdatedAt,
+  });
+
+  /* ── IVR PDF regen helper. Same `pdf-regenerating` events used elsewhere
+     (the IVR card listens on `additional_ivr`). */
+  const regenerateIvrPdf = useCallback(async (): Promise<{
+    ok: boolean;
+    error?: string;
+  }> => {
+    window.dispatchEvent(
+      new CustomEvent("pdf-regenerating", {
+        detail: { type: "additional_ivr", status: "start" },
+      }),
+    );
+    try {
+      const pdfRes = await fetch("/api/generate-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId, formType: "ivr" }),
+      });
+      if (!pdfRes.ok) {
+        return { ok: false, error: `PDF generation failed (${pdfRes.status})` };
+      }
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : "Unknown" };
+    } finally {
+      window.dispatchEvent(
+        new CustomEvent("pdf-regenerating", {
+          detail: { type: "additional_ivr", status: "done" },
+        }),
+      );
+    }
+  }, [orderId]);
+
+  /* ── Reload from server ── pulls a fresh IVR row, rebuilds state, clears
+     the conflict flag, and kicks off a fresh PDF render. */
+  const handleReload = useCallback(async () => {
+    setReloading(true);
+    try {
+      const { ivr: fresh } = await getOrderIVR(orderId);
+      const next = buildFormState(fresh);
+      setFormData(next);
+      setBaseline(next);
+      setLocalUpdatedAt(fresh?.updatedAt ?? null);
+      collab.acknowledgeRemoteChange();
+      void regenerateIvrPdf();
+    } finally {
+      setReloading(false);
+    }
+  }, [orderId, collab, regenerateIvrPdf]);
+
+  // Silent auto-refresh when no local edits are pending.
+  useEffect(() => {
+    if (collab.remoteChangedSinceLoad && !isDirty) {
+      void handleReload();
+    }
+  }, [collab.remoteChangedSinceLoad, isDirty, handleReload]);
 
   // Stable — set once on mount from the initial ivrData; survives parent re-renders
   // caused by onSaved callbacks that replace ivrData with a payload lacking aiExtracted.
@@ -507,11 +660,34 @@ export function IVRFormDocument({
 
   function handleDiscard() {
     setFormData(baseline);
+    setPendingPin(null);
+    if (!baseline.physicianSignedAt) {
+      setSpecimenSignatureUrl(null);
+    }
   }
 
   async function handleSave() {
     setIsSaving(true);
+
+    // Detect sign-state change relative to last saved baseline.
+    const wasSigned = !!baseline.physicianSignedAt;
+    const isSigned = !!formData.physicianSignedAt;
+    const signIntent: "sign" | "unsign" | "none" = !wasSigned && isSigned
+      ? "sign"
+      : wasSigned && !isSigned
+        ? "unsign"
+        : "none";
+
+    if (signIntent === "sign" && (!pendingPin || !specimenSignatureUrl)) {
+      setIsSaving(false);
+      toast.error("Signature data missing — please re-open Sign.");
+      return;
+    }
+
     const ns = (v: string) => v.trim() || null;
+    // physicianSignedAt/By intentionally omitted — committed via
+    // signIVRWithSpecimen / unsignIVR below so they never land in the DB
+    // without a PIN check.
     const payload: Partial<IOrderIVR> = {
       salesRepName: ns(formData.salesRepName),
       placeOfService: ns(formData.placeOfService),
@@ -560,37 +736,135 @@ export function IVRFormDocument({
       specialtySiteName: ns(formData.specialtySiteName),
       physicianSignature: ns(formData.physicianSignature),
       physicianSignatureDate: ns(formData.physicianSignatureDate),
-      physicianSignedAt: formData.physicianSignedAt ?? null,
-      physicianSignedBy: formData.physicianSignedBy ?? null,
+      // Chronic-only fields. Persist for post-surgical too so toggling
+      // wound_type doesn't destroy data — the UI just hides them.
+      groupNumber: ns(formData.groupNumber),
+      planName: ns(formData.planName),
+      subscriberRelationship: ns(formData.subscriberRelationship),
+      coverageStartDate: ns(formData.coverageStartDate),
+      coverageEndDate: ns(formData.coverageEndDate),
+      secondaryGroupNumber: ns(formData.secondaryGroupNumber),
+      secondarySubscriberRelationship: ns(formData.secondarySubscriberRelationship),
+      deductibleAmount: formData.deductibleAmount.trim() === "" ? null : Number(formData.deductibleAmount),
+      deductibleMet: formData.deductibleMet.trim() === "" ? null : Number(formData.deductibleMet),
+      outOfPocketMax: formData.outOfPocketMax.trim() === "" ? null : Number(formData.outOfPocketMax),
+      outOfPocketMet: formData.outOfPocketMet.trim() === "" ? null : Number(formData.outOfPocketMet),
+      copayAmount: formData.copayAmount.trim() === "" ? null : Number(formData.copayAmount),
+      coinsurancePercent: formData.coinsurancePercent.trim() === "" ? null : Number(formData.coinsurancePercent),
+      dmeCovered: formData.dmeCovered === true,
+      woundCareCovered: formData.woundCareCovered === true,
+      priorAuthRequired: formData.priorAuthRequired === true,
+      priorAuthNumber: ns(formData.priorAuthNumber),
+      unitsAuthorized: formData.unitsAuthorized.trim() === "" ? null : Number(formData.unitsAuthorized),
+      priorAuthStartDate: ns(formData.priorAuthStartDate),
+      priorAuthEndDate: ns(formData.priorAuthEndDate),
+      verifiedBy: ns(formData.verifiedBy),
+      verifiedDate: ns(formData.verifiedDate),
+      verificationReference: ns(formData.verificationReference),
+      notes: ns(formData.notes),
     };
-    const result = await upsertOrderIVR(orderId, payload);
-    setIsSaving(false);
+    const result = await upsertOrderIVR(orderId, payload, localUpdatedAt);
     if (!result.success) {
-      toast.error(result.error ?? "Failed to save.");
+      setIsSaving(false);
+      // Conflict means another user saved while we were editing. Keep local
+      // edits and let the FormCollaborationStatus banner offer a reload.
+      if (result.conflict) {
+        toast.error(
+          result.error ?? "Someone else just saved this form. Reload to see their changes.",
+        );
+      } else {
+        toast.error(result.error ?? "Failed to save.");
+      }
       return;
     }
-    toast.success("IVR form saved.");
-    setBaseline({ ...formData });
-    onSaved?.(payload);
-    // Generate PDF — badge shows "Generating..." until complete
-    window.dispatchEvent(
-      new CustomEvent("pdf-regenerating", {
-        detail: { type: "additional_ivr", status: "start" },
-      }),
+    if (result.updatedAt) setLocalUpdatedAt(result.updatedAt);
+
+    // Commit sign/unsign if the local diff implies one — each branch also
+    // regenerates the IVR PDF with the correct signed/unsigned rendering.
+    if (signIntent === "sign") {
+      window.dispatchEvent(
+        new CustomEvent("pdf-regenerating", {
+          detail: { type: "additional_ivr", status: "start" },
+        }),
+      );
+      const signRes = await signIVRWithSpecimen(
+        orderId,
+        pendingPin as string,
+        specimenSignatureUrl as string,
+      );
+      window.dispatchEvent(
+        new CustomEvent("pdf-regenerating", {
+          detail: { type: "additional_ivr", status: "done" },
+        }),
+      );
+      if (!signRes.success) {
+        setIsSaving(false);
+        toast.error(signRes.error ?? "Sign failed — PIN may be wrong.");
+        return;
+      }
+    } else if (signIntent === "unsign") {
+      window.dispatchEvent(
+        new CustomEvent("pdf-regenerating", {
+          detail: { type: "additional_ivr", status: "start" },
+        }),
+      );
+      const unsignRes = await unsignIVR(orderId);
+      window.dispatchEvent(
+        new CustomEvent("pdf-regenerating", {
+          detail: { type: "additional_ivr", status: "done" },
+        }),
+      );
+      if (!unsignRes.success) {
+        setIsSaving(false);
+        toast.error(unsignRes.error ?? "Failed to unsign.");
+        return;
+      }
+    } else {
+      // Field-only save — regenerate PDF via the standard endpoint.
+      window.dispatchEvent(
+        new CustomEvent("pdf-regenerating", {
+          detail: { type: "additional_ivr", status: "start" },
+        }),
+      );
+      fetch("/api/generate-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId, formType: "ivr" }),
+      })
+        .catch((err) => console.error("[IVRForm] PDF generation failed:", err))
+        .finally(() => {
+          window.dispatchEvent(
+            new CustomEvent("pdf-regenerating", {
+              detail: { type: "additional_ivr", status: "done" },
+            }),
+          );
+        });
+    }
+
+    setIsSaving(false);
+    toast.success(
+      signIntent === "sign"
+        ? "IVR signed + saved."
+        : signIntent === "unsign"
+          ? "Unsigned + saved."
+          : "IVR form saved.",
     );
-    fetch("/api/generate-pdf", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderId, formType: "ivr" }),
-    })
-      .catch((err) => console.error("[IVRForm] PDF generation failed:", err))
-      .finally(() => {
-        window.dispatchEvent(
-          new CustomEvent("pdf-regenerating", {
-            detail: { type: "additional_ivr", status: "done" },
-          }),
-        );
-      });
+    setBaseline({ ...formData });
+    // Parent caches `ivrData` from this payload. Include the sign fields
+    // (intentionally excluded from the DB payload above) so the cached
+    // snapshot stays in sync after sign/unsign — otherwise the IVR tab
+    // forgets its signed state after a remount / order status change.
+    onSaved?.({
+      ...payload,
+      physicianSignedAt: formData.physicianSignedAt,
+      physicianSignedBy: formData.physicianSignedBy,
+      physicianSignatureImage:
+        signIntent === "unsign" ? null : specimenSignatureUrl,
+    });
+    setPendingPin(null);
+    if (signIntent === "unsign") {
+      setSpecimenSignatureUrl(null);
+    }
   }
 
   /* ── Render ── */
@@ -602,6 +876,13 @@ export function IVRFormDocument({
         isPending={isSaving}
         onSave={handleSave}
         onDiscard={handleDiscard}
+      />
+
+      <FormCollaborationStatus
+        viewers={collab.viewers}
+        conflict={collab.remoteChangedSinceLoad && isDirty}
+        reloading={reloading}
+        onReload={handleReload}
       />
 
       {/* ── Deficiency banner ── */}
@@ -621,11 +902,18 @@ export function IVRFormDocument({
           fontFamily: "system-ui, sans-serif",
         }}
       >
+        {/* Fieldset gate — disables every input/button inside the paper when
+            the order is locked (non-admin + status >= manufacturer_review,
+            via the effectiveCanEdit computed in OrderDetailModal). */}
+        <fieldset
+          disabled={!canEdit}
+          className={`m-0 p-0 border-0 ${!canEdit ? "opacity-90" : ""}`}
+        >
         {/* ── 1. HEADER ── */}
         <div className="flex items-start justify-between pb-3 border-b border-[#e5e5e5]">
           <div className="flex items-center gap-3">
             <div className="[&>span>span:last-child]:hidden shrink-0">
-              <HBLogo variant="light" size="lg" asLink={false} />
+              <MeridianLogo variant="light" size="lg" asLink={false} />
             </div>
             <div>
               <div
@@ -1115,6 +1403,225 @@ export function IVRFormDocument({
           </div>
         </div>
 
+        {/* ── 6b. CHRONIC-ONLY SUPPLEMENTAL SECTIONS ──
+            Back-office fields populated after the insurance call. Not on the
+            post-surgical physician-facing template. Data persists in DB even
+            when hidden, so switching wound_type is non-destructive. */}
+        {!isPostSurgical && (
+          <>
+            {/* Insurance details — Primary */}
+            <SectionHeader title="Insurance Details — Primary" />
+            <div className="px-2 pt-2 pb-1 border-b border-[#e5e5e5] space-y-2">
+              <TwoCol className="px-0">
+                <FieldBlock label="Group Number">
+                  <FormInput
+                    value={formData.groupNumber}
+                    onChange={(v) => set("groupNumber", v)}
+                    className="w-full"
+                    disabled={!canEdit}
+                  />
+                </FieldBlock>
+                <FieldBlock label="Plan Name">
+                  <FormInput
+                    value={formData.planName}
+                    onChange={(v) => set("planName", v)}
+                    className="w-full"
+                    disabled={!canEdit}
+                  />
+                </FieldBlock>
+                <FieldBlock label="Subscriber Relationship">
+                  <div className="flex flex-wrap gap-3 pt-0.5">
+                    {["Self", "Spouse", "Child", "Other"].map((t) => (
+                      <FormCheckbox
+                        key={t}
+                        checked={formData.subscriberRelationship === t}
+                        onChange={() =>
+                          set(
+                            "subscriberRelationship",
+                            formData.subscriberRelationship === t ? "" : t,
+                          )
+                        }
+                        label={t}
+                      />
+                    ))}
+                  </div>
+                </FieldBlock>
+                <FieldBlock label="Coverage Start">
+                  <FormInput
+                    value={formData.coverageStartDate}
+                    onChange={(v) => set("coverageStartDate", v)}
+                    className="w-full"
+                    placeholder="MM/DD/YYYY"
+                    disabled={!canEdit}
+                  />
+                </FieldBlock>
+                <FieldBlock label="Coverage End">
+                  <FormInput
+                    value={formData.coverageEndDate}
+                    onChange={(v) => set("coverageEndDate", v)}
+                    className="w-full"
+                    placeholder="MM/DD/YYYY"
+                    disabled={!canEdit}
+                  />
+                </FieldBlock>
+              </TwoCol>
+            </div>
+
+            {/* Insurance details — Secondary */}
+            <SectionHeader title="Insurance Details — Secondary" />
+            <div className="px-2 pt-2 pb-1 border-b border-[#e5e5e5] space-y-2">
+              <TwoCol className="px-0">
+                <FieldBlock label="Group Number">
+                  <FormInput
+                    value={formData.secondaryGroupNumber}
+                    onChange={(v) => set("secondaryGroupNumber", v)}
+                    className="w-full"
+                    disabled={!canEdit}
+                  />
+                </FieldBlock>
+                <FieldBlock label="Subscriber Relationship">
+                  <div className="flex flex-wrap gap-3 pt-0.5">
+                    {["Self", "Spouse", "Child", "Other"].map((t) => (
+                      <FormCheckbox
+                        key={t}
+                        checked={formData.secondarySubscriberRelationship === t}
+                        onChange={() =>
+                          set(
+                            "secondarySubscriberRelationship",
+                            formData.secondarySubscriberRelationship === t ? "" : t,
+                          )
+                        }
+                        label={t}
+                      />
+                    ))}
+                  </div>
+                </FieldBlock>
+              </TwoCol>
+            </div>
+
+            {/* Benefits & Coverage */}
+            <SectionHeader title="Benefits & Coverage" />
+            <div className="px-2 pt-2 pb-1 border-b border-[#e5e5e5] space-y-2">
+              <TwoCol className="px-0">
+                <FieldBlock label="Deductible Amount">
+                  <FormInput
+                    value={formData.deductibleAmount}
+                    onChange={(v) => set("deductibleAmount", v)}
+                    className="w-full"
+                    placeholder="$"
+                    disabled={!canEdit}
+                  />
+                </FieldBlock>
+                <FieldBlock label="Deductible Met">
+                  <FormInput
+                    value={formData.deductibleMet}
+                    onChange={(v) => set("deductibleMet", v)}
+                    className="w-full"
+                    placeholder="$"
+                    disabled={!canEdit}
+                  />
+                </FieldBlock>
+                <FieldBlock label="Out of Pocket Max">
+                  <FormInput
+                    value={formData.outOfPocketMax}
+                    onChange={(v) => set("outOfPocketMax", v)}
+                    className="w-full"
+                    placeholder="$"
+                    disabled={!canEdit}
+                  />
+                </FieldBlock>
+                <FieldBlock label="Out of Pocket Met">
+                  <FormInput
+                    value={formData.outOfPocketMet}
+                    onChange={(v) => set("outOfPocketMet", v)}
+                    className="w-full"
+                    placeholder="$"
+                    disabled={!canEdit}
+                  />
+                </FieldBlock>
+                <FieldBlock label="Copay Amount">
+                  <FormInput
+                    value={formData.copayAmount}
+                    onChange={(v) => set("copayAmount", v)}
+                    className="w-full"
+                    placeholder="$"
+                    disabled={!canEdit}
+                  />
+                </FieldBlock>
+                <FieldBlock label="Coinsurance %">
+                  <FormInput
+                    value={formData.coinsurancePercent}
+                    onChange={(v) => set("coinsurancePercent", v)}
+                    className="w-full"
+                    placeholder="%"
+                    disabled={!canEdit}
+                  />
+                </FieldBlock>
+              </TwoCol>
+              <div className="pt-1 space-y-2">
+                <YesNo
+                  label="DME Covered?"
+                  value={formData.dmeCovered}
+                  onChange={(v) => set("dmeCovered", v)}
+                />
+                <YesNo
+                  label="Wound Care Covered?"
+                  value={formData.woundCareCovered}
+                  onChange={(v) => set("woundCareCovered", v)}
+                />
+              </div>
+            </div>
+
+            {/* Prior Authorization — detailed */}
+            <SectionHeader title="Prior Authorization" />
+            <div className="px-2 pt-2 pb-1 border-b border-[#e5e5e5] space-y-2">
+              <YesNo
+                label="Prior Auth Required?"
+                value={formData.priorAuthRequired}
+                onChange={(v) => set("priorAuthRequired", v)}
+              />
+              {formData.priorAuthRequired === true && (
+                <TwoCol className="px-0">
+                  <FieldBlock label="Auth Number">
+                    <FormInput
+                      value={formData.priorAuthNumber}
+                      onChange={(v) => set("priorAuthNumber", v)}
+                      className="w-full"
+                      disabled={!canEdit}
+                    />
+                  </FieldBlock>
+                  <FieldBlock label="Units Authorized">
+                    <FormInput
+                      value={formData.unitsAuthorized}
+                      onChange={(v) => set("unitsAuthorized", v)}
+                      className="w-full"
+                      disabled={!canEdit}
+                    />
+                  </FieldBlock>
+                  <FieldBlock label="Auth Start Date">
+                    <FormInput
+                      value={formData.priorAuthStartDate}
+                      onChange={(v) => set("priorAuthStartDate", v)}
+                      className="w-full"
+                      placeholder="MM/DD/YYYY"
+                      disabled={!canEdit}
+                    />
+                  </FieldBlock>
+                  <FieldBlock label="Auth End Date">
+                    <FormInput
+                      value={formData.priorAuthEndDate}
+                      onChange={(v) => set("priorAuthEndDate", v)}
+                      className="w-full"
+                      placeholder="MM/DD/YYYY"
+                      disabled={!canEdit}
+                    />
+                  </FieldBlock>
+                </TwoCol>
+              )}
+            </div>
+          </>
+        )}
+
         {/* ── 7. WOUND INFORMATION ── */}
         <SectionHeader title="Wound Information" />
         <div className="px-2 pt-2 pb-1 border-b border-[#e5e5e5] space-y-2">
@@ -1308,6 +1815,56 @@ export function IVRFormDocument({
           </FieldBlock>
         </div>
 
+        {/* ── 8b. VERIFICATION — chronic only ──
+            Tracks who verified benefits, when, and the insurance-call
+            reference. Not on the post-surgical physician template. */}
+        {!isPostSurgical && (
+          <>
+            <SectionHeader title="Verification" />
+            <div className="px-2 pt-2 pb-1 border-b border-[#e5e5e5] space-y-2">
+              <TwoCol className="px-0">
+                <FieldBlock label="Verified By">
+                  <FormInput
+                    value={formData.verifiedBy}
+                    onChange={(v) => set("verifiedBy", v)}
+                    className="w-full"
+                    placeholder="Name of person who called"
+                    disabled={!canEdit}
+                  />
+                </FieldBlock>
+                <FieldBlock label="Verified Date">
+                  <FormInput
+                    value={formData.verifiedDate}
+                    onChange={(v) => set("verifiedDate", v)}
+                    className="w-full"
+                    placeholder="MM/DD/YYYY"
+                    disabled={!canEdit}
+                  />
+                </FieldBlock>
+                <FieldBlock label="Reference Number">
+                  <FormInput
+                    value={formData.verificationReference}
+                    onChange={(v) => set("verificationReference", v)}
+                    className="w-full"
+                    placeholder="Call reference #"
+                    disabled={!canEdit}
+                  />
+                </FieldBlock>
+              </TwoCol>
+              <FieldBlock label="Notes">
+                <textarea
+                  value={formData.notes}
+                  onChange={(e) => set("notes", e.target.value)}
+                  rows={3}
+                  placeholder="Additional notes..."
+                  disabled={!canEdit}
+                  className="w-full border-b border-[#888] bg-transparent text-[12px] leading-tight text-[#333] px-0.5 resize-none outline-none disabled:text-[#888]"
+                />
+              </FieldBlock>
+            </div>
+          </>
+        )}
+
         {/* ── 9. IMPORTANT NOTES ── */}
         <div className="mt-3 px-3 py-2.5 bg-[#f5f5f5] border border-[#ddd] text-[11px] text-[#444] space-y-1">
           <p>
@@ -1320,8 +1877,11 @@ export function IVRFormDocument({
           </p>
         </div>
 
-        {/* ── 10. PHYSICIAN AGREEMENT ── */}
-        <div className="mt-4 pt-3 border-t border-[#e5e5e5]">
+        {/* ── 10. PHYSICIAN AGREEMENT ──
+            Layout matches the generated PDF: value sits on the line,
+            caption label below. Fixed cell height keeps the underlines
+            aligned whether signed or not. */}
+        <div ref={signatureSectionRef} className="mt-4 pt-3 border-t border-[#e5e5e5]">
           <p className="text-[11px] text-[#444] leading-relaxed mb-4">
             By signing below, I certify that I have received the necessary
             patient authorization to release the medical and/or other patient
@@ -1329,55 +1889,95 @@ export function IVRFormDocument({
             patient. This information is for verifying insurance coverage,
             seeking reimbursement, and the sole purpose of claim support.
           </p>
-          <div className="grid grid-cols-2 gap-6">
+
+          <div className="grid grid-cols-[1fr_220px] gap-8">
+            {/* SIGNATURE CELL */}
             <div>
-              <FL className="block mb-1">Physician or Authorized Signature</FL>
-              {formData.physicianSignedAt ? (
-                <div className="flex items-center gap-2 py-1">
-                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-green-50 border border-green-200">
-                    <Check className="w-3.5 h-3.5 text-green-600 shrink-0" />
-                    <span className="text-[11px] font-semibold text-green-700">Signed</span>
-                  </div>
-                  <div className="text-[11px] text-[#444]">
-                    <span className="font-medium">{formData.physicianSignature}</span>
-                    <span className="text-[#999] ml-1">
-                      {new Date(formData.physicianSignedAt).toLocaleDateString("en-US", {
-                        month: "short", day: "numeric", year: "numeric",
-                      })}
+              <div className="h-12 flex items-end border-b border-[#333] pb-1">
+                {formData.physicianSignedAt ? (
+                  specimenSignatureUrl ? (
+                    <img
+                      src={specimenSignatureUrl}
+                      alt="Provider signature"
+                      className="h-10 object-contain object-left"
+                    />
+                  ) : (
+                    <span className="text-[15px] text-[#111] italic">
+                      {formData.physicianSignature || "Signed"}
                     </span>
+                  )
+                ) : canSign ? (
+                  <button
+                    type="button"
+                    onClick={() => setSignModalOpen(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-[#0f2d4a] text-[#0f2d4a] text-[11px] font-semibold hover:bg-[#0f2d4a] hover:text-white transition-colors"
+                  >
+                    <PenLine className="w-3.5 h-3.5 shrink-0" />
+                    Sign
+                  </button>
+                ) : (
+                  <span className="text-[11px] text-[#999] italic">
+                    Awaiting provider signature
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center justify-between mt-1">
+                <span className="text-[9px] font-semibold uppercase tracking-wide text-[#777]">
+                  Physician or Authorized Signature
+                </span>
+                {formData.physicianSignedAt && (
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-green-50 border border-green-200">
+                      <Check className="w-3 h-3 text-green-600 shrink-0" />
+                      <span className="text-[10px] font-semibold text-green-700">Signed</span>
+                    </div>
+                    {canSign && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSpecimenSignatureUrl(null);
+                          setPendingPin(null);
+                          setFormData((prev) => ({
+                            ...prev,
+                            physicianSignedAt: null,
+                            physicianSignedBy: null,
+                          }));
+                        }}
+                        className="text-[10px] text-[#999] hover:text-red-500 underline underline-offset-2 transition-colors"
+                      >
+                        Unsign
+                      </button>
+                    )}
                   </div>
-                  {canSign && (
-                    <button
-                      type="button"
-                      onClick={() => set("physicianSignedAt", null)}
-                      className="text-[11px] text-[#999] hover:text-red-500 underline underline-offset-2 transition-colors ml-1"
-                    >
-                      Unsign
-                    </button>
-                  )}
-                </div>
-              ) : canSign ? (
-                <button
-                  type="button"
-                  onClick={() => setSignModalOpen(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-[#0f2d4a] text-[#0f2d4a] text-[11px] font-semibold hover:bg-[#0f2d4a] hover:text-white transition-colors"
-                >
-                  <PenLine className="w-3.5 h-3.5 shrink-0" />
-                  Sign
-                </button>
-              ) : (
-                <p className="text-[11px] text-[#999] italic py-1">Awaiting provider signature</p>
-              )}
+                )}
+              </div>
             </div>
+
+            {/* DATE CELL */}
             <div>
-              <FL className="block mb-1">Date</FL>
-              <FormInput
-                value={formData.physicianSignatureDate}
-                onChange={(v) => set("physicianSignatureDate", v)}
-                className="w-full"
-                placeholder="—"
-                disabled={!canEdit}
-              />
+              <div className="h-12 flex items-end border-b border-[#333] pb-1">
+                {formData.physicianSignedAt ? (
+                  <span className="text-[13px] font-semibold text-[#111]">
+                    {new Date(formData.physicianSignedAt).toLocaleDateString("en-US", {
+                      year: "numeric",
+                      month: "2-digit",
+                      day: "2-digit",
+                    })}
+                  </span>
+                ) : (
+                  <input
+                    type="text"
+                    value={formData.physicianSignatureDate}
+                    onChange={(e) => set("physicianSignatureDate", e.target.value)}
+                    placeholder="—"
+                    disabled={!canEdit}
+                    className="w-full text-[13px] bg-transparent outline-none placeholder:text-[#bbb]"
+                  />
+                )}
+              </div>
+              <div className="mt-1 text-[9px] font-semibold uppercase tracking-wide text-[#777]">
+                Date
+              </div>
             </div>
           </div>
         </div>
@@ -1390,6 +1990,7 @@ export function IVRFormDocument({
           </span>
           <span>REV2.1</span>
         </div>
+        </fieldset>
       </div>
 
       <SignOrderModal
@@ -1398,11 +1999,19 @@ export function IVRFormDocument({
         order={order}
         providerName={currentUserName ?? "Provider"}
         title="Sign IVR Form"
-        successMessage="IVR form signed. Save the form to persist your signature."
+        successMessage="Signature captured. Click Save to commit."
+        // PIN-verify only — commit happens at Save time via
+        // signIVRWithSpecimen. See OrderFormDocument for matching pattern.
         onSign={(pin) => verifyProviderPin(pin)}
-        onSuccess={() => {
+        onSuccess={(signatureImage, pin) => {
           const now = new Date().toISOString();
-          setFormData((prev) => ({ ...prev, physicianSignedAt: now, physicianSignature: currentUserName ?? "" }));
+          setSpecimenSignatureUrl(signatureImage);
+          setPendingPin(pin);
+          setFormData((prev) => ({
+            ...prev,
+            physicianSignedAt: now,
+            physicianSignature: currentUserName ?? "",
+          }));
         }}
       />
     </div>

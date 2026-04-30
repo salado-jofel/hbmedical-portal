@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useAppDispatch } from "@/store/hooks";
 import { setUser } from "../(redux)/dashboard-slice";
+import { IdleLogoutSentinel } from "../(components)/IdleLogoutSentinel";
 
 import type { UserData } from "@/utils/interfaces/users";
 
@@ -30,5 +31,12 @@ export default function Providers({
     );
   }, [dispatch, userData]);
 
-  return <>{children}</>;
+  return (
+    <>
+      {/* HIPAA automatic-logoff (§164.312(a)(2)(iii)). Mounted at the
+          dashboard layout so it only runs for signed-in users. */}
+      <IdleLogoutSentinel enabled={!!userData} />
+      {children}
+    </>
+  );
 }

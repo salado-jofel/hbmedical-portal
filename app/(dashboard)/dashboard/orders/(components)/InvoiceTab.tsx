@@ -9,7 +9,15 @@ import type { DashboardOrder, IDeliveryInvoice } from "@/utils/interfaces/orders
 interface InvoiceTabProps {
   isActive: boolean;
   order: DashboardOrder;
+  /** Display name for the current viewer — drives presence chips. */
+  currentUserName?: string | null;
   onDirtyChange?: (dirty: boolean) => void;
+  // Role flags used to gate the patient-signature capture button. Admin
+  // bypasses other lock rules but is NOT allowed to capture patient
+  // signatures — that's a clinic-side action only (provider or staff).
+  isAdmin?: boolean;
+  isProvider?: boolean;
+  isClinicalStaff?: boolean;
 }
 
 // Loading state — mirrors the paper-document layout (header band, two field
@@ -95,20 +103,32 @@ function InvoiceSkeleton() {
 
 // Mirrors IVRTab/HCFATab: stays mounted (hidden via class), fetches its own
 // data on first activation. Keeps tab swaps cheap.
-export function InvoiceTab({ isActive, order, onDirtyChange }: InvoiceTabProps) {
+export function InvoiceTab({
+  isActive,
+  order,
+  currentUserName = null,
+  onDirtyChange,
+  isAdmin = false,
+  isProvider = false,
+  isClinicalStaff = false,
+}: InvoiceTabProps) {
   const [invoice, setInvoice] = useState<IDeliveryInvoice | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasLoaded, setHasLoaded] = useState(false);
 
+  // Refetch every time the tab is activated. Line items are derived from
+  // order_items server-side, so switching away and back should reflect any
+  // products added on the Order Form tab without remounting the modal.
   useEffect(() => {
-    if (!isActive || hasLoaded) return;
-    setLoading(true);
+    if (!isActive) return;
     let cancelled = false;
+    setLoading(true);
     getOrderDeliveryInvoice(order.id)
       .then((res) => {
         if (cancelled) return;
         if (res.error) setError(res.error);
+        else setError(null);
         setInvoice(res.invoice);
         setHasLoaded(true);
       })
@@ -118,7 +138,7 @@ export function InvoiceTab({ isActive, order, onDirtyChange }: InvoiceTabProps) 
     return () => {
       cancelled = true;
     };
-  }, [isActive, hasLoaded, order.id]);
+  }, [isActive, order.id]);
 
   return (
     <div className={cn("absolute inset-0 overflow-y-auto px-3", !isActive && "hidden")}>
@@ -129,10 +149,18 @@ export function InvoiceTab({ isActive, order, onDirtyChange }: InvoiceTabProps) 
           {error ?? "Could not load invoice."}
         </div>
       ) : (
+        // Key by line-item identity so a tab re-activation with freshly-synced
+        // products remounts InvoiceDocument (its state is seeded once on mount).
         <InvoiceDocument
+          key={invoice.lineItems.map((i) => `${i.hcpc ?? ""}:${i.qty ?? ""}:${i.perEach ?? ""}`).join("|")}
           order={order}
           initialInvoice={invoice}
+          currentUserName={currentUserName}
           onDirtyChange={onDirtyChange}
+          isAdmin={isAdmin}
+          isProvider={isProvider}
+          isClinicalStaff={isClinicalStaff}
+          onInvoiceUpdated={setInvoice}
         />
       )}
     </div>

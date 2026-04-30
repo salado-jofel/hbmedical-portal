@@ -1,13 +1,16 @@
 "use client";
 
 import React, { useState, useMemo, useEffect, useCallback } from "react";
-import { Trash2, Check, PenLine } from "lucide-react";
-import { upsertForm1500 } from "../(services)/order-document-actions";
-import { verifyProviderPin } from "../(services)/order-workflow-actions";
+import { Trash2 } from "lucide-react";
+import {
+  upsertForm1500,
+  getForm1500,
+} from "../(services)/order-document-actions";
 import { FormActionBar } from "./FormActionBar";
 import { PdfBackground } from "./PdfBackground";
 import { FormDeficiencyBanner } from "./FormDeficiencyBanner";
-import { SignOrderModal } from "./SignOrderModal";
+import { useFormCollaboration } from "./useFormCollaboration";
+import { FormCollaborationStatus } from "./FormCollaborationStatus";
 import type { IServiceLine, DashboardOrder } from "@/utils/interfaces/orders";
 import { cn } from "@/utils/utils";
 import toast from "react-hot-toast";
@@ -389,11 +392,27 @@ export function HCFA1500Document({
   const [fd, setFd] = useState<F>(() => buildFormState(initialData));
   const [bl, setBl] = useState<F>(() => buildFormState(initialData));
   const [saving, setSaving] = useState(false);
-  const [signModalOpen, setSignModalOpen] = useState(false);
+  const [reloading, setReloading] = useState(false);
   const [pdfReady, setPdfReady] = useState(false);
+  // Tracks the `updated_at` the form was loaded with so we can detect remote
+  // edits and submit it as `ifMatch` on save. Updated whenever we successfully
+  // save or pull a fresh copy from the server.
+  const [localUpdatedAt, setLocalUpdatedAt] = useState<string | null>(
+    (initialData?.updated_at as string | null | undefined) ?? null,
+  );
 
   const dirty = useMemo(() => JSON.stringify(fd) !== JSON.stringify(bl), [fd, bl]);
   useEffect(() => { onDirtyChange?.(dirty); }, [dirty]); // eslint-disable-line
+
+  // Realtime + presence — subscribes to UPDATEs on this order's row and
+  // tracks who else has the form open.
+  const collab = useFormCollaboration({
+    table: "order_form_1500",
+    channelKey: "hcfa",
+    orderId,
+    userName: currentUserName,
+    localUpdatedAt,
+  });
 
   const s = useCallback(<K extends keyof F>(k: K, v: F[K]) => {
     setFd((p) => ({ ...p, [k]: v }));
@@ -409,6 +428,76 @@ export function HCFA1500Document({
   function upLnIdx(idx: number, f: keyof IServiceLine, v: string | boolean) {
     s("serviceLines", fd.serviceLines.map((l, i) => (i === idx ? { ...l, [f]: v } : l)));
   }
+
+  /* ── PDF regeneration helper ── shared by save and reload so the
+     "Generating…" blue badge on the document card lights up consistently
+     in both flows. Dispatches the same `pdf-regenerating` events the
+     OrderDetailModal listens for. Errors are returned, not thrown — the
+     caller decides whether to surface a toast. */
+  const regenerateHcfaPdf = useCallback(async (): Promise<{
+    ok: boolean;
+    error?: string;
+  }> => {
+    window.dispatchEvent(
+      new CustomEvent("pdf-regenerating", {
+        detail: { type: "form_1500", status: "start" },
+      }),
+    );
+    try {
+      const pdfRes = await fetch("/api/generate-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId, formType: "hcfa_1500" }),
+      });
+      if (!pdfRes.ok) {
+        return { ok: false, error: `PDF generation failed (${pdfRes.status})` };
+      }
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : "Unknown" };
+    } finally {
+      window.dispatchEvent(
+        new CustomEvent("pdf-regenerating", {
+          detail: { type: "form_1500", status: "done" },
+        }),
+      );
+    }
+  }, [orderId]);
+
+  /* ── Reload from server ── used by both the conflict banner and the
+     silent auto-refresh when no local edits are in flight. The `reloading`
+     flag drives the spinner on the conflict banner's Reload button. We
+     also kick off a fresh PDF regen so the document card on the right
+     side shows the "Generating…" blue state and ends up holding the
+     latest rendered file. */
+  const handleReload = useCallback(async () => {
+    setReloading(true);
+    try {
+      const fresh = await getForm1500(orderId);
+      const next = buildFormState(fresh as Record<string, unknown> | null);
+      setFd(next);
+      setBl(next);
+      setLocalUpdatedAt(
+        ((fresh as { updated_at?: string } | null | undefined)?.updated_at) ??
+          null,
+      );
+      collab.acknowledgeRemoteChange();
+      // Fire and forget — the document card listens for the regen events
+      // independently. We don't need to block the form on PDF render.
+      void regenerateHcfaPdf();
+    } finally {
+      setReloading(false);
+    }
+  }, [orderId, collab, regenerateHcfaPdf]);
+
+  // Silent auto-refresh: when someone else saves and we have nothing
+  // unsaved, just pull the latest. Banner is reserved for the dirty case
+  // where blowing away local edits needs explicit confirmation.
+  useEffect(() => {
+    if (collab.remoteChangedSinceLoad && !dirty) {
+      void handleReload();
+    }
+  }, [collab.remoteChangedSinceLoad, dirty, handleReload]);
 
   /* ── Save ── */
   async function save() {
@@ -508,34 +597,36 @@ export function HCFA1500Document({
       claim_codes: n(fd.claimCodes),
       icd_indicator: n(fd.icdIndicator),
     };
-    const res = await upsertForm1500(orderId, p);
+    const res = await upsertForm1500(orderId, p, localUpdatedAt);
     if (!res.success) {
       setSaving(false);
-      toast.error(res.error ?? "Failed to save.");
+      if (res.conflict) {
+        // Someone else saved while we were editing. Tell the user; keep
+        // their local edits intact so they can choose to reload manually.
+        toast.error(
+          res.error ?? "Someone else just saved this form. Reload to see their changes.",
+        );
+      } else {
+        toast.error(res.error ?? "Failed to save.");
+      }
       return;
     }
 
     setBl({ ...fd });
+    if (res.updatedAt) setLocalUpdatedAt(res.updatedAt);
     onSave?.(p);
 
-    // Regenerate PDF — awaited so the document is ready before setSaving(false)
-    window.dispatchEvent(new CustomEvent("pdf-regenerating", { detail: { type: "form_1500", status: "start" } }));
-    try {
-      const pdfRes = await fetch("/api/generate-pdf", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId, formType: "hcfa_1500" }),
-      });
-      if (!pdfRes.ok) throw new Error(`PDF generation failed (${pdfRes.status})`);
+    // Regenerate PDF — awaited so the document is ready before setSaving(false).
+    const pdf = await regenerateHcfaPdf();
+    if (pdf.ok) {
       toast.success("HCFA-1500 saved.");
-    } catch (e) {
-      console.error("[HCFA1500] PDF gen failed:", e);
-      toast.success("HCFA-1500 saved."); // form data is saved even if PDF fails
+    } else {
+      // Form data IS saved; only the PDF render failed. Tell the user both.
+      console.error("[HCFA1500] PDF gen failed:", pdf.error);
+      toast.success("HCFA-1500 saved.");
       toast.error("PDF could not be regenerated — try again.");
-    } finally {
-      window.dispatchEvent(new CustomEvent("pdf-regenerating", { detail: { type: "form_1500", status: "done" } }));
-      setSaving(false);
     }
+    setSaving(false);
   }
 
   /* ══════════════════════════════════════════════════════════════════════ */
@@ -789,6 +880,13 @@ export function HCFA1500Document({
         onSave={save}
         onDiscard={() => setFd({ ...bl })}
       />
+
+      <FormCollaborationStatus
+        viewers={collab.viewers}
+        conflict={collab.remoteChangedSinceLoad && dirty}
+        reloading={reloading}
+        onReload={handleReload}
+      />
       <FormDeficiencyBanner aiExtracted={aiEx} deficiencyCount={defCt} />
 
       {/* PDF skeleton shown until the canvas finishes rendering */}
@@ -908,64 +1006,10 @@ export function HCFA1500Document({
         </div>
       </div>
 
-      {/* ── Physician Signature Section ── */}
-      <div className="mt-4 mx-auto px-4 pb-4" style={{ maxWidth: 1400 }}>
-        <div className="border border-[#e5e5e5] rounded-lg p-4">
-          <p className="text-[10px] font-bold uppercase tracking-wide text-[#555] mb-2">
-            Physicians Signature (Box 31)
-          </p>
-          {fd.physicianSignedAt ? (
-            <div className="flex items-center gap-2 py-1">
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-green-50 border border-green-200">
-                <Check className="w-3.5 h-3.5 text-green-600 shrink-0" />
-                <span className="text-[11px] font-semibold text-green-700">Signed</span>
-              </div>
-              <div className="text-[11px] text-[#444]">
-                <span className="font-medium">{fd.physicianSignature}</span>
-                <span className="text-[#999] ml-1">
-                  {new Date(fd.physicianSignedAt).toLocaleDateString("en-US", {
-                    month: "short", day: "numeric", year: "numeric",
-                  })}
-                </span>
-              </div>
-              {canSign && (
-                <button
-                  type="button"
-                  onClick={() => s("physicianSignedAt", null)}
-                  className="text-[11px] text-[#999] hover:text-red-500 underline underline-offset-2 transition-colors ml-1"
-                >
-                  Unsign
-                </button>
-              )}
-            </div>
-          ) : canSign ? (
-            <button
-              type="button"
-              onClick={() => setSignModalOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-[#0f2d4a] text-[#0f2d4a] text-[11px] font-semibold hover:bg-[#0f2d4a] hover:text-white transition-colors"
-            >
-              <PenLine className="w-3.5 h-3.5 shrink-0" />
-              Sign
-            </button>
-          ) : (
-            <p className="text-[11px] text-[#999] italic py-1">Awaiting provider signature</p>
-          )}
-        </div>
-      </div>
-
-      <SignOrderModal
-        open={signModalOpen}
-        onOpenChange={setSignModalOpen}
-        order={order}
-        providerName={currentUserName ?? "Provider"}
-        title="Sign CMS-1500 Form"
-        successMessage="CMS-1500 form signed. Save the form to persist your signature."
-        onSign={(pin) => verifyProviderPin(pin)}
-        onSuccess={() => {
-          const now = new Date().toISOString();
-          setFd((prev) => ({ ...prev, physicianSignedAt: now, physicianSignature: currentUserName ?? "" }));
-        }}
-      />
+      {/* Box 31 (physician signature) is intentionally not surfaced here.
+          The biller handles signing in their billing software (signature on
+          file or wet signature on print) — we never collect a per-claim
+          signature in the portal. */}
     </div>
   );
 }

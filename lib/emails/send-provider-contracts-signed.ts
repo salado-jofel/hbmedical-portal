@@ -1,7 +1,7 @@
 import { resend, ACCOUNTS_FROM_EMAIL } from "@/lib/emails/resend";
 
 const LOGO_URL =
-  "https://ersdsmuybpfvgvaiwcgl.supabase.co/storage/v1/object/public/hbmedical-bucket-public/assets/hb-logo-name-2%20(1).png";
+  "https://ersdsmuybpfvgvaiwcgl.supabase.co/storage/v1/object/public/hbmedical-bucket-public/assets/meridian-logo.png";
 
 export interface ProviderContractsSignedEmailParams {
   to: string[];
@@ -89,11 +89,11 @@ function buildHtml({
   <div class="wrapper">
     <div class="container">
       <div class="header">
-        <img src="${LOGO_URL}" alt="HB Medical" width="176" class="logo-img" />
+        <img src="${LOGO_URL}" alt="Meridian" width="176" class="logo-img" />
       </div>
       <div class="content">
         <h1 class="h1">New provider signed contracts</h1>
-        <p>A clinical provider has completed onboarding on the HB Medical Portal and signed the required agreements. The signed PDFs are attached to this email.</p>
+        <p>A clinical provider has completed onboarding on the Meridian Portal and signed the required agreements. The signed PDFs are attached to this email.</p>
         <div class="info-box">
           <span class="info-row"><span class="info-label">Provider:</span> ${providerName}</span>
           <span class="info-row"><span class="info-label">Email:</span> ${providerEmail}</span>
@@ -107,7 +107,7 @@ function buildHtml({
         </ul>
         <p class="muted">This email was generated automatically when the provider completed signup.</p>
       </div>
-      <div class="footer">&copy; 2026 HB Medical Portal. Secure &amp; Confidential.</div>
+      <div class="footer">&copy; 2026 Meridian Portal. Secure &amp; Confidential.</div>
     </div>
   </div>
 </body>

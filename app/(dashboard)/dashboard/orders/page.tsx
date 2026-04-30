@@ -29,12 +29,16 @@ export default async function OrdersPage() {
 
   const user = await getCurrentUserOrThrow(supabase);
 
-  // Get profile name for sign modal
+  // Get provider's display name for the Sign modal. `full_name` doesn't
+  // exist on profiles — use first + last and compose.
   const { data: profile } = await supabase
     .from("profiles")
-    .select("full_name")
+    .select("first_name, last_name")
     .eq("id", user.id)
     .maybeSingle();
+  const currentUserName = profile
+    ? `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() || undefined
+    : undefined;
 
   const orders = await getOrders();
 
@@ -53,7 +57,7 @@ export default async function OrdersPage() {
         isRep={repUser}
         isSupport={supportUser}
         currentUserId={user.id}
-        currentUserName={(profile as { full_name?: string } | null)?.full_name ?? undefined}
+        currentUserName={currentUserName}
       />
     </Providers>
   );

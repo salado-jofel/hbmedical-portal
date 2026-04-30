@@ -3,7 +3,7 @@
 import { motion } from "framer-motion";
 import { VIEWPORT, staggerContainer, fadeUp } from "@/components/ui/animations";
 import { FooterLink } from "../(components)/FooterLink";
-import { HBLogo } from "../(components)/HBLogo";
+import { MeridianLogo } from "../(components)/MeridianLogo";
 
 const navLinks = [
   { label: "Product", href: "#product" },
@@ -25,7 +25,7 @@ export function Footer() {
         >
           {/* ── Logo ── */}
           <motion.div variants={fadeUp} className="mb-4">
-            <HBLogo variant="light" size="md" />
+            <MeridianLogo variant="light" size="md" />
           </motion.div>
 
           {/* ── Tagline ── */}
@@ -56,7 +56,7 @@ export function Footer() {
             className="border-t border-gray-200 pt-8 w-full flex flex-col items-center gap-2"
           >
             <p className="text-gray-400 text-xs">
-              © 2025 HB Medical. All rights reserved.
+              © 2026 Meridian Portal. All rights reserved.
             </p>
             <p className="text-gray-300 text-xs">
               This page is intended for prospective independent sales

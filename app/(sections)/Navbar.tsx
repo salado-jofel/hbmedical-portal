@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { fadeDown } from "@/components/ui/animations";
-import { HBLogo } from "../(components)/HBLogo";
+import { MeridianLogo } from "../(components)/MeridianLogo";
 
 const NAV_LINKS = [
   { href: "#product", label: "Product" },
@@ -29,7 +29,7 @@ export function Navbar() {
         <div className="max-w-7xl mx-auto px-6 py-2.5 flex items-center justify-between">
 
           {/* ── Logo ── */}
-          <HBLogo variant="light" size="md" />
+          <MeridianLogo variant="light" size="md" />
 
           {/* ── Desktop Nav Links ── */}
           <div className="hidden md:flex items-center gap-8 text-sm text-gray-500">

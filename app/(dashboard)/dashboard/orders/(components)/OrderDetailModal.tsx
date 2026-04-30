@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useTransition, useRef } from "react";
+import { useState, useEffect, useMemo, useTransition, useRef } from "react";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
   removeOrderFromStore,
@@ -114,7 +114,7 @@ import { OrderChatTab } from "./OrderChatTab";
 import { OrderHistoryTab } from "./OrderHistoryTab";
 import toast from "react-hot-toast";
 import { cn } from "@/utils/utils";
-import { REQUIRED_DOC_TYPES, ALL_DOC_TYPES, isInvoiceVisibleForStatus } from "@/utils/constants/orders";
+import { REQUIRED_DOC_TYPES, ALL_DOC_TYPES, isInvoiceVisibleForStatus, isItemsEditable } from "@/utils/constants/orders";
 import { getDisplayOrderStatus } from "@/utils/helpers/orders";
 
 const TABS = [
@@ -178,6 +178,25 @@ export function OrderDetailModal({
   const [, startTransition] = useTransition();
 
   const [tab, setTab] = useState<TabValue>("overview");
+
+  /* -- Status-aware edit gate (overlays the role-based `canEdit` prop) --
+     Non-admins lose edit rights once the order is past manufacturer_review.
+     Admin can edit at every status — the previous version returned `canEdit`
+     here, which was false for admin (because `canCreate` excluded admin)
+     and silently locked them out of every form. Now admin always edits. */
+  const effectiveCanEdit = useMemo(() => {
+    if (isAdmin) return true;
+    return canEdit && isItemsEditable(liveOrder.order_status);
+  }, [canEdit, isAdmin, liveOrder.order_status]);
+
+  // Signing of Order Form / IVR is only meaningful before admin approval.
+  // Once the order hits manufacturer_review+, the provider can no longer
+  // sign/unsign. Admin keeps `canSign` as passed (admin doesn't actually
+  // sign as a clinical_provider, so canSign=false for admin is correct).
+  const effectiveCanSign = useMemo(() => {
+    if (isAdmin) return canSign;
+    return canSign && isItemsEditable(liveOrder.order_status);
+  }, [canSign, isAdmin, liveOrder.order_status]);
 
   /* -- Documents (shared between Docs tab and right panel) -- */
   const [documents, setDocuments] = useState<IOrderDocument[]>([]);
@@ -326,14 +345,19 @@ export function OrderDetailModal({
       } catch (err) {
         console.error("[polling]", err);
       }
-      if (pollCountRef.current >= 20) {
+      // Cap matches the AI extraction route's maxDuration (300s) plus a
+      // small buffer for the realtime tick. 60 polls × 5s = 300s. Extension
+      // from the previous 60s window: large clinical PDFs (20+ pages) can
+      // take Anthropic 60-90s of inference alone, plus DB writes. The old
+      // 60s cap was racing the server's own deadline.
+      if (pollCountRef.current >= 60) {
         if (pollingIntervalRef.current) {
           clearInterval(pollingIntervalRef.current);
           pollingIntervalRef.current = null;
         }
         setAiStatus("error");
       }
-    }, 3000);
+    }, 5000);
   }
 
   /* -- Dirty tracking for child tabs -- */
@@ -1012,10 +1036,10 @@ export function OrderDetailModal({
 
   async function handleSubmitOrder() {
     if (draftItems.length === 0) {
-      toast.error("Please add at least one product before submitting.", {
+      toast.error("Add at least one product in the Order Form tab before submitting.", {
         duration: 4000,
       });
-      setTab("overview");
+      setTab("order-form");
       return;
     }
     if (hasAnyUnsavedChanges) {
@@ -1046,8 +1070,8 @@ export function OrderDetailModal({
 
   async function handleSignAndSubmit() {
     if (draftItems.length === 0) {
-      toast.error("Add at least one product in the Overview tab before signing.", { duration: 4000 });
-      setTab("overview");
+      toast.error("Add at least one product in the Order Form tab before signing.", { duration: 4000 });
+      setTab("order-form");
       return;
     }
     if (hasAnyUnsavedChanges) {
@@ -1345,19 +1369,32 @@ export function OrderDetailModal({
   // Invoice tab + doc card only show once the order is past the early
   // drafting stages — see INVOICE_VISIBLE_STATUSES.
   const invoiceUnlocked = isInvoiceVisibleForStatus(status);
-  const visibleTabs = (isProvider ? TABS.filter((t) => t.value !== "hcfa") : TABS).filter(
-    (t) => t.value !== "invoice" || invoiceUnlocked,
-  );
+  // HCFA / 1500 tab gate: only visible once the order has been delivered, and
+  // only to roles that participate in the billing workflow. Sales reps are
+  // intentionally excluded — they don't touch claim forms. The form is
+  // pre-populated server-side when the order transitions to "delivered" and
+  // editable by anyone who can see it (no separate edit-only check).
+  const hcfaVisible =
+    status === "delivered" && (isClinical || isAdmin || isSupport);
+  const visibleTabs = TABS.filter((t) => {
+    if (t.value === "hcfa") return hcfaVisible;
+    if (t.value === "invoice") return invoiceUnlocked;
+    return true;
+  });
   const visibleRequiredDocTypes = (isProvider
     ? REQUIRED_DOC_TYPES.filter((d) => {
-        if (d.type === "form_1500") return false;
         if (d.type === "facesheet" || d.type === "clinical_docs") {
           return localDocuments.some((ld) => ld.documentType === d.type);
         }
         return true;
       })
     : REQUIRED_DOC_TYPES
-  ).filter((d) => d.type !== "delivery_invoice" || invoiceUnlocked);
+  )
+    .filter((d) => d.type !== "delivery_invoice" || invoiceUnlocked)
+    // form_1500 doc card mirrors the HCFA tab visibility — only relevant
+    // once the order is delivered, and only to billing-workflow roles. Sales
+    // reps still don't reach this code path.
+    .filter((d) => d.type !== "form_1500" || hcfaVisible);
   const isOverviewDirty =
     draftItems.some((i) => i.isNew) ||
     draftItems.some((draft) => {
@@ -1612,28 +1649,19 @@ export function OrderDetailModal({
                       isActive={tab === "overview"}
                       order={order}
                       liveOrder={liveOrder}
-                      canEdit={canEdit}
-                      status={status}
-                      draftItems={draftItems}
-                      savedItems={savedItems}
-                      draftNotes={draftNotes}
-                      isOverviewDirty={isOverviewDirty}
-                      isSavingOverview={isSavingOverview}
-                      orderTotal={orderTotal}
-                      setDraftNotes={setDraftNotes}
-                      setItemToDelete={setItemToDelete}
-                      draftQtyChange={draftQtyChange}
-                      handleDiscardOverview={handleDiscardOverview}
-                      handleSaveOverview={handleSaveOverview}
-                      handleAddProductToDraft={handleAddProductToDraft}
+                      documents={localDocuments}
+                      orderForm={orderForm}
+                      ivrData={ivrData}
+                      history={history}
                     />
                     <OrderFormTab
                       isActive={tab === "order-form"}
                       aiStatus={aiStatus}
                       orderForm={orderForm}
                       order={liveOrder}
-                      canEdit={canEdit}
-                      canSign={canSign}
+                      canEdit={effectiveCanEdit}
+                      canSign={effectiveCanSign}
+                      isAdmin={isAdmin}
                       currentUserName={currentUserName ?? null}
                       patientName={patientName}
                       onSaved={(updated) => {
@@ -1645,8 +1673,8 @@ export function OrderDetailModal({
                     <IVRTab
                       isActive={tab === "ivr"}
                       order={liveOrder}
-                      canEdit={canEdit}
-                      canSign={canSign}
+                      canEdit={effectiveCanEdit}
+                      canSign={effectiveCanSign}
                       currentUserName={currentUserName ?? null}
                       ivrData={ivrData}
                       resetIvrKey={resetIvrKey}
@@ -1661,8 +1689,12 @@ export function OrderDetailModal({
                     <HCFATab
                       isActive={tab === "hcfa"}
                       order={liveOrder}
-                      canEdit={canEdit}
-                      canSign={canSign}
+                      // HCFA edit/visibility is gated only by the role + status
+                      // rule in `hcfaVisible`. Anyone who can see the tab can
+                      // edit it. Box 31 (physician signature) is intentionally
+                      // left blank — billers handle that downstream.
+                      canEdit={hcfaVisible}
+                      canSign={false}
                       currentUserName={currentUserName ?? null}
                       hcfaData={hcfaData}
                       resetHcfaKey={resetHcfaKey}
@@ -1678,6 +1710,13 @@ export function OrderDetailModal({
                       <InvoiceTab
                         isActive={tab === "invoice"}
                         order={liveOrder}
+                        currentUserName={currentUserName ?? null}
+                        isAdmin={isAdmin}
+                        isProvider={isProvider}
+                        // Clinical staff = anyone on the clinic side who isn't
+                        // the provider themselves. They can capture the patient
+                        // signature on the provider's behalf at hand-off.
+                        isClinicalStaff={isClinical && !isProvider}
                       />
                     )}
                     <OrderChatTab
@@ -2256,13 +2295,33 @@ export function OrderDetailModal({
                     )}
 
                     {/* ── Shipping Section — visible to all roles once an order
-                        is shipped or delivered ── */}
+                        is shipped or delivered. Surfaces every column on the
+                        shipments row, plus a clickable tracking link if the
+                        carrier provided a tracking_url. */}
                     {(status === "shipped" || status === "delivered") && (
                       <div className="border-t border-[var(--border)] pt-4 space-y-2">
                         <h3 className="text-[10px] font-semibold uppercase tracking-[0.6px] text-[var(--text3)]">
                           Shipping
                         </h3>
                         <div className="space-y-1.5 text-[12px] text-[var(--text2)]">
+                          {shipmentData?.status && (
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[var(--text3)]">Status</span>
+                              <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium"
+                                style={
+                                  shipmentData.status === "delivered"
+                                    ? { background: "var(--green-lt)", color: "var(--green)" }
+                                    : shipmentData.status === "in_transit"
+                                      ? { background: "var(--blue-lt)", color: "var(--blue)" }
+                                      : shipmentData.status === "exception" || shipmentData.status === "returned"
+                                        ? { background: "var(--red-lt)", color: "var(--red)" }
+                                        : { background: "var(--gold-lt)", color: "var(--gold)" }
+                                }
+                              >
+                                {shipmentData.status.replace(/_/g, " ")}
+                              </span>
+                            </div>
+                          )}
                           {shipmentData?.carrier && (
                             <div className="flex items-center justify-between gap-2">
                               <span className="text-[var(--text3)]">Carrier</span>
@@ -2271,11 +2330,45 @@ export function OrderDetailModal({
                               </span>
                             </div>
                           )}
+                          {shipmentData?.service_level && (
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[var(--text3)]">Service</span>
+                              <span className="font-medium text-[var(--text)]">
+                                {shipmentData.service_level}
+                              </span>
+                            </div>
+                          )}
                           {(shipmentData?.tracking_number || liveOrder.tracking_number) && (
                             <div className="flex items-center justify-between gap-2">
                               <span className="text-[var(--text3)]">Tracking #</span>
-                              <span className="font-medium text-[var(--text)] break-all text-right">
-                                {shipmentData?.tracking_number ?? liveOrder.tracking_number}
+                              {shipmentData?.tracking_url ? (
+                                <a
+                                  href={shipmentData.tracking_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  referrerPolicy="no-referrer"
+                                  className="font-medium text-[var(--blue)] hover:underline break-all text-right"
+                                >
+                                  {shipmentData?.tracking_number ?? liveOrder.tracking_number}
+                                </a>
+                              ) : (
+                                <span className="font-medium text-[var(--text)] break-all text-right">
+                                  {shipmentData?.tracking_number ?? liveOrder.tracking_number}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          {shipmentData?.created_at && !shipmentData.shipped_at && (
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[var(--text3)]">Label created</span>
+                              <span className="font-medium text-[var(--text)]">
+                                {new Date(shipmentData.created_at).toLocaleString("en-US", {
+                                  month: "short",
+                                  day: "numeric",
+                                  year: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
                               </span>
                             </div>
                           )}
@@ -2283,7 +2376,13 @@ export function OrderDetailModal({
                             <div className="flex items-center justify-between gap-2">
                               <span className="text-[var(--text3)]">Shipped on</span>
                               <span className="font-medium text-[var(--text)]">
-                                {new Date(shipmentData.shipped_at).toLocaleDateString()}
+                                {new Date(shipmentData.shipped_at).toLocaleString("en-US", {
+                                  month: "short",
+                                  day: "numeric",
+                                  year: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
                               </span>
                             </div>
                           )}
@@ -2301,7 +2400,13 @@ export function OrderDetailModal({
                               <span className="font-medium text-[var(--green)]">
                                 {new Date(
                                   liveOrder.delivered_at ?? shipmentData?.delivered_at ?? "",
-                                ).toLocaleDateString()}
+                                ).toLocaleString("en-US", {
+                                  month: "short",
+                                  day: "numeric",
+                                  year: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
                               </span>
                             </div>
                           )}

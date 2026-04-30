@@ -10,7 +10,7 @@ import ErrorAlert from "@/app/(components)/ErrorAlert";
 import { useSearchParams } from "next/navigation";
 import { AuthField } from "@/app/(components)/AuthField";
 import { PasswordToggle } from "@/app/(components)/PasswordToggle";
-import { HBLogo } from "@/app/(components)/HBLogo";
+import { MeridianLogo } from "@/app/(components)/MeridianLogo";
 
 export default function SignInForm() {
   const [showPassword, setShowPassword] = useState(false);
@@ -53,7 +53,7 @@ export default function SignInForm() {
 
       {/* Logo */}
       <div className="mb-6 flex items-center justify-center">
-        <HBLogo variant="light" size="lg" />
+        <MeridianLogo variant="light" size="lg" />
       </div>
 
       <h2 className="text-2xl font-bold text-[#0F172A] text-center">Sign In</h2>

@@ -14,8 +14,68 @@ import { generateText } from "ai";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { generateOrderPdf, type OrderPdfFormType } from "@/lib/pdf/generate-order-pdfs";
 import { NextRequest, NextResponse } from "next/server";
+import {
+  requireOrderAccess,
+  orderAccessErrorStatus,
+  OrderAccessError,
+} from "@/lib/supabase/order-access";
+import { logPhiAccess } from "@/lib/audit/log-phi-access";
+import { safeLogError } from "@/lib/logging/safe-log";
 
-export const maxDuration = 60;
+// Vercel Pro plan supports up to 300s. The combined extraction (download
+// docs → Claude inference → DB writes → mark ai_extracted=true) usually
+// finishes inside 30-45s but can spike to 90-120s on a 30-page clinical
+// chart. PDF generation is fire-and-forget after the flag flip, so the
+// 5-minute ceiling is plenty of headroom.
+export const maxDuration = 300;
+
+/* ── Retry + timeout helpers ────────────────────────────────────────────── */
+
+/** Bounded sleep helper. */
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/**
+ * Download a file from Supabase Storage with one retry on transient errors.
+ * The failure mode it guards against is a brief Supabase storage hiccup
+ * (5xx or connection reset) that resolves within ~1s — without this, a
+ * single transient error blows up the whole extraction pipeline. Two
+ * attempts is sufficient for transient noise; persistent failures bubble
+ * up after the second try.
+ */
+async function downloadWithRetry(
+  adminClient: ReturnType<typeof createAdminClient>,
+  bucket: string,
+  filePath: string,
+): Promise<Blob> {
+  let lastError: unknown = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const { data, error } = await adminClient.storage
+      .from(bucket)
+      .download(filePath);
+    if (data) return data;
+    lastError = error;
+    if (attempt === 1) {
+      console.warn(
+        `[downloadWithRetry] attempt 1 failed for ${filePath}, retrying:`,
+        error?.message,
+      );
+      await sleep(1000);
+    }
+  }
+  throw new Error(
+    `Failed to download ${filePath} after 2 attempts: ${
+      lastError instanceof Error ? lastError.message : String(lastError)
+    }`,
+  );
+}
+
+/**
+ * Anthropic call timeout — set just below the Vercel maxDuration so we
+ * fail with a clean abort error instead of a hard process kill. 240s
+ * gives Claude enough time for very large chronic-care docs while still
+ * leaving 60s of headroom for DB writes + flag flip.
+ */
+const CLAUDE_TIMEOUT_MS = 240_000;
 
 /* ── Field sanitizers ── */
 
@@ -60,6 +120,64 @@ const ORDER_FORM_ALLOWED_FIELDS = new Set([
   // Treatment
   "drainage_description",
   "treatment_plan",
+  /* ── Fortify expansion (added 2026-04-30) ──
+     The 5-attestation booleans (`attest_*`) are intentionally NOT in this
+     allowlist — those must be physician-affirmed and never AI-prefilled.
+     Office-tracking JSONB likewise stays admin-only. */
+  "patient_mrn",
+  "patient_mbi",
+  "insurance_type_label",
+  "anticipated_dos_start",
+  "anticipated_dos_end",
+  "a1c_value",
+  "a1c_date",
+  "condition_pad",
+  "pad_details",
+  "condition_venous_insufficiency",
+  "condition_neuropathy",
+  "condition_immunosuppression",
+  "immunosuppression_details",
+  "condition_malnutrition",
+  "albumin_value",
+  "condition_smoking",
+  "condition_renal_disease",
+  "egfr_value",
+  "condition_other",
+  "etiology_dfu",
+  "etiology_venous_stasis",
+  "etiology_pressure_ulcer",
+  "pressure_ulcer_stage",
+  "etiology_arterial",
+  "etiology_surgical",
+  "etiology_traumatic",
+  "etiology_other",
+  "wound_onset_date",
+  "wound_duration_text",
+  "wound_bed_slough_pct",
+  "wound_bed_eschar_pct",
+  "pain_level",
+  "infection_signs_describe",
+  "wound_photo_taken",
+  "prior_treatments",
+  "advancement_reason",
+  "goal_of_therapy",
+  "goal_of_therapy_other",
+  "adjunct_offloading",
+  "adjunct_compression",
+  "adjunct_debridement",
+  "adjunct_other",
+  "specialty_consults",
+  "application_frequency",
+  "special_modifiers",
+  "prior_auth_obtained",
+  "lcd_reference",
+  "wound_meets_lcd",
+  "conservative_tx_period_met",
+  "qty_within_lcd_limits",
+  "kx_criteria_met",
+  "pos_eligible",
+  "coverage_concerns",
+  "physician_npi",
 ]);
 
 const ORDER_FORM_FIELD_ALIASES: Record<string, string> = {
@@ -122,6 +240,88 @@ const ORDER_FORM_FIELD_ALIASES: Record<string, string> = {
   wound_drainage: "drainage_description",
   plan: "treatment_plan",
   dressing_plan: "treatment_plan",
+  /* ── Fortify expansion aliases ── */
+  mrn: "patient_mrn",
+  medical_record_number: "patient_mrn",
+  medicare_id: "patient_mbi",
+  mbi: "patient_mbi",
+  beneficiary_id: "patient_mbi",
+  insurance_class: "insurance_type_label",
+  coverage_type: "insurance_type_label",
+  anticipated_service_start: "anticipated_dos_start",
+  anticipated_service_end: "anticipated_dos_end",
+  service_start: "anticipated_dos_start",
+  service_end: "anticipated_dos_end",
+  date_of_service_start: "anticipated_dos_start",
+  date_of_service_end: "anticipated_dos_end",
+  a1c: "a1c_value",
+  hba1c: "a1c_value",
+  hemoglobin_a1c: "a1c_value",
+  albumin: "albumin_value",
+  serum_albumin: "albumin_value",
+  egfr: "egfr_value",
+  pad: "condition_pad",
+  peripheral_arterial_disease: "condition_pad",
+  vascular_insufficiency: "condition_pad",
+  venous_insufficiency: "condition_venous_insufficiency",
+  neuropathy: "condition_neuropathy",
+  immunosuppressed: "condition_immunosuppression",
+  immunosuppression: "condition_immunosuppression",
+  malnutrition: "condition_malnutrition",
+  smoking: "condition_smoking",
+  smoker: "condition_smoking",
+  active_smoker: "condition_smoking",
+  renal_disease: "condition_renal_disease",
+  ckd: "condition_renal_disease",
+  diabetic_foot_ulcer: "etiology_dfu",
+  dfu: "etiology_dfu",
+  venous_stasis: "etiology_venous_stasis",
+  venous_stasis_ulcer: "etiology_venous_stasis",
+  pressure_ulcer: "etiology_pressure_ulcer",
+  arterial_ulcer: "etiology_arterial",
+  surgical_wound: "etiology_surgical",
+  traumatic_wound: "etiology_traumatic",
+  ulcer_stage: "pressure_ulcer_stage",
+  pu_stage: "pressure_ulcer_stage",
+  onset_date: "wound_onset_date",
+  wound_onset: "wound_onset_date",
+  duration: "wound_duration_text",
+  wound_age: "wound_duration_text",
+  slough_pct: "wound_bed_slough_pct",
+  slough_percentage: "wound_bed_slough_pct",
+  eschar_pct: "wound_bed_eschar_pct",
+  eschar_percentage: "wound_bed_eschar_pct",
+  pain: "pain_level",
+  pain_score: "pain_level",
+  pain_scale: "pain_level",
+  infection_description: "infection_signs_describe",
+  signs_of_infection: "infection_signs_describe",
+  prior_treatment: "prior_treatments",
+  previous_treatments: "prior_treatments",
+  conservative_treatments: "prior_treatments",
+  advancement: "advancement_reason",
+  reason_for_advancing: "advancement_reason",
+  therapy_goal: "goal_of_therapy",
+  goal: "goal_of_therapy",
+  offloading: "adjunct_offloading",
+  compression: "adjunct_compression",
+  debridement: "adjunct_debridement",
+  consults: "specialty_consults",
+  specialist_consults: "specialty_consults",
+  consultations: "specialty_consults",
+  frequency: "application_frequency",
+  application_freq: "application_frequency",
+  dressing_frequency: "application_frequency",
+  modifiers: "special_modifiers",
+  hcpcs_modifiers: "special_modifiers",
+  prior_auth: "prior_auth_obtained",
+  prior_authorization: "prior_auth_obtained",
+  pa_obtained: "prior_auth_obtained",
+  lcd: "lcd_reference",
+  ncd: "lcd_reference",
+  lcd_ref: "lcd_reference",
+  npi: "physician_npi",
+  ordering_physician_npi: "physician_npi",
 };
 
 function sanitizeOrderFormFields(
@@ -414,7 +614,62 @@ Use false for boolean fields not mentioned. No text outside the JSON.
   "wound2_width_cm": number | null,
   "wound2_depth_cm": number | null,
   "drainage_description": string | null,
-  "treatment_plan": string | null
+  "treatment_plan": string | null,
+
+  "patient_mrn": string | null,
+  "patient_mbi": string | null,
+  "insurance_type_label": "medicare_part_b" | "medicare_dme" | "medicare_advantage" | "commercial" | "medicaid" | "other" | null,
+  "anticipated_dos_start": "YYYY-MM-DD" | null,
+  "anticipated_dos_end": "YYYY-MM-DD" | null,
+  "a1c_value": number | null,
+  "a1c_date": "YYYY-MM-DD" | null,
+  "condition_pad": boolean,
+  "pad_details": string | null,
+  "condition_venous_insufficiency": boolean,
+  "condition_neuropathy": boolean,
+  "condition_immunosuppression": boolean,
+  "immunosuppression_details": string | null,
+  "condition_malnutrition": boolean,
+  "albumin_value": number | null,
+  "condition_smoking": boolean,
+  "condition_renal_disease": boolean,
+  "egfr_value": number | null,
+  "condition_other": string | null,
+  "etiology_dfu": boolean,
+  "etiology_venous_stasis": boolean,
+  "etiology_pressure_ulcer": boolean,
+  "pressure_ulcer_stage": "I" | "II" | "III" | "IV" | "Unstageable" | "DTI" | null,
+  "etiology_arterial": boolean,
+  "etiology_surgical": boolean,
+  "etiology_traumatic": boolean,
+  "etiology_other": string | null,
+  "wound_onset_date": "YYYY-MM-DD" | null,
+  "wound_duration_text": string | null,
+  "wound_bed_slough_pct": number | null,
+  "wound_bed_eschar_pct": number | null,
+  "pain_level": number | null,
+  "infection_signs_describe": string | null,
+  "wound_photo_taken": boolean,
+  "prior_treatments": Array<{ "treatment": string, "dates_used": string, "outcome": string }>,
+  "advancement_reason": string | null,
+  "goal_of_therapy": "complete_healing" | "wound_bed_prep" | "palliative" | "infection_control" | "other" | null,
+  "goal_of_therapy_other": string | null,
+  "adjunct_offloading": boolean,
+  "adjunct_compression": boolean,
+  "adjunct_debridement": boolean,
+  "adjunct_other": string | null,
+  "specialty_consults": string | null,
+  "application_frequency": string | null,
+  "special_modifiers": string | null,
+  "prior_auth_obtained": boolean,
+  "lcd_reference": string | null,
+  "wound_meets_lcd": boolean | null,
+  "conservative_tx_period_met": boolean | null,
+  "qty_within_lcd_limits": boolean | null,
+  "kx_criteria_met": "yes" | "no" | "na" | null,
+  "pos_eligible": boolean | null,
+  "coverage_concerns": string | null,
+  "physician_npi": string | null
 }
 
 FACESHEET fields (patient_last_name … secondary_subscriber_relationship):
@@ -432,7 +687,24 @@ CLINICAL fields (chief_complaint … treatment_plan):
 - use_blood_thinners: true if any blood thinner is listed in the medication list.
 - wound_location_side: "RT" for right, "LT" for left, "bilateral" if both sides.
 - subjective_symptoms: only use values from ["Pain", "Numbness", "Fever", "Chills", "Nausea"].
-- diagnosis codes (icd10_code): use the primary ICD-10 code from clinical docs (e.g. "L97.319").`.trim();
+- diagnosis codes (icd10_code): use the primary ICD-10 code from clinical docs (e.g. "L97.319").
+
+FORTIFY EXTENSION fields (patient_mrn … physician_npi):
+- "patient_mrn" = the clinic's medical record number printed on the chart (NOT the same as Medicare MBI).
+- "patient_mbi" = the 11-character Medicare Beneficiary Identifier; extract from the facesheet.
+- "insurance_type_label" — pick from the enum based on the insurance section.
+- "etiology_*" booleans CAN co-exist (e.g. a diabetic foot ulcer that is also venous). Set every applicable etiology to true.
+- "pressure_ulcer_stage" — only if etiology_pressure_ulcer is true. Use Roman numerals or "Unstageable" / "DTI".
+- "a1c_value", "albumin_value", "egfr_value" — extract from labs section if present, else null.
+- "prior_treatments" — array of { treatment, dates_used, outcome }. Look for a "Prior treatments tried" / "Conservative measures" / "Treatment history" section. Empty array if none found. ONE OBJECT PER TREATMENT TRIED — do not concatenate.
+- "advancement_reason" — explanation of why prior treatments were inadequate, if stated.
+- "wound_onset_date" — best-effort YYYY-MM-DD; if doc only says "3 weeks ago", leave null and put text in "wound_duration_text".
+- "pain_level" — 0 to 10 integer if a pain scale is documented.
+- "wound_photo_taken" — true ONLY if a photo is explicitly referenced.
+- "goal_of_therapy" — pick from the enum if a treatment goal is stated; otherwise null.
+- "lcd_reference", coverage flags, "physician_npi" — only set if explicitly present in the docs.
+- DO NOT extract or infer any "attest_*" fields. Those are physician attestations and must be checked manually in-app.
+- DO NOT extract any "office_tracking" fields. Those are admin-only fields filled after the order is received.`.trim();
 }
 
 /* ── Combined extraction handler ── */
@@ -560,15 +832,14 @@ async function handleCombinedExtraction(
       ? [facility.address_line_1, facility.city, facility.state, facility.postal_code].filter(Boolean).join(", ") || null
       : null;
 
-  /* ── STEP 2: Download all files in parallel ── */
+  /* ── STEP 2: Download all files in parallel (with 1-retry on transient errors) ── */
   const fileContents = await Promise.all(
     extractable.map(async (d) => {
-      const { data: fileData, error } = await adminClient.storage
-        .from(d.bucket ?? "hbmedical-bucket-private")
-        .download(d.filePath);
-      if (error || !fileData) {
-        throw new Error(`Failed to download ${d.documentType}: ${error?.message}`);
-      }
+      const fileData = await downloadWithRetry(
+        adminClient,
+        d.bucket ?? "hbmedical-bucket-private",
+        d.filePath,
+      );
       const arrayBuffer = await fileData.arrayBuffer();
       const base64 = Buffer.from(arrayBuffer).toString("base64");
       const lower = d.filePath.toLowerCase();
@@ -613,6 +884,7 @@ async function handleCombinedExtraction(
   const { text } = await generateText({
     model: aiModel("claude-haiku-4-5-20251001"),
     messages: [{ role: "user", content: contentBlocks }],
+    abortSignal: AbortSignal.timeout(CLAUDE_TIMEOUT_MS),
   });
 
   /* ── STEP 4: Parse JSON ── */
@@ -622,7 +894,7 @@ async function handleCombinedExtraction(
     const jsonStr = jsonMatch?.[1] ?? jsonMatch?.[2] ?? text;
     extractedFields = JSON.parse(jsonStr.trim());
   } catch {
-    console.error("[extract-combined] JSON parse failed:", text);
+    safeLogError("extract-combined", "JSON parse failed", { orderId, textLength: text.length });
     return NextResponse.json({ error: "Failed to parse AI response as JSON" }, { status: 500 });
   }
 
@@ -630,6 +902,19 @@ async function handleCombinedExtraction(
   const aiIvr = sanitizeIvrFields(extractedFields);
   const ai1500 = sanitizeForm1500Fields(extractedFields);
   const aiOf = sanitizeOrderFormFields(extractedFields);
+
+  // Derive a single best-effort patient full name from AI-extracted first/last
+  // (lives on order_form_1500). Steps 6/8 below run BEFORE Step 9 creates the
+  // patient row, so the existing-patient `patientName` is null for new orders.
+  // Without this, order_form.patient_name + order_ivr.patient_name end up null
+  // on every freshly-AI-extracted order, even though the patient record itself
+  // gets created and the order header (`patient_full_name` join) shows the name.
+  const aiPatientName: string | null = (() => {
+    const fn = ai1500.patient_first_name as string | null | undefined;
+    const ln = ai1500.patient_last_name as string | null | undefined;
+    const composed = `${fn ?? ""} ${ln ?? ""}`.trim();
+    return composed || null;
+  })();
   const icd10 = aiOf.icd10_code as string | null | undefined;
 
   /* ── STEP 6: Upsert order_ivr ── */
@@ -653,7 +938,7 @@ async function handleCombinedExtraction(
       physician_fax:    (aiIvr.physician_fax as string | null)    || enr?.billing_fax    || null,
       physician_address: (aiIvr.physician_address as string | null) || addr              || null,
       physician_phone:  (aiIvr.physician_phone as string | null)  || physician?.phone    || null,
-      patient_name:     (aiIvr.patient_name as string | null)     || patientName         || null,
+      patient_name:     (aiIvr.patient_name as string | null)     || aiPatientName       || patientName         || null,
       patient_dob:      (aiIvr.patient_dob as string | null)      || patient?.date_of_birth || null,
       sales_rep_name:   repName                                                            || null,
     };
@@ -661,7 +946,7 @@ async function handleCombinedExtraction(
     const { error: ivrErr } = await adminClient
       .from("order_ivr")
       .upsert(ivrPayload, { onConflict: "order_id" });
-    if (ivrErr) console.error("[extract-combined] order_ivr FAILED:", JSON.stringify(ivrErr));
+    if (ivrErr) safeLogError("extract-combined", ivrErr, { phase: "order_ivr insert", orderId });
   }
 
   /* ── STEP 7: Upsert order_form_1500 ── */
@@ -686,16 +971,20 @@ async function handleCombinedExtraction(
     const { error: f15Err } = await adminClient
       .from("order_form_1500")
       .upsert(form1500Payload, { onConflict: "order_id" });
-    if (f15Err) console.error("[extract-combined] order_form_1500 FAILED:", JSON.stringify(f15Err));
+    if (f15Err) safeLogError("extract-combined", f15Err, { phase: "order_form_1500 insert", orderId });
   }
 
   /* ── STEP 8: Upsert order_form ── */
   const orderFormPayload = {
     order_id: orderId,
     ...aiOf,
-    patient_name:        (aiOf.patient_name as string | null)  || patientName  || null,
+    patient_name:        (aiOf.patient_name as string | null)  || aiPatientName || patientName || null,
     patient_date:        (orderCtx as Record<string, unknown>).date_of_service || null,
     physician_signature: physicianName                                         || null,
+    // Mirror order_ivr / order_form_1500: prefer the AI-extracted NPI when
+    // present, fall back to the assigned provider's stored credential so the
+    // signature block + Fortify physician-attestation row aren't blank.
+    physician_npi:       (aiOf.physician_npi as string | null) || creds?.npi_number || null,
     ai_extracted:        true,
     ai_extracted_at:     new Date().toISOString(),
   };
@@ -703,7 +992,7 @@ async function handleCombinedExtraction(
   const { error: ofErr } = await adminClient
     .from("order_form")
     .upsert(orderFormPayload, { onConflict: "order_id" });
-  if (ofErr) console.error("[extract-combined] order_form FAILED:", JSON.stringify(ofErr));
+  if (ofErr) safeLogError("extract-combined", ofErr, { phase: "order_form insert", orderId });
 
   /* ── STEP 9: Auto-create patient from facesheet data ── */
   const firstName = (ai1500.patient_first_name as string | undefined);
@@ -742,16 +1031,31 @@ async function handleCombinedExtraction(
     }
   }
 
-  /* ── STEP 10: Generate all 3 PDFs (in-process, parallel) ── */
-  console.log("[extract-combined] generating PDFs for order:", orderId);
-  await generateAllPdfsInParallel(orderId);
-
-  /* ── STEP 11: Mark order AI-extracted (single write — no races) ── */
+  /* ── STEP 10: Mark order AI-extracted ──
+     CRITICAL ORDERING: this flag must flip BEFORE PDF generation kicks off.
+     The client polls `orders.ai_extracted` to know when the form is ready
+     to populate. PDFs are downstream artifacts the user doesn't need
+     immediately — they get auto-regenerated on save anyway. Setting the
+     flag first means the user sees their pre-filled form within ~30-45s
+     of upload (Claude + DB writes), instead of waiting another 15-30s for
+     PDFs to render. This was the root cause of the "AI extraction timed
+     out" complaints — PDFs blocking the response was pushing total time
+     past the Vercel 60s wall, and the flag never got set when it was. */
   await adminClient
     .from("orders")
     .update({ ai_extracted: true, ai_extracted_at: new Date().toISOString() })
     .eq("id", orderId);
   console.log("[extract-combined] orders.ai_extracted=true for:", orderId);
+
+  /* ── STEP 11: Generate all 3 PDFs (fire-and-forget) ──
+     We DON'T await this — it can take 15-30s and isn't on the critical
+     path. The next save (any field edit, sign, etc.) regenerates the
+     same PDFs anyway. If this fails for any reason, the order is still
+     usable and saving will recover. */
+  console.log("[extract-combined] kicking off PDF generation (background) for:", orderId);
+  generateAllPdfsInParallel(orderId).catch((err) => {
+    console.error("[extract-combined] background PDF gen failed:", err);
+  });
 
   /* ── STEP 12: History log ── */
   adminClient
@@ -791,6 +1095,43 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
+
+    // ── Authorization gate ──
+    // AI extraction reads order documents (facesheets, clinical docs — both
+    // PHI-bearing) and writes structured data back to PHI tables. The route
+    // must verify the caller is authenticated and has access to this order.
+    // Without this check, anyone with a valid orderId could trigger paid AI
+    // calls and exfiltrate PHI through the structured response.
+    try {
+      await requireOrderAccess(orderId);
+    } catch (err) {
+      if (err instanceof OrderAccessError) {
+        return NextResponse.json(
+          { error: err.message },
+          { status: orderAccessErrorStatus(err) },
+        );
+      }
+      console.error("[extract] access check failed:", err);
+      return NextResponse.json(
+        { error: "Access check failed." },
+        { status: 500 },
+      );
+    }
+
+    // Audit — AI extraction reads PHI documents (facesheet, clinical
+    // notes) and writes structured fields back. Log every call.
+    void logPhiAccess({
+      action: "ai.extract",
+      resource: "order_documents",
+      orderId,
+      metadata: {
+        path: Array.isArray(documentsArray) ? "combined" : "legacy",
+        documentType: documentType ?? null,
+        documents: Array.isArray(documentsArray)
+          ? documentsArray.map((d: any) => ({ type: d.documentType, hasPath: !!d.filePath }))
+          : undefined,
+      },
+    });
 
     // ── Combined path: documents[] array with facesheet + clinical_docs ──
     if (Array.isArray(documentsArray) && documentsArray.length > 0) {
@@ -945,14 +1286,17 @@ export async function POST(req: NextRequest) {
       creds?.npi_number ?? null,
     );
 
-    /* ── STEP 2: Download file ── */
-    const { data: fileData, error: downloadError } = await adminClient.storage
-      .from(bucket ?? "hbmedical-bucket-private")
-      .download(filePath);
-
-    if (downloadError || !fileData) {
+    /* ── STEP 2: Download file (with 1-retry on transient storage errors) ── */
+    let fileData: Blob;
+    try {
+      fileData = await downloadWithRetry(
+        adminClient,
+        bucket ?? "hbmedical-bucket-private",
+        filePath,
+      );
+    } catch (err) {
       return NextResponse.json(
-        { error: `Failed to download file: ${downloadError?.message}` },
+        { error: err instanceof Error ? err.message : "Failed to download file." },
         { status: 500 },
       );
     }
@@ -1014,6 +1358,7 @@ export async function POST(req: NextRequest) {
           ],
         },
       ],
+      abortSignal: AbortSignal.timeout(CLAUDE_TIMEOUT_MS),
     });
 
     /* ── STEP 5: Parse JSON response ── */
@@ -1023,7 +1368,7 @@ export async function POST(req: NextRequest) {
       const jsonStr = jsonMatch?.[1] ?? jsonMatch?.[2] ?? text;
       extractedFields = JSON.parse(jsonStr.trim());
     } catch {
-      console.error("[extract] JSON parse failed:", text);
+      safeLogError("extract", "JSON parse failed", { orderId, textLength: text.length });
       return NextResponse.json(
         { error: "Failed to parse AI response as JSON" },
         { status: 500 },
@@ -1042,6 +1387,16 @@ export async function POST(req: NextRequest) {
         ? sanitizeOrderFormFields(extractedFields)
         : {};
     const icd10 = aiOf.icd10_code as string | null | undefined;
+
+    // See note in the combined route — derive a best-effort patient name from
+    // AI-extracted first/last so order_form.patient_name + order_ivr.patient_name
+    // populate even on the very first extraction (before the patient row exists).
+    const aiPatientName: string | null = (() => {
+      const fn = ai1500.patient_first_name as string | null | undefined;
+      const ln = ai1500.patient_last_name as string | null | undefined;
+      const composed = `${fn ?? ""} ${ln ?? ""}`.trim();
+      return composed || null;
+    })();
 
     /* ── STEP 7: Upsert order_ivr ── */
     {
@@ -1085,7 +1440,7 @@ export async function POST(req: NextRequest) {
         physician_phone:
           (aiIvr.physician_phone as string | null) || physician?.phone || null,
         patient_name:
-          (aiIvr.patient_name as string | null) || patientName || null,
+          (aiIvr.patient_name as string | null) || aiPatientName || patientName || null,
         patient_dob:
           (aiIvr.patient_dob as string | null) || patient?.date_of_birth || null,
         sales_rep_name: repName || null,
@@ -1095,7 +1450,7 @@ export async function POST(req: NextRequest) {
         .from("order_ivr")
         .upsert(ivrPayload, { onConflict: "order_id" });
       if (ivrErr) {
-        console.error("[extract] order_ivr FAILED:", JSON.stringify(ivrErr));
+        safeLogError("extract", ivrErr, { phase: "order_ivr insert", orderId });
       }
     }
 
@@ -1161,9 +1516,10 @@ export async function POST(req: NextRequest) {
     const orderFormPayload = {
       order_id: orderId,
       ...aiOf,
-      patient_name: (aiOf.patient_name as string | null) || patientName || null,
+      patient_name: (aiOf.patient_name as string | null) || aiPatientName || patientName || null,
       patient_date: (orderCtx as any).date_of_service || null,
       physician_signature: physicianName || null,
+      physician_npi: (aiOf.physician_npi as string | null) || creds?.npi_number || null,
       ai_extracted: true,
       ai_extracted_at: new Date().toISOString(),
     };
@@ -1172,7 +1528,7 @@ export async function POST(req: NextRequest) {
       .from("order_form")
       .upsert(orderFormPayload, { onConflict: "order_id" });
     if (ofErr) {
-      console.error("[extract] order_form FAILED:", JSON.stringify(ofErr));
+      safeLogError("extract", ofErr, { phase: "order_form insert", orderId });
     } else {
       console.log(
         "[extract] order_form saved — patient_name:",
@@ -1228,16 +1584,21 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    /* ── STEP 11: Generate all 3 PDFs (in-process, parallel) ── */
-    console.log("[extract] generating PDFs for order:", orderId);
-    await generateAllPdfsInParallel(orderId);
-
-    /* ── STEP 12: Mark order AI-extracted AFTER PDFs are ready (this triggers frontend poll) ── */
+    /* ── STEP 11: Mark order AI-extracted (flag flip BEFORE PDFs) ──
+       Same ordering rationale as the combined path — see comment there.
+       Polling target flips as soon as data is in DB; PDFs render in the
+       background without blocking the response. */
     await adminClient
       .from("orders")
       .update({ ai_extracted: true, ai_extracted_at: new Date().toISOString() })
       .eq("id", orderId);
     console.log("[extract] orders.ai_extracted=true for:", orderId);
+
+    /* ── STEP 12: Generate PDFs (fire-and-forget background work) ── */
+    console.log("[extract] kicking off PDF generation (background) for:", orderId);
+    generateAllPdfsInParallel(orderId).catch((err) => {
+      console.error("[extract] background PDF gen failed:", err);
+    });
 
     /* ── STEP 13: History log (fire-and-forget) ── */
     adminClient
@@ -1408,7 +1769,62 @@ No text outside the JSON.
   "wound2_depth_cm": number | null,
 
   "drainage_description": string | null,
-  "treatment_plan": string | null
+  "treatment_plan": string | null,
+
+  "patient_mrn": string | null,
+  "patient_mbi": string | null,
+  "insurance_type_label": "medicare_part_b" | "medicare_dme" | "medicare_advantage" | "commercial" | "medicaid" | "other" | null,
+  "anticipated_dos_start": "YYYY-MM-DD" | null,
+  "anticipated_dos_end": "YYYY-MM-DD" | null,
+  "a1c_value": number | null,
+  "a1c_date": "YYYY-MM-DD" | null,
+  "condition_pad": boolean,
+  "pad_details": string | null,
+  "condition_venous_insufficiency": boolean,
+  "condition_neuropathy": boolean,
+  "condition_immunosuppression": boolean,
+  "immunosuppression_details": string | null,
+  "condition_malnutrition": boolean,
+  "albumin_value": number | null,
+  "condition_smoking": boolean,
+  "condition_renal_disease": boolean,
+  "egfr_value": number | null,
+  "condition_other": string | null,
+  "etiology_dfu": boolean,
+  "etiology_venous_stasis": boolean,
+  "etiology_pressure_ulcer": boolean,
+  "pressure_ulcer_stage": "I" | "II" | "III" | "IV" | "Unstageable" | "DTI" | null,
+  "etiology_arterial": boolean,
+  "etiology_surgical": boolean,
+  "etiology_traumatic": boolean,
+  "etiology_other": string | null,
+  "wound_onset_date": "YYYY-MM-DD" | null,
+  "wound_duration_text": string | null,
+  "wound_bed_slough_pct": number | null,
+  "wound_bed_eschar_pct": number | null,
+  "pain_level": number | null,
+  "infection_signs_describe": string | null,
+  "wound_photo_taken": boolean,
+  "prior_treatments": Array<{ "treatment": string, "dates_used": string, "outcome": string }>,
+  "advancement_reason": string | null,
+  "goal_of_therapy": "complete_healing" | "wound_bed_prep" | "palliative" | "infection_control" | "other" | null,
+  "goal_of_therapy_other": string | null,
+  "adjunct_offloading": boolean,
+  "adjunct_compression": boolean,
+  "adjunct_debridement": boolean,
+  "adjunct_other": string | null,
+  "specialty_consults": string | null,
+  "application_frequency": string | null,
+  "special_modifiers": string | null,
+  "prior_auth_obtained": boolean,
+  "lcd_reference": string | null,
+  "wound_meets_lcd": boolean | null,
+  "conservative_tx_period_met": boolean | null,
+  "qty_within_lcd_limits": boolean | null,
+  "kx_criteria_met": "yes" | "no" | "na" | null,
+  "pos_eligible": boolean | null,
+  "coverage_concerns": string | null,
+  "physician_npi": string | null
 }
 
 CRITICAL: Use the EXACT field names above including all underscores. For example:

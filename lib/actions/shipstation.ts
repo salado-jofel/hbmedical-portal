@@ -2,11 +2,23 @@
 
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+import { getCurrentUserOrThrow, getUserRole } from "@/lib/supabase/auth";
+import { isAdmin, isSupport } from "@/utils/helpers/role";
 import { getShipStationClient } from "../shipstation/server";
 import type {
   ShipStationPaymentMode,
   ShipStationPaymentStatus,
 } from "../shipstation/types";
+
+async function requireShipStationRole(): Promise<void> {
+  const supabase = await createClient();
+  await getCurrentUserOrThrow(supabase);
+  const role = await getUserRole(supabase);
+  if (!isAdmin(role) && !isSupport(role)) {
+    throw new Error("Only admins and support staff can perform ShipStation actions.");
+  }
+}
 
 const ORDERS_PATH = "/dashboard/orders";
 
@@ -79,6 +91,7 @@ function mapToShipStationPaymentStatus(
 export async function syncOrderToShipStation(
   orderId: string,
 ): Promise<SyncPaidOrderToShipStationResult> {
+  await requireShipStationRole();
   const admin = createAdminClient();
 
   const { data: rawOrder, error } = await admin
@@ -220,6 +233,7 @@ export async function syncOrderToShipStation(
 export const syncPaidOrderToShipStation = syncOrderToShipStation;
 
 export async function markOrderDeliveredViaShipStation(orderId: string) {
+  await requireShipStationRole();
   const admin = createAdminClient();
 
   const { data: shipment, error: shipmentError } = await admin

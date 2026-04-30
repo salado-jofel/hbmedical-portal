@@ -4,6 +4,7 @@ import {
   Page,
   Text,
   View,
+  Image,
   StyleSheet,
 } from "@react-pdf/renderer";
 import { PDFHeader } from "./PDFHeader";
@@ -170,11 +171,14 @@ const KNOWN_PRODUCTS = [
 export function IVRFormPDF({
   order,
   ivr,
+  signatureImage,
 }: {
   order: Record<string, unknown>;
   ivr: Record<string, unknown> | null;
   form?: Record<string, unknown> | null;
   physicianName?: string | null;
+  /** PNG data URL rendered at the signature spot when present. */
+  signatureImage?: string;
 }) {
   console.log("[IVRFormPDF] ivr received:", ivr ? "YES" : "NO (null)");
   console.log("[IVRFormPDF] ivr.facility_name:", ivr?.facility_name ?? "(null)");
@@ -237,6 +241,42 @@ export function IVRFormPDF({
   // Signature
   const physicianSig      = ivr?.physician_signature;
   const physicianSigDate  = ivr?.physician_signature_date;
+
+  // Chronic-only bundle — extended insurance, benefits, detailed auth,
+  // verification. Gated by order.wound_type so post-surgical renders the
+  // lean physician-facing form per the client-provided template.
+  const isPostSurgical = (order as any)?.wound_type === "post_surgical";
+  const groupNumber        = f(ivr?.group_number);
+  const planName           = f(ivr?.plan_name);
+  const subscriberRel      = f(ivr?.subscriber_relationship);
+  const coverageStart      = ivr?.coverage_start_date;
+  const coverageEnd        = ivr?.coverage_end_date;
+  const secGroupNumber     = f(ivr?.secondary_group_number);
+  const secSubscriberRel   = f(ivr?.secondary_subscriber_relationship);
+  const deductibleAmount   = ivr?.deductible_amount;
+  const deductibleMet      = ivr?.deductible_met;
+  const outOfPocketMax     = ivr?.out_of_pocket_max;
+  const outOfPocketMet     = ivr?.out_of_pocket_met;
+  const copayAmount        = ivr?.copay_amount;
+  const coinsurancePercent = ivr?.coinsurance_percent;
+  const dmeCovered         = ivr?.dme_covered;
+  const woundCareCovered   = ivr?.wound_care_covered;
+  const priorAuthRequired  = ivr?.prior_auth_required;
+  const priorAuthNumber    = f(ivr?.prior_auth_number);
+  const unitsAuthorized    = ivr?.units_authorized;
+  const priorAuthStart     = ivr?.prior_auth_start_date;
+  const priorAuthEnd       = ivr?.prior_auth_end_date;
+  const verifiedBy         = f(ivr?.verified_by);
+  const verifiedDate       = ivr?.verified_date;
+  const verificationRef    = f(ivr?.verification_reference);
+  const verificationNotes  = f(ivr?.notes);
+
+  const fmtMoney = (v: unknown): string => {
+    if (v == null || v === "") return "—";
+    const n = Number(v);
+    if (!isFinite(n)) return "—";
+    return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+  };
 
   /* Date display */
   const fmtDate = (v: unknown): string => {
@@ -445,6 +485,94 @@ export function IVRFormPDF({
           <Row label="Specialty Site Name (if different)" value={specialtySite} labelW={150} />
         </View>
 
+        {/* ── 8b. CHRONIC-ONLY SUPPLEMENTAL SECTIONS ──
+            Back-office detail that's not part of the post-surgical
+            physician-facing template. Mirrors what's on screen for chronic. */}
+        {!isPostSurgical && (
+          <>
+            {/* Insurance details — Primary & Secondary extended fields */}
+            <Text style={s.sectionHeader}>INSURANCE DETAILS</Text>
+            <View style={[s.sectionBody, { flexDirection: "row", gap: 12 }]}>
+              <View style={{ flex: 1, borderRight: `0.5pt solid ${LINE}`, paddingRight: 8 }}>
+                <Text style={s.subHeader}>Primary</Text>
+                <Row label="Group Number"           value={groupNumber}            labelW={110} />
+                <Row label="Plan Name"              value={planName}               labelW={110} />
+                <Row label="Subscriber Relationship" value={subscriberRel}         labelW={130} />
+                <Row label="Coverage Start"         value={fmtDate(coverageStart)} labelW={110} />
+                <Row label="Coverage End"           value={fmtDate(coverageEnd)}   labelW={110} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.subHeader}>Secondary</Text>
+                <Row label="Group Number"           value={secGroupNumber}     labelW={110} />
+                <Row label="Subscriber Relationship" value={secSubscriberRel} labelW={130} />
+              </View>
+            </View>
+
+            {/* Benefits & Coverage */}
+            <Text style={s.sectionHeader}>BENEFITS & COVERAGE</Text>
+            <View style={[s.sectionBody, { flexDirection: "row", flexWrap: "wrap", gap: 12 }]}>
+              <View style={{ flex: 1, minWidth: 220 }}>
+                <Row label="Deductible Amount" value={fmtMoney(deductibleAmount)} labelW={110} />
+                <Row label="Deductible Met"    value={fmtMoney(deductibleMet)}    labelW={110} />
+                <Row label="Out of Pocket Max" value={fmtMoney(outOfPocketMax)}   labelW={110} />
+                <Row label="Out of Pocket Met" value={fmtMoney(outOfPocketMet)}   labelW={110} />
+              </View>
+              <View style={{ flex: 1, minWidth: 220 }}>
+                <Row label="Copay Amount"  value={fmtMoney(copayAmount)}                                                    labelW={110} />
+                <Row label="Coinsurance %" value={coinsurancePercent != null ? `${coinsurancePercent}%` : "—"} labelW={110} />
+                <View style={[s.fieldRow, { alignItems: "center" }]}>
+                  <Text style={[s.fieldLabel, { width: 110 }]}>DME Covered?</Text>
+                  <View style={s.cbRow}>
+                    <CB checked={dmeCovered === true}  label="Yes" />
+                    <CB checked={dmeCovered === false} label="No"  />
+                  </View>
+                </View>
+                <View style={[s.fieldRow, { alignItems: "center" }]}>
+                  <Text style={[s.fieldLabel, { width: 110 }]}>Wound Care Covered?</Text>
+                  <View style={s.cbRow}>
+                    <CB checked={woundCareCovered === true}  label="Yes" />
+                    <CB checked={woundCareCovered === false} label="No"  />
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            {/* Prior Authorization — detailed */}
+            <Text style={s.sectionHeader}>PRIOR AUTHORIZATION</Text>
+            <View style={s.sectionBody}>
+              <View style={[s.fieldRow, { alignItems: "center" }]}>
+                <Text style={[s.fieldLabel, { width: 150 }]}>Prior Auth Required?</Text>
+                <View style={s.cbRow}>
+                  <CB checked={priorAuthRequired === true}  label="Yes" />
+                  <CB checked={priorAuthRequired === false} label="No"  />
+                </View>
+              </View>
+              {priorAuthRequired === true && (
+                <>
+                  <Row label="Auth Number"      value={priorAuthNumber}                        labelW={110} />
+                  <Row label="Units Authorized" value={unitsAuthorized != null ? String(unitsAuthorized) : "—"} labelW={110} />
+                  <Row label="Auth Start Date"  value={fmtDate(priorAuthStart)}                labelW={110} />
+                  <Row label="Auth End Date"    value={fmtDate(priorAuthEnd)}                  labelW={110} />
+                </>
+              )}
+            </View>
+
+            {/* Verification */}
+            <Text style={s.sectionHeader}>VERIFICATION</Text>
+            <View style={s.sectionBody}>
+              <Row label="Verified By"      value={verifiedBy}         labelW={110} />
+              <Row label="Verified Date"    value={fmtDate(verifiedDate)} labelW={110} />
+              <Row label="Reference Number" value={verificationRef}    labelW={110} />
+              {verificationNotes && verificationNotes !== "—" ? (
+                <View style={{ marginTop: 2 }}>
+                  <Text style={s.label}>Notes:</Text>
+                  <Text style={{ fontSize: 7, color: BLACK, marginTop: 1 }}>{verificationNotes}</Text>
+                </View>
+              ) : null}
+            </View>
+          </>
+        )}
+
         {/* ── 9. IMPORTANT NOTES ── */}
         <View style={s.notesBox}>
           <Text style={{ fontSize: 7, color: BLACK, marginBottom: 2 }}>
@@ -462,24 +590,55 @@ export function IVRFormPDF({
             and/or other patient information referenced on the form relating to the above-referenced patient. This
             information is for verifying insurance coverage, seeking reimbursement, and the sole purpose of claim support.
           </Text>
-          <View style={s.twoCol}>
-            <View style={s.col}>
-              <View style={s.sigLine} />
-              <Text style={[s.label, { marginTop: 2 }]}>Physician or Authorized Signature</Text>
-              {physicianSig ? (
-                <Text style={{ fontSize: 8, fontFamily: "Helvetica-Oblique", marginTop: 2 }}>
-                  {String(physicianSig)}
-                </Text>
-              ) : null}
-            </View>
-            <View style={{ width: 140 }}>
-              <View style={s.sigLine} />
-              <Text style={[s.label, { marginTop: 2 }]}>Date</Text>
-              {physicianSigDate ? (
-                <Text style={{ fontSize: 8, marginTop: 2 }}>{String(physicianSigDate)}</Text>
-              ) : null}
-            </View>
-          </View>
+          {(() => {
+            const signedAt = (ivr as any)?.physician_signed_at as string | null | undefined;
+            const signedDateText = signedAt
+              ? new Date(signedAt).toLocaleDateString("en-US", {
+                  year: "numeric",
+                  month: "2-digit",
+                  day: "2-digit",
+                })
+              : physicianSigDate
+                ? String(physicianSigDate)
+                : null;
+
+            const CELL_HEIGHT = 32;
+            const cellBox = {
+              height: CELL_HEIGHT,
+              justifyContent: "flex-end" as const,
+              borderBottom: `0.75pt solid #333`,
+              paddingBottom: 1,
+            };
+
+            return (
+              <View style={s.twoCol}>
+                <View style={s.col}>
+                  <View style={[cellBox, { alignItems: "flex-start" }]}>
+                    {signatureImage ? (
+                      <Image src={signatureImage} style={{ height: CELL_HEIGHT - 4 }} />
+                    ) : !signatureImage && physicianSig ? (
+                      <Text style={{ fontSize: 9, fontFamily: "Helvetica-Oblique" }}>
+                        {String(physicianSig)}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <Text style={[s.label, { marginTop: 2 }]}>
+                    Physician or Authorized Signature
+                  </Text>
+                </View>
+                <View style={{ width: 140 }}>
+                  <View style={cellBox}>
+                    {signedDateText ? (
+                      <Text style={{ fontSize: 9, fontFamily: "Helvetica-Bold" }}>
+                        {signedDateText}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <Text style={[s.label, { marginTop: 2 }]}>Date Signed</Text>
+                </View>
+              </View>
+            );
+          })()}
         </View>
 
         {/* ── 11. FOOTER ── */}

@@ -2,7 +2,7 @@
 
 import { Menu, X } from "lucide-react";
 import { useAppSelector, useAppDispatch } from "@/store/hooks";
-import { HBLogo } from "@/app/(components)/HBLogo";
+import { MeridianLogo } from "@/app/(components)/MeridianLogo";
 import { toggleSidebar } from "../(redux)/dashboard-slice";
 
 export function MobileTopBar() {
@@ -12,7 +12,7 @@ export function MobileTopBar() {
   return (
     <header className="md:hidden fixed top-0 left-0 right-0 z-50 h-16 bg-white border-b border-[var(--border)] flex items-center justify-between px-4 shadow-sm">
 
-      <HBLogo variant="light" size="md" />
+      <MeridianLogo variant="light" size="md" />
 
       <button
         onClick={() => dispatch(toggleSidebar())}

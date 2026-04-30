@@ -17,7 +17,10 @@ import {
   requireClinicRole,
   insertOrderHistory,
   createNotifications,
+  generateOrderPDFs,
 } from "./_shared";
+import { seedForm1500ForDelivery } from "./order-document-actions";
+import { safeLogError } from "@/lib/logging/safe-log";
 
 /* -------------------------------------------------------------------------- */
 /* submitForSignature                                                         */
@@ -45,7 +48,7 @@ export async function submitForSignature(
       .eq("id", orderId);
 
     if (error) {
-      console.error("[submitForSignature]", JSON.stringify(error));
+      safeLogError("submitForSignature", error, { orderId });
       return { success: false, error: "Failed to submit order." };
     }
 
@@ -98,7 +101,7 @@ export async function recallOrder(
       .eq("id", orderId);
 
     if (error) {
-      console.error("[recallOrder]", JSON.stringify(error));
+      safeLogError("recallOrder", error, { orderId });
       return { success: false, error: "Failed to recall order." };
     }
 
@@ -148,9 +151,9 @@ export async function signOrder(
       .eq("user_id", user.id)
       .maybeSingle();
 
-    console.log("[signOrder] verifying PIN for user:", user.id);
-    console.log("[signOrder] creds:", !!creds, credError?.message ?? null);
-    console.log("[signOrder] pin_hash found:", !!creds?.pin_hash);
+    if (credError) {
+      safeLogError("signOrder", credError, { phase: "credentials lookup", userId: user.id });
+    }
 
     if (!creds?.pin_hash) {
       return { success: false, error: "No PIN set. Please set up your provider PIN.", noPinSet: true };
@@ -160,8 +163,6 @@ export async function signOrder(
       input_pin:   pin,
       stored_hash: creds.pin_hash,
     });
-
-    console.log("[signOrder] verify result:", isValid, rpcError?.message ?? null);
 
     if (rpcError || !isValid) {
       return { success: false, error: "Incorrect PIN. Please try again." };
@@ -201,7 +202,7 @@ export async function signOrder(
       .eq("id", orderId);
 
     if (error) {
-      console.error("[signOrder]", JSON.stringify(error));
+      safeLogError("signOrder", error, { orderId });
       return { success: false, error: "Failed to sign order." };
     }
 
@@ -312,7 +313,7 @@ export async function signAndSubmitOrder(
       .eq("id", orderId);
 
     if (error) {
-      console.error("[signAndSubmitOrder]", JSON.stringify(error));
+      safeLogError("signAndSubmitOrder", error, { orderId });
       return { success: false, error: "Failed to sign and submit order." };
     }
 
@@ -508,7 +509,7 @@ export async function submitSignedOrder(
       .eq("id", orderId);
 
     if (error) {
-      console.error("[submitSignedOrder]", JSON.stringify(error));
+      safeLogError("submitSignedOrder", error, { orderId });
       return { success: false, error: "Failed to submit order." };
     }
 
@@ -632,7 +633,7 @@ export async function approveOrder(
       .eq("id", orderId);
 
     if (error) {
-      console.error("[approveOrder]", JSON.stringify(error));
+      safeLogError("approveOrder", error, { orderId });
       return { success: false, error: "Failed to approve order." };
     }
 
@@ -703,7 +704,7 @@ export async function requestAdditionalInfo(
       .eq("id", orderId);
 
     if (error) {
-      console.error("[requestAdditionalInfo]", JSON.stringify(error));
+      safeLogError("requestAdditionalInfo", error, { orderId });
       return { success: false, error: "Failed to update order." };
     }
 
@@ -766,7 +767,7 @@ export async function resubmitForReview(
       .eq("id", orderId);
 
     if (error) {
-      console.error("[resubmitForReview]", JSON.stringify(error));
+      safeLogError("resubmitForReview", error, { orderId });
       return { success: false, error: "Failed to resubmit order." };
     }
 
@@ -837,7 +838,7 @@ export async function markOrderDelivered(
       .eq("id", orderId);
 
     if (error) {
-      console.error("[markOrderDelivered]", JSON.stringify(error));
+      safeLogError("markOrderDelivered", error, { orderId });
       return { success: false, error: "Failed to mark order as delivered." };
     }
 
@@ -855,9 +856,226 @@ export async function markOrderDelivered(
       notifyRoles:    ["clinical_staff", "clinical_provider"],
       excludeUserId:  user.id,
     }).catch(() => {});
+
+    // Auto-prefill the CMS-1500 with everything we know now that the order
+    // is delivered, then regenerate the PDF so the Documents card has a
+    // download-ready file. seedForm1500ForDelivery is idempotent — it skips
+    // when a row already exists, so manual edits are never overwritten.
+    const seed = await seedForm1500ForDelivery(orderId);
+    if (seed.success && !seed.skipped) {
+      generateOrderPDFs(orderId, ["hcfa_1500"]).catch((err) =>
+        safeLogError("markOrderDelivered", err, { phase: "hcfa_1500 PDF regen", orderId }),
+      );
+    }
+
     revalidatePath(ORDERS_PATH);
     return { success: true, error: null };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/* signFormWithSpecimen — shared helper                                       */
+/*                                                                            */
+/* Combined PIN + specimen-signature commit for order_form and order_ivr.     */
+/* Verifies PIN, locks the form, sets signed_at/by, then one-shot generates   */
+/* the PDF with the signature image embedded in-memory. The signature PNG is  */
+/* NOT persisted — consistent with "sign = final act, document frozen." If    */
+/* admin later sends the order back to additional_info_needed, is_locked is   */
+/* cleared and the provider re-signs with a fresh signature.                  */
+/* -------------------------------------------------------------------------- */
+
+async function signFormWithSpecimenImpl(args: {
+  orderId: string;
+  pin: string;
+  signatureImage: string;
+  formTable: "order_form" | "order_ivr";
+  pdfFormType: "order_form" | "ivr";
+}): Promise<{ success: boolean; error?: string; noPinSet?: boolean }> {
+  const { orderId, pin, signatureImage, formTable, pdfFormType } = args;
+
+  const pinResult = await verifyProviderPin(pin);
+  if (!pinResult.success) return pinResult;
+
+  if (!signatureImage || !signatureImage.startsWith("data:image/")) {
+    return { success: false, error: "Specimen signature missing." };
+  }
+
+  try {
+    const supabase = await createClient();
+    const user = await getCurrentUserOrThrow(supabase);
+    const admin = createAdminClient();
+    const now = new Date().toISOString();
+
+    // physician_signed_at is the canonical "signed" signal for both tables.
+    // is_locked is an additional legacy column that only exists on
+    // order_form — where it's also referenced by RLS UPDATE policies, so we
+    // keep writing it for that table to preserve that behavior. order_ivr
+    // has no is_locked column; skip that write. The specimen PNG is stored
+    // in physician_signature_image so the on-screen signature survives
+    // reloads and PDF regens embed it without re-capturing.
+    const updatePayload: Record<string, unknown> = {
+      physician_signed_at: now,
+      physician_signed_by: user.id,
+      physician_signature_image: signatureImage,
+    };
+    if (formTable === "order_form") {
+      updatePayload.is_locked = true;
+    }
+    const { error: updateErr } = await admin
+      .from(formTable)
+      .update(updatePayload)
+      .eq("order_id", orderId);
+
+    if (updateErr) {
+      safeLogError(`signFormWithSpecimen:${formTable}`, updateErr, { orderId });
+      return { success: false, error: updateErr.message };
+    }
+
+    // One-shot PDF regeneration with the signature image threaded in. The
+    // generator reads the now-locked form row, embeds the signature at the
+    // physician-signature spot, then uploads to storage + upserts
+    // order_documents. No further regens happen while is_locked is true —
+    // see generate-order-pdfs.tsx's lock guard.
+    const { generateOrderPdf } = await import("@/lib/pdf/generate-order-pdfs");
+    // ignoreLock: we just flipped is_locked=true above, so the generator's
+    // normal lock guard would bail out before rendering. This is the single
+    // callsite allowed to produce a PDF on a locked form — the signed one.
+    const pdfResult = await generateOrderPdf(orderId, pdfFormType, admin, {
+      signatureImage,
+      ignoreLock: true,
+    });
+    if (!pdfResult.success) {
+      // Log but don't fail the sign — DB state is committed. Admin can
+      // re-trigger PDF generation via the Regenerate button if needed
+      // (though it'll be gated by is_locked; they'd unlock first).
+      safeLogError(`signFormWithSpecimen:${pdfFormType}`, pdfResult.error, { phase: "PDF gen", orderId });
+    }
+
+    revalidatePath(ORDERS_PATH);
+    return { success: true };
+  } catch (err) {
+    safeLogError(`signFormWithSpecimen:${formTable}`, err, { orderId });
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Unexpected error.",
+    };
+  }
+}
+
+export async function signOrderFormWithSpecimen(
+  orderId: string,
+  pin: string,
+  signatureImage: string,
+): Promise<{ success: boolean; error?: string; noPinSet?: boolean }> {
+  return signFormWithSpecimenImpl({
+    orderId,
+    pin,
+    signatureImage,
+    formTable: "order_form",
+    pdfFormType: "order_form",
+  });
+}
+
+export async function signIVRWithSpecimen(
+  orderId: string,
+  pin: string,
+  signatureImage: string,
+): Promise<{ success: boolean; error?: string; noPinSet?: boolean }> {
+  return signFormWithSpecimenImpl({
+    orderId,
+    pin,
+    signatureImage,
+    formTable: "order_ivr",
+    pdfFormType: "ivr",
+  });
+}
+
+/* -------------------------------------------------------------------------- */
+/* unsignForm — full revert                                                   */
+/*                                                                            */
+/* Clears physician_signed_at / physician_signed_by, unlocks the form, and    */
+/* regenerates the PDF without the signature. Used by the Unsign button in    */
+/* OrderFormDocument and IVRFormDocument. After this runs the form is fully   */
+/* editable again and a Save / Discard bar will show on the next field edit.  */
+/* -------------------------------------------------------------------------- */
+
+async function unsignFormImpl(args: {
+  orderId: string;
+  formTable: "order_form" | "order_ivr";
+  pdfFormType: "order_form" | "ivr";
+}): Promise<{ success: boolean; error?: string }> {
+  const { orderId, formTable, pdfFormType } = args;
+  try {
+    const supabase = await createClient();
+    const role = await getUserRole(supabase);
+    if (!isClinicalProvider(role)) {
+      return { success: false, error: "Only clinical providers can unsign." };
+    }
+
+    const admin = createAdminClient();
+
+    // Reverse what the sign action wrote. is_locked only exists on
+    // order_form; skip that field for order_ivr. The signature image is
+    // cleared so subsequent regens produce an unsigned PDF.
+    const updatePayload: Record<string, unknown> = {
+      physician_signed_at: null,
+      physician_signed_by: null,
+      physician_signature_image: null,
+    };
+    if (formTable === "order_form") {
+      updatePayload.is_locked = false;
+    }
+    const { error: updateErr } = await admin
+      .from(formTable)
+      .update(updatePayload)
+      .eq("order_id", orderId);
+
+    if (updateErr) {
+      safeLogError(`unsignForm:${formTable}`, updateErr, { orderId });
+      return { success: false, error: updateErr.message };
+    }
+
+    // Regenerate the PDF to match the unsigned state (signature image drops
+    // off automatically because the sign-with-specimen flow doesn't persist
+    // it — and the lock guard is released now that physician_signed_at is
+    // null). ignoreLock not needed but explicit for symmetry.
+    const { generateOrderPdf } = await import("@/lib/pdf/generate-order-pdfs");
+    const pdfResult = await generateOrderPdf(orderId, pdfFormType, admin, {
+      ignoreLock: true,
+    });
+    if (!pdfResult.success) {
+      safeLogError(`unsignForm:${pdfFormType}`, pdfResult.error, { phase: "PDF regen", orderId });
+    }
+
+    revalidatePath(ORDERS_PATH);
+    return { success: true };
+  } catch (err) {
+    safeLogError(`unsignForm:${formTable}`, err, { orderId });
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Unexpected error.",
+    };
+  }
+}
+
+export async function unsignOrderForm(
+  orderId: string,
+): Promise<{ success: boolean; error?: string }> {
+  return unsignFormImpl({
+    orderId,
+    formTable: "order_form",
+    pdfFormType: "order_form",
+  });
+}
+
+export async function unsignIVR(
+  orderId: string,
+): Promise<{ success: boolean; error?: string }> {
+  return unsignFormImpl({
+    orderId,
+    formTable: "order_ivr",
+    pdfFormType: "ivr",
+  });
 }

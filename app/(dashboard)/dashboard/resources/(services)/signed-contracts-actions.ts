@@ -9,8 +9,13 @@ import { SALES_REP_CONTRACTS } from "@/lib/pdf/sales-rep-contracts";
 const BUCKET = "hbmedical-bucket-private";
 const SIGNED_URL_TTL = 3600;
 
+export type ContractKind = "rep" | "provider";
+
 export interface SignedContractRow {
   id: string;
+  /** "rep" for sales-rep onboarding contracts, "provider" for clinical-provider
+   *  BAA / Product & Services. Lets the admin view show a Type badge per row. */
+  kind: ContractKind;
   contractType: string;
   label: string;
   signedAt: string;
@@ -45,8 +50,15 @@ interface FacilityRow {
   user_id: string | null;
 }
 
-const labelFor = (contractType: string) =>
+const labelForRep = (contractType: string) =>
   SALES_REP_CONTRACTS.find((c) => c.key === contractType)?.label ?? contractType;
+
+const PROVIDER_CONTRACT_LABELS: Record<string, string> = {
+  baa: "Business Associate Agreement",
+  product_services: "Product & Services Agreement",
+};
+const labelForProvider = (contractType: string) =>
+  PROVIDER_CONTRACT_LABELS[contractType] ?? contractType;
 
 const SIGNATURE_SELECT =
   "id, user_id, contract_type, signed_path, typed_name, signed_at";
@@ -54,6 +66,7 @@ const SIGNATURE_SELECT =
 async function enrichRows(
   admin: ReturnType<typeof createAdminClient>,
   rows: SignatureRow[],
+  kind: ContractKind,
 ): Promise<SignedContractRow[]> {
   if (rows.length === 0) return [];
 
@@ -100,8 +113,12 @@ async function enrichRows(
       : null;
     return {
       id: r.id,
+      kind,
       contractType: r.contract_type,
-      label: labelFor(r.contract_type),
+      label:
+        kind === "provider"
+          ? labelForProvider(r.contract_type)
+          : labelForRep(r.contract_type),
       signedAt: r.signed_at,
       signedUrl: urlByPath.get(r.signed_path) ?? null,
       typedName: r.typed_name,
@@ -131,27 +148,64 @@ export async function getMySignedSalesRepContracts(): Promise<SignedContractRow[
   }
 
   const admin = createAdminClient();
-  return enrichRows(admin, (data ?? []) as SignatureRow[]);
+  return enrichRows(admin, (data ?? []) as SignatureRow[], "rep");
 }
 
-/** Admin-only: every signed row across all reps, for the Rep Signatures tab. */
-export async function getAllSignedSalesRepContracts(): Promise<SignedContractRow[]> {
+/** Provider self-service: RLS on `provider_contract_signatures` restricts to
+ *  the row owner (`user_id = auth.uid()`). Mirrors the sales-rep flow. */
+export async function getMySignedProviderContracts(): Promise<SignedContractRow[]> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  const { data, error } = await supabase
+    .from("provider_contract_signatures")
+    .select(SIGNATURE_SELECT)
+    .eq("user_id", user.id)
+    .order("contract_type", { ascending: true });
+  if (error) {
+    console.error("[getMySignedProviderContracts]", error.message);
+    return [];
+  }
+
+  const admin = createAdminClient();
+  return enrichRows(admin, (data ?? []) as SignatureRow[], "provider");
+}
+
+/** Admin-only: every signed row across all reps + providers, for the
+ *  combined "Onboarding Signatures" tab. Two parallel queries; results are
+ *  enriched with the matching `kind` so the UI can render a Type badge. */
+export async function getAllSignedOnboardingContracts(): Promise<SignedContractRow[]> {
   const supabase = await createClient();
   const role = await getUserRole(supabase);
   if (!isAdmin(role)) return [];
 
   const admin = createAdminClient();
-  const { data, error } = await admin
-    .from("sales_rep_contract_signatures")
-    .select(SIGNATURE_SELECT)
-    .not("user_id", "is", null)
-    .order("signed_at", { ascending: false });
-  if (error) {
-    console.error("[getAllSignedSalesRepContracts]", error.message);
-    return [];
-  }
+  const [{ data: repRows, error: repErr }, { data: provRows, error: provErr }] =
+    await Promise.all([
+      admin
+        .from("sales_rep_contract_signatures")
+        .select(SIGNATURE_SELECT)
+        .not("user_id", "is", null)
+        .order("signed_at", { ascending: false }),
+      admin
+        .from("provider_contract_signatures")
+        .select(SIGNATURE_SELECT)
+        .not("user_id", "is", null)
+        .order("signed_at", { ascending: false }),
+    ]);
+  if (repErr) console.error("[getAllSignedOnboardingContracts] rep", repErr.message);
+  if (provErr) console.error("[getAllSignedOnboardingContracts] provider", provErr.message);
 
-  return enrichRows(admin, (data ?? []) as SignatureRow[]);
+  const [enrichedRep, enrichedProv] = await Promise.all([
+    enrichRows(admin, (repRows ?? []) as SignatureRow[], "rep"),
+    enrichRows(admin, (provRows ?? []) as SignatureRow[], "provider"),
+  ]);
+
+  // Merge, sort by signed_at desc — most recent activity first regardless of kind.
+  return [...enrichedRep, ...enrichedProv].sort((a, b) =>
+    b.signedAt.localeCompare(a.signedAt),
+  );
 }
 
 export interface RepOfficeOption {

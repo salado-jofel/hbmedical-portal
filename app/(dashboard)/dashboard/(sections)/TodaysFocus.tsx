@@ -6,6 +6,10 @@ import { CheckCircle2 } from "lucide-react";
 import { formatDate } from "@/utils/helpers/formatter";
 import { KANBAN_STATUS_CONFIG } from "@/app/(dashboard)/dashboard/orders/(components)/kanban-config";
 import { cn } from "@/utils/utils";
+import {
+  useOrderUpdatesRefresh,
+  useTableRealtimeRefresh,
+} from "@/utils/hooks/useOrderRealtime";
 import type { ITask } from "@/utils/interfaces/tasks";
 import type { DashboardOrder, OrderStatus } from "@/utils/interfaces/orders";
 
@@ -32,6 +36,11 @@ export function TodaysFocus({
   orders: DashboardOrder[];
   showOrders?: boolean;
 }) {
+  // Re-fetch server-rendered props when orders OR tasks change — the
+  // attention list comes from orders, overdue/dueThisWeek come from tasks.
+  useOrderUpdatesRefresh();
+  useTableRealtimeRefresh("tasks");
+
   const { overdue, dueThisWeek, attentionOrders } = useMemo(() => {
     const now = Date.now();
     const weekAhead = now + 7 * MS_DAY;
