@@ -563,7 +563,6 @@ export interface IOrderForm {
   anticipatedLengthDays: number | null;
   followupWeeks: number | null;
   // Treatment
-  drainageDescription: string | null;
   treatmentPlan: string | null;
   // Signature section
   patientName: string | null;

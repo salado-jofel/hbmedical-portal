@@ -118,7 +118,6 @@ const ORDER_FORM_ALLOWED_FIELDS = new Set([
   "wound2_width_cm",
   "wound2_depth_cm",
   // Treatment
-  "drainage_description",
   "treatment_plan",
   /* ── Fortify expansion (added 2026-04-30) ──
      The 5-attestation booleans (`attest_*`) are intentionally NOT in this
@@ -236,8 +235,6 @@ const ORDER_FORM_FIELD_ALIASES: Record<string, string> = {
   wound2_width: "wound2_width_cm",
   wound2_depth: "wound2_depth_cm",
   // Treatment aliases
-  drainage: "drainage_description",
-  wound_drainage: "drainage_description",
   plan: "treatment_plan",
   dressing_plan: "treatment_plan",
   /* ── Fortify expansion aliases ── */
@@ -613,7 +610,6 @@ Use false for boolean fields not mentioned. No text outside the JSON.
   "wound2_length_cm": number | null,
   "wound2_width_cm": number | null,
   "wound2_depth_cm": number | null,
-  "drainage_description": string | null,
   "treatment_plan": string | null,
 
   "patient_mrn": string | null,
@@ -1768,7 +1764,6 @@ No text outside the JSON.
   "wound2_width_cm": number | null,
   "wound2_depth_cm": number | null,
 
-  "drainage_description": string | null,
   "treatment_plan": string | null,
 
   "patient_mrn": string | null,
@@ -1845,6 +1840,5 @@ Field guidance:
 - third_degree_burns / active_vasculitis / active_charcot: true only if explicitly documented as active
 - skin_condition: condition of the periwound/surrounding skin
 - wound2_* fields: measurements for a second wound only if a second wound is documented
-- drainage_description: narrative description of wound drainage character/color/odor
 - treatment_plan: full treatment plan including dressing type, frequency, and wound care orders
 `.trim();

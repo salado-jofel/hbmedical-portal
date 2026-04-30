@@ -501,12 +501,6 @@ export function OrderFormPDF({
           </View>
         </View>
 
-        {/* ── Drainage ── */}
-        <View style={s.section}>
-          <Text style={s.sectionLabel}>Drainage</Text>
-          <Text style={s.textArea}>{v(form?.drainage_description)}</Text>
-        </View>
-
         {/* ── Fortify: Prior Treatments Tried (table) + Advancement Reason ── */}
         {(Array.isArray(form?.prior_treatments) && (form.prior_treatments as unknown[]).length > 0) ||
         form?.advancement_reason ? (
