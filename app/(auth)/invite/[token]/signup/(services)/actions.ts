@@ -1081,6 +1081,7 @@ export async function signSalesRepContract(
       formData,
       signaturePng: signatureBytes,
       signedDate: today,
+      typedName: typedName.trim(),
       attachments,
     });
 

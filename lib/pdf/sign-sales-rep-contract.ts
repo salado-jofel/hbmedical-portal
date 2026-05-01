@@ -34,6 +34,10 @@ export interface SignContractInput {
   formData: Record<string, unknown>;
   signaturePng: Uint8Array;
   signedDate: Date;
+  /** Rep's printed name for the appended acknowledgment page on read-only
+   *  contracts (those with `fields.length === 0`). Ignored for AcroForm
+   *  contracts that fill name into a form field. */
+  typedName?: string;
   /** Additional scanned documents (e.g. I-9 List A/B/C) to merge as extra
    *  pages AFTER the stamped contract content. PDFs are copied page-by-page;
    *  PNG/JPG images are embedded as full-page images. */
@@ -229,15 +233,144 @@ function removeSignatureFields(pdf: PDFDocument): number {
   return sigs.length;
 }
 
+/**
+ * Read-only contracts (e.g. DME compliance policy) ship as static PDFs with
+ * no AcroForm fields. Instead of stamping into widgets, we append a signature
+ * page at the end where the rep's name + drawn signature + date appear as
+ * proof of receipt + acknowledgment. The original document content is
+ * preserved verbatim.
+ */
+async function appendAcknowledgmentPage(
+  pdf: PDFDocument,
+  contract: ContractDef,
+  typedName: string,
+  signaturePng: Uint8Array,
+  signedDate: Date,
+): Promise<void> {
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const fontBold = await pdf.embedFont(StandardFonts.HelveticaBold);
+
+  // US Letter portrait
+  const pageWidth = 612;
+  const pageHeight = 792;
+  const margin = 60;
+  const page = pdf.addPage([pageWidth, pageHeight]);
+
+  let y = pageHeight - margin;
+
+  // Title
+  page.drawText(`Acknowledgment of Receipt — ${contract.label}`, {
+    x: margin,
+    y,
+    size: 16,
+    font: fontBold,
+    color: rgb(0, 0, 0),
+  });
+  y -= 40;
+
+  // Acknowledgment statement
+  page.drawText(
+    `I acknowledge that I have read and will comply with the ${contract.label}.`,
+    {
+      x: margin,
+      y,
+      size: 12,
+      font,
+      color: rgb(0.1, 0.1, 0.1),
+    },
+  );
+  y -= 80;
+
+  // Printed name row
+  page.drawText("Printed Name:", { x: margin, y, size: 11, font: fontBold, color: rgb(0, 0, 0) });
+  page.drawLine({
+    start: { x: margin + 95, y: y - 3 },
+    end: { x: pageWidth - margin, y: y - 3 },
+    thickness: 0.5,
+    color: rgb(0, 0, 0),
+  });
+  if (typedName) {
+    page.drawText(typedName, {
+      x: margin + 100,
+      y,
+      size: 11,
+      font,
+      color: VALUE_COLOR,
+    });
+  }
+  y -= 60;
+
+  // Signature row — embed the drawn signature image above the line
+  page.drawText("Signature:", { x: margin, y, size: 11, font: fontBold, color: rgb(0, 0, 0) });
+  page.drawLine({
+    start: { x: margin + 80, y: y - 3 },
+    end: { x: pageWidth - margin, y: y - 3 },
+    thickness: 0.5,
+    color: rgb(0, 0, 0),
+  });
+
+  try {
+    const trimmed = await trimSignature(signaturePng);
+    const embedded = await pdf.embedPng(trimmed);
+    const sigBoxWidth = 280;
+    const sigBoxHeight = 50;
+    const box = embedded.scaleToFit(sigBoxWidth, sigBoxHeight);
+    page.drawImage(embedded, {
+      x: margin + 90,
+      y: y - 2,
+      width: box.width,
+      height: box.height,
+    });
+  } catch (e) {
+    console.error("[sign-sales-rep] ack-page signature embed failed:", e);
+  }
+  y -= 60;
+
+  // Date row
+  page.drawText("Date:", { x: margin, y, size: 11, font: fontBold, color: rgb(0, 0, 0) });
+  page.drawLine({
+    start: { x: margin + 45, y: y - 3 },
+    end: { x: margin + 250, y: y - 3 },
+    thickness: 0.5,
+    color: rgb(0, 0, 0),
+  });
+  page.drawText(formatDate(signedDate), {
+    x: margin + 50,
+    y,
+    size: 11,
+    font,
+    color: VALUE_COLOR,
+  });
+}
+
 export async function stampSalesRepContract({
   contract,
   sourcePdf,
   formData,
   signaturePng,
   signedDate,
+  typedName,
   attachments,
 }: SignContractInput): Promise<Uint8Array> {
   const pdf = await PDFDocument.load(sourcePdf);
+
+  // ── Empty-AcroForm path: read-only acknowledgment docs (e.g. DME compliance).
+  //    Skip the field-stamping pipeline entirely and append a signature page.
+  //    Original document pages are preserved untouched. Attachments are not
+  //    expected on read-only docs; if future need arises, factor the merge
+  //    loop below into a shared helper. ──
+  if (contract.fields.length === 0) {
+    await appendAcknowledgmentPage(
+      pdf,
+      contract,
+      typedName ?? "",
+      signaturePng,
+      signedDate,
+    );
+    void attachments;
+    return await pdf.save();
+  }
+
   const form = pdf.getForm();
   const font = await pdf.embedFont(StandardFonts.Helvetica);
 

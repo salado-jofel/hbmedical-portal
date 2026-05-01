@@ -5,6 +5,7 @@ import { getUserData } from "./(services)/actions";
 import Providers from "./(sections)/Providers";
 import { isSalesRep } from "@/utils/helpers/role";
 import { evaluateMfaGate } from "@/lib/supabase/mfa-gate";
+import { evaluateContractsGate } from "@/lib/supabase/contracts-gate";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,20 @@ export default async function DashboardLayout({
 }) {
   const userData = await getUserData();
 
-  // Hard gate: sales reps (top-level + sub) must finish Stripe Connect
+  // Hard gate #1: required onboarding contracts. Catches legacy users (created
+  // before the contracts feature existed, or before a new doc like the DME
+  // Compliance Policy was added) who skipped one or more documents. Runs
+  // BEFORE the payouts gate so the rep reads what they're agreeing to before
+  // setting up their bank account. Off by default — flip CONTRACTS_GATE_ENABLED
+  // env var to "true" to activate.
+  if (userData?.userId && userData.role) {
+    const decision = await evaluateContractsGate(userData.userId, userData.role);
+    if (decision.kind === "must_sign") {
+      redirect("/onboarding/contracts");
+    }
+  }
+
+  // Hard gate #2: sales reps (top-level + sub) must finish Stripe Connect
   // onboarding before they can use the portal. Sub-reps share the same role,
   // so isSalesRep covers both. Other roles are unaffected.
   if (

@@ -375,7 +375,6 @@ export async function saveOrderForm(
     anticipated_length_days?: number | null;
     followup_weeks?: number | null;
     wound_type?: string | null;
-    drainage_description?: string | null;
     treatment_plan?: string | null;
     patient_name?: string | null;
     patient_date?: string | null;

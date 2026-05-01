@@ -20,7 +20,8 @@ export type SalesRepContractKey =
   | "hep_b_consent"
   | "i9"
   | "tb_risk_assessment"
-  | "w9";
+  | "w9"
+  | "dme_compliance";
 
 export type FieldType =
   | "text"
@@ -426,6 +427,21 @@ export const SALES_REP_CONTRACTS: readonly ContractDef[] = [
       { key: "ssn", label: "SSN (XXX-XX-XXXX)", type: "ssn", step: 3, showIf: (f) => f.tin_type === "ssn", comb: 9 },
       { key: "ein", label: "EIN (XX-XXXXXXX)", type: "ein", step: 3, showIf: (f) => f.tin_type === "ein", comb: 9 },
     ],
+  },
+
+  // ───────────────────────────────────────────────────────────────
+  // 7. DME Compliance Policy
+  //    20-page static policy document with no AcroForm fields. Rep
+  //    just reads + signs as proof of receipt. The stamper detects
+  //    `fields.length === 0` and appends a signature page at the end
+  //    instead of trying to fill non-existent form widgets.
+  // ───────────────────────────────────────────────────────────────
+  {
+    key: "dme_compliance",
+    label: "DME Compliance Policy",
+    templateFile: "dme-compliance.pdf",
+    steps: ["Read & Sign"],
+    fields: [],
   },
 ] as const;
 

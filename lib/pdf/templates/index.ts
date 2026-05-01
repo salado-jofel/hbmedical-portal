@@ -30,6 +30,7 @@ export const CONTRACT_TEMPLATE_FILES = [
   "i9.pdf",
   "tb-risk-assessment.pdf",
   "w9.pdf",
+  "dme-compliance.pdf",
 ] as const;
 
 export type ContractTemplateFile = (typeof CONTRACT_TEMPLATE_FILES)[number];

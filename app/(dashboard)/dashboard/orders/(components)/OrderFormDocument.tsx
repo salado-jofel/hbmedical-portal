@@ -38,6 +38,8 @@ import {
 import { getOrderForm } from "../(services)/order-ivr-actions";
 import type { IOrderForm, DashboardOrder, ProductRecord } from "@/utils/interfaces/orders";
 import { isItemsEditable } from "@/utils/constants/orders";
+import { ADVANCEMENT_REASONS } from "@/utils/constants/advancement-reasons";
+import { PriorTreatmentField } from "./PriorTreatmentField";
 import type { AiStatus } from "./OrderFormTab";
 import { FormDeficiencyBanner } from "./FormDeficiencyBanner";
 import { FormActionBar } from "./FormActionBar";
@@ -91,7 +93,6 @@ type FormState = {
   wound2LengthCm: string;
   wound2WidthCm: string;
   wound2DepthCm: string;
-  drainageDescription: string;
   treatmentPlan: string;
   patientName: string;
   patientDate: string;
@@ -230,7 +231,6 @@ function buildFormState(
     wound2LengthCm: form?.wound2LengthCm?.toString() ?? "",
     wound2WidthCm: form?.wound2WidthCm?.toString() ?? "",
     wound2DepthCm: form?.wound2DepthCm?.toString() ?? "",
-    drainageDescription: form?.drainageDescription ?? "",
     treatmentPlan: form?.treatmentPlan ?? "",
     patientName: form?.patientName ?? opts?.patientName ?? "",
     patientDate: form?.patientDate ?? opts?.patientDate ?? "",
@@ -661,6 +661,19 @@ export function OrderFormDocument({
   // the server as the actual write. Sign is only UI-committed until save.
   const [pendingPin, setPendingPin] = useState<string | null>(null);
 
+  // Dropdown selection for "Reason for Advancing". Decoupled from the
+  // persisted free-text value so "Other (specify)" stays selected even when
+  // the textarea is briefly empty (otherwise the dropdown would snap back to
+  // "— Select a reason —" the moment the user picks Other and the value is
+  // cleared, hiding the textarea before they can type).
+  const [advancementChoice, setAdvancementChoice] = useState<string>(() => {
+    const v = orderForm?.advancementReason ?? "";
+    const matched = ADVANCEMENT_REASONS.find((r) => r.label === v);
+    if (matched) return matched.id;
+    if (v) return "other";
+    return "";
+  });
+
   // Re-sync when AI extraction completes OR the parent's `patientName` prop
   // resolves (it lands later than the initial render because OrderDetailModal
   // refreshes it once polling sees AI complete + the patient row gets linked).
@@ -669,6 +682,10 @@ export function OrderFormDocument({
     setFormData(snap);
     setBaseline(snap);
     setLocalUpdatedAt(orderForm?.updatedAt ?? null);
+    // Re-derive advancement-reason dropdown choice from the freshly loaded value.
+    const v = orderForm?.advancementReason ?? "";
+    const matched = ADVANCEMENT_REASONS.find((r) => r.label === v);
+    setAdvancementChoice(matched ? matched.id : v ? "other" : "");
   }, [orderForm?.id, orderForm?.aiExtractedAt, patientName]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const ai = orderForm?.aiExtracted ?? false;
@@ -902,7 +919,6 @@ export function OrderFormDocument({
     if (!formData.woundLengthCm) count++;
     if (!formData.woundWidthCm) count++;
     if (!formData.woundDepthCm) count++;
-    if (!isPostSurgical && !formData.drainageDescription) count++;
     if (!formData.treatmentPlan) count++;
     if (!isPostSurgical && !formData.woundVisitNumber) count++;
     if (!formData.granulationTissuePct) count++;
@@ -941,7 +957,6 @@ export function OrderFormDocument({
     formData.woundLengthCm,
     formData.woundWidthCm,
     formData.woundDepthCm,
-    formData.drainageDescription,
     formData.treatmentPlan,
     formData.woundVisitNumber,
     formData.granulationTissuePct,
@@ -1129,7 +1144,6 @@ export function OrderFormDocument({
       wound2_length_cm: numOrNull(formData.wound2LengthCm),
       wound2_width_cm: numOrNull(formData.wound2WidthCm),
       wound2_depth_cm: numOrNull(formData.wound2DepthCm),
-      drainage_description: strOrNull(formData.drainageDescription),
       treatment_plan: strOrNull(formData.treatmentPlan),
       patient_name: strOrNull(formData.patientName),
       patient_date: strOrNull(formData.patientDate),
@@ -1362,7 +1376,6 @@ export function OrderFormDocument({
         wound2LengthCm: numOrNull2(formData.wound2LengthCm),
         wound2WidthCm: numOrNull2(formData.wound2WidthCm),
         wound2DepthCm: numOrNull2(formData.wound2DepthCm),
-        drainageDescription: strOrNull2(formData.drainageDescription),
         treatmentPlan: strOrNull2(formData.treatmentPlan),
         patientName: strOrNull2(formData.patientName),
         patientDate: strOrNull2(formData.patientDate),
@@ -1597,9 +1610,11 @@ export function OrderFormDocument({
           <AiWrap active={ai && !!formData.woundVisitNumber}>
             <FormInput
               value={formData.woundVisitNumber}
-              onChange={(v) => set("woundVisitNumber", v)}
+              onChange={(v) => set("woundVisitNumber", v.replace(/-/g, ""))}
               deficient={visitDeficient}
               type="number"
+              min={0}
+              step={1}
               className="w-12 text-center"
               placeholder="—"
             />
@@ -2082,10 +2097,13 @@ export function OrderFormDocument({
           <AiWrap active={ai && !!formData.granulationTissuePct}>
             <FormInput
               value={formData.granulationTissuePct}
-              onChange={(v) => set("granulationTissuePct", v)}
+              onChange={(v) => set("granulationTissuePct", v.replace(/-/g, ""))}
               deficient={granulationDeficient}
               type="number"
-              className="w-12 text-center"
+              min={0}
+              max={100}
+              step={10}
+              className="w-14 text-center"
               placeholder="—"
             />
           </AiWrap>
@@ -2102,21 +2120,25 @@ export function OrderFormDocument({
               <AiWrap active={ai && !!formData.woundLengthCm}>
                 <FormInput
                   value={formData.woundLengthCm}
-                  onChange={(v) => set("woundLengthCm", v)}
+                  onChange={(v) => set("woundLengthCm", v.replace(/-/g, ""))}
                   deficient={aiExtracted && !formData.woundLengthCm}
                   type="number"
-                  className="w-12 text-center"
+                  min={0}
+                  step={1}
+                  className="w-14 text-center"
                   placeholder="—"
                 />
               </AiWrap>
-              <span className="text-[11px] text-[#555]">cc (length) ×</span>
+              <span className="text-[11px] text-[#555]">cm (length) ×</span>
               <AiWrap active={ai && !!formData.woundWidthCm}>
                 <FormInput
                   value={formData.woundWidthCm}
-                  onChange={(v) => set("woundWidthCm", v)}
+                  onChange={(v) => set("woundWidthCm", v.replace(/-/g, ""))}
                   deficient={aiExtracted && !formData.woundWidthCm}
                   type="number"
-                  className="w-12 text-center"
+                  min={0}
+                  step={1}
+                  className="w-14 text-center"
                   placeholder="—"
                 />
               </AiWrap>
@@ -2124,10 +2146,12 @@ export function OrderFormDocument({
               <AiWrap active={ai && !!formData.woundDepthCm}>
                 <FormInput
                   value={formData.woundDepthCm}
-                  onChange={(v) => set("woundDepthCm", v)}
+                  onChange={(v) => set("woundDepthCm", v.replace(/-/g, ""))}
                   deficient={aiExtracted && !formData.woundDepthCm}
                   type="number"
-                  className="w-12 text-center"
+                  min={0}
+                  step={1}
+                  className="w-14 text-center"
                   placeholder="—"
                 />
               </AiWrap>
@@ -2139,19 +2163,23 @@ export function OrderFormDocument({
               <AiWrap active={ai && !!formData.wound2LengthCm}>
                 <FormInput
                   value={formData.wound2LengthCm}
-                  onChange={(v) => set("wound2LengthCm", v)}
+                  onChange={(v) => set("wound2LengthCm", v.replace(/-/g, ""))}
                   type="number"
-                  className="w-12 text-center"
+                  min={0}
+                  step={1}
+                  className="w-14 text-center"
                   placeholder="—"
                 />
               </AiWrap>
-              <span className="text-[11px] text-[#555]">cc (length) ×</span>
+              <span className="text-[11px] text-[#555]">cm (length) ×</span>
               <AiWrap active={ai && !!formData.wound2WidthCm}>
                 <FormInput
                   value={formData.wound2WidthCm}
-                  onChange={(v) => set("wound2WidthCm", v)}
+                  onChange={(v) => set("wound2WidthCm", v.replace(/-/g, ""))}
                   type="number"
-                  className="w-12 text-center"
+                  min={0}
+                  step={1}
+                  className="w-14 text-center"
                   placeholder="—"
                 />
               </AiWrap>
@@ -2159,9 +2187,11 @@ export function OrderFormDocument({
               <AiWrap active={ai && !!formData.wound2DepthCm}>
                 <FormInput
                   value={formData.wound2DepthCm}
-                  onChange={(v) => set("wound2DepthCm", v)}
+                  onChange={(v) => set("wound2DepthCm", v.replace(/-/g, ""))}
                   type="number"
-                  className="w-12 text-center"
+                  min={0}
+                  step={1}
+                  className="w-14 text-center"
                   placeholder="—"
                 />
               </AiWrap>
@@ -2247,25 +2277,34 @@ export function OrderFormDocument({
           <span className="text-[11px] text-[#666] mr-1">Slough %</span>
           <FormInput
             value={formData.woundBedSloughPct}
-            onChange={(v) => set("woundBedSloughPct", v)}
+            onChange={(v) => set("woundBedSloughPct", v.replace(/-/g, ""))}
             type="number"
-            className="w-12 text-center"
+            min={0}
+            max={100}
+            step={10}
+            className="w-14 text-center"
             placeholder="—"
           />
           <span className="text-[11px] text-[#666] mx-1">Eschar %</span>
           <FormInput
             value={formData.woundBedEscharPct}
-            onChange={(v) => set("woundBedEscharPct", v)}
+            onChange={(v) => set("woundBedEscharPct", v.replace(/-/g, ""))}
             type="number"
-            className="w-12 text-center"
+            min={0}
+            max={100}
+            step={10}
+            className="w-14 text-center"
             placeholder="—"
           />
           <span className="text-[#ccc] mx-2">|</span>
           <FL>Pain (0-10)</FL>
           <FormInput
             value={formData.painLevel}
-            onChange={(v) => set("painLevel", v)}
+            onChange={(v) => set("painLevel", v.replace(/-/g, ""))}
             type="number"
+            min={0}
+            max={10}
+            step={1}
             className="w-12 text-center"
             placeholder="—"
           />
@@ -2357,25 +2396,6 @@ export function OrderFormDocument({
           </div>
         </div>
 
-        {/* ── 14. DRAINAGE ── */}
-        <div className="py-2 border-b border-[#e5e5e5] flex flex-col">
-          <FL>Drainage</FL>
-          <AiWrap active={ai && !!formData.drainageDescription}>
-            <AutoResizeTextarea
-              value={formData.drainageDescription}
-              onChange={(v) => set("drainageDescription", v)}
-              deficient={!isPostSurgical && aiExtracted && !formData.drainageDescription}
-              minRows={2}
-              placeholder={
-                !isPostSurgical && aiExtracted && !formData.drainageDescription
-                  ? "Required — AI missed this field"
-                  : "Describe drainage character, color, odor"
-              }
-              aiHighlight={ai && !!formData.drainageDescription}
-            />
-          </AiWrap>
-        </div>
-
         {/* ── 15. TREATMENT PLAN ── */}
         <div className="py-2 border-b border-[#e5e5e5] space-y-2 flex flex-col">
 
@@ -2414,17 +2434,16 @@ export function OrderFormDocument({
                 {formData.priorTreatments.map((row, idx) => (
                   <div
                     key={idx}
-                    className="grid grid-cols-[1fr_1fr_1.5fr_24px] gap-2 px-2 py-1 border-t border-[#eee] items-center"
+                    className="grid grid-cols-[1.2fr_1fr_1.5fr_24px] gap-2 px-2 py-1 border-t border-[#eee] items-start"
                   >
-                    <FormInput
+                    <PriorTreatmentField
                       value={row.treatment}
                       onChange={(v) => {
                         const next = [...formData.priorTreatments];
                         next[idx] = { ...next[idx], treatment: v };
                         set("priorTreatments", next);
                       }}
-                      className="w-full"
-                      placeholder="e.g. Hydrocolloid"
+                      disabled={isReadOnly}
                     />
                     <FormInput
                       value={row.datesUsed}
@@ -2433,7 +2452,7 @@ export function OrderFormDocument({
                         next[idx] = { ...next[idx], datesUsed: v };
                         set("priorTreatments", next);
                       }}
-                      className="w-full"
+                      className="w-full mt-0.5"
                       placeholder="e.g. 2 weeks Mar"
                     />
                     <FormInput
@@ -2443,7 +2462,7 @@ export function OrderFormDocument({
                         next[idx] = { ...next[idx], outcome: v };
                         set("priorTreatments", next);
                       }}
-                      className="w-full"
+                      className="w-full mt-0.5"
                       placeholder="e.g. No improvement"
                     />
                     <button
@@ -2452,7 +2471,7 @@ export function OrderFormDocument({
                         const next = formData.priorTreatments.filter((_, i) => i !== idx);
                         set("priorTreatments", next);
                       }}
-                      className="text-[#aaa] hover:text-[#dc2626] disabled:opacity-40"
+                      className="text-[#aaa] hover:text-[#dc2626] disabled:opacity-40 mt-1"
                       disabled={isReadOnly}
                     >
                       <X className="w-3 h-3" />
@@ -2461,14 +2480,50 @@ export function OrderFormDocument({
                 ))}
               </div>
             )}
-            <div className="flex flex-col gap-0.5 pt-1">
+            <div className="flex flex-col gap-1 pt-1">
               <FL>Reason for Advancing to Ordered Product</FL>
-              <FormInput
-                value={formData.advancementReason}
-                onChange={(v) => set("advancementReason", v)}
-                className="w-full"
-                placeholder="Why prior treatments were inadequate"
-              />
+              <select
+                value={advancementChoice}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setAdvancementChoice(val);
+                  if (val === "") {
+                    set("advancementReason", "");
+                  } else if (val === "other") {
+                    // Clear the persisted value when switching INTO Other from
+                    // a canonical reason so the textarea starts empty. If
+                    // already on Other (e.g., loaded with legacy free text),
+                    // preserve so the user doesn't lose their typing.
+                    const wasCanonical = ADVANCEMENT_REASONS.some(
+                      (r) => r.label === formData.advancementReason,
+                    );
+                    if (wasCanonical) set("advancementReason", "");
+                  } else {
+                    const reason = ADVANCEMENT_REASONS.find(
+                      (r) => r.id === val,
+                    );
+                    if (reason) set("advancementReason", reason.label);
+                  }
+                }}
+                className="border-0 border-b border-[#333] text-[13px] bg-transparent outline-none px-1 py-0.5 w-full"
+              >
+                <option value="">— Select a reason —</option>
+                {ADVANCEMENT_REASONS.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.label}
+                  </option>
+                ))}
+                <option value="other">Other (specify)</option>
+              </select>
+              {advancementChoice === "other" && (
+                <AutoResizeTextarea
+                  value={formData.advancementReason}
+                  onChange={(v) => set("advancementReason", v)}
+                  minRows={2}
+                  placeholder="Specify reason for advancing"
+                  className="w-full"
+                />
+              )}
             </div>
           </div>
 
@@ -2662,12 +2717,6 @@ export function OrderFormDocument({
                   <th className="text-center py-1.5 font-semibold text-[#333] w-28">
                     Qty
                   </th>
-                  <th className="text-right py-1.5 font-semibold text-[#333] w-24">
-                    Unit Price
-                  </th>
-                  <th className="text-right py-1.5 font-semibold text-[#333] w-24">
-                    Total
-                  </th>
                   {itemsEditable && <th className="w-8" />}
                 </tr>
               </thead>
@@ -2729,12 +2778,6 @@ export function OrderFormDocument({
                           <span>{item.quantity}</span>
                         )}
                       </td>
-                      <td className="py-1.5 text-right font-mono">
-                        ${item.unitPrice.toFixed(2)}
-                      </td>
-                      <td className="py-1.5 text-right font-mono">
-                        ${(item.unitPrice * item.quantity).toFixed(2)}
-                      </td>
                       {itemsEditable && (
                         <td className="py-1.5 text-right">
                           <button
@@ -2754,22 +2797,7 @@ export function OrderFormDocument({
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-[#333]">
-                  <td
-                    colSpan={4}
-                    className="py-2 text-right font-semibold text-[13px] text-[#333] uppercase pr-2"
-                  >
-                    Grand Total:
-                  </td>
-                  <td className="py-2 text-right font-semibold text-[14px] text-[#0d7a6b] font-mono">
-                    $
-                    {draftItems
-                      .reduce((sum, i) => sum + i.unitPrice * i.quantity, 0)
-                      .toFixed(2)}
-                  </td>
-                  {itemsEditable && <td />}
-                </tr>
-                <tr>
-                  <td colSpan={itemsEditable ? 6 : 5} className="py-1 text-[10px] text-[#999]">
+                  <td colSpan={itemsEditable ? 4 : 3} className="py-1 text-[10px] text-[#999]">
                     {draftItems.length} item(s) ·{" "}
                     {draftItems.reduce((sum, i) => sum + i.quantity, 0)} unit(s)
                     {isItemsDirty && (
@@ -2853,9 +2881,6 @@ export function OrderFormDocument({
                             )}
                           </div>
                         </div>
-                        <span className="font-mono text-[12px] text-gray-700 w-20 text-right shrink-0">
-                          ${Number(p.unit_price).toFixed(2)}
-                        </span>
                         <button
                           type="button"
                           onClick={() => handleAddProductToDraft(p)}
