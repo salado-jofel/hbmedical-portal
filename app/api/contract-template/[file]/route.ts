@@ -4,16 +4,16 @@ import {
   loadContractTemplate,
 } from "@/lib/pdf/templates";
 import { validateInviteToken } from "@/app/(dashboard)/dashboard/(services)/invite-tokens/actions";
+import { createClient } from "@/lib/supabase/server";
 
 /**
- * Serves a contract template PDF from `lib/pdf/templates/`. Used by the
- * signup page's preview iframes (replaces the Supabase signed URL that the
- * 6 sales-rep cards and the 2 provider cards used to request).
+ * Serves a contract template PDF from `lib/pdf/templates/`. Two access modes:
+ *  - `?token=<invite_token>` — used by the invite-signup preview iframes
+ *  - Authenticated session — used by the post-login /onboarding/contracts gate
+ *    (legacy users who never signed during invite signup)
  *
- * Token gate: the request must carry a valid `?token=<invite_token>`. That
- * token is the same opaque secret in the invite email URL. This prevents
- * scraping the templates (which contain Kelsey's pre-filled signature on the
- * I-9 and will contain Dr. Pienkos's on the BAA once we bake him in).
+ * Either path is sufficient; both prevent scraping the templates (which
+ * contain pre-filled signatures on I-9 and the BAA Meridian-side signer).
  */
 export async function GET(
   request: NextRequest,
@@ -25,13 +25,22 @@ export async function GET(
   }
 
   const token = request.nextUrl.searchParams.get("token");
-  if (!token) {
-    return new NextResponse("Missing token", { status: 401 });
+  let authorized = false;
+
+  if (token) {
+    const invite = await validateInviteToken(token);
+    if (invite) authorized = true;
+  } else {
+    // Fall back to authenticated session for the post-login gate flow.
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (user) authorized = true;
   }
 
-  const invite = await validateInviteToken(token);
-  if (!invite) {
-    return new NextResponse("Invalid or expired invite", { status: 401 });
+  if (!authorized) {
+    return new NextResponse("Unauthorized", { status: 401 });
   }
 
   const bytes = await loadContractTemplate(file);
