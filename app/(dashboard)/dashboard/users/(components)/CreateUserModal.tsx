@@ -23,6 +23,7 @@ import { createUser } from "@/app/(dashboard)/dashboard/users/(services)/actions
 import { useAppDispatch } from "@/store/hooks";
 import { addUserToStore } from "@/app/(dashboard)/dashboard/users/(redux)/users-slice";
 import type { IUserFormState } from "@/utils/interfaces/users";
+import { EXPIRY_OPTIONS } from "@/utils/constants/onboarding";
 
 interface CreateUserModalProps {
   open: boolean;
@@ -147,8 +148,30 @@ export function CreateUserModal({ open, onClose }: CreateUserModalProps) {
             )}
           </div>
 
+          {/* Link expires in — mirrors the dropdown shown on the
+              Onboarding-side Clinic / Sales Rep invite forms. The chosen
+              value is enforced server-side via invite_tokens.expires_at. */}
+          <div className="space-y-1.5">
+            <Label className="text-xs font-medium text-[#374151] block mb-1.5">
+              Link expires in
+            </Label>
+            <Select name="expires_in_days" defaultValue="30">
+              <SelectTrigger className="h-9 text-sm border-[var(--border)] bg-white text-[var(--navy)] rounded-lg">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {EXPIRY_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value} className="text-sm">
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           <p className="text-xs text-[var(--text2)] bg-[var(--bg)] border border-[var(--border)] rounded-lg px-3 py-2">
-            An invitation email will be sent to the user to set their password.
+            An invitation email will be sent to the user to set their password
+            and complete their account setup.
           </p>
 
           <div className="flex gap-2 pt-4 border-t border-[var(--border)] mt-2">

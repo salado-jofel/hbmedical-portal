@@ -195,18 +195,16 @@ export async function createUser(
   formData: FormData,
 ): Promise<IUserFormState> {
   try {
-    if (!process.env.RESEND_API_KEY) {
-      console.error("[createUser] RESEND_API_KEY not set");
-    }
-
     const supabase = await createClient();
     await requireAdminOrThrow(supabase);
+    const inviter = await getCurrentUserOrThrow(supabase);
 
     const raw = {
       first_name: formData.get("first_name") as string,
       last_name: formData.get("last_name") as string,
       email: formData.get("email") as string,
       role: formData.get("role") as string,
+      expires_in_days: formData.get("expires_in_days") ?? "30",
     };
 
     const parsed = createUserSchema.safeParse(raw);
@@ -219,98 +217,62 @@ export async function createUser(
       return { error: null, success: false, fieldErrors };
     }
 
-    const { first_name, last_name, email, role } = parsed.data;
+    const { first_name, last_name, email, role, expires_in_days } = parsed.data;
 
-    console.log("[createUser] Creating user:", { email, first_name, last_name, role });
+    console.log("[createUser] Issuing invite for:", { email, role, expires_in_days });
 
     const adminClient = createAdminClient();
 
-    // Step 1 — Create the auth user with email pre-confirmed
-    const { data: authData, error: authError } =
-      await adminClient.auth.admin.createUser({
-        email,
-        email_confirm: true,
-        user_metadata: { first_name, last_name },
-      });
+    // ── Defer auth-user creation until the invitee consumes the token.
+    //    This matches the sales-rep / clinic-provider flow exactly. The
+    //    invite_tokens row is the access mechanism; the profiles row +
+    //    auth user get created on the invite-signup page when the invitee
+    //    sets their password. ──
+    const expiresAt = new Date(
+      Date.now() + expires_in_days * 24 * 60 * 60 * 1000,
+    ).toISOString();
 
-    if (authError || !authData?.user) {
-      console.error("[createUser] Auth createUser error:", authError);
-      return { error: authError?.message ?? "Failed to create auth user.", success: false };
+    const { data: inserted, error: tokenErr } = await adminClient
+      .from("invite_tokens")
+      .insert({
+        created_by: inviter.id,
+        role_type: role,
+        invited_email: email,
+        invited_first_name: first_name,
+        invited_last_name: last_name,
+        expires_at: expiresAt,
+      })
+      .select("token")
+      .single();
+
+    if (tokenErr || !inserted?.token) {
+      console.error("[createUser] invite_tokens insert error:", tokenErr);
+      return { error: "Failed to generate invite link.", success: false };
     }
 
-    const userId = authData.user.id;
-    console.log("[createUser] Auth user created:", userId);
+    const appUrl =
+      process.env.NEXT_PUBLIC_APP_URL ??
+      process.env.NEXT_PUBLIC_SITE_URL ??
+      "http://localhost:3000";
+    const inviteUrl = `${appUrl}/invite/${inserted.token}`;
 
-    // Step 2 — Upsert profile with the assigned role
-    const { error: profileError } = await adminClient
-      .from("profiles")
-      .upsert({
-        id: userId,
-        first_name,
-        last_name,
-        email,
-        role,
-        has_completed_setup: isAdmin(role),
-        status: "pending",
-      });
-
-    if (profileError) {
-      console.error("[createUser] Profile upsert error:", JSON.stringify(profileError));
-      return { error: "User created but profile setup failed.", success: false };
-    }
-
-    // Step 3 — Generate a password-reset (recovery) link
-    const { data: linkData, error: linkError } =
-      await adminClient.auth.admin.generateLink({
-        type: "recovery",
-        email,
-        options: {
-          redirectTo: `${process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"}/set-password`,
-        },
-      });
-
-    if (linkError || !linkData?.properties?.action_link) {
-      console.error("[createUser] generateLink error:", linkError);
-      const newUser: IUser = {
-        id: userId,
-        first_name,
-        last_name,
-        email,
-        role: role as NonNullable<UserRole>,
-        created_at: authData.user.created_at,
-        is_active: true,
-        status: "pending",
-        facility: null,
-      };
-      return { success: true, error: null, user: newUser };
-    }
-
-    const resetLink = linkData.properties.action_link;
-
-    // Step 4 — Send invite email via Resend
-    const emailResult = await resend.emails.send({
-      from: ACCOUNTS_FROM_EMAIL,
+    const { error: emailErr } = await sendInviteEmail({
       to: email,
-      subject: "You've been invited to Meridian Portal",
-      html: buildResetPasswordEmail({ first_name, last_name, role, resetLink }),
+      inviteUrl,
+      roleType: role,
+      inviterName: `${first_name} ${last_name}`.trim() || "Meridian",
     });
 
-    console.log("[createUser] Email result:", JSON.stringify(emailResult));
-
-    const newUser: IUser = {
-      id: userId,
-      first_name,
-      last_name,
-      email,
-      role: role as NonNullable<UserRole>,
-      created_at: authData.user.created_at,
-      is_active: true,
-      status: "pending",
-      facility: null,
-    };
+    if (emailErr) {
+      console.error("[createUser] sendInviteEmail error:", emailErr);
+      // Token still exists; admin can re-send. Don't roll back.
+      return { error: "Invite created but email failed to send.", success: false };
+    }
 
     revalidatePath("/dashboard/users");
-    return { success: true, error: null, user: newUser };
+    // No `user` payload — the actual user row is created on invite consume.
+    // The modal shows a generic "Invite sent" toast in this case.
+    return { success: true, error: null };
   } catch (err) {
     console.error("[createUser] Unexpected error:", err);
     return { error: "An unexpected error occurred.", success: false };

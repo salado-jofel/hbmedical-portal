@@ -5,6 +5,8 @@ import { getInviteTokenStatus } from "@/app/(dashboard)/dashboard/(services)/inv
 import { MeridianLogo } from "@/app/(components)/MeridianLogo";
 import { BackgroundDots } from "@/app/(components)/BackgroundDots";
 import InviteSignUpForm from "./(sections)/InviteSignUpForm";
+import { StaffInviteSignUpForm } from "./(sections)/StaffInviteSignUpForm";
+import { ROLE_LABELS } from "@/utils/helpers/role";
 
 interface PageProps {
   params: Promise<{ token: string }>;
@@ -98,6 +100,31 @@ export default async function InviteSignUpPage({ params }: PageProps) {
   const invitedBy = inviteToken.created_by_profile
     ? `${inviteToken.created_by_profile.first_name} ${inviteToken.created_by_profile.last_name}`
     : "Meridian Portal";
+
+  // Admin / support_staff invites use a slimmed-down "set password and you're
+  // in" form. They don't have facility / contracts / clinic-info steps. This
+  // path was added when admin invites moved off the Supabase recovery-link
+  // flow onto invite_tokens (so the Create User modal can offer 7/14/30/90
+  // day expiry like the rest of the invite UI).
+  if (
+    inviteToken.role_type === "admin" ||
+    inviteToken.role_type === "support_staff"
+  ) {
+    return (
+      <main className="min-h-screen bg-gradient-to-br from-[#F0F7FF] to-[#F8FAFC] flex items-center justify-center p-4">
+        <StaffInviteSignUpForm
+          token={token}
+          email={inviteToken.invited_email ?? ""}
+          defaultFirstName={inviteToken.invited_first_name ?? ""}
+          defaultLastName={inviteToken.invited_last_name ?? ""}
+          roleLabel={
+            ROLE_LABELS[inviteToken.role_type] ?? inviteToken.role_type
+          }
+          invitedBy={invitedBy}
+        />
+      </main>
+    );
+  }
 
   // Contract preview URLs are fetched client-side on entering step 6, so the
   // user sees one loading state while MERIDIAN-prestamped PDFs are generated
