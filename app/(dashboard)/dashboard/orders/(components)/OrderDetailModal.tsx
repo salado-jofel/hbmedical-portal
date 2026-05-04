@@ -116,6 +116,7 @@ import toast from "react-hot-toast";
 import { cn } from "@/utils/utils";
 import { REQUIRED_DOC_TYPES, ALL_DOC_TYPES, isInvoiceVisibleForStatus, isItemsEditable } from "@/utils/constants/orders";
 import { getDisplayOrderStatus } from "@/utils/helpers/orders";
+import { DocumentViewerSheet } from "./DocumentViewerSheet";
 
 const TABS = [
   { value: "overview", label: "Overview" },
@@ -204,6 +205,13 @@ export function OrderDetailModal({
     order.documents ?? [],
   );
   const [viewingDocId, setViewingDocId] = useState<string | null>(null);
+  // Active doc displayed inside the right-slide DocumentViewerSheet. null =
+  // sheet closed. Replaces the old window.open(_blank) flow so users can
+  // cross-reference docs while editing the order without tab-switching.
+  const [viewerDoc, setViewerDoc] = useState<
+    | { label: string; url: string; mimeType: string | null; fileName: string }
+    | null
+  >(null);
   const [generatingPdfTypes, setGeneratingPdfTypes] = useState<Set<string>>(new Set());
   const [aiWindowExpired, setAiWindowExpired] = useState(true);
   const [woundPhotoUrls, setWoundPhotoUrls] = useState<Record<string, string>>(
@@ -916,7 +924,17 @@ export function OrderDetailModal({
         toast.error(error ?? "Could not generate download link.");
         return;
       }
-      window.open(url, "_blank");
+      // Open in the right-slide sheet so the user can cross-reference the
+      // doc while editing the order. The sheet header still offers an
+      // "Open in new tab" action for downloads or full-screen viewing.
+      const label =
+        ALL_DOC_TYPES.find((t) => t.type === docType)?.label ?? docType;
+      setViewerDoc({
+        label,
+        url,
+        mimeType: doc.mimeType ?? null,
+        fileName: doc.fileName ?? "document",
+      });
     } catch (err) {
       console.error("[handleViewDocument]", err);
       toast.error("Failed to open document.");
@@ -1560,6 +1578,24 @@ export function OrderDetailModal({
           <RadixDialog.Content
             aria-describedby={undefined}
             className="fixed inset-0 z-50 flex items-center justify-center p-4 outline-none"
+            // Prevent Radix's outside-click detector from closing this modal
+            // when the user interacts with the DocumentViewerSheet (which
+            // portals to body and would otherwise read as "outside"). The
+            // sheet stamps `data-document-viewer-sheet` on its Content;
+            // we ignore any pointerdown / interaction whose target sits
+            // inside that subtree.
+            onPointerDownOutside={(e) => {
+              const target = e.target as HTMLElement | null;
+              if (target?.closest("[data-document-viewer-sheet]")) {
+                e.preventDefault();
+              }
+            }}
+            onInteractOutside={(e) => {
+              const target = e.target as HTMLElement | null;
+              if (target?.closest("[data-document-viewer-sheet]")) {
+                e.preventDefault();
+              }
+            }}
           >
             <DialogTitle className="sr-only">
               Order {order.order_number}
@@ -2436,11 +2472,12 @@ export function OrderDetailModal({
                                 key={photo.id}
                                 type="button"
                                 onClick={() =>
-                                  window.open(
-                                    woundPhotoUrls[photo.id],
-                                    "_blank",
-                                    "noopener,noreferrer",
-                                  )
+                                  setViewerDoc({
+                                    label: "Wound Photo",
+                                    url: woundPhotoUrls[photo.id],
+                                    mimeType: photo.mimeType ?? "image/jpeg",
+                                    fileName: photo.fileName ?? "wound-photo",
+                                  })
                                 }
                               >
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -2573,6 +2610,15 @@ export function OrderDetailModal({
           </RadixDialog.Content>
         </RadixDialog.Portal>
       </RadixDialog.Root>
+
+      {/* Right-slide doc viewer — replaces the old window.open(_blank) flow.
+          Lets the user cross-reference a PDF/image while the form modal
+          stays open behind it. The sheet header still offers an "Open in
+          new tab" escape hatch for downloads. */}
+      <DocumentViewerSheet
+        doc={viewerDoc}
+        onClose={() => setViewerDoc(null)}
+      />
     </>
   );
 }
