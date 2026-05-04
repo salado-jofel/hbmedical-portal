@@ -223,6 +223,43 @@ export async function createUser(
 
     const adminClient = createAdminClient();
 
+    // ── Duplicate-email checks (run BEFORE insert).
+    //    Two cases to reject:
+    //      a) An existing profile already has this email (active or inactive)
+    //      b) An active (un-used, non-expired) invite_token already targets it
+    //    Both surface as friendly fieldErrors so the modal highlights the
+    //    Email input. ──
+    const { data: existingProfile } = await adminClient
+      .from("profiles")
+      .select("id")
+      .eq("email", email)
+      .maybeSingle();
+    if (existingProfile) {
+      return {
+        error: null,
+        success: false,
+        fieldErrors: { email: "A user with this email already exists." },
+      };
+    }
+
+    const { data: activeInvite } = await adminClient
+      .from("invite_tokens")
+      .select("id")
+      .eq("invited_email", email)
+      .is("used_at", null)
+      .gt("expires_at", new Date().toISOString())
+      .maybeSingle();
+    if (activeInvite) {
+      return {
+        error: null,
+        success: false,
+        fieldErrors: {
+          email:
+            "An active invite already exists for this email. Resend or delete it from the Pending Invites table.",
+        },
+      };
+    }
+
     // ── Defer auth-user creation until the invitee consumes the token.
     //    This matches the sales-rep / clinic-provider flow exactly. The
     //    invite_tokens row is the access mechanism; the profiles row +
@@ -277,6 +314,76 @@ export async function createUser(
     console.error("[createUser] Unexpected error:", err);
     return { error: "An unexpected error occurred.", success: false };
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/* getStaffPendingInvites — admin/support_staff invite_tokens still active   */
+/*                                                                            */
+/* Powers the Pending Invites table on the Users page. Filters to admin +    */
+/* support_staff role types (so clinic / sales-rep invites stay on the       */
+/* onboarding page where they belong) and to un-used, non-expired tokens.    */
+/* -------------------------------------------------------------------------- */
+
+export interface IStaffPendingInvite {
+  id: string;
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  role_type: "admin" | "support_staff";
+  expires_at: string | null;
+  created_at: string;
+  created_by_name: string | null;
+}
+
+export async function getStaffPendingInvites(): Promise<IStaffPendingInvite[]> {
+  const supabase = await createClient();
+  await requireAdminOrThrow(supabase);
+
+  const adminClient = createAdminClient();
+  const { data, error } = await adminClient
+    .from("invite_tokens")
+    .select(
+      `
+        id,
+        invited_email,
+        invited_first_name,
+        invited_last_name,
+        role_type,
+        expires_at,
+        created_at,
+        created_by_profile:profiles!invite_tokens_created_by_fkey (
+          first_name,
+          last_name
+        )
+      `,
+    )
+    .in("role_type", ["admin", "support_staff"])
+    .is("used_at", null)
+    .gt("expires_at", new Date().toISOString())
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("[getStaffPendingInvites] Error:", JSON.stringify(error));
+    return [];
+  }
+
+  return (data ?? []).map((row) => {
+    const cb = Array.isArray(row.created_by_profile)
+      ? row.created_by_profile[0]
+      : row.created_by_profile;
+    return {
+      id: row.id as string,
+      email: (row.invited_email as string) ?? "",
+      first_name: (row.invited_first_name as string | null) ?? null,
+      last_name: (row.invited_last_name as string | null) ?? null,
+      role_type: row.role_type as "admin" | "support_staff",
+      expires_at: (row.expires_at as string | null) ?? null,
+      created_at: row.created_at as string,
+      created_by_name: cb
+        ? `${cb.first_name ?? ""} ${cb.last_name ?? ""}`.trim() || null
+        : null,
+    };
+  });
 }
 
 /* -------------------------------------------------------------------------- */
