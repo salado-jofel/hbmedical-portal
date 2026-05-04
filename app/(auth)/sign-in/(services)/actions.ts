@@ -36,19 +36,11 @@ export async function signIn(
     }
   }
 
-  // MFA step-up — if the account has a verified TOTP factor but the session
-  // is still aal1 (just signed in with password), send the user to the
-  // challenge page. The dashboard's MFA gate would catch this anyway, but
-  // redirecting here avoids one extra hop and keeps the URL clean.
-  const { data: factors } = await supabase.auth.mfa.listFactors();
-  const hasVerifiedTotp = !!factors?.totp?.find((f) => f.status === "verified");
-  if (hasVerifiedTotp) {
-    const { data: aal } =
-      await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-    if (aal?.currentLevel !== "aal2") {
-      redirect("/sign-in/mfa");
-    }
-  }
-
+  // MFA routing is delegated to the dashboard layout's evaluateMfaGate(). It
+  // sees role + factor + session AAL + SMS-session cookie and redirects to
+  // /sign-in/mfa, /sign-in/sms-mfa, or /onboarding/phone as appropriate.
+  // Keeping the logic in one place avoids drift between the proactive sign-in
+  // redirect and the layout-level gate (which previously diverged for sales
+  // reps once we split TOTP vs SMS MFA paths).
   redirect("/dashboard");
 }
