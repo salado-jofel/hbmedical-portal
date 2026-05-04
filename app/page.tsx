@@ -1,25 +1,21 @@
-import { Hero } from "./(sections)/Hero";
-import { Navbar } from "./(sections)/Navbar";
-import { Footer } from "./(sections)/Footer";
-import { GettingStarted } from "./(sections)/GettingStarted";
-import { LiveDemo } from "./(sections)/LiveDemo";
-import { Testimonials } from "./(sections)/Testimonials";
-import { WhyUs } from "./(sections)/WhyUs";
-import { Product } from "./(sections)/Product";
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
 
-export default function Home() {
+/**
+ * Per client request: the public landing page is retired. Visiting the root
+ * URL bounces straight to the auth flow — signed-in users skip the sign-in
+ * step and land on the dashboard, signed-out users see the sign-in form.
+ *
+ * The original landing-page sections (Hero, WhyUs, Testimonials, etc.) still
+ * live under `app/(sections)/` and can be re-enabled by swapping this file
+ * back to importing + rendering them.
+ */
+export const dynamic = "force-dynamic";
 
-
-  return (
-    <main className="min-h-screen">
-      <Navbar />
-      <Hero />
-      <Product />
-      <WhyUs />
-      <Testimonials />
-      <GettingStarted />
-      <LiveDemo />
-      <Footer />
-    </main>
-  );
+export default async function Home() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  redirect(user ? "/dashboard" : "/sign-in");
 }
