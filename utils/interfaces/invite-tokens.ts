@@ -6,9 +6,11 @@ import { uuidString } from "@/utils/validators/shared";
 /* -------------------------------------------------------------------------- */
 
 export const inviteTokenRoleSchema = z.enum([
+  "admin",
   "clinical_provider",
   "clinical_staff",
   "sales_representative",
+  "support_staff",
 ]);
 export type InviteTokenRole = z.infer<typeof inviteTokenRoleSchema>;
 
@@ -27,6 +29,10 @@ export interface IInviteToken {
   expires_at: string | null;
   created_at: string;
   invited_email: string | null;
+  /** First name captured at admin invite time (admin/support flow only). */
+  invited_first_name: string | null;
+  /** Last name captured at admin invite time. */
+  invited_last_name: string | null;
   /** Sales-rep commission rate locked at invite time. Null for non-rep roles. */
   commission_rate: number | null;
   /** Commission override (for inviter) locked at invite time. Null for non-rep roles. */
@@ -106,6 +112,8 @@ export type RawInviteTokenRecord = {
   expires_at: string | null;
   created_at: string;
   invited_email: string | null;
+  invited_first_name: string | null;
+  invited_last_name: string | null;
   /** Sales-rep commission rate locked at invite time. Null for non-rep roles. */
   commission_rate: number | null;
   /** Commission override (for inviter) locked at invite time. Null for non-rep roles. */
@@ -160,6 +168,8 @@ export function mapInviteToken(raw: RawInviteTokenRecord): IInviteToken {
     expires_at: raw.expires_at,
     created_at: raw.created_at,
     invited_email: raw.invited_email ?? null,
+    invited_first_name: raw.invited_first_name ?? null,
+    invited_last_name: raw.invited_last_name ?? null,
     commission_rate:
       commissionRate == null ? null : Number(commissionRate),
     commission_override:

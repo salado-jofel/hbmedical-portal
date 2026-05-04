@@ -10,6 +10,7 @@ import { adminUnenrollUserMfa } from "@/app/(dashboard)/dashboard/settings/(serv
 import { useAppSelector, useAppDispatch } from "@/store/hooks";
 import { updateUserInStore, removeUserFromStore } from "@/app/(dashboard)/dashboard/users/(redux)/users-slice";
 import { CreateUserModal } from "../(components)/CreateUserModal";
+import { PendingInvitesSection } from "../(components)/PendingInvitesSection";
 import ConfirmModal from "@/app/(components)/ConfirmModal";
 import { DataTable } from "@/app/(components)/DataTable";
 import { UserRowActions, ROLE_COLORS, STATUS_CONFIG } from "../(components)/UserRow";
@@ -38,6 +39,9 @@ export function UsersList() {
   const [search, setSearch] = useState("");
 
   const [showCreate, setShowCreate] = useState(false);
+  // Bump this whenever the Create User modal closes so the
+  // PendingInvitesSection re-fetches (a new invite may have been issued).
+  const [pendingInvitesRefresh, setPendingInvitesRefresh] = useState(0);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -298,6 +302,9 @@ export function UsersList() {
         }
       />
 
+      {/* Pending admin/support invites — auto-hides when none in flight. */}
+      <PendingInvitesSection refreshKey={pendingInvitesRefresh} />
+
       <UsersFilters
         statusFilter={statusFilter}
         onStatusFilterChange={setStatusFilter}
@@ -434,7 +441,15 @@ export function UsersList() {
         />
       </div>
 
-      <CreateUserModal open={showCreate} onClose={() => setShowCreate(false)} />
+      <CreateUserModal
+        open={showCreate}
+        onClose={() => {
+          setShowCreate(false);
+          // Refresh the Pending Invites table — a new invite may have been
+          // issued. Cheap re-fetch; only fires when modal closes.
+          setPendingInvitesRefresh((n) => n + 1);
+        }}
+      />
 
       <ConfirmModal
         open={deleteConfirmId !== null}
