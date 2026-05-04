@@ -195,18 +195,16 @@ export async function createUser(
   formData: FormData,
 ): Promise<IUserFormState> {
   try {
-    if (!process.env.RESEND_API_KEY) {
-      console.error("[createUser] RESEND_API_KEY not set");
-    }
-
     const supabase = await createClient();
     await requireAdminOrThrow(supabase);
+    const inviter = await getCurrentUserOrThrow(supabase);
 
     const raw = {
       first_name: formData.get("first_name") as string,
       last_name: formData.get("last_name") as string,
       email: formData.get("email") as string,
       role: formData.get("role") as string,
+      expires_in_days: formData.get("expires_in_days") ?? "30",
     };
 
     const parsed = createUserSchema.safeParse(raw);
@@ -219,102 +217,173 @@ export async function createUser(
       return { error: null, success: false, fieldErrors };
     }
 
-    const { first_name, last_name, email, role } = parsed.data;
+    const { first_name, last_name, email, role, expires_in_days } = parsed.data;
 
-    console.log("[createUser] Creating user:", { email, first_name, last_name, role });
+    console.log("[createUser] Issuing invite for:", { email, role, expires_in_days });
 
     const adminClient = createAdminClient();
 
-    // Step 1 — Create the auth user with email pre-confirmed
-    const { data: authData, error: authError } =
-      await adminClient.auth.admin.createUser({
-        email,
-        email_confirm: true,
-        user_metadata: { first_name, last_name },
-      });
-
-    if (authError || !authData?.user) {
-      console.error("[createUser] Auth createUser error:", authError);
-      return { error: authError?.message ?? "Failed to create auth user.", success: false };
-    }
-
-    const userId = authData.user.id;
-    console.log("[createUser] Auth user created:", userId);
-
-    // Step 2 — Upsert profile with the assigned role
-    const { error: profileError } = await adminClient
+    // ── Duplicate-email checks (run BEFORE insert).
+    //    Two cases to reject:
+    //      a) An existing profile already has this email (active or inactive)
+    //      b) An active (un-used, non-expired) invite_token already targets it
+    //    Both surface as friendly fieldErrors so the modal highlights the
+    //    Email input. ──
+    const { data: existingProfile } = await adminClient
       .from("profiles")
-      .upsert({
-        id: userId,
-        first_name,
-        last_name,
-        email,
-        role,
-        has_completed_setup: isAdmin(role),
-        status: "pending",
-      });
-
-    if (profileError) {
-      console.error("[createUser] Profile upsert error:", JSON.stringify(profileError));
-      return { error: "User created but profile setup failed.", success: false };
-    }
-
-    // Step 3 — Generate a password-reset (recovery) link
-    const { data: linkData, error: linkError } =
-      await adminClient.auth.admin.generateLink({
-        type: "recovery",
-        email,
-        options: {
-          redirectTo: `${process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"}/set-password`,
-        },
-      });
-
-    if (linkError || !linkData?.properties?.action_link) {
-      console.error("[createUser] generateLink error:", linkError);
-      const newUser: IUser = {
-        id: userId,
-        first_name,
-        last_name,
-        email,
-        role: role as NonNullable<UserRole>,
-        created_at: authData.user.created_at,
-        is_active: true,
-        status: "pending",
-        facility: null,
+      .select("id")
+      .eq("email", email)
+      .maybeSingle();
+    if (existingProfile) {
+      return {
+        error: null,
+        success: false,
+        fieldErrors: { email: "A user with this email already exists." },
       };
-      return { success: true, error: null, user: newUser };
     }
 
-    const resetLink = linkData.properties.action_link;
+    const { data: activeInvite } = await adminClient
+      .from("invite_tokens")
+      .select("id")
+      .eq("invited_email", email)
+      .is("used_at", null)
+      .gt("expires_at", new Date().toISOString())
+      .maybeSingle();
+    if (activeInvite) {
+      return {
+        error: null,
+        success: false,
+        fieldErrors: {
+          email:
+            "An active invite already exists for this email. Resend or delete it from the Pending Invites table.",
+        },
+      };
+    }
 
-    // Step 4 — Send invite email via Resend
-    const emailResult = await resend.emails.send({
-      from: ACCOUNTS_FROM_EMAIL,
+    // ── Defer auth-user creation until the invitee consumes the token.
+    //    This matches the sales-rep / clinic-provider flow exactly. The
+    //    invite_tokens row is the access mechanism; the profiles row +
+    //    auth user get created on the invite-signup page when the invitee
+    //    sets their password. ──
+    const expiresAt = new Date(
+      Date.now() + expires_in_days * 24 * 60 * 60 * 1000,
+    ).toISOString();
+
+    const { data: inserted, error: tokenErr } = await adminClient
+      .from("invite_tokens")
+      .insert({
+        created_by: inviter.id,
+        role_type: role,
+        invited_email: email,
+        invited_first_name: first_name,
+        invited_last_name: last_name,
+        expires_at: expiresAt,
+      })
+      .select("token")
+      .single();
+
+    if (tokenErr || !inserted?.token) {
+      console.error("[createUser] invite_tokens insert error:", tokenErr);
+      return { error: "Failed to generate invite link.", success: false };
+    }
+
+    const appUrl =
+      process.env.NEXT_PUBLIC_APP_URL ??
+      process.env.NEXT_PUBLIC_SITE_URL ??
+      "http://localhost:3000";
+    const inviteUrl = `${appUrl}/invite/${inserted.token}`;
+
+    const { error: emailErr } = await sendInviteEmail({
       to: email,
-      subject: "You've been invited to Meridian Portal",
-      html: buildResetPasswordEmail({ first_name, last_name, role, resetLink }),
+      inviteUrl,
+      roleType: role,
+      inviterName: `${first_name} ${last_name}`.trim() || "Meridian",
     });
 
-    console.log("[createUser] Email result:", JSON.stringify(emailResult));
-
-    const newUser: IUser = {
-      id: userId,
-      first_name,
-      last_name,
-      email,
-      role: role as NonNullable<UserRole>,
-      created_at: authData.user.created_at,
-      is_active: true,
-      status: "pending",
-      facility: null,
-    };
+    if (emailErr) {
+      console.error("[createUser] sendInviteEmail error:", emailErr);
+      // Token still exists; admin can re-send. Don't roll back.
+      return { error: "Invite created but email failed to send.", success: false };
+    }
 
     revalidatePath("/dashboard/users");
-    return { success: true, error: null, user: newUser };
+    // No `user` payload — the actual user row is created on invite consume.
+    // The modal shows a generic "Invite sent" toast in this case.
+    return { success: true, error: null };
   } catch (err) {
     console.error("[createUser] Unexpected error:", err);
     return { error: "An unexpected error occurred.", success: false };
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/* getStaffPendingInvites — admin/support_staff invite_tokens still active   */
+/*                                                                            */
+/* Powers the Pending Invites table on the Users page. Filters to admin +    */
+/* support_staff role types (so clinic / sales-rep invites stay on the       */
+/* onboarding page where they belong) and to un-used, non-expired tokens.    */
+/* -------------------------------------------------------------------------- */
+
+export interface IStaffPendingInvite {
+  id: string;
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  role_type: "admin" | "support_staff";
+  expires_at: string | null;
+  created_at: string;
+  created_by_name: string | null;
+}
+
+export async function getStaffPendingInvites(): Promise<IStaffPendingInvite[]> {
+  const supabase = await createClient();
+  await requireAdminOrThrow(supabase);
+
+  const adminClient = createAdminClient();
+  const { data, error } = await adminClient
+    .from("invite_tokens")
+    .select(
+      `
+        id,
+        invited_email,
+        invited_first_name,
+        invited_last_name,
+        role_type,
+        expires_at,
+        created_at,
+        created_by_profile:profiles!invite_tokens_created_by_fkey (
+          first_name,
+          last_name
+        )
+      `,
+    )
+    .in("role_type", ["admin", "support_staff"])
+    .is("used_at", null)
+    .gt("expires_at", new Date().toISOString())
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("[getStaffPendingInvites] Error:", JSON.stringify(error));
+    return [];
+  }
+
+  return (data ?? []).map((row) => {
+    const cb = Array.isArray(row.created_by_profile)
+      ? row.created_by_profile[0]
+      : row.created_by_profile;
+    return {
+      id: row.id as string,
+      email: (row.invited_email as string) ?? "",
+      first_name: (row.invited_first_name as string | null) ?? null,
+      last_name: (row.invited_last_name as string | null) ?? null,
+      role_type: row.role_type as "admin" | "support_staff",
+      expires_at: (row.expires_at as string | null) ?? null,
+      created_at: row.created_at as string,
+      created_by_name: cb
+        ? `${cb.first_name ?? ""} ${cb.last_name ?? ""}`.trim() || null
+        : null,
+    };
+  });
 }
 
 /* -------------------------------------------------------------------------- */
