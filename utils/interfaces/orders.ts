@@ -70,6 +70,7 @@ export const documentTypeSchema = z.enum([
   "form_1500",
   "additional_ivr",
   "delivery_invoice",
+  "valid_id",
   "other",
 ]);
 

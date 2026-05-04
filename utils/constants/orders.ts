@@ -147,6 +147,7 @@ export const REQUIRED_DOC_TYPES = [
   { type: "facesheet",        label: "Facesheet" },
   { type: "additional_ivr",   label: "IVR Form" },
   { type: "clinical_docs",    label: "Clinical Docs" },
+  { type: "valid_id",         label: "Valid ID" },
   { type: "form_1500",        label: "1500 Form" },
   { type: "order_form",       label: "Order Form" },
   { type: "delivery_invoice", label: "Invoice" },
@@ -155,6 +156,7 @@ export const REQUIRED_DOC_TYPES = [
 export const ALL_DOC_TYPES: Array<{ type: string; label: string }> = [
   { type: "facesheet",        label: "Facesheet" },
   { type: "clinical_docs",    label: "Clinical Docs" },
+  { type: "valid_id",         label: "Valid ID" },
   { type: "order_form",       label: "Order Form" },
   { type: "additional_ivr",   label: "IVR Form" },
   { type: "form_1500",        label: "1500 Form" },

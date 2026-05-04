@@ -252,7 +252,11 @@ export function CreateOrderModal() {
   const [woundType, setWoundType] = useState<"chronic" | "post_surgical">(
     "chronic",
   );
-  const [orderType, setOrderType] = useState<"surgical_collagen" | "omeza" | null>(null);
+  // Order Type is locked to "omeza" per client request — Surgical Collagen
+  // is no longer offered as a selectable option. The state + submit payload
+  // still accept the broader type union so legacy orders with
+  // "surgical_collagen" continue to type-check downstream.
+  const [orderType, setOrderType] = useState<"surgical_collagen" | "omeza" | null>("omeza");
   const [manualInput, setManualInput] = useState(false);
   const [patientFirstName, setPatientFirstName] = useState("");
   const [patientLastName, setPatientLastName] = useState("");
@@ -288,6 +292,7 @@ export function CreateOrderModal() {
 
   const hasFacesheet = docs.some((d) => d.type === "facesheet");
   const hasClinicalDocs = docs.some((d) => d.type === "clinical_docs");
+  const hasValidId = docs.some((d) => d.type === "valid_id");
 
   // Manual input skips AI extraction entirely; every document upload becomes
   // optional, and the order/IVR/HCFA forms stay blank for manual completion.
@@ -298,7 +303,7 @@ export function CreateOrderModal() {
   const canSubmit =
     !!woundType &&
     !!dateOfService &&
-    (!docsRequired || (hasFacesheet && hasClinicalDocs)) &&
+    (!docsRequired || (hasFacesheet && hasClinicalDocs && hasValidId)) &&
     (!manualInput || patientNameProvided);
 
   function handleClose() {
@@ -383,6 +388,7 @@ export function CreateOrderModal() {
 
   const facesheetError = submitted && docsRequired && !hasFacesheet;
   const clinicalDocsError = submitted && docsRequired && !hasClinicalDocs;
+  const validIdError = submitted && docsRequired && !hasValidId;
   const patientFirstNameError =
     submitted && manualInput && patientFirstName.trim().length === 0;
   const patientLastNameError =
@@ -441,34 +447,23 @@ export function CreateOrderModal() {
                 </div>
               </div>
 
-              {/* Order Type (optional — product classification) */}
+              {/* Order Type — locked to Omeza. Surgical Collagen removed per
+                  client request; if it ever needs to come back, restore the
+                  toggle array + onChange handler. */}
               <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium text-slate-700">
                   Order Type
                 </label>
                 <div className="flex gap-3">
-                  {(
-                    [
-                      { value: "surgical_collagen", label: "Surgical Collagen" },
-                      { value: "omeza",             label: "Omeza" },
-                    ] as const
-                  ).map((ot) => (
-                    <button
-                      key={ot.value}
-                      type="button"
-                      onClick={() =>
-                        setOrderType((prev) => (prev === ot.value ? null : ot.value))
-                      }
-                      className={cn(
-                        "flex-1 py-2.5 px-3 rounded-xl border-2 text-sm font-medium transition-all",
-                        orderType === ot.value
-                          ? "border-[var(--navy)] bg-blue-50 text-[var(--navy)]"
-                          : "border-slate-200 text-slate-600 hover:border-slate-300",
-                      )}
-                    >
-                      {ot.label}
-                    </button>
-                  ))}
+                  <button
+                    type="button"
+                    disabled
+                    aria-pressed="true"
+                    className="flex-1 py-2.5 px-3 rounded-xl border-2 text-sm font-medium border-[var(--navy)] bg-blue-50 text-[var(--navy)] cursor-default opacity-90"
+                  >
+                    Omeza
+                  </button>
+                  <div className="flex-1" aria-hidden="true" />
                 </div>
               </div>
 
@@ -645,6 +640,30 @@ export function CreateOrderModal() {
                 accept={ACCEPT_IMAGES}
                 fileType="image"
               />
+
+              {/* Valid ID — government-issued photo ID for the patient.
+                  Full-width to match Wound Pictures above. Required by
+                  default; becomes optional when manual_input is checked
+                  (same rules as Facesheet). Multiple files allowed for
+                  front + back. */}
+              <UploadZone
+                label="Valid ID"
+                description="Driver's license, passport, etc. (front + back)"
+                docType="valid_id"
+                required={docsRequired}
+                multiple
+                files={docs}
+                onAdd={addDocs}
+                onRemove={removeDoc}
+                error={validIdError}
+                accept={ACCEPT_DOCS}
+                fileType="document"
+              />
+              {validIdError && (
+                <p className="text-xs text-red-500">
+                  Patient&apos;s valid ID is required.
+                </p>
+              )}
             </div>
 
             {/* Upload progress */}
