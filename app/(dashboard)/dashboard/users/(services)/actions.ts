@@ -395,6 +395,7 @@ export async function deactivateUser(userId: string): Promise<void> {
   await requireAdminOrThrow(supabase);
 
   const adminClient = createAdminClient();
+  // 1) Ban the auth user so re-login is blocked at the password step.
   const { error } = await adminClient.auth.admin.updateUserById(userId, {
     ban_duration: "876600h", // ~100 years
   });
@@ -404,7 +405,18 @@ export async function deactivateUser(userId: string): Promise<void> {
     throw new Error(error.message ?? "Failed to deactivate user.");
   }
 
+  // 2) Mark profile inactive — the middleware reads this and signs the
+  //    user out on their next request, so existing access tokens can't be
+  //    used until JWT expiry.
   await adminClient.from("profiles").update({ status: "inactive" }).eq("id", userId);
+
+  // 3) Revoke any active SMS MFA sessions so a stolen MFA cookie can't be
+  //    used to bypass the gate even if the access token were still alive.
+  await adminClient
+    .from("sms_mfa_sessions")
+    .update({ revoked_at: new Date().toISOString() })
+    .eq("user_id", userId)
+    .is("revoked_at", null);
 
   revalidatePath("/dashboard/users");
 }

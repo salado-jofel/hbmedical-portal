@@ -23,6 +23,37 @@ interface Props {
 
 const CURSIVE_FONT = "'Segoe Script', 'Lucida Handwriting', 'Brush Script MT', cursive";
 
+/**
+ * Race a promise against a timeout. If the timeout wins, the returned
+ * promise rejects with a friendly Error so the calling try/catch can
+ * surface the message — without this, a server action that never resolves
+ * would leave the form's `submitting` state stuck on true forever.
+ *
+ * Note: this only stops the spinner — the in-flight server action still
+ * runs to completion on the server. If the user retries, the server may
+ * end up doing the same work twice. Acceptable trade-off vs. an infinite
+ * loader; the sign action is idempotent (upsert on contract_signatures).
+ */
+function withTimeout<T>(
+  p: Promise<T>,
+  ms: number,
+  message: string,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(message)), ms);
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      },
+    );
+  });
+}
+
 function formatMask(raw: string, mask: "ssn" | "ein" | "phone" | "zip"): string {
   const digits = raw.replace(/\D/g, "");
   switch (mask) {
@@ -61,6 +92,11 @@ export function SalesRepContractSignModal({ open, onClose, token, contract, defa
   const [typedSig, setTypedSig] = useState("");
   const [uploadDataUrl, setUploadDataUrl] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Per-field validation errors (key → message). Populated by Next/Submit
+  // when required fields are missing; cleared per field as soon as the user
+  // edits it. Rendered inline by FieldInput so the user doesn't have to
+  // chase a toast that vanishes after a few seconds.
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const drawCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const drawDirtyRef = useRef(false);
 
@@ -69,6 +105,7 @@ export function SalesRepContractSignModal({ open, onClose, token, contract, defa
     setStep(0);
     setForm({ ...(defaults ?? {}) });
     setFiles({});
+    setFieldErrors({});
     setTab("type");
     setTypedSig(defaults?.name ?? defaults?.last_name ?? "");
     setUploadDataUrl(null);
@@ -89,34 +126,55 @@ export function SalesRepContractSignModal({ open, onClose, token, contract, defa
   const isSigStep = step === totalSteps - 1;
   const currentFields = isSigStep ? [] : fieldsByStep[step] ?? [];
 
+  function clearFieldError(key: string) {
+    setFieldErrors((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  }
+
   function setField(key: string, value: string) {
     setForm((prev) => ({ ...prev, [key]: value }));
+    clearFieldError(key);
   }
 
   function setFile(key: string, file: File | null) {
     setFiles((prev) => ({ ...prev, [key]: file }));
+    clearFieldError(key);
   }
 
-  function validateCurrent(): string | null {
-    for (const f of currentFields) {
+  /**
+   * Build a per-field error map for the given step. Returns ALL errors
+   * (not just the first) so the form can highlight every offending field
+   * at once — that's the inline-error UX. Empty object = step is valid.
+   */
+  function collectErrorsForStep(stepIdx: number): Record<string, string> {
+    const errs: Record<string, string> = {};
+    for (const f of fieldsByStep[stepIdx] ?? []) {
       const visible = !f.showIf || f.showIf(form);
       if (!visible) continue;
       if (!f.required) continue;
       if (f.type === "file") {
-        if (!files[f.key]) return `${f.label} is required.`;
+        if (!files[f.key]) errs[f.key] = `${f.label} is required.`;
       } else if (f.type === "checkbox") {
-        if (form[f.key] !== "true") return `${f.label} must be checked.`;
+        if (form[f.key] !== "true") errs[f.key] = `${f.label} must be checked.`;
       } else if (!(form[f.key]?.trim())) {
-        return `${f.label} is required.`;
+        errs[f.key] = `${f.label} is required.`;
       }
     }
-    return null;
+    return errs;
+  }
+
+  function validateCurrent(): Record<string, string> {
+    return collectErrorsForStep(step);
   }
 
   function goNext() {
-    const err = validateCurrent();
-    if (err) {
-      toast.error(err);
+    const errs = validateCurrent();
+    if (Object.keys(errs).length > 0) {
+      setFieldErrors((prev) => ({ ...prev, ...errs }));
       return;
     }
     setStep((s) => Math.min(s + 1, totalSteps - 1));
@@ -237,19 +295,15 @@ export function SalesRepContractSignModal({ open, onClose, token, contract, defa
   }
 
   async function handleSubmit() {
-    // Ensure earlier steps are valid (defensive — mirrors validateCurrent rules)
+    // Ensure earlier steps are valid (defensive — mirrors validateCurrent rules).
+    // If anything fails, jump to the first offending step and surface ALL of
+    // its missing-field errors inline so the user can fix them in one pass.
     for (let i = 0; i < totalSteps - 1; i++) {
-      for (const f of fieldsByStep[i] ?? []) {
-        const visible = !f.showIf || f.showIf(form);
-        if (!visible) continue;
-        if (!f.required) continue;
-        if (f.type === "file") {
-          if (!files[f.key]) { setStep(i); toast.error(`${f.label} is required.`); return; }
-        } else if (f.type === "checkbox") {
-          if (form[f.key] !== "true") { setStep(i); toast.error(`${f.label} must be checked.`); return; }
-        } else if (!(form[f.key]?.trim())) {
-          setStep(i); toast.error(`${f.label} is required.`); return;
-        }
+      const errs = collectErrorsForStep(i);
+      if (Object.keys(errs).length > 0) {
+        setFieldErrors((prev) => ({ ...prev, ...errs }));
+        setStep(i);
+        return;
       }
     }
     let signatureDataUrl: string | null = null;
@@ -269,42 +323,65 @@ export function SalesRepContractSignModal({ open, onClose, token, contract, defa
 
     setSubmitting(true);
 
-    // Upload any attachments first so we can pass their storage paths to the sign action
-    const attachmentPaths: string[] = [];
-    for (const [slot, file] of Object.entries(files)) {
-      if (!file) continue;
-      const fd = new FormData();
-      fd.append("token", token);
-      fd.append("contractKey", contract.key);
-      fd.append("slot", slot);
-      fd.append("file", file);
-      const up = await uploadSalesRepContractAttachment(fd);
-      if (!up.success || !up.path) {
-        setSubmitting(false);
-        toast.error(up.error ?? `Failed to upload ${slot}`);
+    // Wrap the whole submit so a transport error (network blip, server
+    // timeout, RSC stream interruption) always unwinds the spinner. Without
+    // this, an uncaught throw from either server action call leaves
+    // `submitting=true` forever and the user sees an infinite loader.
+    // Especially relevant for the I-9 path which makes two sequential
+    // server-action calls and runs pdf-lib's slowest code path.
+    try {
+      // Upload any attachments first so we can pass their storage paths to the sign action
+      const attachmentPaths: string[] = [];
+      for (const [slot, file] of Object.entries(files)) {
+        if (!file) continue;
+        const fd = new FormData();
+        fd.append("token", token);
+        fd.append("contractKey", contract.key);
+        fd.append("slot", slot);
+        fd.append("file", file);
+        const up = await withTimeout(
+          uploadSalesRepContractAttachment(fd),
+          60_000,
+          `Upload of ${slot} timed out — please try again.`,
+        );
+        if (!up.success || !up.path) {
+          toast.error(up.error ?? `Failed to upload ${slot}`);
+          return;
+        }
+        attachmentPaths.push(up.path);
+      }
+
+      const result = await withTimeout(
+        signSalesRepContract({
+          token,
+          contractKey: contract.key as SalesRepContractKey,
+          typedName: name,
+          signatureMethod: tab,
+          signatureDataUrl,
+          formData: form,
+          attachmentPaths,
+        }),
+        90_000,
+        "Signing timed out — please try again.",
+      );
+
+      if (!result.success) {
+        toast.error(result.error ?? "Failed to sign document.");
         return;
       }
-      attachmentPaths.push(up.path);
+      toast.success(`${contract.label} signed.`);
+      onSigned(result.signedUrl);
+      onClose();
+    } catch (err) {
+      console.error("[SalesRepContractSignModal] submit failed:", err);
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Something went wrong. Please try again.",
+      );
+    } finally {
+      setSubmitting(false);
     }
-
-    const result = await signSalesRepContract({
-      token,
-      contractKey: contract.key as SalesRepContractKey,
-      typedName: name,
-      signatureMethod: tab,
-      signatureDataUrl,
-      formData: form,
-      attachmentPaths,
-    });
-    setSubmitting(false);
-
-    if (!result.success) {
-      toast.error(result.error ?? "Failed to sign document.");
-      return;
-    }
-    toast.success(`${contract.label} signed.`);
-    onSigned(result.signedUrl);
-    onClose();
   }
 
   if (!open) return null;
@@ -356,6 +433,7 @@ export function SalesRepContractSignModal({ open, onClose, token, contract, defa
                     onChange={(v) => setField(f.key, v)}
                     file={files[f.key] ?? null}
                     onFileChange={(file) => setFile(f.key, file)}
+                    error={fieldErrors[f.key]}
                   />
                 );
               })}
@@ -469,33 +547,53 @@ function FieldInput({
   onChange,
   file,
   onFileChange,
+  error,
 }: {
   field: FieldDef;
   value: string;
   onChange: (v: string) => void;
   file?: File | null;
   onFileChange?: (file: File | null) => void;
+  /** Inline validation error for this field. When set, the input gets a
+   *  red border and the message renders below. Cleared by the parent as
+   *  soon as the user edits the field. */
+  error?: string;
 }) {
+  // Border + ring colors switch to red when in error so the field is visually
+  // distinct without disturbing the form layout.
+  const baseClass =
+    "w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2";
+  const stateClass = error
+    ? "border-red-400 focus:ring-red-200"
+    : "border-[#E2E8F0] focus:ring-[var(--navy)]/20";
   const common = {
-    className:
-      "w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--navy)]/20",
+    className: `${baseClass} ${stateClass}`,
     placeholder: field.placeholder,
   };
 
+  /** Tiny red error text rendered under inputs. Centralized so every branch
+   *  below stays terse. */
+  const errorLine = error ? (
+    <p className="mt-1 text-[11px] text-red-500">{error}</p>
+  ) : null;
+
   if (field.type === "checkbox") {
     return (
-      <label className="flex items-start gap-2 cursor-pointer text-sm text-[#0F172A]">
-        <input
-          type="checkbox"
-          checked={value === "true"}
-          onChange={(e) => onChange(e.target.checked ? "true" : "false")}
-          className="mt-1 accent-[var(--navy)]"
-        />
-        <span>
-          {field.label}
-          {field.required && <span className="text-red-500 ml-0.5">*</span>}
-        </span>
-      </label>
+      <div>
+        <label className="flex items-start gap-2 cursor-pointer text-sm text-[#0F172A]">
+          <input
+            type="checkbox"
+            checked={value === "true"}
+            onChange={(e) => onChange(e.target.checked ? "true" : "false")}
+            className="mt-1 accent-[var(--navy)]"
+          />
+          <span>
+            {field.label}
+            {field.required && <span className="text-red-500 ml-0.5">*</span>}
+          </span>
+        </label>
+        {errorLine}
+      </div>
     );
   }
 
@@ -542,7 +640,7 @@ function FieldInput({
             </button>
           </div>
         ) : (
-          <label className="flex items-center gap-2 rounded-lg border border-dashed border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2 text-sm text-[#64748B] cursor-pointer hover:border-[var(--navy)]/40 transition-colors">
+          <label className={`flex items-center gap-2 rounded-lg border border-dashed bg-[#F8FAFC] px-3 py-2 text-sm text-[#64748B] cursor-pointer transition-colors ${error ? "border-red-400 hover:border-red-500" : "border-[#E2E8F0] hover:border-[var(--navy)]/40"}`}>
             <Paperclip className="w-4 h-4" />
             <span>Choose file (PDF, PNG, JPG — up to {((field.maxFileBytes ?? 5 * 1024 * 1024) / 1024 / 1024).toFixed(0)} MB)</span>
             <input
@@ -554,6 +652,7 @@ function FieldInput({
           </label>
         )}
         {field.helpText && <p className="mt-1 text-[11px] text-[#94A3B8]">{field.helpText}</p>}
+        {errorLine}
       </div>
     );
   }
@@ -578,6 +677,7 @@ function FieldInput({
             </label>
           ))}
         </div>
+        {errorLine}
       </div>
     );
   }
@@ -595,6 +695,7 @@ function FieldInput({
           className={common.className}
           placeholder={field.placeholder}
         />
+        {errorLine}
       </label>
     );
   }
@@ -626,6 +727,7 @@ function FieldInput({
         {...common}
       />
       {field.helpText && <p className="mt-1 text-[11px] text-[#94A3B8]">{field.helpText}</p>}
+      {errorLine}
     </label>
   );
 }

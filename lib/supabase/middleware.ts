@@ -122,12 +122,32 @@ export async function updateSession(request: NextRequest) {
     // Action POSTs to misfire on Vercel Edge runtime.
     const { data: profileRow } = await supabase
       .from("profiles")
-      .select("role, has_completed_setup")
+      .select("role, has_completed_setup, status")
       .eq("id", user.id)
       .maybeSingle();
 
     const userRole = profileRow?.role as UserRole | undefined;
     const hasCompletedSetup = profileRow?.has_completed_setup;
+
+    // ── Deactivated user guard ────────────────────────────────────────────
+    // Admin marked this profile inactive (deactivateUser server action also
+    // ban_durations the auth user, so re-login is blocked). Force an
+    // immediate sign-out on the very next request so an existing access
+    // token can't keep working until JWT expiry. The /sign-in?deactivated=1
+    // query lets the page surface a clear message to the user.
+    if (profileRow?.status === "inactive") {
+      const isAuthPath =
+        currentPath === "/sign-in" ||
+        currentPath === "/sign-out" ||
+        currentPath.startsWith("/api/");
+      if (!isAuthPath) {
+        await supabase.auth.signOut();
+        const url = request.nextUrl.clone();
+        url.pathname = "/sign-in";
+        url.search = "?deactivated=1";
+        return NextResponse.redirect(url);
+      }
+    }
 
     // ── Setup guard ───────────────────────────────────────────────────────────
     // Sales reps who haven't completed facility setup must finish before

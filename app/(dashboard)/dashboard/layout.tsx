@@ -40,16 +40,19 @@ export default async function DashboardLayout({
     redirect("/onboarding/payouts");
   }
 
-  // HIPAA MFA gate: admin and clinical_provider roles require TOTP enrolled
-  // and the current session at AAL2. Both unsatisfied states redirect to
-  // /sign-in/mfa, which lives outside the dashboard layout — that page
-  // shows enrollment if the user has no factor, or a challenge prompt if
-  // the user has a factor but is still at aal1. Routing both cases to the
-  // same route avoids any chance of a layout-redirect loop.
+  // HIPAA MFA gate. SMS OTP via Twilio Verify for all roles (unified at
+  // client direction with a signed risk-acceptance letter on file). The
+  // two target routes live outside the dashboard layout so they can't
+  // trigger this gate themselves and create a redirect loop.
   if (userData?.role) {
     const decision = await evaluateMfaGate(userData.role);
-    if (decision.kind !== "ok") {
-      redirect("/sign-in/mfa");
+    switch (decision.kind) {
+      case "must_enroll_phone":
+        redirect("/onboarding/phone");
+      case "must_challenge_sms":
+        redirect("/sign-in/sms-mfa");
+      case "ok":
+        break;
     }
   }
 
