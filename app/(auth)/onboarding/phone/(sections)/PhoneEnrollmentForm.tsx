@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Phone, ShieldCheck, KeyRound } from "lucide-react";
+import { Phone, ShieldCheck, KeyRound, MessageSquare } from "lucide-react";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,14 @@ import {
   confirmPhoneEnrollment,
 } from "../(services)/actions";
 
+interface Props {
+  /** When set, the user already has a phone on their profile (from signup).
+   *  We skip the phone-entry phase, start at code-entry, and the page
+   *  server-side has already sent the initial Twilio Verify code. The user
+   *  can still click "Use a different number" to override. */
+  initialPhone?: string;
+}
+
 /**
  * Two-phase phone enrollment for sales reps.
  *
@@ -23,16 +31,30 @@ import {
  *                       saves phone + phone_verified_at to profiles → creates
  *                       SMS MFA session → redirect to /dashboard.
  *
+ * If the rep already has a phone on their profile (entered during signup),
+ * we skip Phase 1 entirely — the page sends the code on render and we
+ * mount straight in Phase 2 with the existing phone preselected.
+ *
  * "Use a different number" in Phase 2 returns to Phase 1 — useful if the
- * user typed the wrong number and didn't get the SMS.
+ * profile phone is wrong, or the user no longer has access to that number.
  */
-export function PhoneEnrollmentForm() {
+export function PhoneEnrollmentForm({ initialPhone }: Props) {
   const router = useRouter();
-  const [phase, setPhase] = useState<"phone" | "code">("phone");
+  const startedAtCodePhase = !!initialPhone;
+  const [phase, setPhase] = useState<"phone" | "code">(
+    startedAtCodePhase ? "code" : "phone",
+  );
   const [phone, setPhone] = useState("");
-  const [verifiedPhone, setVerifiedPhone] = useState("");
+  const [verifiedPhone, setVerifiedPhone] = useState(initialPhone ?? "");
   const [code, setCode] = useState("");
+  const [resendIn, setResendIn] = useState(startedAtCodePhase ? 30 : 0);
   const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const t = setTimeout(() => setResendIn((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendIn]);
 
   function handleSendCode() {
     startTransition(async () => {
@@ -43,7 +65,20 @@ export function PhoneEnrollmentForm() {
       }
       setVerifiedPhone(res.phoneE164);
       setPhase("code");
+      setResendIn(30);
       toast.success("Code sent.");
+    });
+  }
+
+  function handleResend() {
+    startTransition(async () => {
+      const res = await startPhoneEnrollment(verifiedPhone);
+      if (!res.success) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success("Code sent.");
+      setResendIn(30);
     });
   }
 
@@ -159,9 +194,20 @@ export function PhoneEnrollmentForm() {
 
             <button
               type="button"
+              onClick={handleResend}
+              disabled={isPending || resendIn > 0}
+              className="flex w-full items-center justify-center gap-1.5 text-center text-xs text-[var(--navy)] underline underline-offset-2 hover:text-[var(--navy)]/70 disabled:no-underline disabled:text-[var(--text3)]"
+            >
+              <MessageSquare className="h-3 w-3" />
+              {resendIn > 0 ? `Resend code in ${resendIn}s` : "Resend code"}
+            </button>
+
+            <button
+              type="button"
               onClick={() => {
                 setPhase("phone");
                 setCode("");
+                setVerifiedPhone("");
               }}
               disabled={isPending}
               className="w-full text-center text-xs text-[var(--navy)] underline underline-offset-2 hover:text-[var(--navy)]/70"
