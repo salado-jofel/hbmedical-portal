@@ -48,8 +48,22 @@ export function ContractSignModal({
   const [uploadDataUrl, setUploadDataUrl] = useState<string | null>(null);
   const [entityType, setEntityType] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // Per-field validation errors. Mirrors the inline-error UX used on the
+  // sales-rep contract modal and the invite signup form: red border + red
+  // label + red message under the field. Cleared per field as the user
+  // types so corrections feel responsive.
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const drawCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const drawDirtyRef = useRef(false);
+
+  function clearFieldError(key: string) {
+    setFieldErrors((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  }
 
   // Reset when reopened
   useEffect(() => {
@@ -60,6 +74,7 @@ export function ContractSignModal({
       setTypedSig(defaultName);
       setUploadDataUrl(null);
       setEntityType("");
+      setFieldErrors({});
       drawDirtyRef.current = false;
       const c = drawCanvasRef.current;
       if (c) c.getContext("2d")?.clearRect(0, 0, c.width, c.height);
@@ -200,24 +215,31 @@ export function ContractSignModal({
   }
 
   async function handleSign() {
-    if (!name.trim() || !title.trim()) {
-      toast.error("Name and title are required.");
-      return;
-    }
+    // Collect all field errors at once so the user sees every issue inline
+    // instead of fixing → resubmit → next error → repeat.
+    const errs: Record<string, string> = {};
+    if (!name.trim()) errs.name = "Name is required.";
+    if (!title.trim()) errs.title = "Title is required.";
     if (!entityType.trim()) {
-      toast.error("Entity type is required (e.g. \"a California professional corporation\").");
+      errs.entity_type = 'Entity type is required (e.g. "a California professional corporation").';
+    }
+    if (Object.keys(errs).length > 0) {
+      setFieldErrors(errs);
       return;
     }
+
     let signatureDataUrl: string | null = null;
     if (tab === "type") {
       if (!typedSig.trim()) {
-        toast.error("Type your signature.");
+        setFieldErrors({ typed_sig: "Type your signature." });
         return;
       }
       signatureDataUrl = typedToDataUrl();
     } else if (tab === "draw") {
       signatureDataUrl = drawnToDataUrl();
       if (!signatureDataUrl) {
+        // Draw step has no input field to attach an error to; toast is the
+        // appropriate UX since the whole canvas is the "field".
         toast.error("Draw your signature.");
         return;
       }
@@ -306,39 +328,52 @@ export function ContractSignModal({
         <div className="p-5 space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
-              <span className="text-[11px] font-semibold text-[#64748B] uppercase tracking-wider">Name</span>
+              <span className={`text-[11px] font-semibold uppercase tracking-wider ${fieldErrors.name ? "text-red-500" : "text-[#64748B]"}`}>
+                Name <span className="text-red-500">*</span>
+              </span>
               <input
                 type="text"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--navy)]/20"
+                onChange={(e) => { setName(e.target.value); clearFieldError("name"); }}
+                className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 ${fieldErrors.name ? "border-red-500 focus:ring-red-200" : "border-[#E2E8F0] focus:ring-[var(--navy)]/20"}`}
               />
+              {fieldErrors.name && (
+                <p className="mt-1 text-[11px] text-red-500">{fieldErrors.name}</p>
+              )}
             </label>
             <label className="block">
-              <span className="text-[11px] font-semibold text-[#64748B] uppercase tracking-wider">Title</span>
+              <span className={`text-[11px] font-semibold uppercase tracking-wider ${fieldErrors.title ? "text-red-500" : "text-[#64748B]"}`}>
+                Title <span className="text-red-500">*</span>
+              </span>
               <input
                 type="text"
                 value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--navy)]/20"
+                onChange={(e) => { setTitle(e.target.value); clearFieldError("title"); }}
+                className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 ${fieldErrors.title ? "border-red-500 focus:ring-red-200" : "border-[#E2E8F0] focus:ring-[var(--navy)]/20"}`}
               />
+              {fieldErrors.title && (
+                <p className="mt-1 text-[11px] text-red-500">{fieldErrors.title}</p>
+              )}
             </label>
           </div>
 
           <label className="block">
-            <span className="text-[11px] font-semibold text-[#64748B] uppercase tracking-wider">
+            <span className={`text-[11px] font-semibold uppercase tracking-wider ${fieldErrors.entity_type ? "text-red-500" : "text-[#64748B]"}`}>
               Entity type <span className="text-red-500">*</span>
             </span>
             <input
               type="text"
               value={entityType}
-              onChange={(e) => setEntityType(e.target.value)}
+              onChange={(e) => { setEntityType(e.target.value); clearFieldError("entity_type"); }}
               placeholder='e.g. "a California professional corporation"'
-              className="mt-1 w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--navy)]/20"
+              className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 ${fieldErrors.entity_type ? "border-red-500 focus:ring-red-200" : "border-[#E2E8F0] focus:ring-[var(--navy)]/20"}`}
             />
             <p className="mt-1 text-[11px] text-[#94A3B8]">
               Fills the blank in &quot;and [your practice name], [this entity type] (&quot;Client&quot;)&quot; on page 1.
             </p>
+            {fieldErrors.entity_type && (
+              <p className="mt-1 text-[11px] text-red-500">{fieldErrors.entity_type}</p>
+            )}
           </label>
 
           <div>
@@ -354,10 +389,13 @@ export function ContractSignModal({
                 <input
                   type="text"
                   value={typedSig}
-                  onChange={(e) => setTypedSig(e.target.value)}
+                  onChange={(e) => { setTypedSig(e.target.value); clearFieldError("typed_sig"); }}
                   placeholder="Type your name"
-                  className="w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--navy)]/20"
+                  className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 ${fieldErrors.typed_sig ? "border-red-500 focus:ring-red-200" : "border-[#E2E8F0] focus:ring-[var(--navy)]/20"}`}
                 />
+                {fieldErrors.typed_sig && (
+                  <p className="text-[11px] text-red-500">{fieldErrors.typed_sig}</p>
+                )}
                 <div
                   className="h-24 rounded-lg border border-dashed border-[#E2E8F0] bg-[#F8FAFC] flex items-center justify-center px-4 text-[32px] text-[#0F172A]"
                   style={{ fontFamily: CURSIVE_FONT }}
