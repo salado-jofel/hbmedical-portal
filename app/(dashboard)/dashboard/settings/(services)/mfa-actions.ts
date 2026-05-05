@@ -519,39 +519,43 @@ export async function adminUnenrollUserMfa(
 
   const admin = createAdminClient();
 
-  // Step 1: list the target's factors (admin client bypasses RLS) and
-  // unenroll each. Supabase Auth doesn't expose admin.mfa.deleteFactor so
-  // we delete directly from auth.mfa_factors. The cascade FK on
-  // auth.mfa_challenges takes care of the challenge rows.
-  const { error: factorsErr } = await admin
+  // Step 1: clear the target's verified phone enrollment. The MFA gate
+  // reads phone + phone_verified_at; nulling them forces /onboarding/phone
+  // on next sign-in, which is the SMS-MFA equivalent of "factor cleared".
+  const { error: profileErr } = await admin
+    .from("profiles")
+    .update({ phone: null, phone_verified_at: null })
+    .eq("id", targetUserId);
+  if (profileErr) {
+    console.error("[adminUnenrollUserMfa] profile clear:", profileErr.message);
+    return { success: false, error: "Failed to clear phone enrollment." };
+  }
+
+  // Step 2: revoke every active SMS MFA session row so the gate's
+  // hasActiveSmsMfaSession check fails immediately on the target's next
+  // request — no waiting for the 12h expiry to drain.
+  await admin
+    .from("sms_mfa_sessions")
+    .update({ revoked_at: new Date().toISOString() })
+    .eq("user_id", targetUserId)
+    .is("revoked_at", null);
+
+  // Step 3: also wipe legacy TOTP factors and backup codes if any survive
+  // from the pre-SMS migration. Cheap and ensures the user lands cleanly
+  // on phone enrollment without any orphan TOTP state confusing them.
+  await admin
     .schema("auth")
     .from("mfa_factors")
     .delete()
     .eq("user_id", targetUserId);
-  if (factorsErr) {
-    console.error("[adminUnenrollUserMfa] factor delete:", factorsErr.message);
-    return { success: false, error: "Failed to clear factors." };
-  }
+  await admin.from("mfa_backup_codes").delete().eq("user_id", targetUserId);
 
-  // Step 2: wipe every backup code (used and unused both — a full reset
-  // means no leftover credentials of any kind).
-  const { error: codesErr } = await admin
-    .from("mfa_backup_codes")
-    .delete()
-    .eq("user_id", targetUserId);
-  if (codesErr) {
-    console.error("[adminUnenrollUserMfa] backup codes delete:", codesErr.message);
-    // Soft-fail — factors are already cleared, which is the security-critical
-    // part. Backup codes left over will be wiped on next regenerate anyway.
-  }
-
-  // Step 3: revoke all the target user's sessions so any AAL2 session they
-  // currently hold gets invalidated immediately.
+  // Step 4: revoke all the target user's auth sessions so existing access
+  // tokens can't continue to work until JWT expiry.
   const { error: signOutErr } = await admin.auth.admin.signOut(targetUserId, "global");
   if (signOutErr) {
     console.error("[adminUnenrollUserMfa] global signOut:", signOutErr.message);
-    // Non-fatal — they'll be forced to re-auth anyway when their JWT next
-    // hits the MFA gate (no factor → must_enroll redirect).
+    // Non-fatal — middleware will catch them on next request anyway.
   }
 
   await logPhiAccess({
@@ -584,6 +588,76 @@ export async function adminUnenrollUserMfa(
     // Email failure must not bubble — the reset itself succeeded.
     console.error("[adminUnenrollUserMfa] notification email failed:", err);
   }
+
+  return { success: true };
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  SMS MFA status (the live system — TOTP actions above are legacy)          */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+export interface SmsMfaStatus {
+  /** True when profiles.phone is set AND phone_verified_at is set. */
+  enrolled: boolean;
+  /** Phone in E.164 (raw — UI is responsible for masking on display). */
+  phone: string | null;
+  /** ISO timestamp of when the user proved ownership of the phone. */
+  verifiedAt: string | null;
+}
+
+/**
+ * Returns the current user's SMS MFA enrollment state for the settings UI.
+ * Cheap — single profile read. Doesn't touch Twilio or session state.
+ */
+export async function getSmsMfaStatus(): Promise<SmsMfaStatus> {
+  const supabase = await createClient();
+  const user = await getCurrentUserOrThrow(supabase);
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("phone, phone_verified_at")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  return {
+    enrolled: !!(profile?.phone && profile?.phone_verified_at),
+    phone: profile?.phone ?? null,
+    verifiedAt: profile?.phone_verified_at ?? null,
+  };
+}
+
+/**
+ * Self-service "change phone number" — wipes phone + phone_verified_at +
+ * SMS sessions on the requesting user. The dashboard MFA gate then sends
+ * them to /onboarding/phone on the next request to enroll a new number.
+ */
+export async function resetMyPhoneEnrollment(): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  const supabase = await createClient();
+  const user = await getCurrentUserOrThrow(supabase);
+
+  const admin = createAdminClient();
+  const { error: profileErr } = await admin
+    .from("profiles")
+    .update({ phone: null, phone_verified_at: null })
+    .eq("id", user.id);
+  if (profileErr) {
+    return { success: false, error: profileErr.message };
+  }
+
+  await admin
+    .from("sms_mfa_sessions")
+    .update({ revoked_at: new Date().toISOString() })
+    .eq("user_id", user.id)
+    .is("revoked_at", null);
+
+  await logPhiAccess({
+    action: "mfa.phone_reset_self",
+    resource: "profile",
+    resourceId: user.id,
+  });
 
   return { success: true };
 }

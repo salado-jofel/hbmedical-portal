@@ -74,26 +74,26 @@ export function SmsMfaChallengeForm({ maskedPhone }: Props) {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-[#F0F7FF] to-[#F8FAFC] px-4">
       <div className="w-full max-w-md select-none rounded-2xl border border-[#E2E8F0] bg-white p-8 shadow-[0_8px_40px_rgba(0,0,0,0.1)]">
         <div className="mb-6 flex items-center justify-center">
           <MeridianLogo variant="light" size="lg" />
         </div>
 
-        <div className="mb-5 flex items-start gap-3">
-          <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-[var(--navy)]" />
-          <div>
-            <h2 className="text-xl font-bold text-[#0F172A]">
-              Verify your phone
-            </h2>
-            <p className="mt-1 text-sm text-[#64748B]">
-              We sent a code to{" "}
-              <span className="font-medium text-[var(--navy)]">
-                {maskedPhone}
-              </span>
-              . Enter it below to finish signing in.
-            </p>
+        <div className="mb-7 flex flex-col items-center text-center">
+          <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--navy)]/10">
+            <ShieldCheck className="h-6 w-6 text-[var(--navy)]" />
           </div>
+          <h2 className="text-2xl font-bold text-[#0F172A]">
+            Verify your phone
+          </h2>
+          <p className="mt-1.5 text-sm text-[#64748B]">
+            We sent a code to{" "}
+            <span className="font-medium text-[var(--navy)]">
+              {maskedPhone}
+            </span>
+            .
+          </p>
         </div>
 
         <div className="space-y-4">

@@ -4,7 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { SmsMfaChallengeForm } from "./(sections)/SmsMfaChallengeForm";
 import { sendVerificationCode } from "@/lib/sms/twilio-verify";
 import { hasActiveSmsMfaSession } from "@/lib/supabase/sms-mfa-session";
-import { isSalesRep } from "@/utils/helpers/role";
+import { isMfaMandatoryRole } from "@/lib/supabase/mfa-gate";
+import type { UserRole } from "@/utils/helpers/role";
 import { isValidE164, maskPhone } from "@/utils/helpers/phone";
 
 export const metadata: Metadata = { title: "Verify your phone" };
@@ -41,7 +42,8 @@ export default async function SmsMfaPage() {
     .maybeSingle();
 
   if (!profile?.role) redirect("/sign-in");
-  if (!isSalesRep(profile.role)) redirect("/sign-in/mfa");
+  // Roles outside the MFA-mandatory set don't go through SMS MFA.
+  if (!isMfaMandatoryRole(profile.role as UserRole)) redirect("/dashboard");
 
   const phone = profile.phone;
   if (!phone || !profile.phone_verified_at || !isValidE164(phone)) {

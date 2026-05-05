@@ -3,8 +3,9 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { PhoneEnrollmentForm } from "./(sections)/PhoneEnrollmentForm";
 import { sendVerificationCode } from "@/lib/sms/twilio-verify";
-import { isSalesRep } from "@/utils/helpers/role";
+import { isMfaMandatoryRole } from "@/lib/supabase/mfa-gate";
 import { isValidE164 } from "@/utils/helpers/phone";
+import type { UserRole } from "@/utils/helpers/role";
 
 export const metadata: Metadata = { title: "Enroll your phone" };
 export const dynamic = "force-dynamic";
@@ -44,7 +45,8 @@ export default async function PhoneEnrollmentPage() {
     .maybeSingle();
 
   if (!profile?.role) redirect("/sign-in");
-  if (!isSalesRep(profile.role)) redirect("/dashboard");
+  // Roles outside the MFA-mandatory set don't go through SMS MFA at all.
+  if (!isMfaMandatoryRole(profile.role as UserRole)) redirect("/dashboard");
 
   if (profile.phone && profile.phone_verified_at) {
     redirect("/sign-in/sms-mfa");

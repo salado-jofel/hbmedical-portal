@@ -1,5 +1,4 @@
 import type { UserRole } from "@/utils/helpers/role";
-import { isSalesRep } from "@/utils/helpers/role";
 import { createClient } from "@/lib/supabase/server";
 import { hasActiveSmsMfaSession } from "@/lib/supabase/sms-mfa-session";
 
@@ -12,11 +11,12 @@ import { hasActiveSmsMfaSession } from "@/lib/supabase/sms-mfa-session";
  * authentication" standard plus HHS's 2025 update treat MFA as the floor
  * for any account with PHI access, so all five roles are mandatory here.
  *
- * The factor TYPE varies by role:
- *   - sales_representative → SMS OTP via Twilio Verify (this file routes them)
- *   - all other roles      → TOTP (Supabase Auth's built-in factor)
- * Reps were split out because field reps don't reliably carry an authenticator
- * app device, and the client wanted a phone-first flow for that audience.
+ * Factor type: SMS OTP via Twilio Verify for ALL roles. Was previously
+ * split (TOTP for admin/support/clinical, SMS for reps); unified at
+ * client direction with a signed risk acceptance on file. Existing
+ * Supabase TOTP factors on legacy accounts are ignored by this gate —
+ * they remain in auth.mfa_factors but are dead weight, retained only to
+ * keep the migration low-risk.
  */
 export const MFA_MANDATORY_ROLES = new Set<UserRole>([
   "admin",
@@ -34,18 +34,14 @@ export type MfaGateDecision =
   /** Pass-through. Either MFA isn't mandatory for this role, or the user
    *  has enrolled and the session is fully verified. */
   | { kind: "ok" }
-  /** TOTP user has no factor enrolled. Redirect to /sign-in/mfa (enrollment). */
-  | { kind: "must_enroll_totp" }
-  /** TOTP user has factor but session is aal1. Redirect to /sign-in/mfa (challenge). */
-  | { kind: "must_challenge_totp" }
-  /** Sales rep has no verified phone. Redirect to /onboarding/phone. */
+  /** User has no verified phone. Redirect to /onboarding/phone. */
   | { kind: "must_enroll_phone" }
-  /** Sales rep has verified phone but no active SMS session. Redirect to /sign-in/sms-mfa. */
+  /** User has verified phone but no active SMS session. Redirect to /sign-in/sms-mfa. */
   | { kind: "must_challenge_sms" };
 
 /**
  * Server-side check for whether the current request is allowed onto the
- * dashboard given the user's role + MFA enrollment + session level.
+ * dashboard given the user's role + phone enrollment + SMS session.
  *
  * Call from layouts / server components that need to enforce the gate.
  * Returns "ok" if MFA isn't required for the role.
@@ -59,30 +55,17 @@ export async function evaluateMfaGate(role: UserRole): Promise<MfaGateDecision> 
   } = await supabase.auth.getUser();
   if (!user) return { kind: "ok" };
 
-  // ── Sales reps: SMS MFA path ────────────────────────────────────────────
-  if (isSalesRep(role)) {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("phone, phone_verified_at")
-      .eq("id", user.id)
-      .maybeSingle();
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("phone, phone_verified_at")
+    .eq("id", user.id)
+    .maybeSingle();
 
-    const phoneVerified = !!profile?.phone && !!profile?.phone_verified_at;
-    if (!phoneVerified) return { kind: "must_enroll_phone" };
+  const phoneVerified = !!profile?.phone && !!profile?.phone_verified_at;
+  if (!phoneVerified) return { kind: "must_enroll_phone" };
 
-    const hasSession = await hasActiveSmsMfaSession(user.id);
-    if (!hasSession) return { kind: "must_challenge_sms" };
-
-    return { kind: "ok" };
-  }
-
-  // ── Everyone else: TOTP path ────────────────────────────────────────────
-  const { data: factors } = await supabase.auth.mfa.listFactors();
-  const verified = factors?.totp?.find((f) => f.status === "verified");
-  if (!verified) return { kind: "must_enroll_totp" };
-
-  const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-  if (aal?.currentLevel !== "aal2") return { kind: "must_challenge_totp" };
+  const hasSession = await hasActiveSmsMfaSession(user.id);
+  if (!hasSession) return { kind: "must_challenge_sms" };
 
   return { kind: "ok" };
 }
