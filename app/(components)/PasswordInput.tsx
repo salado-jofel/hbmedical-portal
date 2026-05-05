@@ -27,28 +27,29 @@ export function PasswordInput({
 }: PasswordInputProps) {
   const [show, setShow] = useState(false);
 
+  // Forward `error` down to AuthField so the border/label/icon tint red AND
+  // the error message renders below the input. Previously this only rendered
+  // the message in a sibling <p>, which left the border looking unaffected.
   return (
-    <div>
-      <AuthField
-        id={id}
-        name={name ?? id}
-        label={label}
-        type={show ? "text" : "password"}
-        placeholder={placeholder}
-        value={value}
-        onChange={onChange}
-        required={required}
-        rightElement={
-          <button
-            type="button"
-            onClick={() => setShow((p) => !p)}
-            className="text-[var(--text3)] hover:text-[var(--text2)] transition-colors"
-          >
-            {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-          </button>
-        }
-      />
-      {error && <p className="mt-1.5 text-xs text-red-500">{error}</p>}
-    </div>
+    <AuthField
+      id={id}
+      name={name ?? id}
+      label={label}
+      type={show ? "text" : "password"}
+      placeholder={placeholder}
+      value={value}
+      onChange={onChange}
+      required={required}
+      error={error}
+      rightElement={
+        <button
+          type="button"
+          onClick={() => setShow((p) => !p)}
+          className="text-[var(--text3)] hover:text-[var(--text2)] transition-colors"
+        >
+          {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+        </button>
+      }
+    />
   );
 }

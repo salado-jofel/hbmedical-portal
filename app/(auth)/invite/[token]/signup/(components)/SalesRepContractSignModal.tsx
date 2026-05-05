@@ -564,12 +564,19 @@ function FieldInput({
   const baseClass =
     "w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2";
   const stateClass = error
-    ? "border-red-400 focus:ring-red-200"
+    ? "border-red-500 focus:ring-red-200"
     : "border-[#E2E8F0] focus:ring-[var(--navy)]/20";
   const common = {
     className: `${baseClass} ${stateClass}`,
     placeholder: field.placeholder,
   };
+
+  // Label color also flips to red on error so the whole field — label,
+  // border, and message — reads as a single red unit. Matches the
+  // AuthField/PhoneInputField behavior used in the invite signup form.
+  const labelClass = `block text-[11px] font-semibold uppercase tracking-wider mb-1.5 ${
+    error ? "text-red-500" : "text-[#64748B]"
+  }`;
 
   /** Tiny red error text rendered under inputs. Centralized so every branch
    *  below stays terse. */
@@ -580,7 +587,11 @@ function FieldInput({
   if (field.type === "checkbox") {
     return (
       <div>
-        <label className="flex items-start gap-2 cursor-pointer text-sm text-[#0F172A]">
+        <label
+          className={`flex items-start gap-2 cursor-pointer text-sm ${
+            error ? "text-red-500" : "text-[#0F172A]"
+          }`}
+        >
           <input
             type="checkbox"
             checked={value === "true"}
@@ -617,7 +628,7 @@ function FieldInput({
     };
     return (
       <div>
-        <span className="block text-[11px] font-semibold text-[#64748B] uppercase tracking-wider mb-1.5">
+        <span className={labelClass}>
           {field.label}
           {field.required && <span className="text-red-500 ml-0.5">*</span>}
         </span>
@@ -660,7 +671,7 @@ function FieldInput({
   if (field.type === "radio") {
     return (
       <div>
-        <span className="block text-[11px] font-semibold text-[#64748B] uppercase tracking-wider mb-1.5">
+        <span className={labelClass}>
           {field.label}{field.required && <span className="text-red-500 ml-0.5">*</span>}
         </span>
         <div className="space-y-1.5">
@@ -685,7 +696,7 @@ function FieldInput({
   if (field.type === "textarea") {
     return (
       <label className="block">
-        <span className="block text-[11px] font-semibold text-[#64748B] uppercase tracking-wider mb-1.5">
+        <span className={labelClass}>
           {field.label}{field.required && <span className="text-red-500 ml-0.5">*</span>}
         </span>
         <textarea
@@ -716,7 +727,7 @@ function FieldInput({
 
   return (
     <label className="block">
-      <span className="block text-[11px] font-semibold text-[#64748B] uppercase tracking-wider mb-1.5">
+      <span className={labelClass}>
         {field.label}{field.required && <span className="text-red-500 ml-0.5">*</span>}
       </span>
       <input

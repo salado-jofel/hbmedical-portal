@@ -129,7 +129,29 @@ export default function InviteSignUpForm({
   const [productServicesUrl, setProductServicesUrl] = useState<string | null>(initialProductServicesUrl);
   const [contractsError, setContractsError] = useState<string | null>(initialContractsError);
   const [isRetrying, setIsRetrying] = useState(false);
-  const [clientError, setClientError] = useState("");
+  // Per-field validation errors (key → message). Replaced the older
+  // single-string banner so the form matches the contract-signing modals'
+  // inline-error UX: red border on the offending input + message below.
+  // `formError` is reserved for non-field-level issues (server errors,
+  // contracts gating, etc.) and renders as a banner.
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [formError, setFormError] = useState("");
+
+  function setFieldError(key: string, message: string) {
+    setFieldErrors((prev) => ({ ...prev, [key]: message }));
+  }
+  function clearFieldError(key: string) {
+    setFieldErrors((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  }
+  function clearAllErrors() {
+    setFieldErrors({});
+    setFormError("");
+  }
 
   // Enrollment state — clinical_provider only. All fields are optional; the
   // user may leave any of these blank and still advance to the terms step.
@@ -292,61 +314,67 @@ export default function InviteSignUpForm({
   }, [step, agreeStepIndex, role, refreshSalesRepUrls]);
 
   function goNext() {
-    setClientError("");
+    clearAllErrors();
 
     if (step === 1) {
-      if (!firstName.trim() || !lastName.trim()) {
-        setClientError("First and last name are required.");
-        return;
+      const errs: Record<string, string> = {};
+      if (!firstName.trim()) errs.first_name = "First name is required.";
+      if (!lastName.trim()) errs.last_name = "Last name is required.";
+      if (!email.trim()) errs.email = "Email is required.";
+      // Phone is required because every workforce role (rep, provider,
+      // clinical staff) uses SMS MFA at sign-in. Without a phone on file,
+      // they would land on /onboarding/phone right after signup anyway —
+      // capturing it here keeps the flow contiguous and prevents a
+      // half-onboarded account stranded between signup and the SMS gate.
+      if (!/^\+[1-9][0-9]{7,14}$/.test(phone.trim())) {
+        errs.phone = "A valid phone number is required.";
       }
-      if (!email.trim()) {
-        setClientError("Email is required.");
+      if (Object.keys(errs).length > 0) {
+        setFieldErrors(errs);
         return;
       }
     }
 
     if (officeStepIndex !== null && step === officeStepIndex) {
+      const errs: Record<string, string> = {};
       // For sales reps, Company name + Company number are optional — some
       // reps operate as individuals with no company entity. For clinical
       // providers, Practice name + Office phone remain required.
       if (role !== "sales_representative") {
-        if (!officeName.trim()) {
-          setClientError("Practice name is required.");
-          return;
-        }
-        if (!officePhone.trim()) {
-          setClientError("Office phone is required.");
-          return;
-        }
+        if (!officeName.trim()) errs.office_name = "Practice name is required.";
+        if (!officePhone.trim()) errs.office_phone = "Office phone is required.";
       }
-      if (!officeAddress.trim() || !officeCity.trim() || !officeState.trim() || !officePostalCode.trim()) {
-        setClientError("Address, city, state, and ZIP code are required.");
+      if (!officeAddress.trim()) errs.office_address = "Address is required.";
+      if (!officeCity.trim()) errs.office_city = "City is required.";
+      if (!officeState.trim()) errs.office_state = "State is required.";
+      if (!officePostalCode.trim()) errs.office_postal_code = "ZIP code is required.";
+      if (Object.keys(errs).length > 0) {
+        setFieldErrors(errs);
         return;
       }
     }
 
     if (step === securityStepIndex) {
+      const errs: Record<string, string> = {};
       if (password.length < 8) {
-        setClientError("Password must be at least 8 characters.");
-        return;
+        errs.password = "Password must be at least 8 characters.";
       }
       if (password !== confirmPassword) {
-        setClientError("Passwords do not match.");
-        return;
+        errs.confirm_password = "Passwords do not match.";
       }
       if (needsPin) {
         if (!/^\d{10}$/.test(npiNumber)) {
-          setClientError("NPI must be exactly 10 digits.");
-          return;
+          errs.npi = "NPI must be exactly 10 digits.";
         }
         if (!/^\d{4}$/.test(pin)) {
-          setClientError("PIN must be exactly 4 digits.");
-          return;
+          errs.pin = "PIN must be exactly 4 digits.";
+        } else if (pin !== confirmPin) {
+          errs.confirm_pin = "PINs do not match.";
         }
-        if (pin !== confirmPin) {
-          setClientError("PINs do not match.");
-          return;
-        }
+      }
+      if (Object.keys(errs).length > 0) {
+        setFieldErrors(errs);
+        return;
       }
     }
 
@@ -363,14 +391,14 @@ export default function InviteSignUpForm({
   }
 
   function goBack() {
-    setClientError("");
+    clearAllErrors();
     setDir(-1);
     setStep((s) => s - 1);
   }
 
-  // On the security step, password errors render inline below the confirm field.
-  const inlinePasswordError = step === securityStepIndex;
-  const error = (inlinePasswordError ? null : clientError) || state?.error;
+  // Banner-level error: server response or non-field-level issues only.
+  // Field-level errors render inline next to their inputs via fieldErrors.
+  const error = formError || state?.error;
 
   // Enrollment step — full-page layout, renders BEFORE the AuthCard return.
   // All fields are optional. "Continue" advances to the terms step where the
@@ -533,8 +561,9 @@ export default function InviteSignUpForm({
                     name="first_name_display"
                     type="text"
                     value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
+                    onChange={(e) => { setFirstName(e.target.value); clearFieldError("first_name"); }}
                     placeholder="Jane"
+                    error={fieldErrors.first_name}
                   />
                   <AuthField
                     id="last_name"
@@ -542,8 +571,9 @@ export default function InviteSignUpForm({
                     name="last_name_display"
                     type="text"
                     value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
+                    onChange={(e) => { setLastName(e.target.value); clearFieldError("last_name"); }}
                     placeholder="Smith"
+                    error={fieldErrors.last_name}
                   />
                 </div>
                 <AuthField
@@ -553,10 +583,14 @@ export default function InviteSignUpForm({
                   type="email"
                   value={email}
                   onChange={(e) => {
-                    if (!emailLocked) setEmail(e.target.value);
+                    if (!emailLocked) {
+                      setEmail(e.target.value);
+                      clearFieldError("email");
+                    }
                   }}
                   placeholder="jane@clinic.com"
                   readOnly={emailLocked}
+                  error={fieldErrors.email}
                 />
                 {emailLocked && (
                   <p className="text-[11px] text-[#64748B] -mt-2">
@@ -566,9 +600,11 @@ export default function InviteSignUpForm({
                 )}
                 <PhoneInputField
                   value={phone}
-                  onChange={(val) => setPhone(val)}
+                  onChange={(val) => { setPhone(val); clearFieldError("phone"); }}
                   label="Phone"
                   theme="light"
+                  required
+                  error={fieldErrors.phone}
                 />
               </div>
             )}
@@ -586,19 +622,21 @@ export default function InviteSignUpForm({
                   name="office_name_display"
                   type="text"
                   value={officeName}
-                  onChange={(e) => setOfficeName(e.target.value)}
+                  onChange={(e) => { setOfficeName(e.target.value); clearFieldError("office_name"); }}
                   placeholder={
                     role === "sales_representative"
                       ? "Your company (leave blank if none)"
                       : "Sunrise Medical Group"
                   }
+                  error={fieldErrors.office_name}
                 />
                 <PhoneInputField
                   value={officePhone}
-                  onChange={(val) => setOfficePhone(val)}
+                  onChange={(val) => { setOfficePhone(val); clearFieldError("office_phone"); }}
                   label={role === "sales_representative" ? "Company number" : "Office phone"}
                   required={role !== "sales_representative"}
                   theme="light"
+                  error={fieldErrors.office_phone}
                 />
                 <AuthField
                   id="office_address"
@@ -606,8 +644,9 @@ export default function InviteSignUpForm({
                   name="office_address_display"
                   type="text"
                   value={officeAddress}
-                  onChange={(e) => setOfficeAddress(e.target.value)}
+                  onChange={(e) => { setOfficeAddress(e.target.value); clearFieldError("office_address"); }}
                   placeholder="123 Main St"
+                  error={fieldErrors.office_address}
                 />
                 <div className="grid grid-cols-3 gap-3">
                   <div className="col-span-1">
@@ -617,8 +656,9 @@ export default function InviteSignUpForm({
                       name="office_city_display"
                       type="text"
                       value={officeCity}
-                      onChange={(e) => setOfficeCity(e.target.value)}
+                      onChange={(e) => { setOfficeCity(e.target.value); clearFieldError("office_city"); }}
                       placeholder="Dallas"
+                      error={fieldErrors.office_city}
                     />
                   </div>
                   <div className="col-span-1">
@@ -628,8 +668,9 @@ export default function InviteSignUpForm({
                       name="office_state_display"
                       type="text"
                       value={officeState}
-                      onChange={(e) => setOfficeState(e.target.value)}
+                      onChange={(e) => { setOfficeState(e.target.value); clearFieldError("office_state"); }}
                       placeholder="TX"
+                      error={fieldErrors.office_state}
                     />
                   </div>
                   <div className="col-span-1">
@@ -639,8 +680,9 @@ export default function InviteSignUpForm({
                       name="office_postal_code_display"
                       type="text"
                       value={officePostalCode}
-                      onChange={(e) => setOfficePostalCode(e.target.value)}
+                      onChange={(e) => { setOfficePostalCode(e.target.value); clearFieldError("office_postal_code"); }}
                       placeholder="75001"
+                      error={fieldErrors.office_postal_code}
                     />
                   </div>
                 </div>
@@ -655,20 +697,17 @@ export default function InviteSignUpForm({
                   label="Password"
                   placeholder="Min. 8 characters"
                   value={password}
-                  onChange={(e) => { setPassword(e.target.value); setClientError(""); }}
+                  onChange={(e) => { setPassword(e.target.value); clearFieldError("password"); }}
+                  error={fieldErrors.password}
                 />
-                <div>
-                  <PasswordInput
-                    id="confirm_password_display"
-                    label="Confirm password"
-                    placeholder="Repeat password"
-                    value={confirmPassword}
-                    onChange={(e) => { setConfirmPassword(e.target.value); setClientError(""); }}
-                  />
-                  {!needsPin && clientError && (
-                    <p className="mt-1.5 text-xs text-red-500">{clientError}</p>
-                  )}
-                </div>
+                <PasswordInput
+                  id="confirm_password_display"
+                  label="Confirm password"
+                  placeholder="Repeat password"
+                  value={confirmPassword}
+                  onChange={(e) => { setConfirmPassword(e.target.value); clearFieldError("confirm_password"); }}
+                  error={fieldErrors.confirm_password}
+                />
 
                 {needsPin && (
                   <>
@@ -712,9 +751,10 @@ export default function InviteSignUpForm({
                         onChange={(e) => {
                           const v = e.target.value.replace(/\D/g, "").slice(0, 10);
                           setNpiNumber(v);
-                          setClientError("");
+                          clearFieldError("npi");
                         }}
                         placeholder="10 digits"
+                        error={fieldErrors.npi}
                       />
                     </div>
                     <div className="border-t border-[#E2E8F0] pt-4 space-y-1">
@@ -733,25 +773,22 @@ export default function InviteSignUpForm({
                       onChange={(e) => {
                         const v = e.target.value.replace(/\D/g, "").slice(0, 4);
                         setPin(v);
-                        setClientError("");
+                        clearFieldError("pin");
                       }}
+                      error={fieldErrors.pin}
                     />
-                    <div>
-                      <PasswordInput
-                        id="confirm_pin_display"
-                        label="Confirm PIN"
-                        placeholder="Repeat PIN"
-                        value={confirmPin}
-                        onChange={(e) => {
-                          const v = e.target.value.replace(/\D/g, "").slice(0, 4);
-                          setConfirmPin(v);
-                          setClientError("");
-                        }}
-                      />
-                      {clientError && (
-                        <p className="mt-1.5 text-xs text-red-500">{clientError}</p>
-                      )}
-                    </div>
+                    <PasswordInput
+                      id="confirm_pin_display"
+                      label="Confirm PIN"
+                      placeholder="Repeat PIN"
+                      value={confirmPin}
+                      onChange={(e) => {
+                        const v = e.target.value.replace(/\D/g, "").slice(0, 4);
+                        setConfirmPin(v);
+                        clearFieldError("confirm_pin");
+                      }}
+                      error={fieldErrors.confirm_pin}
+                    />
                   </>
                 )}
               </div>
