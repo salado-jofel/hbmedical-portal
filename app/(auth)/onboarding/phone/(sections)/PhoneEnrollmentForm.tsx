@@ -7,6 +7,7 @@ import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MeridianLogo } from "@/app/(components)/MeridianLogo";
+import { PhoneInputField } from "@/app/(components)/PhoneInputField";
 import { signOut } from "@/app/(dashboard)/dashboard/(services)/actions";
 import {
   startPhoneEnrollment,
@@ -89,7 +90,7 @@ export function PhoneEnrollmentForm() {
             </h2>
             <p className="mt-1 text-sm text-[#64748B]">
               {phase === "phone"
-                ? "We'll text you a 6-digit code each time you sign in. Enter your phone in international format, e.g. +639310259241 or +14155551234."
+                ? "We'll text you a 6-digit code each time you sign in. Pick your country and enter your mobile number below."
                 : `Enter the code we just sent to ${verifiedPhone}.`}
             </p>
           </div>
@@ -97,35 +98,16 @@ export function PhoneEnrollmentForm() {
 
         {phase === "phone" ? (
           <div className="space-y-4">
-            <div>
-              <label className="text-[10px] font-semibold uppercase tracking-[0.6px] text-[var(--text3)]">
-                Phone number
-              </label>
-              <div className="mt-1 flex items-center gap-2">
-                <Phone className="h-4 w-4 text-[var(--text3)]" />
-                <Input
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  inputMode="tel"
-                  autoComplete="tel"
-                  placeholder="+639310259241"
-                  autoFocus
-                  className="font-mono"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && phone.length >= 8 && !isPending) {
-                      handleSendCode();
-                    }
-                  }}
-                />
-              </div>
-              <p className="mt-1 text-[11px] text-[var(--text3)]">
-                Must start with + and country code (E.164 format).
-              </p>
-            </div>
+            <PhoneInputField
+              value={phone}
+              onChange={(p) => setPhone(p)}
+              label="Phone number"
+              required
+            />
 
             <Button
               onClick={handleSendCode}
-              disabled={phone.length < 8 || isPending}
+              disabled={phone.replace(/\D/g, "").length < 8 || isPending}
               className="h-9 w-full bg-[var(--navy)] font-medium text-white hover:bg-[var(--navy)]/90 disabled:opacity-50"
             >
               {isPending ? "Sending…" : "Send verification code"}
