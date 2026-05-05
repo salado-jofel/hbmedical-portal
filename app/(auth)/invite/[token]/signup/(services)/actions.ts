@@ -80,6 +80,13 @@ export async function inviteSignUp(
 
     if (!firstName || !lastName) return { error: "Name is required." };
     if (!email) return { error: "Email is required." };
+    // Phone is required for every workforce role on this invite path because
+    // they all use SMS MFA. Without a verified-shaped E.164 here the user
+    // would just bounce to /onboarding/phone after activation — fail fast
+    // instead so the signup is fully complete before they leave the form.
+    if (!phone || !/^\+[1-9][0-9]{7,14}$/.test(phone)) {
+      return { error: "A valid phone number is required." };
+    }
     if (!password || password.length < 8)
       return { error: "Password must be at least 8 characters." };
     if (!agreed) return { error: "You must accept the terms to continue." };
