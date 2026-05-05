@@ -86,6 +86,19 @@ export async function updateProfile(
 
     const phoneValue = parsed.data.phone || null; // "" → null (clears phone)
 
+    // Defense-in-depth: phone is an MFA credential. If it changes here we
+    // also clear phone_verified_at so the SMS-MFA gate forces a fresh
+    // /onboarding/phone enrollment on the user's next request. Without this,
+    // someone with a live session could swap the number in Profile and the
+    // next sign-in's SMS would silently route to the new number — a SIM-swap
+    // analogue. Compare against the existing row to detect a real change.
+    const { data: existing } = await supabase
+      .from("profiles")
+      .select("phone")
+      .eq("id", user.id)
+      .maybeSingle();
+    const phoneChanged = (existing?.phone ?? null) !== phoneValue;
+
     // 1. Update profiles table (canonical source of truth, RLS scoped to own row)
     const { error: profileError } = await supabase
       .from("profiles")
@@ -93,6 +106,7 @@ export async function updateProfile(
         first_name: parsed.data.first_name,
         last_name:  parsed.data.last_name,
         phone:      phoneValue,
+        ...(phoneChanged ? { phone_verified_at: null } : {}),
       })
       .eq("id", user.id);
 

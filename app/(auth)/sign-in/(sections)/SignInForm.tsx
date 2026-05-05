@@ -47,6 +47,9 @@ export default function SignInForm() {
   const successMessage = searchParams.get("message") === "password_updated"
     ? "Password updated successfully. Please sign in."
     : null;
+  // Set by middleware after it signs out a user whose profile was just
+  // marked inactive. Shows a clear notice instead of a silent logout.
+  const wasDeactivated = searchParams.get("deactivated") === "1";
 
   return (
     <div className="bg-white rounded-2xl shadow-[0_8px_40px_rgba(0,0,0,0.1)] border border-[#E2E8F0] p-8 w-full max-w-md select-none">
@@ -94,6 +97,12 @@ export default function SignInForm() {
           {successMessage && (
             <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-100 text-emerald-700 text-xs font-medium animate-in fade-in zoom-in-95">
               {successMessage}
+            </div>
+          )}
+          {wasDeactivated && (
+            <div className="p-3 rounded-lg bg-red-50 border border-red-100 text-red-700 text-xs font-medium animate-in fade-in zoom-in-95">
+              Your account has been deactivated. Contact your administrator if
+              you believe this is a mistake.
             </div>
           )}
         </div>

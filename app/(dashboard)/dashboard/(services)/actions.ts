@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import type { UserRole } from "@/utils/helpers/role";
 import { isSalesRep } from "@/utils/helpers/role";
 import type { UserData } from "@/utils/interfaces/users";
+import { revokeCurrentSmsMfaSession } from "@/lib/supabase/sms-mfa-session";
 
 export async function signOut() {
   const supabase = await createClient();
@@ -16,6 +17,10 @@ export async function signOut() {
   } = await supabase.auth.getUser();
 
   if (user) {
+    // Revoke SMS MFA cookie+row before signOut so sales reps can't reuse the
+    // session if they sign back in within the 12h window. No-op for roles
+    // that don't have an SMS session.
+    await revokeCurrentSmsMfaSession();
     await supabase.auth.signOut();
   }
 

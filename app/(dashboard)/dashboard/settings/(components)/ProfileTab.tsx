@@ -1,12 +1,11 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Smartphone, ShieldCheck } from "lucide-react";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { PhoneInputField } from "@/app/(components)/PhoneInputField";
 import { updateProfile } from "@/app/(dashboard)/dashboard/settings/(services)/actions";
 import { ROLE_LABELS } from "@/utils/helpers/role";
 import { ChangePasswordForm } from "./ChangePasswordForm";
@@ -21,7 +20,6 @@ interface ProfileTabProps {
 
 export function ProfileTab({ profile, clinic = null }: ProfileTabProps) {
   /* ── Profile form ── */
-  const [phone, setPhone] = useState(profile.phone ?? "");
   const [profileState, profileAction, isProfilePending] = useActionState<
     IProfileFormState | null,
     FormData
@@ -90,17 +88,35 @@ export function ProfileTab({ profile, clinic = null }: ProfileTabProps) {
           </p>
         </div>
 
-        {/* Phone */}
-        <PhoneInputField
-          value={phone}
-          onChange={(val) => setPhone(val)}
-          label="Phone"
-          theme="light"
-          error={profileState?.fieldErrors?.phone}
-        />
-        {/* Only submit phone if it's a real number (more than just a country code) */}
-        {phone && phone.length > 4 && (
-          <input type="hidden" name="phone" value={phone} />
+        {/* Phone — display-only. The phone is an MFA credential; changing it
+            requires a fresh SMS verification, so all edits go through the
+            Security tab → "Update phone" flow. The hidden input below
+            preserves the existing value on submit so updateProfile doesn't
+            blank it. */}
+        <div className="space-y-1.5">
+          <Label className="text-xs">Phone</Label>
+          <div className="flex items-center justify-between gap-3 h-9 px-3 rounded-md bg-[var(--bg)] border border-[var(--border)]">
+            <span className="flex items-center gap-2 text-sm text-[var(--text2)] min-w-0">
+              <Smartphone className="w-3.5 h-3.5 shrink-0 text-[var(--text3)]" />
+              <span className="font-mono truncate">
+                {profile.phone || "Not set"}
+              </span>
+            </span>
+            {profile.phone && (
+              <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700">
+                <ShieldCheck className="w-3 h-3" />
+                Verified
+              </span>
+            )}
+          </div>
+          <p className="text-[11px] text-[var(--text3)]">
+            To change your phone, go to the{" "}
+            <span className="font-medium text-[var(--navy)]">Security</span>{" "}
+            tab — we&apos;ll text a code to confirm the new number.
+          </p>
+        </div>
+        {profile.phone && (
+          <input type="hidden" name="phone" value={profile.phone} />
         )}
 
         {profileState?.error && (
