@@ -76,12 +76,14 @@ import {
   setOrderPaymentMethod,
 } from "../(services)/order-payment-actions";
 import {
-  uploadOrderDocument,
+  prepareOrderDocumentUpload,
+  completeOrderDocumentUpload,
   deleteOrderDocument,
   getDocumentSignedUrl,
   getForm1500,
   triggerDocumentExtraction,
 } from "../(services)/order-document-actions";
+import { compressImage } from "@/utils/helpers/compress-image";
 import {
   sendOrderMessage,
   markMessagesAsRead,
@@ -986,40 +988,81 @@ export function OrderDetailModal({
     }
   }
 
-  async function handleUploadDoc(file: File, docType: string) {
-    const fd = new FormData();
-    fd.set("file", file);
-    const result = await uploadOrderDocument(
-      order.id,
-      docType as DocumentType,
-      fd,
-    );
-    if (result.success && result.document) {
-      setDocuments((prev) => [result.document!, ...prev]);
-      toast.success("Document uploaded.");
-      // Start AI polling and explicitly trigger extraction for extractable doc types.
-      // Manual-input orders never receive AI extraction — skip both the spinner and the trigger.
-      // (auto-trigger was removed from uploadOrderDocument to prevent races on new orders)
-      if (["facesheet", "clinical_docs"].includes(docType) && !order.manual_input) {
-        setAiStatus("processing");
-        pollCompletedRef.current = false;
-        beginPolling();
-        triggerDocumentExtraction(
-          order.id,
-          docType,
-          result.document.filePath,
-        ).catch((err) => console.error("[handleUploadDoc] AI trigger:", err));
-      }
-      if (docType === "wound_pictures") {
-        const { url } = await getDocumentSignedUrl(result.document.filePath);
-        if (url)
-          setWoundPhotoUrls((prev) => ({
-            ...prev,
-            [result.document!.id]: url,
-          }));
-      }
-    } else {
+  async function handleUploadDoc(rawFile: File, docType: string) {
+    // Bytes go BROWSER → SUPABASE STORAGE directly via signed-upload URL,
+    // bypassing Vercel's 4.5 MB serverless request body cap that broke
+    // phone-camera facesheet/valid_id uploads in production. The server
+    // action only signs the URL + records the row; the actual bytes never
+    // touch a Server Action.
+    //
+    // Images are compressed client-side first (~1600 px / JPEG 0.85);
+    // PDFs pass through unchanged.
+    const file = await compressImage(rawFile);
+
+    const prepared = await prepareOrderDocumentUpload({
+      orderId: order.id,
+      documentType: docType as DocumentType,
+      fileName: file.name,
+      mimeType: file.type,
+      size: file.size,
+    });
+    if (
+      !prepared.success ||
+      !prepared.bucket ||
+      !prepared.filePath ||
+      !prepared.uploadToken
+    ) {
+      toast.error(prepared.error ?? "Upload failed.");
+      return;
+    }
+
+    const supabase = createClient();
+    const { error: uploadErr } = await supabase.storage
+      .from(prepared.bucket)
+      .uploadToSignedUrl(prepared.filePath, prepared.uploadToken, file, {
+        contentType: file.type,
+      });
+    if (uploadErr) {
+      console.error("[handleUploadDoc] storage upload:", uploadErr);
+      toast.error(uploadErr.message || "Upload failed.");
+      return;
+    }
+
+    const result = await completeOrderDocumentUpload({
+      orderId: order.id,
+      documentType: docType as DocumentType,
+      bucket: prepared.bucket,
+      filePath: prepared.filePath,
+      fileName: file.name,
+      mimeType: file.type,
+      fileSize: file.size,
+    });
+    if (!result.success || !result.document) {
       toast.error(result.error ?? "Upload failed.");
+      return;
+    }
+
+    setDocuments((prev) => [result.document!, ...prev]);
+    toast.success("Document uploaded.");
+    // Start AI polling and explicitly trigger extraction for extractable doc types.
+    // Manual-input orders never receive AI extraction — skip both the spinner and the trigger.
+    if (["facesheet", "clinical_docs"].includes(docType) && !order.manual_input) {
+      setAiStatus("processing");
+      pollCompletedRef.current = false;
+      beginPolling();
+      triggerDocumentExtraction(
+        order.id,
+        docType,
+        result.document.filePath,
+      ).catch((err) => console.error("[handleUploadDoc] AI trigger:", err));
+    }
+    if (docType === "wound_pictures") {
+      const { url } = await getDocumentSignedUrl(result.document.filePath);
+      if (url)
+        setWoundPhotoUrls((prev) => ({
+          ...prev,
+          [result.document!.id]: url,
+        }));
     }
   }
 
