@@ -298,22 +298,57 @@ export async function stampContractPdf({
  *  widgets) at the dict level so pdf-lib's form.flatten() doesn't choke on
  *  their missing /AP streams. */
 function removeSignatureFields(pdf: PDFDocument): void {
+  // Strip three classes of fields that all break pdf-lib's flatten() with
+  // "Unexpected N type: undefined":
+  //   1. Field constructor === PDFSignature (DocuSign envelope artifact).
+  //   2. Field with /FT = /Sig that pdf-lib didn't classify as PDFSignature
+  //      (different generators / pdf-lib versions).
+  //   3. Any field whose widget has missing/null /AP (appearance stream).
+  //      Genspark-converted templates ship widgets with this shape that
+  //      flatten can't render. None of these widgets serve our pipeline —
+  //      we draw signatures via drawImage on the page directly.
   const form = pdf.getForm();
-  const sigs = form.getFields().filter((f) => f.constructor.name === "PDFSignature");
-  if (sigs.length === 0) return;
-  const sigFieldRefs = new Set<PDFRef>();
-  const sigWidgetDicts = new Set<PDFDict>();
-  for (const sig of sigs) {
-    sigFieldRefs.add(sig.ref);
-    for (const w of sig.acroField.getWidgets()) sigWidgetDicts.add(w.dict);
+  const refsToRemove = new Set<PDFRef>();
+  const widgetDictsToRemove = new Set<PDFDict>();
+
+  for (const field of form.getFields()) {
+    const isPdfSig = field.constructor.name === "PDFSignature";
+
+    let isFtSig = false;
+    try {
+      const ftEntry = field.acroField.dict.get(PDFName.of("FT"));
+      if (ftEntry instanceof PDFName && ftEntry.toString() === "/Sig") {
+        isFtSig = true;
+      }
+    } catch {
+      /* ignore */
+    }
+
+    const widgets = field.acroField.getWidgets();
+    let hasAppearanceLessWidget = false;
+    for (const w of widgets) {
+      const ap = w.dict.get(PDFName.of("AP"));
+      if (!ap || !pdf.context.lookup(ap)) {
+        hasAppearanceLessWidget = true;
+        break;
+      }
+    }
+
+    if (!(isPdfSig || isFtSig || hasAppearanceLessWidget)) continue;
+
+    refsToRemove.add(field.ref);
+    for (const w of widgets) widgetDictsToRemove.add(w.dict);
   }
+
+  if (refsToRemove.size === 0) return;
+
   for (const page of pdf.getPages()) {
     const annots = page.node.Annots();
     if (!annots) continue;
     for (let i = annots.size() - 1; i >= 0; i--) {
       try {
         const r = pdf.context.lookup(annots.get(i));
-        if (r instanceof PDFDict && sigWidgetDicts.has(r)) annots.remove(i);
+        if (r instanceof PDFDict && widgetDictsToRemove.has(r)) annots.remove(i);
       } catch {
         /* ignore */
       }
@@ -329,7 +364,7 @@ function removeSignatureFields(pdf: PDFDocument): void {
   if (!(fa instanceof PDFArray)) return;
   for (let i = fa.size() - 1; i >= 0; i--) {
     const e = fa.get(i);
-    if (e instanceof PDFRef && sigFieldRefs.has(e)) fa.remove(i);
+    if (e instanceof PDFRef && refsToRemove.has(e)) fa.remove(i);
   }
 }
 
