@@ -1,5 +1,6 @@
 "use server";
 
+import crypto from "node:crypto";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import type { InviteSignUpState } from "@/utils/interfaces/invite";
@@ -588,7 +589,21 @@ export async function getContractSignedUrls(token: string): Promise<{
         meridianDate: today,
         // client omitted — leaves CLIENT block blank for the user to sign
       });
-      const previewPath = previewContractPath(token, contractType);
+      // Cache-bust the storage path with a content hash. Supabase's CDN
+      // serves stale bytes on upsert-overwrites, so we route each new
+      // template/stamper version to a fresh path. Same template = same
+      // hash = CDN hit. Bake script changes the bytes → new hash → fresh
+      // upload that bypasses the cache entirely. Hash trims to 8 chars —
+      // billions of variants before a collision matters.
+      const hash = crypto
+        .createHash("sha256")
+        .update(stamped)
+        .digest("hex")
+        .slice(0, 8);
+      const previewPath = previewContractPath(token, contractType).replace(
+        /\.pdf$/,
+        `.${hash}.pdf`,
+      );
       const { error: uploadErr } = await adminClient.storage
         .from(BUCKET)
         .upload(previewPath, stamped, {
