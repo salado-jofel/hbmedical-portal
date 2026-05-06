@@ -183,17 +183,62 @@ function stampAndStripRadios(pdf: PDFDocument): void {
  */
 function removeSignatureFields(pdf: PDFDocument): number {
   const form = pdf.getForm();
-  const sigs = form.getFields().filter((f) => f.constructor.name === "PDFSignature");
-  if (sigs.length === 0) return 0;
+  const fields = form.getFields();
 
-  const sigFieldRefs = new Set<PDFRef>();
-  const sigWidgetDicts = new Set<PDFDict>();
-  for (const sig of sigs) {
-    sigFieldRefs.add(sig.ref);
-    for (const w of sig.acroField.getWidgets()) {
-      sigWidgetDicts.add(w.dict);
+  // Two strip criteria — both contribute to the "Unexpected N type: undefined"
+  // pdf-lib bug at flatten time:
+  //   1. Field constructor === PDFSignature (DocuSign envelope artifact +
+  //      any other native signature field type).
+  //   2. Field has /FT = /Sig in the dict but pdf-lib didn't classify it as
+  //      PDFSignature (different version of pdf-lib / weird PDF generators).
+  //   3. Any widget whose /AP (appearance stream) is missing or null —
+  //      flatten can't render an absent appearance and throws. The named
+  //      DocuSign strip above used to catch all of these in practice, but
+  //      Genspark-converted AcroForm PDFs in production carry signature-like
+  //      widgets with the same /AP-less shape that aren't named DocuSign.
+  //      Stripping them is safe: nothing in our pipeline uses these widgets
+  //      to render anything (we draw signatures via drawImage on the page).
+  const refsToRemove = new Set<PDFRef>();
+  const widgetDictsToRemove = new Set<PDFDict>();
+
+  for (const field of fields) {
+    const isPdfSig = field.constructor.name === "PDFSignature";
+
+    let isFtSig = false;
+    try {
+      const ftEntry = field.acroField.dict.get(PDFName.of("FT"));
+      if (ftEntry instanceof PDFName && ftEntry.toString() === "/Sig") {
+        isFtSig = true;
+      }
+    } catch {
+      /* ignore */
     }
+
+    const widgets = field.acroField.getWidgets();
+    let hasAppearanceLessWidget = false;
+    for (const w of widgets) {
+      const ap = w.dict.get(PDFName.of("AP"));
+      // Treat as "no appearance" if the AP entry is missing entirely OR if
+      // it's present but empty — both forms cause flatten to choke.
+      if (!ap) {
+        hasAppearanceLessWidget = true;
+        break;
+      }
+      const apResolved = pdf.context.lookup(ap);
+      if (!apResolved) {
+        hasAppearanceLessWidget = true;
+        break;
+      }
+    }
+
+    const shouldRemove = isPdfSig || isFtSig || hasAppearanceLessWidget;
+    if (!shouldRemove) continue;
+
+    refsToRemove.add(field.ref);
+    for (const w of widgets) widgetDictsToRemove.add(w.dict);
   }
+
+  if (refsToRemove.size === 0) return 0;
 
   for (const page of pdf.getPages()) {
     const annots = page.node.Annots();
@@ -202,7 +247,7 @@ function removeSignatureFields(pdf: PDFDocument): number {
       const entry = annots.get(i);
       try {
         const resolved = pdf.context.lookup(entry);
-        if (resolved instanceof PDFDict && sigWidgetDicts.has(resolved)) {
+        if (resolved instanceof PDFDict && widgetDictsToRemove.has(resolved)) {
           annots.remove(i);
         }
       } catch {
@@ -221,7 +266,7 @@ function removeSignatureFields(pdf: PDFDocument): number {
         if (fieldsArray instanceof PDFArray) {
           for (let i = fieldsArray.size() - 1; i >= 0; i--) {
             const entry = fieldsArray.get(i);
-            if (entry instanceof PDFRef && sigFieldRefs.has(entry)) {
+            if (entry instanceof PDFRef && refsToRemove.has(entry)) {
               fieldsArray.remove(i);
             }
           }
@@ -230,7 +275,7 @@ function removeSignatureFields(pdf: PDFDocument): number {
     }
   }
 
-  return sigs.length;
+  return refsToRemove.size;
 }
 
 /**
