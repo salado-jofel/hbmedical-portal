@@ -442,6 +442,16 @@ export async function saveOrderForm(
     attest_conservative_tx_inadequate?: boolean;
     attest_freq_qty_clinical_judgment?: boolean;
     attest_lcd_supported?: boolean;
+    surgical_qualifying_basis?: string | null;
+    debridement_date?: string | null;
+    date_of_surgery?: string | null;
+    cpt_codes?: string | null;
+    procedure_name?: string | null;
+    surgeon_name?: string | null;
+    within_global_period?: boolean | null;
+    attest_not_routine_care?: boolean;
+    attest_wound_measured_at_surgery?: boolean;
+    dressing_change_frequency?: string | null;
     office_tracking?: Record<string, unknown>;
   },
   ifMatchUpdatedAt?: string | null,

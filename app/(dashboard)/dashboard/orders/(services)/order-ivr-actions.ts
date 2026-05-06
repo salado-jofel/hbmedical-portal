@@ -408,6 +408,10 @@ function mapFortifyFields(
   | "physicianNpi" | "attestExaminedPatient" | "attestMedicallyNecessary"
   | "attestConservativeTxInadequate" | "attestFreqQtyClinicalJudgment"
   | "attestLcdSupported"
+  | "surgicalQualifyingBasis" | "debridementDate" | "dateOfSurgery"
+  | "cptCodes" | "procedureName" | "surgeonName" | "withinGlobalPeriod"
+  | "attestNotRoutineCare" | "attestWoundMeasuredAtSurgery"
+  | "dressingChangeFrequency"
   | "officeTracking"
 > {
   const priorRaw = Array.isArray(form.prior_treatments)
@@ -487,6 +491,16 @@ function mapFortifyFields(
     attestConservativeTxInadequate:  (form.attest_conservative_tx_inadequate as boolean | null) ?? false,
     attestFreqQtyClinicalJudgment:   (form.attest_freq_qty_clinical_judgment as boolean | null) ?? false,
     attestLcdSupported:              (form.attest_lcd_supported as boolean | null) ?? false,
+    surgicalQualifyingBasis:        (form.surgical_qualifying_basis as IOrderForm["surgicalQualifyingBasis"]) ?? null,
+    debridementDate:                (form.debridement_date as string | null) ?? null,
+    dateOfSurgery:                  (form.date_of_surgery as string | null) ?? null,
+    cptCodes:                       (form.cpt_codes as string | null) ?? null,
+    procedureName:                  (form.procedure_name as string | null) ?? null,
+    surgeonName:                    (form.surgeon_name as string | null) ?? null,
+    withinGlobalPeriod:             (form.within_global_period as boolean | null) ?? null,
+    attestNotRoutineCare:           (form.attest_not_routine_care as boolean | null) ?? false,
+    attestWoundMeasuredAtSurgery:   (form.attest_wound_measured_at_surgery as boolean | null) ?? false,
+    dressingChangeFrequency:        (form.dressing_change_frequency as IOrderForm["dressingChangeFrequency"]) ?? null,
     officeTracking: {
       methodOfReceipt:          (ot.method_of_receipt as string | null) ?? null,
       baaInPlace:               (ot.baa_in_place as boolean | null) ?? null,

@@ -177,6 +177,20 @@ const ORDER_FORM_ALLOWED_FIELDS = new Set([
   "pos_eligible",
   "coverage_concerns",
   "physician_npi",
+  /* ── Post-surgical fields (added 2026-05-07) ──
+     Only displayed/required when orders.wound_type = 'post_surgical'.
+     Chronic orders leave these NULL — the AI prompt is instructed to
+     only populate them on post-surgical extractions. */
+  "surgical_qualifying_basis",
+  "debridement_date",
+  "date_of_surgery",
+  "cpt_codes",
+  "procedure_name",
+  "surgeon_name",
+  "within_global_period",
+  "attest_not_routine_care",
+  "attest_wound_measured_at_surgery",
+  "dressing_change_frequency",
 ]);
 
 const ORDER_FORM_FIELD_ALIASES: Record<string, string> = {
@@ -528,7 +542,8 @@ async function generateAllPdfsInParallel(orderId: string): Promise<void> {
 
 /* ── Combined prompt ── */
 
-function buildCombinedPrompt(): string {
+function buildCombinedPrompt(woundType: string | null): string {
+  const isPostSurgical = woundType === "post_surgical";
   return `You are a medical data extraction specialist.
 You have received TWO medical documents:
 - Document 1 is the PATIENT FACESHEET — extract patient demographics and insurance data.
@@ -665,7 +680,18 @@ Use false for boolean fields not mentioned. No text outside the JSON.
   "kx_criteria_met": "yes" | "no" | "na" | null,
   "pos_eligible": boolean | null,
   "coverage_concerns": string | null,
-  "physician_npi": string | null
+  "physician_npi": string | null,
+
+  "surgical_qualifying_basis": "surgically_created" | "debrided" | "stage_3_4_pu" | "other_full_thickness" | null,
+  "debridement_date": "YYYY-MM-DD" | null,
+  "date_of_surgery": "YYYY-MM-DD" | null,
+  "cpt_codes": string | null,
+  "procedure_name": string | null,
+  "surgeon_name": string | null,
+  "within_global_period": boolean | null,
+  "attest_not_routine_care": boolean,
+  "attest_wound_measured_at_surgery": boolean,
+  "dressing_change_frequency": "daily" | "every_other_day" | "every_3_days" | "weekly" | "as_needed" | null
 }
 
 FACESHEET fields (patient_last_name … secondary_subscriber_relationship):
@@ -700,7 +726,40 @@ FORTIFY EXTENSION fields (patient_mrn … physician_npi):
 - "goal_of_therapy" — pick from the enum if a treatment goal is stated; otherwise null.
 - "lcd_reference", coverage flags, "physician_npi" — only set if explicitly present in the docs.
 - DO NOT extract or infer any "attest_*" fields. Those are physician attestations and must be checked manually in-app.
-- DO NOT extract any "office_tracking" fields. Those are admin-only fields filled after the order is received.`.trim();
+- DO NOT extract any "office_tracking" fields. Those are admin-only fields filled after the order is received.
+
+POST-SURGICAL fields (surgical_qualifying_basis … dressing_change_frequency):
+- "surgical_qualifying_basis" — Medicare Surgical Dressings benefit qualifying basis. One of:
+  - "surgically_created" (surgically created/modified wound),
+  - "debrided" (wound was debrided — also set debridement_date),
+  - "stage_3_4_pu" (Stage 3 or 4 pressure ulcer),
+  - "other_full_thickness".
+  Null if not surgical.
+- "debridement_date" — Date of most recent debridement (YYYY-MM-DD). Only set when basis = "debrided".
+- "date_of_surgery" — Date of surgical procedure (YYYY-MM-DD).
+- "cpt_codes" — CPT code(s) of the surgical procedure, comma-separated (e.g. "27447, 11042").
+- "procedure_name" — Name/description of the surgical procedure.
+- "surgeon_name" — Surgeon name if different from the prescribing practitioner.
+- "within_global_period" — true if the patient is within the Medicare surgical global period (typically 90 days post-op for major procedures).
+- "attest_not_routine_care" — true ONLY if the document explicitly states the dressing is for wound healing by secondary intention OR a complication outside routine post-op care. Default false.
+- "attest_wound_measured_at_surgery" — true ONLY if the document explicitly states the wound was measured and documented at the time of surgery. Default false.
+- "dressing_change_frequency" — How often the dressing should be changed. One of: "daily", "every_other_day", "every_3_days", "weekly", "as_needed". Null if not stated.
+
+WOUND-TYPE-SPECIFIC INSTRUCTIONS:
+The order being extracted has wound_type = ${JSON.stringify(woundType)}.
+
+${
+  isPostSurgical
+    ? `Because wound_type === "post_surgical":
+- Focus on the surgical fields (date_of_surgery, cpt_codes, procedure_name, surgeon_name, within_global_period, surgical_qualifying_basis, debridement_date, dressing_change_frequency).
+- DO NOT extract wound dimensions — set wound_length_cm, wound_width_cm, wound_depth_cm, wound2_length_cm, wound2_width_cm, wound2_depth_cm, granulation_tissue_pct, wound_bed_slough_pct, wound_bed_eschar_pct, pain_level to null. Set wound_photo_taken to false. Those fields are NOT displayed on post-surgical orders.
+- DO NOT extract wound onset date/duration — set wound_onset_date and wound_duration_text to null.
+- For attest_not_routine_care and attest_wound_measured_at_surgery: only set true if the source doc EXPLICITLY says so. Default false otherwise.`
+    : `Because wound_type !== "post_surgical" (chronic etc.):
+- Extract all wound-bed and dimension fields as before (wound_length_cm, wound_width_cm, wound_depth_cm, wound2_*, granulation_tissue_pct, wound_bed_slough_pct, wound_bed_eschar_pct, pain_level, wound_photo_taken, wound_onset_date, wound_duration_text).
+- Surgical-specific fields (surgical_qualifying_basis, debridement_date, date_of_surgery, cpt_codes, procedure_name, surgeon_name, within_global_period, dressing_change_frequency) should be left null unless the doc clearly mentions them.
+- Leave attest_not_routine_care and attest_wound_measured_at_surgery as false (they apply to post-surgical orders only).`
+}`.trim();
 }
 
 /* ── Combined extraction handler ── */
@@ -875,7 +934,12 @@ async function handleCombinedExtraction(
       mediaType: clinicalFile.mimeType as "application/pdf" | "image/png" | "image/jpeg" | "image/heic",
     });
   }
-  contentBlocks.push({ type: "text", text: buildCombinedPrompt() });
+  contentBlocks.push({
+    type: "text",
+    text: buildCombinedPrompt(
+      (orderCtx as { wound_type?: string | null }).wound_type ?? null,
+    ),
+  });
 
   const { text } = await generateText({
     model: aiModel("claude-haiku-4-5-20251001"),
@@ -1333,7 +1397,9 @@ export async function POST(req: NextRequest) {
     const prompt =
       documentType === "facesheet"
         ? buildFacesheetPrompt(orderFormCtx)
-        : CLINICAL_DOCS_PROMPT;
+        : buildClinicalDocsPrompt(
+            (orderCtx as { wound_type?: string | null }).wound_type ?? null,
+          );
 
     const { text } = await generateText({
       model: aiModel("claude-haiku-4-5-20251001"),
@@ -1715,7 +1781,9 @@ IMPORTANT:
   is provided above — do not invent codes from the facesheet alone.`.trim();
 }
 
-const CLINICAL_DOCS_PROMPT = `
+function buildClinicalDocsPrompt(woundType: string | null): string {
+  const isPostSurgical = woundType === "post_surgical";
+  return `
 You are a medical data extraction specialist.
 Extract clinical information from this doctor's note, wound assessment, or clinical documentation.
 
@@ -1819,7 +1887,18 @@ No text outside the JSON.
   "kx_criteria_met": "yes" | "no" | "na" | null,
   "pos_eligible": boolean | null,
   "coverage_concerns": string | null,
-  "physician_npi": string | null
+  "physician_npi": string | null,
+
+  "surgical_qualifying_basis": "surgically_created" | "debrided" | "stage_3_4_pu" | "other_full_thickness" | null,
+  "debridement_date": "YYYY-MM-DD" | null,
+  "date_of_surgery": "YYYY-MM-DD" | null,
+  "cpt_codes": string | null,
+  "procedure_name": string | null,
+  "surgeon_name": string | null,
+  "within_global_period": boolean | null,
+  "attest_not_routine_care": boolean,
+  "attest_wound_measured_at_surgery": boolean,
+  "dressing_change_frequency": "daily" | "every_other_day" | "every_3_days" | "weekly" | "as_needed" | null
 }
 
 CRITICAL: Use the EXACT field names above including all underscores. For example:
@@ -1841,4 +1920,38 @@ Field guidance:
 - skin_condition: condition of the periwound/surrounding skin
 - wound2_* fields: measurements for a second wound only if a second wound is documented
 - treatment_plan: full treatment plan including dressing type, frequency, and wound care orders
+
+POST-SURGICAL fields (surgical_qualifying_basis … dressing_change_frequency):
+- "surgical_qualifying_basis" — Medicare Surgical Dressings benefit qualifying basis. One of:
+  - "surgically_created" (surgically created/modified wound),
+  - "debrided" (wound was debrided — also set debridement_date),
+  - "stage_3_4_pu" (Stage 3 or 4 pressure ulcer),
+  - "other_full_thickness".
+  Null if not surgical.
+- "debridement_date" — Date of most recent debridement (YYYY-MM-DD). Only set when basis = "debrided".
+- "date_of_surgery" — Date of surgical procedure (YYYY-MM-DD).
+- "cpt_codes" — CPT code(s) of the surgical procedure, comma-separated (e.g. "27447, 11042").
+- "procedure_name" — Name/description of the surgical procedure.
+- "surgeon_name" — Surgeon name if different from the prescribing practitioner.
+- "within_global_period" — true if the patient is within the Medicare surgical global period (typically 90 days post-op for major procedures).
+- "attest_not_routine_care" — true ONLY if the document explicitly states the dressing is for wound healing by secondary intention OR a complication outside routine post-op care. Default false.
+- "attest_wound_measured_at_surgery" — true ONLY if the document explicitly states the wound was measured and documented at the time of surgery. Default false.
+- "dressing_change_frequency" — How often the dressing should be changed. One of: "daily", "every_other_day", "every_3_days", "weekly", "as_needed". Null if not stated.
+
+WOUND-TYPE-SPECIFIC INSTRUCTIONS:
+The order being extracted has wound_type = ${JSON.stringify(woundType)}.
+
+${
+  isPostSurgical
+    ? `Because wound_type === "post_surgical":
+- Focus on the surgical fields (date_of_surgery, cpt_codes, procedure_name, surgeon_name, within_global_period, surgical_qualifying_basis, debridement_date, dressing_change_frequency).
+- DO NOT extract wound dimensions — set wound_length_cm, wound_width_cm, wound_depth_cm, wound2_length_cm, wound2_width_cm, wound2_depth_cm, granulation_tissue_pct, wound_bed_slough_pct, wound_bed_eschar_pct, pain_level to null. Set wound_photo_taken to false. Those fields are NOT displayed on post-surgical orders.
+- DO NOT extract wound onset date/duration — set wound_onset_date and wound_duration_text to null.
+- For attest_not_routine_care and attest_wound_measured_at_surgery: only set true if the source doc EXPLICITLY says so. Default false otherwise.`
+    : `Because wound_type !== "post_surgical" (chronic etc.):
+- Extract all wound-bed and dimension fields as before (wound_length_cm, wound_width_cm, wound_depth_cm, wound2_*, granulation_tissue_pct, wound_bed_slough_pct, wound_bed_eschar_pct, pain_level, wound_photo_taken, wound_onset_date, wound_duration_text).
+- Surgical-specific fields (surgical_qualifying_basis, debridement_date, date_of_surgery, cpt_codes, procedure_name, surgeon_name, within_global_period, dressing_change_frequency) should be left null unless the doc clearly mentions them.
+- Leave attest_not_routine_care and attest_wound_measured_at_surgery as false (they apply to post-surgical orders only).`
+}
 `.trim();
+}
