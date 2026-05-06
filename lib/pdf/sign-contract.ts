@@ -17,7 +17,9 @@ import {
  *  contract has its own layout.
  *
  *  pdf-lib origin is bottom-left. All coordinates are in PDF points.
- *  Both contract PDFs are A4 (596 × 842).
+ *  BAA is A4 (596 × 842). PSA was redesigned 2026-05-06 → US Letter
+ *  (612 × 792); page 3 signature block at y=346 (Signature row) /
+ *  y=324 (Name) / y=302 (Title) / y=280 (Date).
  * ──────────────────────────────────────────────────────────────────────── */
 
 export type ContractType = "baa" | "product_services";
@@ -97,22 +99,45 @@ const LAYOUTS: Record<ContractType, ContractLayout> = {
     rowYDate: 327,
     signatureLabelY: 301,
   },
-  // P&S: signature block on page 3. Labels at x=60 / 285.
+  // P&S (post-2026-05-06 redesign): signature block on page 3 of the new
+  // US-Letter (612×792) template. "Signature:" / "Name:" / "Title:" / "Date:"
+  // labels at x=72 (Meridian) / x=318 (Client). Values land just past the
+  // colon so they read inline with their labels.
   product_services: {
     pageNumber: 3,
-    meridianX: 95,
-    clientX: 320,
-    meridianSigX: 117,
-    clientSigX: 342,
-    rowYName: 170,
-    rowYTitle: 145,
-    rowYDate: 120,
-    signatureLabelY: 94,
+    meridianX: 132,
+    clientX: 378,
+    meridianSigX: 132,
+    clientSigX: 378,
+    rowYName: 324,
+    rowYTitle: 302,
+    rowYDate: 280,
+    signatureLabelY: 346,
   },
 };
 
 const VALUE_FONT_SIZE = 11;
 const VALUE_MAX_WIDTH = 210;
+
+/**
+ * PSA paragraph blank coordinates. Page 1 of the redesigned (2026-05-06)
+ * template is fully flattened — no AcroForm fields remain — so the stamper
+ * draws values onto the page directly. Coordinates derive from the original
+ * widget Rects in the Genspark file ([x.left, y.bottom, x.right, y.top]),
+ * with text baseline placed ~3pt above y.bottom so values sit on the
+ * underline drawn during bake.
+ */
+const PSA_PARAGRAPH_COORDS: Record<
+  keyof ContractParagraphFields,
+  { x: number; y: number; maxW: number }
+> = {
+  contract_date_full:            { x: 376, y: 623, maxW: 108 },
+  contract_date_year:            { x: 74,  y: 609, maxW: 54 },
+  client_legal_name:             { x: 74,  y: 581, maxW: 198 },
+  client_entity_type:            { x: 280, y: 581, maxW: 226 },
+  client_address_street:         { x: 187, y: 567, maxW: 238 },
+  client_address_city_state_zip: { x: 74,  y: 553, maxW: 218 },
+};
 const VALUE_COLOR = rgb(0.06, 0.18, 0.29);
 /** Signature image is sized to visually match the body text beside it. */
 const SIGNATURE_BOX_WIDTH = 110;
@@ -218,30 +243,51 @@ export async function stampContractPdf({
     });
   }
 
-  // ── Fill the 6 opening-paragraph AcroForm fields. Both BAA and PSA carry
-  //    the same shape now, so this branches purely on whether the caller
-  //    supplied values. ──
+  // ── Fill the 6 opening-paragraph blanks. The PSA template is pre-flattened
+  //    (no AcroForm fields remain — see bake-pienkos-into-templates.mjs) so
+  //    we draw values directly onto page 1 at PSA_PARAGRAPH_COORDS. The BAA
+  //    template still carries AcroForm fields and uses the historic setText
+  //    path; flatten is called after for the BAA only.
   if (paragraph) {
-    const form = pdf.getForm();
-    for (const [key, value] of Object.entries(paragraph)) {
-      if (!value) continue;
-      try {
-        const tf = form.getTextField(key);
-        tf.setText(value);
-        tf.updateAppearances(font);
-      } catch (err) {
-        console.error(`[stampContractPdf] setText failed for ${key}:`, err);
+    if (contractType === "product_services") {
+      const page1 = pages[0];
+      if (!page1) {
+        throw new Error("PSA missing page 1 for paragraph fill.");
       }
-    }
-    // Flatten so the output is non-editable in viewers. Safe here — the new
-    // paragraph fields are plain text widgets with /AP streams. The DocuSign
-    // envelope PDFSignature artifact is stripped first to avoid the familiar
-    // "Unexpected N type: undefined" flatten error.
-    try {
-      removeSignatureFields(pdf);
-      pdf.getForm().flatten();
-    } catch (err) {
-      console.error("[stampContractPdf] flatten failed:", err);
+      for (const [key, value] of Object.entries(paragraph)) {
+        if (!value) continue;
+        const coord = PSA_PARAGRAPH_COORDS[key as keyof ContractParagraphFields];
+        if (!coord) continue;
+        page1.drawText(value, {
+          x: coord.x,
+          y: coord.y,
+          size: VALUE_FONT_SIZE,
+          font,
+          color: VALUE_COLOR,
+          maxWidth: coord.maxW,
+        });
+      }
+    } else {
+      const form = pdf.getForm();
+      for (const [key, value] of Object.entries(paragraph)) {
+        if (!value) continue;
+        try {
+          const tf = form.getTextField(key);
+          tf.setText(value);
+          tf.updateAppearances(font);
+        } catch (err) {
+          console.error(`[stampContractPdf] setText failed for ${key}:`, err);
+        }
+      }
+      // Flatten BAA so the output is non-editable. Strip the DocuSign
+      // PDFSignature artifact first to avoid the "Unexpected N type:
+      // undefined" flatten error.
+      try {
+        removeSignatureFields(pdf);
+        pdf.getForm().flatten();
+      } catch (err) {
+        console.error("[stampContractPdf] flatten failed:", err);
+      }
     }
   }
 
