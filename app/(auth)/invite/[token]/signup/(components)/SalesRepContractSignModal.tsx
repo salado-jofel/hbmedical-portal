@@ -3,7 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { X, Loader2, Type, PenLine, Upload, Check, ChevronLeft, ChevronRight, Paperclip, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
-import { signSalesRepContract, uploadSalesRepContractAttachment } from "../(services)/actions";
+import {
+  signSalesRepContract,
+  prepareSalesRepContractAttachmentUpload,
+} from "../(services)/actions";
+import { createClient } from "@/lib/supabase/client";
+import { compressImage } from "@/utils/helpers/compress-image";
 import type {
   ContractDef,
   FieldDef,
@@ -330,25 +335,57 @@ export function SalesRepContractSignModal({ open, onClose, token, contract, defa
     // Especially relevant for the I-9 path which makes two sequential
     // server-action calls and runs pdf-lib's slowest code path.
     try {
-      // Upload any attachments first so we can pass their storage paths to the sign action
+      // Upload any attachments first so we can pass their storage paths to
+      // the sign action.
+      //
+      // Bytes go BROWSER → SUPABASE STORAGE directly (signed-upload URL
+      // pattern), bypassing Vercel's 4.5 MB serverless request body cap that
+      // broke phone-camera ID uploads in production. The server action only
+      // receives metadata + signs the URL.
+      //
+      // Image inputs (PNG/JPG) are compressed client-side first (~1600 px
+      // longest edge, JPEG 0.85). Typical phone-camera passport photo:
+      // 6 MB → ~400 KB, well within any limit and faster on mobile networks.
+      // PDFs pass through unchanged (can't compress losslessly client-side).
+      const supabase = createClient();
       const attachmentPaths: string[] = [];
-      for (const [slot, file] of Object.entries(files)) {
-        if (!file) continue;
-        const fd = new FormData();
-        fd.append("token", token);
-        fd.append("contractKey", contract.key);
-        fd.append("slot", slot);
-        fd.append("file", file);
-        const up = await withTimeout(
-          uploadSalesRepContractAttachment(fd),
-          60_000,
-          `Upload of ${slot} timed out — please try again.`,
+      for (const [slot, raw] of Object.entries(files)) {
+        if (!raw) continue;
+        const file = await compressImage(raw);
+
+        const prepared = await withTimeout(
+          prepareSalesRepContractAttachmentUpload({
+            token,
+            contractKey: contract.key,
+            slot,
+            fileName: file.name,
+            mimeType: file.type,
+            size: file.size,
+          }),
+          30_000,
+          `Preparing upload for ${slot} timed out — please try again.`,
         );
-        if (!up.success || !up.path) {
-          toast.error(up.error ?? `Failed to upload ${slot}`);
+        if (!prepared.success || !prepared.bucket || !prepared.filePath || !prepared.uploadToken) {
+          toast.error(prepared.error ?? `Failed to prepare ${slot}`);
           return;
         }
-        attachmentPaths.push(up.path);
+
+        const { error: uploadErr } = await withTimeout(
+          supabase.storage
+            .from(prepared.bucket)
+            .uploadToSignedUrl(prepared.filePath, prepared.uploadToken, file, {
+              contentType: file.type,
+            }),
+          120_000,
+          `Upload of ${slot} timed out — please try again.`,
+        );
+        if (uploadErr) {
+          console.error("[SalesRepContractSignModal] storage upload:", uploadErr);
+          toast.error(uploadErr.message || `Failed to upload ${slot}`);
+          return;
+        }
+
+        attachmentPaths.push(prepared.filePath);
       }
 
       const result = await withTimeout(
@@ -609,7 +646,10 @@ function FieldInput({
   }
 
   if (field.type === "file") {
-    const maxBytes = field.maxFileBytes ?? 5 * 1024 * 1024;
+    // Client cap is generous (25 MB) because compression handles oversized
+    // images later; PDFs that exceed this are realistically un-uploadable
+    // and warrant a friendly error rather than a silent server failure.
+    const maxBytes = field.maxFileBytes ?? 25 * 1024 * 1024;
     const handlePick = (e: React.ChangeEvent<HTMLInputElement>) => {
       const f = e.target.files?.[0] ?? null;
       if (!f) return onFileChange?.(null);
@@ -653,7 +693,7 @@ function FieldInput({
         ) : (
           <label className={`flex items-center gap-2 rounded-lg border border-dashed bg-[#F8FAFC] px-3 py-2 text-sm text-[#64748B] cursor-pointer transition-colors ${error ? "border-red-400 hover:border-red-500" : "border-[#E2E8F0] hover:border-[var(--navy)]/40"}`}>
             <Paperclip className="w-4 h-4" />
-            <span>Choose file (PDF, PNG, JPG — up to {((field.maxFileBytes ?? 5 * 1024 * 1024) / 1024 / 1024).toFixed(0)} MB)</span>
+            <span>Choose file (PDF, PNG, JPG — up to {((field.maxFileBytes ?? 25 * 1024 * 1024) / 1024 / 1024).toFixed(0)} MB)</span>
             <input
               type="file"
               accept={field.accept}

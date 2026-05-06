@@ -655,6 +655,39 @@ export interface IOrderForm {
   // ── Fortify expansion: Office tracking (admin-only, below Section 19) ──
   officeTracking: IOfficeTracking;
 
+  // ── Post-surgical Surgical/Wound Origin section ──
+  // All nullable so chronic orders simply leave them empty. Used only when
+  // order.wound_type === "post_surgical"; the form UI hides them otherwise.
+  /** Qualifying basis per Medicare Surgical Dressings benefit. */
+  surgicalQualifyingBasis:
+    | "surgically_created"
+    | "debrided"
+    | "stage_3_4_pu"
+    | "other_full_thickness"
+    | null;
+  /** Date of most recent debridement — only relevant when basis = "debrided". */
+  debridementDate: string | null;
+  dateOfSurgery: string | null;
+  cptCodes: string | null;
+  procedureName: string | null;
+  /** Surgeon name when different from the prescribing practitioner. */
+  surgeonName: string | null;
+  withinGlobalPeriod: boolean | null;
+  /** Attestation: dressing not routine incisional care (only required when
+   *  withinGlobalPeriod === true, per Medicare global-period rules). */
+  attestNotRoutineCare: boolean;
+  /** Per client comment: "wound was measured and documented at the time of
+   *  the surgery" — replaces capturing dimensions on the post-surgical form. */
+  attestWoundMeasuredAtSurgery: boolean;
+  /** Dressing change frequency. "Daily" is the default per client direction. */
+  dressingChangeFrequency:
+    | "daily"
+    | "every_other_day"
+    | "every_3_days"
+    | "weekly"
+    | "as_needed"
+    | null;
+
   // Meta
   aiExtracted: boolean;
   aiExtractedAt: string | null;

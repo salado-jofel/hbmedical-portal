@@ -20,7 +20,25 @@ import {
 import { safeLogError } from "@/lib/logging/safe-log";
 
 /* -------------------------------------------------------------------------- */
-/* uploadOrderDocument                                                        */
+/* Direct browser → Supabase order-document uploads                           */
+/*                                                                            */
+/* Bytes go BROWSER → SUPABASE STORAGE directly via signed-upload URL — never */
+/* through a Server Action. Vercel's 4.5 MB serverless request body cap broke */
+/* phone-camera uploads for facesheet/valid_id when the bytes flowed through  */
+/* a Server Action. The cap doesn't apply to direct Supabase uploads.         */
+/*                                                                            */
+/* Flow:                                                                      */
+/*   1. Client calls `prepareOrderDocumentUpload` with file metadata only     */
+/*      (no bytes). Server validates auth + mime + size, generates a path,    */
+/*      signs an upload URL.                                                  */
+/*   2. Client PUTs the file directly to Supabase via                         */
+/*      `supabase.storage.from(bucket).uploadToSignedUrl(...)`.               */
+/*   3. Client calls `completeOrderDocumentUpload` with the resulting path.   */
+/*      Server re-checks auth, verifies the bytes actually landed at the      */
+/*      claimed path + bucket, then inserts the order_documents row and      */
+/*      writes order history. AI extraction is triggered separately by the   */
+/*      caller (kept out of this path so the modal can decide based on doc   */
+/*      type / manual_input).                                                 */
 /* -------------------------------------------------------------------------- */
 
 /**
@@ -36,25 +54,54 @@ const MAX_DOCUMENT_SIZE_BYTES = MAX_DOCUMENT_SIZE_MB * 1024 * 1024;
 /** Document types that get fed into Claude for AI extraction. */
 const AI_EXTRACTED_DOCUMENT_TYPES = new Set(["facesheet", "clinical_docs"]);
 
-export async function uploadOrderDocument(
-  orderId: string,
-  documentType: string,
-  file: FormData,
-): Promise<{ success: boolean; error?: string; document?: IOrderDocument }> {
-  try {
-    const { userId } = await requireOrderAccess(orderId);
-    const adminClient = createAdminClient();
-    const user = { id: userId };
+/**
+ * Allowlist for upload mime types. Mirrors what the order modals' UploadZone
+ * accepts (PDF + JPG/PNG + HEIC). HEIC comes from iOS photo picker — Safari
+ * sets the mime type as `image/heic` or `image/heif` depending on version.
+ */
+const ALLOWED_DOCUMENT_MIMES = new Set([
+  "application/pdf",
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+  "image/heic",
+  "image/heif",
+]);
 
-    const fileEntry = file.get("file") as File | null;
-    if (!fileEntry) return { success: false, error: "No file provided." };
+export interface PrepareOrderDocumentUploadInput {
+  orderId: string;
+  documentType: string;
+  fileName: string;
+  mimeType: string;
+  size: number;
+}
+
+export interface PrepareOrderDocumentUploadResult {
+  success: boolean;
+  bucket?: string;
+  filePath?: string;
+  uploadToken?: string;
+  error?: string;
+}
+
+export async function prepareOrderDocumentUpload(
+  input: PrepareOrderDocumentUploadInput,
+): Promise<PrepareOrderDocumentUploadResult> {
+  try {
+    const { orderId, documentType, fileName, mimeType, size } = input;
+
+    if (!orderId || !documentType || !fileName || !mimeType) {
+      return { success: false, error: "Missing required upload fields." };
+    }
+
+    await requireOrderAccess(orderId);
 
     // Size guard — for AI-extracted document types this prevents the
     // catastrophic "AI extraction timed out" failure mode that comes from
     // sending Claude a giant PDF it'll either reject (>32MB) or take 90+
     // seconds to process (which exceeds the Vercel function timeout).
-    if (fileEntry.size > MAX_DOCUMENT_SIZE_BYTES) {
-      const sizeMB = (fileEntry.size / 1024 / 1024).toFixed(1);
+    if (size > MAX_DOCUMENT_SIZE_BYTES) {
+      const sizeMB = (size / 1024 / 1024).toFixed(1);
       const aiNote = AI_EXTRACTED_DOCUMENT_TYPES.has(documentType)
         ? " AI extraction can't process files this large reliably."
         : "";
@@ -64,20 +111,123 @@ export async function uploadOrderDocument(
       };
     }
 
+    if (!ALLOWED_DOCUMENT_MIMES.has(mimeType)) {
+      return {
+        success: false,
+        error: "Unsupported file type. Use PDF, JPG, PNG, or HEIC.",
+      };
+    }
+
+    const adminClient = createAdminClient();
     const timestamp = Date.now();
-    const safeName = fileEntry.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
     const filePath = `order-documents/${orderId}/${documentType}/${timestamp}-${safeName}`;
 
-    const { error: uploadErr } = await adminClient.storage
+    const { data, error } = await adminClient.storage
       .from(BUCKET)
-      .upload(filePath, fileEntry, {
-        contentType: fileEntry.type,
-        upsert: false,
-      });
+      .createSignedUploadUrl(filePath);
 
-    if (uploadErr) {
-      safeLogError("uploadOrderDocument", uploadErr, { phase: "storage", orderId, documentType });
-      return { success: false, error: "Failed to upload file." };
+    if (error || !data) {
+      safeLogError("prepareOrderDocumentUpload", error, {
+        phase: "signed_url",
+        orderId,
+        documentType,
+      });
+      return { success: false, error: "Failed to prepare upload." };
+    }
+
+    return {
+      success: true,
+      bucket: BUCKET,
+      filePath,
+      uploadToken: data.token,
+    };
+  } catch (err) {
+    if (err instanceof OrderAccessError) {
+      return { success: false, error: err.message };
+    }
+    safeLogError("prepareOrderDocumentUpload", err, { input });
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Unexpected error.",
+    };
+  }
+}
+
+export interface CompleteOrderDocumentUploadInput {
+  orderId: string;
+  documentType: string;
+  bucket: string;
+  filePath: string;
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+}
+
+export interface CompleteOrderDocumentUploadResult {
+  success: boolean;
+  document?: IOrderDocument;
+  error?: string;
+}
+
+export async function completeOrderDocumentUpload(
+  input: CompleteOrderDocumentUploadInput,
+): Promise<CompleteOrderDocumentUploadResult> {
+  try {
+    const { orderId, documentType, bucket, filePath, fileName, mimeType, fileSize } = input;
+
+    if (!orderId || !documentType || !filePath || !bucket || !fileName) {
+      return { success: false, error: "Missing required upload fields." };
+    }
+
+    // Defense in depth — every input here is client-controlled. Re-run the
+    // auth check, lock the bucket, and confirm the path can't sneak files
+    // into another order's folder before we touch the DB.
+    const { userId } = await requireOrderAccess(orderId);
+
+    if (bucket !== BUCKET) {
+      return { success: false, error: "Invalid storage bucket." };
+    }
+
+    const expectedPrefix = `order-documents/${orderId}/${documentType}/`;
+    if (!filePath.startsWith(expectedPrefix)) {
+      return { success: false, error: "Invalid storage path." };
+    }
+
+    if (fileSize > MAX_DOCUMENT_SIZE_BYTES) {
+      return { success: false, error: "Uploaded file exceeds size limit." };
+    }
+
+    if (!ALLOWED_DOCUMENT_MIMES.has(mimeType)) {
+      return { success: false, error: "Unsupported file type." };
+    }
+
+    const adminClient = createAdminClient();
+
+    // Verify the file actually lives at the claimed path. `storage.list` on
+    // the parent prefix (with a `search` for the leaf name) is the cheapest
+    // way to confirm without downloading the bytes — we just need to know
+    // an object exists before we insert a DB row that points at it.
+    const lastSlash = filePath.lastIndexOf("/");
+    const dirPath = filePath.slice(0, lastSlash);
+    const leafName = filePath.slice(lastSlash + 1);
+    const { data: list, error: listErr } = await adminClient.storage
+      .from(BUCKET)
+      .list(dirPath, { search: leafName, limit: 5 });
+    if (listErr) {
+      safeLogError("completeOrderDocumentUpload", listErr, {
+        phase: "verify_storage",
+        orderId,
+        documentType,
+      });
+      return { success: false, error: "Failed to verify upload." };
+    }
+    const found = (list ?? []).some((entry) => entry.name === leafName);
+    if (!found) {
+      return {
+        success: false,
+        error: "Upload didn't reach storage. Please try again.",
+      };
     }
 
     const { data: docRow, error: dbErr } = await adminClient
@@ -87,17 +237,21 @@ export async function uploadOrderDocument(
         document_type: documentType,
         bucket: BUCKET,
         file_path: filePath,
-        file_name: fileEntry.name,
-        mime_type: fileEntry.type || null,
-        file_size: fileEntry.size || null,
-        uploaded_by: user.id,
+        file_name: fileName,
+        mime_type: mimeType || null,
+        file_size: fileSize || null,
+        uploaded_by: userId,
       })
       .select("*")
       .single();
 
     if (dbErr || !docRow) {
-      safeLogError("uploadOrderDocument", dbErr, { phase: "db", orderId, documentType });
-      // Clean up storage
+      safeLogError("completeOrderDocumentUpload", dbErr, {
+        phase: "db",
+        orderId,
+        documentType,
+      });
+      // Clean up the storage object so we don't leak orphaned files.
       await adminClient.storage.from(BUCKET).remove([filePath]);
       return { success: false, error: "Failed to save document record." };
     }
@@ -108,10 +262,11 @@ export async function uploadOrderDocument(
       `Document uploaded: ${getDocumentLabel(documentType)}`,
       null,
       null,
-      user.id,
-      fileEntry.name,
+      userId,
+      fileName,
     );
     revalidatePath(ORDERS_PATH);
+
     return {
       success: true,
       document: {
@@ -128,7 +283,14 @@ export async function uploadOrderDocument(
       },
     };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+    if (err instanceof OrderAccessError) {
+      return { success: false, error: err.message };
+    }
+    safeLogError("completeOrderDocumentUpload", err, { input });
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Unexpected error.",
+    };
   }
 }
 

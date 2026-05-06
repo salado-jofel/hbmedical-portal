@@ -931,41 +931,68 @@ export async function getSalesRepContractUrls(
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
- *  Upload a sales-rep contract attachment (e.g. I-9 List A/B/C document
- *  scans). Called from the sign modal before finalizing a signature so the
- *  file is in storage by the time `signSalesRepContract` fetches + merges it.
+ *  Sales-rep contract attachment uploads (e.g. I-9 List A/B/C document
+ *  scans). Bytes go BROWSER → SUPABASE STORAGE directly via signed-upload
+ *  URL — never through this server action. Vercel's 4.5 MB request body
+ *  cap broke phone-camera uploads when the bytes flowed through a Server
+ *  Action; the cap doesn't apply to direct Supabase uploads.
+ *
+ *  Flow:
+ *    1. Client calls `prepareSalesRepContractAttachmentUpload` with the
+ *       file metadata (no bytes). Server validates token + mime + size,
+ *       generates a path, signs an upload URL.
+ *    2. Client PUTs the file directly to Supabase using that URL via the
+ *       shared `uploadFileDirectToSupabase()` helper.
+ *    3. The resulting storage path is held in modal state and passed into
+ *       `signSalesRepContract` later, which reads the bytes back to merge
+ *       into the signed PDF.
  * ───────────────────────────────────────────────────────────────────────── */
 
-const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 const ALLOWED_ATTACHMENT_MIMES = new Set([
   "application/pdf",
   "image/png",
   "image/jpeg",
 ]);
 
-export interface UploadAttachmentResult {
+export interface PrepareAttachmentUploadInput {
+  token: string;
+  contractKey: string;
+  slot: string;
+  fileName: string;
+  mimeType: string;
+  size: number;
+}
+
+export interface PrepareAttachmentUploadResult {
   success: boolean;
-  path?: string;
+  bucket?: string;
+  filePath?: string;
+  uploadToken?: string;
   error?: string;
 }
 
-export async function uploadSalesRepContractAttachment(
-  formData: FormData,
-): Promise<UploadAttachmentResult> {
+export async function prepareSalesRepContractAttachmentUpload(
+  input: PrepareAttachmentUploadInput,
+): Promise<PrepareAttachmentUploadResult> {
   try {
-    const token = (formData.get("token") as string) ?? "";
-    const contractKey = (formData.get("contractKey") as string) ?? "";
-    const slot = (formData.get("slot") as string) ?? "";
-    const file = formData.get("file") as File | null;
+    const { token, contractKey, slot, fileName, mimeType, size } = input;
 
-    if (!token || !contractKey || !slot || !file) {
+    if (!token || !contractKey || !slot || !fileName || !mimeType) {
       return { success: false, error: "Missing required upload fields." };
     }
-    if (file.size > MAX_ATTACHMENT_BYTES) {
-      return { success: false, error: "File exceeds 5 MB limit." };
+    if (size > MAX_ATTACHMENT_BYTES) {
+      return {
+        success: false,
+        error:
+          "This file is too large (max 25 MB). For ID photos, try a phone camera shot rather than a high-res scan.",
+      };
     }
-    if (!ALLOWED_ATTACHMENT_MIMES.has(file.type)) {
-      return { success: false, error: "Unsupported file type. Use PDF, PNG, or JPG." };
+    if (!ALLOWED_ATTACHMENT_MIMES.has(mimeType)) {
+      return {
+        success: false,
+        error: "Unsupported file type. Use PDF, PNG, or JPG.",
+      };
     }
 
     const inviteToken = await validateInviteToken(token);
@@ -973,28 +1000,39 @@ export async function uploadSalesRepContractAttachment(
       return { success: false, error: "This invite link is no longer valid." };
     }
     if (inviteToken.role_type !== "sales_representative") {
-      return { success: false, error: "Only sales-rep invites can upload attachments." };
+      return {
+        success: false,
+        error: "Only sales-rep invites can upload attachments.",
+      };
     }
 
     const admin = createAdminClient();
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80);
-    const path = `sales-rep-contract-uploads/${token}/${contractKey}/${Date.now()}-${slot}-${safeName}`;
-    const bytes = new Uint8Array(await file.arrayBuffer());
+    const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80);
+    const filePath = `sales-rep-contract-uploads/${token}/${contractKey}/${Date.now()}-${slot}-${safeName}`;
 
-    const { error } = await admin.storage.from(BUCKET).upload(path, bytes, {
-      contentType: file.type,
-      upsert: false,
-    });
-    if (error) {
-      console.error("[uploadSalesRepContractAttachment]", error.message);
-      return { success: false, error: "Failed to upload attachment." };
+    const { data, error } = await admin.storage
+      .from(BUCKET)
+      .createSignedUploadUrl(filePath);
+
+    if (error || !data) {
+      console.error(
+        "[prepareSalesRepContractAttachmentUpload] signed URL error:",
+        error?.message,
+      );
+      return { success: false, error: "Failed to prepare upload." };
     }
-    return { success: true, path };
+
+    return {
+      success: true,
+      bucket: BUCKET,
+      filePath,
+      uploadToken: data.token,
+    };
   } catch (err) {
-    console.error("[uploadSalesRepContractAttachment] unexpected:", err);
+    console.error("[prepareSalesRepContractAttachmentUpload] unexpected:", err);
     return {
       success: false,
-      error: err instanceof Error ? err.message : "Upload failed.",
+      error: err instanceof Error ? err.message : "Failed to prepare upload.",
     };
   }
 }
