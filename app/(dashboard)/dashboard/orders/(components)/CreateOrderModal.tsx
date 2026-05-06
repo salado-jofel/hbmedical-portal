@@ -28,7 +28,12 @@ import { WOUND_TYPES } from "@/utils/constants/orders";
 
 type DocFile = { file: File; type: string };
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+// Matches the server-side cap in order-document-actions.ts (MAX_DOCUMENT_SIZE_MB = 25).
+// Phone-camera photos auto-compress in compress-image.ts before upload, so the
+// 25 MB ceiling is the hard upper bound — a phone photo is rarely above 12 MB
+// post-compression, but keeping client + server caps aligned avoids a confusing
+// "file looked OK but server rejected it" UX.
+const MAX_FILE_SIZE = 25 * 1024 * 1024;
 
 // Documents: PDF or images (AI extraction supports these formats only)
 const ACCEPT_DOCS = ".pdf,.jpg,.jpeg,.png,.heic";
@@ -91,7 +96,7 @@ function UploadZone({
   const typeFiles = files.filter((f) => f.type === docType);
   const isValid = fileType === "image" ? isValidImageFile : isValidDocFile;
   const allowedLabel = fileType === "image" ? "JPG, PNG, HEIC" : "PDF, JPG, PNG, HEIC";
-  const hintText = fileType === "image" ? "JPG, PNG, HEIC · max 10 MB" : "PDF, JPG, PNG, HEIC · max 10 MB";
+  const hintText = fileType === "image" ? "JPG, PNG, HEIC · max 25 MB" : "PDF, JPG, PNG, HEIC · max 25 MB";
 
   // Map local index within this docType back to global index in `files`
   function globalIdx(localIdx: number): number {
@@ -112,7 +117,7 @@ function UploadZone({
     const droppedFiles = Array.from(e.dataTransfer.files);
     const valid = droppedFiles.filter((f) => {
       if (f.size > MAX_FILE_SIZE) {
-        toast.error(`${f.name} exceeds 10 MB.`);
+        toast.error(`${f.name} exceeds 25 MB.`);
         return false;
       }
       if (!isValid(f)) {
@@ -175,7 +180,7 @@ function UploadZone({
               const selected = Array.from(e.target.files ?? []);
               const valid = selected.filter((f) => {
                 if (f.size > MAX_FILE_SIZE) {
-                  toast.error(`${f.name} exceeds 10 MB.`);
+                  toast.error(`${f.name} exceeds 25 MB.`);
                   return false;
                 }
                 if (!isValid(f)) {
@@ -232,7 +237,7 @@ function UploadZone({
                 const selected = Array.from(e.target.files ?? []);
                 const valid = selected.filter((f) => {
                   if (f.size > MAX_FILE_SIZE) {
-                    toast.error(`${f.name} exceeds 10 MB.`);
+                    toast.error(`${f.name} exceeds 25 MB.`);
                     return false;
                   }
                   if (!isValid(f)) {
