@@ -181,6 +181,29 @@ type FormState = {
   officeReleasedToFulfillment: boolean | null;
   officeReleasedToFulfillmentAt: string;
   officeFiledInRepository: boolean | null;
+
+  /* ── Post-surgical Surgical/Wound Origin section (added 2026-05-06) ── */
+  surgicalQualifyingBasis:
+    | "surgically_created"
+    | "debrided"
+    | "stage_3_4_pu"
+    | "other_full_thickness"
+    | null;
+  debridementDate: string;
+  dateOfSurgery: string;
+  cptCodes: string;
+  procedureName: string;
+  surgeonName: string;
+  withinGlobalPeriod: boolean | null;
+  attestNotRoutineCare: boolean;
+  attestWoundMeasuredAtSurgery: boolean;
+  dressingChangeFrequency:
+    | "daily"
+    | "every_other_day"
+    | "every_3_days"
+    | "weekly"
+    | "as_needed"
+    | null;
 };
 
 function buildFormState(
@@ -311,6 +334,22 @@ function buildFormState(
     officeReleasedToFulfillment: form?.officeTracking?.releasedToFulfillment ?? null,
     officeReleasedToFulfillmentAt: form?.officeTracking?.releasedToFulfillmentAt ?? "",
     officeFiledInRepository: form?.officeTracking?.filedInRepository ?? null,
+
+    /* ── Post-surgical Surgical/Wound Origin section ── */
+    surgicalQualifyingBasis: form?.surgicalQualifyingBasis ?? null,
+    debridementDate: form?.debridementDate ?? "",
+    dateOfSurgery: form?.dateOfSurgery ?? "",
+    cptCodes: form?.cptCodes ?? "",
+    procedureName: form?.procedureName ?? "",
+    surgeonName: form?.surgeonName ?? "",
+    withinGlobalPeriod: form?.withinGlobalPeriod ?? null,
+    attestNotRoutineCare: form?.attestNotRoutineCare ?? false,
+    attestWoundMeasuredAtSurgery: form?.attestWoundMeasuredAtSurgery ?? false,
+    // Default dressing change frequency to "daily" on post-surgical orders
+    // when nothing is persisted yet, per client direction.
+    dressingChangeFrequency:
+      form?.dressingChangeFrequency
+      ?? (opts?.woundType === "post_surgical" ? "daily" : null),
   };
 }
 
@@ -916,12 +955,16 @@ export function OrderFormDocument({
     if (!formData.woundSite) count++;
     if (!isPostSurgical && !formData.woundStage) count++;
     if (!formData.clinicalNotes) count++;
-    if (!formData.woundLengthCm) count++;
-    if (!formData.woundWidthCm) count++;
-    if (!formData.woundDepthCm) count++;
+    if (!isPostSurgical && !formData.woundLengthCm) count++;
+    if (!isPostSurgical && !formData.woundWidthCm) count++;
+    if (!isPostSurgical && !formData.woundDepthCm) count++;
     if (!formData.treatmentPlan) count++;
     if (!isPostSurgical && !formData.woundVisitNumber) count++;
-    if (!formData.granulationTissuePct) count++;
+    if (!isPostSurgical && !formData.granulationTissuePct) count++;
+    // Post-surgical-specific deficiency checks
+    if (isPostSurgical && !formData.surgicalQualifyingBasis) count++;
+    if (isPostSurgical && !formData.dateOfSurgery) count++;
+    if (isPostSurgical && !formData.attestWoundMeasuredAtSurgery) count++;
     // Follow up — days OR weeks counts as filled
     if (!formData.followupDays && !formData.followupWeeks) count++;
     // Anticipated length of need
@@ -976,6 +1019,9 @@ export function OrderFormDocument({
     formData.conditionCopd,
     formData.conditionChf,
     formData.conditionAnemia,
+    formData.surgicalQualifyingBasis,
+    formData.dateOfSurgery,
+    formData.attestWoundMeasuredAtSurgery,
   ]);
 
   // Per-field / per-group deficiency flags
@@ -1213,6 +1259,16 @@ export function OrderFormDocument({
       attest_conservative_tx_inadequate: formData.attestConservativeTxInadequate,
       attest_freq_qty_clinical_judgment: formData.attestFreqQtyClinicalJudgment,
       attest_lcd_supported: formData.attestLcdSupported,
+      surgical_qualifying_basis: formData.surgicalQualifyingBasis,
+      debridement_date: strOrNull(formData.debridementDate ?? ""),
+      date_of_surgery: strOrNull(formData.dateOfSurgery ?? ""),
+      cpt_codes: strOrNull(formData.cptCodes ?? ""),
+      procedure_name: strOrNull(formData.procedureName ?? ""),
+      surgeon_name: strOrNull(formData.surgeonName ?? ""),
+      within_global_period: formData.withinGlobalPeriod,
+      attest_not_routine_care: formData.attestNotRoutineCare,
+      attest_wound_measured_at_surgery: formData.attestWoundMeasuredAtSurgery,
+      dressing_change_frequency: formData.dressingChangeFrequency,
       office_tracking: {
         method_of_receipt: strOrNull(formData.officeMethodOfReceipt),
         baa_in_place: formData.officeBaaInPlace,
@@ -1996,6 +2052,124 @@ export function OrderFormDocument({
           </div>
         </DocRow>
 
+        {/* ── 8a. SURGICAL INFORMATION (post-surgical only) ──
+            Captures Medicare Surgical Dressings benefit qualifying basis +
+            procedure metadata. Replaces the wound dimensions block on the
+            post-surgical variant; chronic orders never see this. */}
+        {isPostSurgical && (
+          <>
+            <DocRow>
+              <FL className="w-full mb-0.5">Surgical Information</FL>
+              <div className="flex flex-wrap gap-x-3 gap-y-1 w-full">
+                {(
+                  [
+                    { value: "surgically_created", label: "Surgically created or modified" },
+                    { value: "debrided", label: "Debrided" },
+                    { value: "stage_3_4_pu", label: "Stage 3 or 4 pressure ulcer / pressure injury" },
+                    { value: "other_full_thickness", label: "Other full-thickness wound" },
+                  ] as const
+                ).map(({ value, label }) => (
+                  <FormCheckbox
+                    key={value}
+                    checked={formData.surgicalQualifyingBasis === value}
+                    onChange={(checked) =>
+                      set("surgicalQualifyingBasis", checked ? value : null)
+                    }
+                    label={label}
+                  />
+                ))}
+              </div>
+            </DocRow>
+
+            {formData.surgicalQualifyingBasis === "debrided" && (
+              <DocRow>
+                <FL>Date of most recent debridement</FL>
+                <AiWrap active={ai && !!formData.debridementDate}>
+                  <FormInput
+                    type="date"
+                    value={formData.debridementDate}
+                    onChange={(v) => set("debridementDate", v)}
+                    className="w-36"
+                  />
+                </AiWrap>
+              </DocRow>
+            )}
+
+            <DocRow>
+              <FL>Date of Surgery / Procedure</FL>
+              <AiWrap active={ai && !!formData.dateOfSurgery}>
+                <FormInput
+                  type="date"
+                  value={formData.dateOfSurgery}
+                  onChange={(v) => set("dateOfSurgery", v)}
+                  className="w-36"
+                />
+              </AiWrap>
+              <span className="text-[#ccc] mx-1">|</span>
+              <FL>CPT Code(s)</FL>
+              <AiWrap active={ai && !!formData.cptCodes} className="flex-1 min-w-[160px]">
+                <FormInput
+                  value={formData.cptCodes}
+                  onChange={(v) => set("cptCodes", v)}
+                  className="w-full"
+                  placeholder="e.g. 11042, 97597"
+                />
+              </AiWrap>
+            </DocRow>
+
+            <DocRow>
+              <FL>Procedure Name / Description</FL>
+              <AiWrap active={ai && !!formData.procedureName} className="flex-1">
+                <FormInput
+                  value={formData.procedureName}
+                  onChange={(v) => set("procedureName", v)}
+                  className="w-full"
+                  placeholder="Procedure description"
+                />
+              </AiWrap>
+            </DocRow>
+
+            <DocRow>
+              <FL>Surgeon (if different from prescriber)</FL>
+              <AiWrap active={ai && !!formData.surgeonName} className="flex-1">
+                <FormInput
+                  value={formData.surgeonName}
+                  onChange={(v) => set("surgeonName", v)}
+                  className="w-full"
+                  placeholder="Surgeon name"
+                />
+              </AiWrap>
+            </DocRow>
+
+            <DocRow>
+              <YesNo
+                label="Within Global Period?"
+                value={formData.withinGlobalPeriod}
+                onChange={(v) => set("withinGlobalPeriod", v)}
+                aiHighlight={ai}
+              />
+            </DocRow>
+
+            {formData.withinGlobalPeriod === true && (
+              <DocRow>
+                <FormCheckbox
+                  checked={formData.attestNotRoutineCare}
+                  onChange={(v) => set("attestNotRoutineCare", v)}
+                  label="I attest the collagen dressing is being ordered for a wound healing by secondary intention OR a complication outside routine post-op care, and is not bundled into the global surgical package."
+                />
+              </DocRow>
+            )}
+
+            <DocRow>
+              <FormCheckbox
+                checked={formData.attestWoundMeasuredAtSurgery}
+                onChange={(v) => set("attestWoundMeasuredAtSurgery", v)}
+                label="I attest the wound was measured and documented at the time of surgery."
+              />
+            </DocRow>
+          </>
+        )}
+
         {/* ── 8b. WOUND ETIOLOGY (Fortify expansion) ──
             Multi-select etiology breakdown. Co-existence is allowed (e.g. a
             DFU that is also venous). The parent `wound_type` from Section 8
@@ -2033,23 +2207,25 @@ export function OrderFormDocument({
         </DocRow>
 
         {/* ── 8c. WOUND ONSET / DURATION (Fortify expansion) ── */}
-        <DocRow>
-          <FL>Wound Onset Date</FL>
-          <FormInput
-            type="date"
-            value={formData.woundOnsetDate}
-            onChange={(v) => set("woundOnsetDate", v)}
-            className="w-36"
-          />
-          <span className="text-[#ccc] mx-1">|</span>
-          <FL>Duration</FL>
-          <FormInput
-            value={formData.woundDurationText}
-            onChange={(v) => set("woundDurationText", v)}
-            className="w-32"
-            placeholder="e.g. 6 weeks"
-          />
-        </DocRow>
+        {!isPostSurgical && (
+          <DocRow>
+            <FL>Wound Onset Date</FL>
+            <FormInput
+              type="date"
+              value={formData.woundOnsetDate}
+              onChange={(v) => set("woundOnsetDate", v)}
+              className="w-36"
+            />
+            <span className="text-[#ccc] mx-1">|</span>
+            <FL>Duration</FL>
+            <FormInput
+              value={formData.woundDurationText}
+              onChange={(v) => set("woundDurationText", v)}
+              className="w-32"
+              placeholder="e.g. 6 weeks"
+            />
+          </DocRow>
+        )}
 
         {/* ── 9. LOCATION ROW ── */}
         <DocRow>
@@ -2092,115 +2268,123 @@ export function OrderFormDocument({
               </AiWrap>
             ))}
           </div>
-          <span className="text-[#ccc] mx-2 self-center">|</span>
-          <FL>Percentage Granulation Tissue:</FL>
-          <AiWrap active={ai && !!formData.granulationTissuePct}>
-            <FormInput
-              value={formData.granulationTissuePct}
-              onChange={(v) => set("granulationTissuePct", v.replace(/-/g, ""))}
-              deficient={granulationDeficient}
-              type="number"
-              min={0}
-              max={100}
-              step={10}
-              className="w-14 text-center"
-              placeholder="—"
-            />
-          </AiWrap>
-          <span className="text-[13px] text-[#444]">%</span>
+          {!isPostSurgical && (
+            <>
+              <span className="text-[#ccc] mx-2 self-center">|</span>
+              <FL>Percentage Granulation Tissue:</FL>
+              <AiWrap active={ai && !!formData.granulationTissuePct}>
+                <FormInput
+                  value={formData.granulationTissuePct}
+                  onChange={(v) => set("granulationTissuePct", v.replace(/-/g, ""))}
+                  deficient={granulationDeficient}
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={10}
+                  className="w-14 text-center"
+                  placeholder="—"
+                />
+              </AiWrap>
+              <span className="text-[13px] text-[#444]">%</span>
+            </>
+          )}
         </DocRow>
 
         {/* ── 10 + 11. WOUND MEASUREMENTS + EXUDATE + BURNS/VASCULITIS/CHARCOT ── */}
         <div className="flex gap-4 py-2 border-b border-[#e5e5e5]">
           {/* Left: measurements + yes/no questions */}
           <div className="flex-1 space-y-1.5">
-            {/* Wound 1 */}
-            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
-              <FL>Wound 1:</FL>
-              <AiWrap active={ai && !!formData.woundLengthCm}>
-                <FormInput
-                  value={formData.woundLengthCm}
-                  onChange={(v) => set("woundLengthCm", v.replace(/-/g, ""))}
-                  deficient={aiExtracted && !formData.woundLengthCm}
-                  type="number"
-                  min={0}
-                  step={1}
-                  className="w-14 text-center"
-                  placeholder="—"
-                />
-              </AiWrap>
-              <span className="text-[11px] text-[#555]">cm (length) ×</span>
-              <AiWrap active={ai && !!formData.woundWidthCm}>
-                <FormInput
-                  value={formData.woundWidthCm}
-                  onChange={(v) => set("woundWidthCm", v.replace(/-/g, ""))}
-                  deficient={aiExtracted && !formData.woundWidthCm}
-                  type="number"
-                  min={0}
-                  step={1}
-                  className="w-14 text-center"
-                  placeholder="—"
-                />
-              </AiWrap>
-              <span className="text-[11px] text-[#555]">cm (width) ×</span>
-              <AiWrap active={ai && !!formData.woundDepthCm}>
-                <FormInput
-                  value={formData.woundDepthCm}
-                  onChange={(v) => set("woundDepthCm", v.replace(/-/g, ""))}
-                  deficient={aiExtracted && !formData.woundDepthCm}
-                  type="number"
-                  min={0}
-                  step={1}
-                  className="w-14 text-center"
-                  placeholder="—"
-                />
-              </AiWrap>
-              <span className="text-[11px] text-[#555]">cm (depth)</span>
-            </div>
-            {/* Wound 2 */}
-            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
-              <FL>Wound 2:</FL>
-              <AiWrap active={ai && !!formData.wound2LengthCm}>
-                <FormInput
-                  value={formData.wound2LengthCm}
-                  onChange={(v) => set("wound2LengthCm", v.replace(/-/g, ""))}
-                  type="number"
-                  min={0}
-                  step={1}
-                  className="w-14 text-center"
-                  placeholder="—"
-                />
-              </AiWrap>
-              <span className="text-[11px] text-[#555]">cm (length) ×</span>
-              <AiWrap active={ai && !!formData.wound2WidthCm}>
-                <FormInput
-                  value={formData.wound2WidthCm}
-                  onChange={(v) => set("wound2WidthCm", v.replace(/-/g, ""))}
-                  type="number"
-                  min={0}
-                  step={1}
-                  className="w-14 text-center"
-                  placeholder="—"
-                />
-              </AiWrap>
-              <span className="text-[11px] text-[#555]">cm (width) ×</span>
-              <AiWrap active={ai && !!formData.wound2DepthCm}>
-                <FormInput
-                  value={formData.wound2DepthCm}
-                  onChange={(v) => set("wound2DepthCm", v.replace(/-/g, ""))}
-                  type="number"
-                  min={0}
-                  step={1}
-                  className="w-14 text-center"
-                  placeholder="—"
-                />
-              </AiWrap>
-              <span className="text-[11px] text-[#555]">cm (depth)</span>
-            </div>
-            <p className="text-[10px] text-[#888] italic leading-tight">
-              More wounds? Write in below and remember to take measurement
-              pictures.
-            </p>
+            {!isPostSurgical && (
+              <>
+                {/* Wound 1 */}
+                <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                  <FL>Wound 1:</FL>
+                  <AiWrap active={ai && !!formData.woundLengthCm}>
+                    <FormInput
+                      value={formData.woundLengthCm}
+                      onChange={(v) => set("woundLengthCm", v.replace(/-/g, ""))}
+                      deficient={aiExtracted && !formData.woundLengthCm}
+                      type="number"
+                      min={0}
+                      step={1}
+                      className="w-14 text-center"
+                      placeholder="—"
+                    />
+                  </AiWrap>
+                  <span className="text-[11px] text-[#555]">cm (length) ×</span>
+                  <AiWrap active={ai && !!formData.woundWidthCm}>
+                    <FormInput
+                      value={formData.woundWidthCm}
+                      onChange={(v) => set("woundWidthCm", v.replace(/-/g, ""))}
+                      deficient={aiExtracted && !formData.woundWidthCm}
+                      type="number"
+                      min={0}
+                      step={1}
+                      className="w-14 text-center"
+                      placeholder="—"
+                    />
+                  </AiWrap>
+                  <span className="text-[11px] text-[#555]">cm (width) ×</span>
+                  <AiWrap active={ai && !!formData.woundDepthCm}>
+                    <FormInput
+                      value={formData.woundDepthCm}
+                      onChange={(v) => set("woundDepthCm", v.replace(/-/g, ""))}
+                      deficient={aiExtracted && !formData.woundDepthCm}
+                      type="number"
+                      min={0}
+                      step={1}
+                      className="w-14 text-center"
+                      placeholder="—"
+                    />
+                  </AiWrap>
+                  <span className="text-[11px] text-[#555]">cm (depth)</span>
+                </div>
+                {/* Wound 2 */}
+                <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                  <FL>Wound 2:</FL>
+                  <AiWrap active={ai && !!formData.wound2LengthCm}>
+                    <FormInput
+                      value={formData.wound2LengthCm}
+                      onChange={(v) => set("wound2LengthCm", v.replace(/-/g, ""))}
+                      type="number"
+                      min={0}
+                      step={1}
+                      className="w-14 text-center"
+                      placeholder="—"
+                    />
+                  </AiWrap>
+                  <span className="text-[11px] text-[#555]">cm (length) ×</span>
+                  <AiWrap active={ai && !!formData.wound2WidthCm}>
+                    <FormInput
+                      value={formData.wound2WidthCm}
+                      onChange={(v) => set("wound2WidthCm", v.replace(/-/g, ""))}
+                      type="number"
+                      min={0}
+                      step={1}
+                      className="w-14 text-center"
+                      placeholder="—"
+                    />
+                  </AiWrap>
+                  <span className="text-[11px] text-[#555]">cm (width) ×</span>
+                  <AiWrap active={ai && !!formData.wound2DepthCm}>
+                    <FormInput
+                      value={formData.wound2DepthCm}
+                      onChange={(v) => set("wound2DepthCm", v.replace(/-/g, ""))}
+                      type="number"
+                      min={0}
+                      step={1}
+                      className="w-14 text-center"
+                      placeholder="—"
+                    />
+                  </AiWrap>
+                  <span className="text-[11px] text-[#555]">cm (depth)</span>
+                </div>
+                <p className="text-[10px] text-[#888] italic leading-tight">
+                  More wounds? Write in below and remember to take measurement
+                  pictures.
+                </p>
+              </>
+            )}
 
             {/* Burns / Vasculitis / Charcot — stacked, right side of left column */}
             <div className="pt-1 space-y-1 border-t border-[#e5e5e5] mt-1">
@@ -2272,49 +2456,51 @@ export function OrderFormDocument({
         </div>
 
         {/* ── 11b. WOUND BED COMPOSITION + PAIN + PHOTO (Fortify expansion) ── */}
-        <DocRow>
-          <FL>Wound Bed</FL>
-          <span className="text-[11px] text-[#666] mr-1">Slough %</span>
-          <FormInput
-            value={formData.woundBedSloughPct}
-            onChange={(v) => set("woundBedSloughPct", v.replace(/-/g, ""))}
-            type="number"
-            min={0}
-            max={100}
-            step={10}
-            className="w-14 text-center"
-            placeholder="—"
-          />
-          <span className="text-[11px] text-[#666] mx-1">Eschar %</span>
-          <FormInput
-            value={formData.woundBedEscharPct}
-            onChange={(v) => set("woundBedEscharPct", v.replace(/-/g, ""))}
-            type="number"
-            min={0}
-            max={100}
-            step={10}
-            className="w-14 text-center"
-            placeholder="—"
-          />
-          <span className="text-[#ccc] mx-2">|</span>
-          <FL>Pain (0-10)</FL>
-          <FormInput
-            value={formData.painLevel}
-            onChange={(v) => set("painLevel", v.replace(/-/g, ""))}
-            type="number"
-            min={0}
-            max={10}
-            step={1}
-            className="w-12 text-center"
-            placeholder="—"
-          />
-          <span className="text-[#ccc] mx-2">|</span>
-          <FormCheckbox
-            checked={formData.woundPhotoTaken}
-            onChange={(v) => set("woundPhotoTaken", v)}
-            label="Wound photo taken"
-          />
-        </DocRow>
+        {!isPostSurgical && (
+          <DocRow>
+            <FL>Wound Bed</FL>
+            <span className="text-[11px] text-[#666] mr-1">Slough %</span>
+            <FormInput
+              value={formData.woundBedSloughPct}
+              onChange={(v) => set("woundBedSloughPct", v.replace(/-/g, ""))}
+              type="number"
+              min={0}
+              max={100}
+              step={10}
+              className="w-14 text-center"
+              placeholder="—"
+            />
+            <span className="text-[11px] text-[#666] mx-1">Eschar %</span>
+            <FormInput
+              value={formData.woundBedEscharPct}
+              onChange={(v) => set("woundBedEscharPct", v.replace(/-/g, ""))}
+              type="number"
+              min={0}
+              max={100}
+              step={10}
+              className="w-14 text-center"
+              placeholder="—"
+            />
+            <span className="text-[#ccc] mx-2">|</span>
+            <FL>Pain (0-10)</FL>
+            <FormInput
+              value={formData.painLevel}
+              onChange={(v) => set("painLevel", v.replace(/-/g, ""))}
+              type="number"
+              min={0}
+              max={10}
+              step={1}
+              className="w-12 text-center"
+              placeholder="—"
+            />
+            <span className="text-[#ccc] mx-2">|</span>
+            <FormCheckbox
+              checked={formData.woundPhotoTaken}
+              onChange={(v) => set("woundPhotoTaken", v)}
+              label="Wound photo taken"
+            />
+          </DocRow>
+        )}
 
         {/* ── 11c. SIGNS OF INFECTION DETAIL (Fortify expansion) ── */}
         {formData.conditionInfection && (
@@ -2692,6 +2878,33 @@ export function OrderFormDocument({
                   label={`${d} days`}
                 />
               </AiWrap>
+            ))}
+          </div>
+        </DocRow>
+
+        {/* ── 16b. DRESSING CHANGE FREQUENCY ──
+            Shown for both chronic and post-surgical. Defaults to "daily" on
+            post-surgical orders at form-init time. */}
+        <DocRow>
+          <FL>Dressing Change Frequency</FL>
+          <div className="flex flex-wrap gap-x-3 gap-y-1">
+            {(
+              [
+                { value: "daily", label: "Daily" },
+                { value: "every_other_day", label: "Every other day" },
+                { value: "every_3_days", label: "Every 3 days" },
+                { value: "weekly", label: "Weekly" },
+                { value: "as_needed", label: "As needed" },
+              ] as const
+            ).map(({ value, label }) => (
+              <FormCheckbox
+                key={value}
+                checked={formData.dressingChangeFrequency === value}
+                onChange={(checked) =>
+                  set("dressingChangeFrequency", checked ? value : null)
+                }
+                label={label}
+              />
             ))}
           </div>
         </DocRow>

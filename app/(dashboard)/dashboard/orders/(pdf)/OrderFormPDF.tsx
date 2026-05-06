@@ -332,6 +332,61 @@ export function OrderFormPDF({
           </View>
         </View>
 
+        {/* ── Surgical Information (post-surgical only) ──
+            Mirrors the on-screen Section 8a. Captures Medicare Surgical
+            Dressings benefit qualifying basis + procedure metadata. Replaces
+            the wound dimensions / onset / wound-bed blocks for post-surgical
+            orders; chronic orders never render this. */}
+        {isPostSurgical && (
+          <View style={s.section}>
+            <Text style={s.sectionLabel}>Surgical Information</Text>
+            <View style={[cbRowStyle, { marginTop: 2 }]}>
+              <CBVal current={form?.surgical_qualifying_basis} value="surgically_created" label="Surgically created or modified" />
+              <CBVal current={form?.surgical_qualifying_basis} value="debrided"           label="Debrided" />
+              <CBVal current={form?.surgical_qualifying_basis} value="stage_3_4_pu"       label="Stage 3 or 4 pressure ulcer / pressure injury" />
+              <CBVal current={form?.surgical_qualifying_basis} value="other_full_thickness" label="Other full-thickness wound" />
+            </View>
+            {form?.surgical_qualifying_basis === "debrided" && (
+              <View style={[s.row, { marginTop: 3 }]}>
+                <UField label="Date of most recent debridement" value={v(form?.debridement_date)} width={80} />
+              </View>
+            )}
+            <View style={[s.row, { marginTop: 3 }]}>
+              <UField label="Date of Surgery / Procedure" value={v(form?.date_of_surgery)} width={80} />
+              <UField label="CPT Code(s)" value={v(form?.cpt_codes)} width={120} />
+            </View>
+            {form?.procedure_name ? (
+              <View style={s.row}>
+                <UField label="Procedure Name / Description" value={v(form?.procedure_name)} width={300} />
+              </View>
+            ) : null}
+            {form?.surgeon_name ? (
+              <View style={s.row}>
+                <UField label="Surgeon (if different from prescriber)" value={v(form?.surgeon_name)} width={220} />
+              </View>
+            ) : null}
+            <View style={[cbRowStyle, { marginTop: 3 }]}>
+              <Text style={[s.label, { marginRight: 6 }]}>Within Global Period?</Text>
+              <CB checked={form?.within_global_period === true} label="YES" />
+              <CB checked={form?.within_global_period === false} label="NO" />
+            </View>
+            {form?.within_global_period === true && (
+              <View style={[cbRowStyle, { marginTop: 3 }]}>
+                <CB
+                  checked={form?.attest_not_routine_care === true}
+                  label="Attests dressing is for secondary intention / non-routine post-op care, not bundled into the global surgical package."
+                />
+              </View>
+            )}
+            <View style={[cbRowStyle, { marginTop: 3 }]}>
+              <CB
+                checked={form?.attest_wound_measured_at_surgery === true}
+                label="Attests the wound was measured and documented at the time of surgery."
+              />
+            </View>
+          </View>
+        )}
+
         {/* ── Fortify: Wound Etiology breakdown ── */}
         <View style={s.section}>
           <Text style={s.label}>Wound Etiology (check all that apply):</Text>
@@ -359,7 +414,7 @@ export function OrderFormPDF({
         </View>
 
         {/* ── Fortify: Wound onset / duration ── */}
-        {form?.wound_onset_date || form?.wound_duration_text ? (
+        {!isPostSurgical && (form?.wound_onset_date || form?.wound_duration_text) ? (
           <View style={s.row}>
             <UField label="Wound Onset" value={v(form?.wound_onset_date)} width={70} />
             <UField label="Duration" value={v(form?.wound_duration_text)} width={100} />
@@ -374,12 +429,16 @@ export function OrderFormPDF({
             <CBVal current={form?.wound_location_side} value="LT" label="LT" />
             <CBVal current={form?.wound_location_side} value="bilateral" label="Bilateral" />
             <View style={{ flex: 1 }} />
-            <Text style={[s.label, { marginRight: 4 }]}>% Granulation Tissue:</Text>
-            <View style={[s.uline, { width: 30 }]}>
-              <Text style={s.val}>
-                {form?.granulation_tissue_pct != null ? `${form.granulation_tissue_pct}%` : ""}
-              </Text>
-            </View>
+            {!isPostSurgical && (
+              <>
+                <Text style={[s.label, { marginRight: 4 }]}>% Granulation Tissue:</Text>
+                <View style={[s.uline, { width: 30 }]}>
+                  <Text style={s.val}>
+                    {form?.granulation_tissue_pct != null ? `${form.granulation_tissue_pct}%` : ""}
+                  </Text>
+                </View>
+              </>
+            )}
           </View>
         </View>
 
@@ -388,24 +447,28 @@ export function OrderFormPDF({
 
           {/* Left: measurements + Burns/Vasculitis/Charcot */}
           <View style={{ flex: 1 }}>
-            <View style={{ flexDirection: "row", alignItems: "flex-end", marginBottom: 3 }}>
-              <Text style={[s.label, { marginRight: 4 }]}>Wound 1:</Text>
-              <UField label="L" value={v(form?.wound_length_cm)} width={22} />
-              <Text style={{ fontSize: 8, marginRight: 4 }}>cm (length) ×</Text>
-              <UField label="W" value={v(form?.wound_width_cm)} width={22} />
-              <Text style={{ fontSize: 8, marginRight: 4 }}>cm (width) ×</Text>
-              <UField label="D" value={v(form?.wound_depth_cm)} width={22} />
-              <Text style={{ fontSize: 8 }}>cm (depth)</Text>
-            </View>
-            <View style={{ flexDirection: "row", alignItems: "flex-end", marginBottom: 6 }}>
-              <Text style={[s.label, { marginRight: 4 }]}>Wound 2:</Text>
-              <UField label="L" value={v(form?.wound2_length_cm)} width={22} />
-              <Text style={{ fontSize: 8, marginRight: 4 }}>cm (length) ×</Text>
-              <UField label="W" value={v(form?.wound2_width_cm)} width={22} />
-              <Text style={{ fontSize: 8, marginRight: 4 }}>cm (width) ×</Text>
-              <UField label="D" value={v(form?.wound2_depth_cm)} width={22} />
-              <Text style={{ fontSize: 8 }}>cm (depth)</Text>
-            </View>
+            {!isPostSurgical && (
+              <>
+                <View style={{ flexDirection: "row", alignItems: "flex-end", marginBottom: 3 }}>
+                  <Text style={[s.label, { marginRight: 4 }]}>Wound 1:</Text>
+                  <UField label="L" value={v(form?.wound_length_cm)} width={22} />
+                  <Text style={{ fontSize: 8, marginRight: 4 }}>cm (length) ×</Text>
+                  <UField label="W" value={v(form?.wound_width_cm)} width={22} />
+                  <Text style={{ fontSize: 8, marginRight: 4 }}>cm (width) ×</Text>
+                  <UField label="D" value={v(form?.wound_depth_cm)} width={22} />
+                  <Text style={{ fontSize: 8 }}>cm (depth)</Text>
+                </View>
+                <View style={{ flexDirection: "row", alignItems: "flex-end", marginBottom: 6 }}>
+                  <Text style={[s.label, { marginRight: 4 }]}>Wound 2:</Text>
+                  <UField label="L" value={v(form?.wound2_length_cm)} width={22} />
+                  <Text style={{ fontSize: 8, marginRight: 4 }}>cm (length) ×</Text>
+                  <UField label="W" value={v(form?.wound2_width_cm)} width={22} />
+                  <Text style={{ fontSize: 8, marginRight: 4 }}>cm (width) ×</Text>
+                  <UField label="D" value={v(form?.wound2_depth_cm)} width={22} />
+                  <Text style={{ fontSize: 8 }}>cm (depth)</Text>
+                </View>
+              </>
+            )}
 
             {/* Burns / Vasculitis / Charcot */}
             <View style={{ borderTop: `0.5pt solid ${LINE}`, paddingTop: 4 }}>
@@ -446,27 +509,29 @@ export function OrderFormPDF({
         </View>
 
         {/* ── Fortify: Wound bed composition + pain + photo ── */}
-        <View style={s.section}>
-          <View style={[cbRowStyle]}>
-            <Text style={[s.label, { marginRight: 4 }]}>Wound Bed:</Text>
-            <UField label="Slough %" value={v(form?.wound_bed_slough_pct)} width={28} />
-            <UField label="Eschar %" value={v(form?.wound_bed_eschar_pct)} width={28} />
-            <Text style={[s.label, { marginRight: 4 }]}>Pain (0-10):</Text>
-            <View style={[s.uline, { width: 22 }]}>
-              <Text style={s.val}>{v(form?.pain_level)}</Text>
-            </View>
-            <View style={{ width: 8 }} />
-            <CB checked={form?.wound_photo_taken === true} label="Photo on file" />
-          </View>
-          {form?.condition_infection === true && form?.infection_signs_describe ? (
-            <View style={{ flexDirection: "row", alignItems: "flex-end", marginTop: 3 }}>
-              <Text style={s.label}>Infection signs: </Text>
-              <View style={[s.uline, { flex: 1 }]}>
-                <Text style={s.val}>{v(form?.infection_signs_describe)}</Text>
+        {!isPostSurgical && (
+          <View style={s.section}>
+            <View style={[cbRowStyle]}>
+              <Text style={[s.label, { marginRight: 4 }]}>Wound Bed:</Text>
+              <UField label="Slough %" value={v(form?.wound_bed_slough_pct)} width={28} />
+              <UField label="Eschar %" value={v(form?.wound_bed_eschar_pct)} width={28} />
+              <Text style={[s.label, { marginRight: 4 }]}>Pain (0-10):</Text>
+              <View style={[s.uline, { width: 22 }]}>
+                <Text style={s.val}>{v(form?.pain_level)}</Text>
               </View>
+              <View style={{ width: 8 }} />
+              <CB checked={form?.wound_photo_taken === true} label="Photo on file" />
             </View>
-          ) : null}
-        </View>
+            {form?.condition_infection === true && form?.infection_signs_describe ? (
+              <View style={{ flexDirection: "row", alignItems: "flex-end", marginTop: 3 }}>
+                <Text style={s.label}>Infection signs: </Text>
+                <View style={[s.uline, { flex: 1 }]}>
+                  <Text style={s.val}>{v(form?.infection_signs_describe)}</Text>
+                </View>
+              </View>
+            ) : null}
+          </View>
+        )}
 
         {/* ── Skin Condition ── */}
         <View style={s.section}>
@@ -632,6 +697,18 @@ export function OrderFormPDF({
             <CB checked={ald === 15} label="15 days" />
             <CB checked={ald === 21} label="21 days" />
             <CB checked={ald === 30} label="30 days" />
+          </View>
+        </View>
+
+        {/* ── Dressing Change Frequency ── */}
+        <View style={s.section}>
+          <View style={cbRowStyle}>
+            <Text style={[s.label, { marginRight: 6 }]}>Dressing Change Frequency:</Text>
+            <CBVal current={form?.dressing_change_frequency} value="daily"           label="Daily" />
+            <CBVal current={form?.dressing_change_frequency} value="every_other_day" label="Every other day" />
+            <CBVal current={form?.dressing_change_frequency} value="every_3_days"    label="Every 3 days" />
+            <CBVal current={form?.dressing_change_frequency} value="weekly"          label="Weekly" />
+            <CBVal current={form?.dressing_change_frequency} value="as_needed"       label="As needed" />
           </View>
         </View>
 

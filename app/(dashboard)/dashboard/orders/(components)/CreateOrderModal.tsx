@@ -11,10 +11,16 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, Loader2, Upload, X, FileText } from "lucide-react";
 import { createOrder } from "../(services)/order-write-actions";
-import { uploadOrderDocument, triggerOrderExtraction } from "../(services)/order-document-actions";
+import {
+  prepareOrderDocumentUpload,
+  completeOrderDocumentUpload,
+  triggerOrderExtraction,
+} from "../(services)/order-document-actions";
 import { getOrderById } from "../(services)/order-read-actions";
 import { addOrderToStore } from "../(redux)/orders-slice";
 import { useAppDispatch } from "@/store/hooks";
+import { createClient } from "@/lib/supabase/client";
+import { compressImage } from "@/utils/helpers/compress-image";
 import toast from "react-hot-toast";
 import { cn } from "@/utils/utils";
 import type { DocumentType } from "@/utils/interfaces/orders";
@@ -335,27 +341,78 @@ export function CreateOrderModal() {
 
       const orderId = result.orderId;
 
-      // Upload documents sequentially; collect file paths for AI extraction
+      // Upload documents sequentially via direct browser → Supabase Storage.
+      //
+      // Bytes go BROWSER → SUPABASE STORAGE directly (signed-upload URL),
+      // bypassing Vercel's 4.5 MB serverless request body cap that broke
+      // phone-camera facesheet/valid_id uploads in production. The server
+      // action only receives metadata + signs the URL, then we hand off the
+      // file to `uploadToSignedUrl`, then call `completeOrderDocumentUpload`
+      // to insert the order_documents row + write history.
+      //
+      // Image inputs (PNG/JPG) are compressed client-side first
+      // (~1600 px longest edge, JPEG 0.85). Typical phone-camera ID photo:
+      // 6 MB → ~400 KB, well within any limit and faster on mobile networks.
+      // PDFs pass through unchanged (can't compress losslessly client-side).
+      const supabase = createClient();
       const extractableDocs: Array<{ documentType: string; filePath: string }> = [];
       for (let i = 0; i < docs.length; i++) {
         const d = docs[i];
         setUploadProgress(`Uploading ${i + 1}/${docs.length}: ${d.file.name}`);
-        const docFd = new FormData();
-        docFd.set("file", d.file);
-        const res = await uploadOrderDocument(
+        const file = await compressImage(d.file);
+
+        const prepared = await prepareOrderDocumentUpload({
           orderId,
-          d.type as DocumentType,
-          docFd,
-        );
-        if (!res.success) {
-          toast.error(`Failed to upload ${d.file.name}: ${res.error}`);
-        } else if (
-          res.document &&
-          ["facesheet", "clinical_docs"].includes(d.type)
+          documentType: d.type as DocumentType,
+          fileName: file.name,
+          mimeType: file.type,
+          size: file.size,
+        });
+        if (
+          !prepared.success ||
+          !prepared.bucket ||
+          !prepared.filePath ||
+          !prepared.uploadToken
         ) {
+          toast.error(
+            `Failed to upload ${d.file.name}: ${prepared.error ?? "Could not prepare upload."}`,
+          );
+          continue;
+        }
+
+        const { error: uploadErr } = await supabase.storage
+          .from(prepared.bucket)
+          .uploadToSignedUrl(prepared.filePath, prepared.uploadToken, file, {
+            contentType: file.type,
+          });
+        if (uploadErr) {
+          console.error("[CreateOrderModal] storage upload:", uploadErr);
+          toast.error(
+            `Failed to upload ${d.file.name}: ${uploadErr.message ?? "Upload failed."}`,
+          );
+          continue;
+        }
+
+        const completed = await completeOrderDocumentUpload({
+          orderId,
+          documentType: d.type as DocumentType,
+          bucket: prepared.bucket,
+          filePath: prepared.filePath,
+          fileName: file.name,
+          mimeType: file.type,
+          fileSize: file.size,
+        });
+        if (!completed.success || !completed.document) {
+          toast.error(
+            `Failed to upload ${d.file.name}: ${completed.error ?? "Could not save document."}`,
+          );
+          continue;
+        }
+
+        if (["facesheet", "clinical_docs"].includes(d.type)) {
           extractableDocs.push({
             documentType: d.type,
-            filePath: res.document.filePath,
+            filePath: completed.document.filePath,
           });
         }
       }
