@@ -1247,7 +1247,7 @@ export function IVRFormDocument({
         {/* ── 6. INSURANCE INFORMATION ── */}
         <SectionHeader title="Insurance Information" />
         <div className="border-b border-[#e5e5e5]">
-          <div className="grid grid-cols-2 divide-x divide-[#e5e5e5]">
+          <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-[#e5e5e5]">
             {/* Primary */}
             <div className="pr-4 pt-2 pb-1 pl-2 space-y-2">
               <div
@@ -1890,7 +1890,7 @@ export function IVRFormDocument({
             seeking reimbursement, and the sole purpose of claim support.
           </p>
 
-          <div className="grid grid-cols-[1fr_220px] gap-8">
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_220px] gap-4 sm:gap-8">
             {/* SIGNATURE CELL */}
             <div>
               <div className="h-12 flex items-end border-b border-[#333] pb-1">

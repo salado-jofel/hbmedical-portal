@@ -87,7 +87,7 @@ export function DocumentViewerSheet({ doc, onClose }: DocumentViewerSheetProps) 
           // Don't grab focus on open — leaves the form's active field
           // focused so typing continues uninterrupted.
           onOpenAutoFocus={(e) => e.preventDefault()}
-          className="fixed inset-y-0 right-0 z-50 h-full w-[50vw] max-w-[600px] bg-popover shadow-2xl border-l border-[var(--border)] flex flex-col data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:slide-in-from-right data-[state=closed]:slide-out-to-right duration-200"
+          className="fixed inset-y-0 right-0 z-50 h-full w-full sm:w-[50vw] max-w-[600px] bg-popover shadow-2xl border-l border-[var(--border)] flex flex-col data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:slide-in-from-right data-[state=closed]:slide-out-to-right duration-200"
           // Hide an a11y warning about missing description.
           aria-describedby={undefined}
         >

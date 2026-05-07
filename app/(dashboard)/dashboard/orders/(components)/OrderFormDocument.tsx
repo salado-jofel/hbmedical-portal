@@ -2611,7 +2611,7 @@ export function OrderFormDocument({
               </p>
             ) : (
               <div className="border border-[#e5e5e5] rounded">
-                <div className="grid grid-cols-[1fr_1fr_1.5fr_24px] gap-2 px-2 py-1 bg-[#f5f5f5] text-[10px] font-bold uppercase tracking-wide text-[#555]">
+                <div className="hidden sm:grid grid-cols-[1fr_1fr_1.5fr_24px] gap-2 px-2 py-1 bg-[#f5f5f5] text-[10px] font-bold uppercase tracking-wide text-[#555]">
                   <span>Treatment / Product</span>
                   <span>Dates Used</span>
                   <span>Outcome</span>
@@ -2620,7 +2620,7 @@ export function OrderFormDocument({
                 {formData.priorTreatments.map((row, idx) => (
                   <div
                     key={idx}
-                    className="grid grid-cols-[1.2fr_1fr_1.5fr_24px] gap-2 px-2 py-1 border-t border-[#eee] items-start"
+                    className="grid grid-cols-1 sm:grid-cols-[1.2fr_1fr_1.5fr_24px] gap-2 sm:gap-2 px-2 py-1 border-t border-[#eee] items-start"
                   >
                     <PriorTreatmentField
                       value={row.treatment}
@@ -3283,7 +3283,7 @@ export function OrderFormDocument({
             Layout mirrors the generated PDF: value sits on the line,
             tiny caption label below. Fixed cell height keeps underlines
             aligned across signed / unsigned states. */}
-        <div ref={signatureSectionRef} className="pt-4 mt-2 grid grid-cols-[1fr_220px] gap-8">
+        <div ref={signatureSectionRef} className="pt-4 mt-2 grid grid-cols-1 sm:grid-cols-[1fr_220px] gap-4 sm:gap-8">
           {/* SIGNATURE CELL */}
           <div>
             <div className="h-12 flex items-end border-b border-[#333] pb-1">
