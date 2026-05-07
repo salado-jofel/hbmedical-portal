@@ -1644,7 +1644,7 @@ export function OrderDetailModal({
               Order {order.order_number}
             </DialogTitle>
 
-            <div className="bg-[var(--surface)] w-[95vw] max-w-[1200px] h-[90vh] rounded-[14px] shadow-xl border border-[var(--border)] overflow-hidden flex flex-col">
+            <div className="bg-[var(--surface)] w-[95vw] max-w-[1200px] h-[90vh] max-h-[calc(100vh-2rem)] rounded-[14px] shadow-xl border border-[var(--border)] overflow-auto flex flex-col">
               {/* ════════ FULL-WIDTH HEADER ════════ */}
               <div className="flex-shrink-0 px-6 py-4 border-b border-[var(--border)] flex items-center justify-between bg-[var(--surface)]">
                 <div className="min-w-0">

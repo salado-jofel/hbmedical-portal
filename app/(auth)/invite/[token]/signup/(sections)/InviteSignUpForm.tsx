@@ -820,14 +820,14 @@ export default function InviteSignUpForm({
                           </a>
                         </div>
                       ) : !baaUrl ? (
-                        <div className="h-[380px] md:h-[620px] rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] flex items-center justify-center">
+                        <div className="h-[280px] sm:h-[380px] md:h-[620px] rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] flex items-center justify-center">
                           <Loader2 className="w-5 h-5 animate-spin text-[#94A3B8]" />
                         </div>
                       ) : (
                         <div className="rounded-lg border border-[#E2E8F0] overflow-hidden">
                           <iframe
                             src={baaSignedUrl || baaUrl}
-                            className="w-full h-[380px] md:h-[620px]"
+                            className="w-full h-[280px] sm:h-[380px] md:h-[620px]"
                             title="Business Associates Agreement"
                           />
                         </div>
@@ -881,14 +881,14 @@ export default function InviteSignUpForm({
                       </h3>
 
                       {!productServicesUrl ? (
-                        <div className="h-[380px] md:h-[620px] rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] flex items-center justify-center">
+                        <div className="h-[280px] sm:h-[380px] md:h-[620px] rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] flex items-center justify-center">
                           <Loader2 className="w-5 h-5 animate-spin text-[#94A3B8]" />
                         </div>
                       ) : (
                         <div className="rounded-lg border border-[#E2E8F0] overflow-hidden">
                           <iframe
                             src={psSignedUrl || productServicesUrl}
-                            className="w-full h-[380px] md:h-[620px]"
+                            className="w-full h-[280px] sm:h-[380px] md:h-[620px]"
                             title="Product and Services Agreement"
                           />
                         </div>
@@ -952,14 +952,14 @@ export default function InviteSignUpForm({
                           </h3>
 
                           {!previewUrl ? (
-                            <div className="h-[380px] md:h-[620px] rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] flex items-center justify-center">
+                            <div className="h-[280px] sm:h-[380px] md:h-[620px] rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] flex items-center justify-center">
                               <Loader2 className="w-5 h-5 animate-spin text-[#94A3B8]" />
                             </div>
                           ) : (
                             <div className="rounded-lg border border-[#E2E8F0] overflow-hidden">
                               <iframe
                                 src={previewUrl}
-                                className="w-full h-[380px] md:h-[620px]"
+                                className="w-full h-[280px] sm:h-[380px] md:h-[620px]"
                                 title={def.label}
                               />
                             </div>
