@@ -16,6 +16,7 @@ import ordersSlice from "@/app/(dashboard)/dashboard/orders/(redux)/orders-slice
 import productsSlice from "@/app/(dashboard)/dashboard/products/(redux)/products-slice";
 import profileSlice from "@/app/(dashboard)/dashboard/profile/(redux)/profile-slice";
 import trainingsSlice from "@/app/(dashboard)/dashboard/trainings/(redux)/trainings-slice";
+import transfersOfValueSlice from "@/app/(dashboard)/dashboard/transfers-of-value/(redux)/transfers-of-value-slice";
 import { configureStore } from "@reduxjs/toolkit";
 
 export const store = configureStore({
@@ -37,6 +38,7 @@ export const store = configureStore({
     myTeam: myTeamSlice,
     subRepDetail: subRepDetailSlice,
     repPerformance: repPerformanceSlice,
+    transfersOfValue: transfersOfValueSlice,
     dashboard: dashboardSlice,
   },
 });
