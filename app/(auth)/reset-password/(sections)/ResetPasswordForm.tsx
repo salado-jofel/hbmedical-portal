@@ -10,6 +10,7 @@ import { AuthField } from "@/app/(components)/AuthField";
 import { PasswordToggle } from "@/app/(components)/PasswordToggle";
 import { MeridianLogo } from "@/app/(components)/MeridianLogo";
 import { validatePasswordsMatch } from "@/utils/validators/signup";
+import { resetPasswordAfterMfa } from "../(services)/actions";
 
 type PageStatus = "loading" | "ready" | "error";
 
@@ -65,25 +66,26 @@ export default function ResetPasswordForm() {
 
     setIsSubmitting(true);
 
-    const { error } = await supabase.auth.updateUser({
-      password: formValues.password,
-    });
+    // Server action: uses admin client to bypass Supabase's stale AAL2 check
+    // on legacy native MFA factors, and gates on our own SMS MFA session for
+    // MFA-mandatory roles. The page-level guard already redirects through SMS
+    // challenge when needed, so reaching this point implies the gate passed —
+    // but we still defense-in-depth `needsMfa` for direct API hits.
+    const result = await resetPasswordAfterMfa(formValues.password);
 
-    if (error) {
-      setClientError(error.message);
+    if (!result.success) {
+      if (result.needsMfa) {
+        window.location.href = "/sign-in/sms-mfa?returnTo=/reset-password";
+        return;
+      }
+      setClientError(result.error);
       setIsSubmitting(false);
       return;
     }
 
-    // Sign out to clear the recovery session so the middleware doesn't redirect
-    // the user away from /sign-in back to the dashboard.
-    await supabase.auth.signOut();
-
-    // Use a full page reload instead of router.push. router.push fires a fetch
-    // navigation immediately and on production the request can reach the
-    // middleware before the browser's cookie jar reflects the signOut, causing
-    // the recovery-session guard to redirect back to /reset-password. A hard
-    // navigation guarantees the updated cookies are flushed first.
+    // Hard navigation guarantees cookies (Supabase session + sms_mfa cookie)
+    // are flushed before the next middleware pass. router.push has raced this
+    // in production before.
     window.location.href = "/sign-in?message=password_updated";
   };
 

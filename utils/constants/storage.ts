@@ -10,6 +10,7 @@ export const STORAGE_FOLDERS = {
   orders: "orders",
   invoices: "invoices",
   facilities: "facilities",
+  transfersOfValue: "transfers-of-value",
 } as const;
 
 export const STORAGE_SIGNED_URL_EXPIRES_IN = 60 * 5;

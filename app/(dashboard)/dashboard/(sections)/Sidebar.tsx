@@ -14,6 +14,7 @@ import {
   ChevronLeft,
   DollarSign,
   TrendingUp,
+  ShieldCheck,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -153,6 +154,17 @@ export const NAV_GROUPS: NavGroupDef[] = [
         label: "My Performance",
         href: "/dashboard/rep-performance",
         visible: isSalesRep,
+      },
+    ],
+  },
+  {
+    label: "Compliance",
+    items: [
+      {
+        icon: ShieldCheck,
+        label: "Transfers of Value",
+        href: "/dashboard/transfers-of-value",
+        visible: (role) => isAdmin(role) || isSalesRep(role),
       },
     ],
   },

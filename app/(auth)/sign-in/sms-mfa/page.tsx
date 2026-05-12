@@ -4,6 +4,10 @@ import { createClient } from "@/lib/supabase/server";
 import { SmsMfaChallengeForm } from "./(sections)/SmsMfaChallengeForm";
 import { sendVerificationCode } from "@/lib/sms/twilio-verify";
 import { hasActiveSmsMfaSession } from "@/lib/supabase/sms-mfa-session";
+import {
+  tryClaimSmsMfaSend,
+  SMS_MFA_MIN_RESEND_MS,
+} from "@/lib/supabase/sms-mfa-throttle";
 import { isMfaMandatoryRole } from "@/lib/supabase/mfa-gate";
 import type { UserRole } from "@/utils/helpers/role";
 import { isValidE164, maskPhone } from "@/utils/helpers/phone";
@@ -18,17 +22,40 @@ export const dynamic = "force-dynamic";
  * redirect us back to ourselves — that loop bit us with /sign-in/mfa once
  * (see comment in that file) and the same caveat applies here.
  *
- * Auto-sends a code on first render so the user lands on the form ready to
- * type. If Twilio errors (rate limit, etc.), we still render the form and
- * surface the error inline — Resend can be tried after the cooldown.
+ * Auto-send is gated by `tryClaimSmsMfaSend` (atomic DB throttle, 30s per
+ * user). Lets the user land on the form ready to type without us spamming
+ * Twilio every time they refresh, hit back, or open a second tab.
+ *
+ * Twilio failures (rate limit, geo block, bad creds, fraud lock) are
+ * caught and passed to the form so it can render an inline alert instead
+ * of silently showing an input that will never receive anything.
  *
  * Redirects:
  *   - not signed in              → /sign-in
  *   - non-rep role               → /sign-in/mfa  (TOTP path)
  *   - rep without verified phone → /onboarding/phone
- *   - rep with active SMS session → /dashboard   (gate already satisfied)
+ *   - rep with active SMS session → returnTo (default /dashboard)
+ *
+ * Supports `?returnTo=/some/path` so flows other than sign-in can reuse this
+ * challenge (e.g. /reset-password redirects here to elevate AAL before the
+ * password update). Only internal paths are honored to prevent open-redirect.
  */
-export default async function SmsMfaPage() {
+function sanitizeReturnTo(raw: string | string[] | undefined): string {
+  if (typeof raw !== "string") return "/dashboard";
+  if (!raw.startsWith("/") || raw.startsWith("//")) return "/dashboard";
+  return raw;
+}
+
+const FULL_COOLDOWN_SECONDS = Math.ceil(SMS_MFA_MIN_RESEND_MS / 1000);
+
+export default async function SmsMfaPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ returnTo?: string | string[] }>;
+}) {
+  const sp = await searchParams;
+  const returnTo = sanitizeReturnTo(sp.returnTo);
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -43,7 +70,7 @@ export default async function SmsMfaPage() {
 
   if (!profile?.role) redirect("/sign-in");
   // Roles outside the MFA-mandatory set don't go through SMS MFA.
-  if (!isMfaMandatoryRole(profile.role as UserRole)) redirect("/dashboard");
+  if (!isMfaMandatoryRole(profile.role as UserRole)) redirect(returnTo);
 
   const phone = profile.phone;
   if (!phone || !profile.phone_verified_at || !isValidE164(phone)) {
@@ -51,13 +78,38 @@ export default async function SmsMfaPage() {
   }
 
   if (await hasActiveSmsMfaSession(user.id)) {
-    redirect("/dashboard");
+    redirect(returnTo);
   }
 
-  // Fire-and-forget initial send. Errors are non-fatal — the form's Resend
-  // gives the user a way to retry, and Twilio's rate limit means a duplicate
-  // send within the cooldown window will be a no-op anyway.
-  await sendVerificationCode(phone).catch(() => {});
+  // Atomic claim before firing Twilio. If the slot is taken (a send went
+  // out within the last 30s — refresh, multi-tab, back-button, redirect
+  // chain), skip the call entirely and tell the form how long until the
+  // user can press Resend.
+  const { claimed, secondsLeft } = await tryClaimSmsMfaSend(user.id);
 
-  return <SmsMfaChallengeForm maskedPhone={maskPhone(phone)} />;
+  let initialSendError: string | null = null;
+  let initialResendSeconds = secondsLeft;
+
+  if (claimed) {
+    const result = await sendVerificationCode(phone);
+    if (result.ok) {
+      initialResendSeconds = FULL_COOLDOWN_SECONDS;
+    } else {
+      // Surface the failure inline. Keep the throttle slot claimed even on
+      // failure — most Twilio errors are persistent (geo, fraud lock), so
+      // retrying immediately wouldn't help, and releasing the slot would
+      // re-open the burst window.
+      initialSendError = result.error;
+      initialResendSeconds = FULL_COOLDOWN_SECONDS;
+    }
+  }
+
+  return (
+    <SmsMfaChallengeForm
+      maskedPhone={maskPhone(phone)}
+      returnTo={returnTo}
+      initialSendError={initialSendError}
+      initialResendSeconds={initialResendSeconds}
+    />
+  );
 }

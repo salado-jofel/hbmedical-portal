@@ -59,7 +59,16 @@ export async function updateSession(request: NextRequest) {
         decoded?.amr?.some((a) => a.method === "recovery") ?? false;
 
       if (isRecoverySession) {
-        if (!currentPath.startsWith("/reset-password")) {
+        // The SMS MFA challenge needs to be reachable in the recovery flow
+        // so MFA-mandatory users can elevate before the password update —
+        // /reset-password redirects here with ?returnTo=/reset-password.
+        // Without this allowlist the middleware bounces /sign-in/sms-mfa
+        // back to /reset-password and the two pages ping-pong each other.
+        const isAllowedRecoveryPath =
+          currentPath.startsWith("/reset-password") ||
+          currentPath.startsWith("/sign-in/sms-mfa");
+
+        if (!isAllowedRecoveryPath) {
           const url = request.nextUrl.clone();
           url.pathname = "/reset-password";
           url.search = ""; // don't carry over query params from the original URL
