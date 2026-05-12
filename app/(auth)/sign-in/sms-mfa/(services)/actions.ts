@@ -5,6 +5,7 @@ import {
   sendVerificationCode,
   checkVerificationCode,
 } from "@/lib/sms/twilio-verify";
+import { tryClaimSmsMfaSend } from "@/lib/supabase/sms-mfa-throttle";
 import { createSmsMfaSession } from "@/lib/supabase/sms-mfa-session";
 import { isValidE164 } from "@/utils/helpers/phone";
 
@@ -18,6 +19,11 @@ type ActionResult =
  * accepts it from the client. If phone isn't enrolled yet, the caller
  * should have been routed to /onboarding/phone instead — we surface a
  * clear error rather than silently failing.
+ *
+ * Throttled at the DB layer: 30-second minimum between sends per user.
+ * The client also has its own 30s Resend cooldown, but a determined
+ * caller (DevTools, scripted POST) could bypass that — the server claim
+ * is the actual ceiling and also protects against multi-tab races.
  */
 export async function requestSmsMfaCode(): Promise<ActionResult> {
   const supabase = await createClient();
@@ -40,6 +46,17 @@ export async function requestSmsMfaCode(): Promise<ActionResult> {
     };
   }
 
+  // Server-side cooldown gate. Without this, the only thing standing
+  // between a scripted caller and a Twilio fraud-block is the client's
+  // disabled-button state — which any DevTools user can override.
+  const { claimed, secondsLeft } = await tryClaimSmsMfaSend(user.id);
+  if (!claimed) {
+    return {
+      success: false,
+      error: `Please wait ${secondsLeft}s before requesting another code.`,
+    };
+  }
+
   const result = await sendVerificationCode(phone);
   if (!result.ok) {
     return { success: false, error: result.error };
@@ -50,7 +67,7 @@ export async function requestSmsMfaCode(): Promise<ActionResult> {
 /**
  * Verify a code against the pending Twilio verification. On approval,
  * create an SMS MFA session row and set the session cookie. Caller
- * (the form) navigates to /dashboard on success — the dashboard layout
+ * (the form) navigates to the returnTo on success — the dashboard layout
  * gate will see the active session and let them through.
  */
 export async function verifySmsMfaCode(

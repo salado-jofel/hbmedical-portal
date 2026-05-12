@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { PhoneEnrollmentForm } from "./(sections)/PhoneEnrollmentForm";
 import { sendVerificationCode } from "@/lib/sms/twilio-verify";
+import { tryClaimSmsMfaSend } from "@/lib/supabase/sms-mfa-throttle";
 import { isMfaMandatoryRole } from "@/lib/supabase/mfa-gate";
 import { isValidE164 } from "@/utils/helpers/phone";
 import type { UserRole } from "@/utils/helpers/role";
@@ -21,6 +22,11 @@ export const dynamic = "force-dynamic";
  * fires Twilio Verify on render and the form mounts in "code" phase
  * with the existing number locked in. The rep can override via
  * "Use a different number".
+ *
+ * Auto-send is gated by `tryClaimSmsMfaSend` — same atomic 30s throttle
+ * used by /sign-in/sms-mfa. Without it, refresh / multi-tab / back-button
+ * during onboarding fires repeated SMSes to the same phone and trips
+ * Twilio's fraud filter.
  *
  * Living outside the dashboard layout for the same reason as
  * /sign-in/sms-mfa — the layout's MFA gate redirects HERE, so this
@@ -52,14 +58,27 @@ export default async function PhoneEnrollmentPage() {
     redirect("/sign-in/sms-mfa");
   }
 
-  // Rep has a phone from signup but never verified it via SMS MFA. Send
-  // the code now so they land on the form ready to type. Errors are
-  // non-fatal — the form's Resend button can retry.
+  // Rep has a phone from signup but never verified it via SMS MFA. Try to
+  // claim a send slot; if claimed, fire Twilio and pass any error inline.
+  // Slot is intentionally consumed even on failure — Twilio errors are
+  // mostly persistent (geo, fraud) and immediate retries don't help.
   const existingPhone =
     profile.phone && isValidE164(profile.phone) ? profile.phone : undefined;
+
+  let initialSendError: string | null = null;
+
   if (existingPhone) {
-    await sendVerificationCode(existingPhone).catch(() => {});
+    const { claimed } = await tryClaimSmsMfaSend(user.id);
+    if (claimed) {
+      const result = await sendVerificationCode(existingPhone);
+      if (!result.ok) initialSendError = result.error;
+    }
   }
 
-  return <PhoneEnrollmentForm initialPhone={existingPhone} />;
+  return (
+    <PhoneEnrollmentForm
+      initialPhone={existingPhone}
+      initialSendError={initialSendError}
+    />
+  );
 }

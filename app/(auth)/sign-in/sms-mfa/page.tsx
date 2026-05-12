@@ -1,20 +1,16 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { SmsMfaChallengeForm } from "./(sections)/SmsMfaChallengeForm";
 import { sendVerificationCode } from "@/lib/sms/twilio-verify";
 import { hasActiveSmsMfaSession } from "@/lib/supabase/sms-mfa-session";
+import {
+  tryClaimSmsMfaSend,
+  SMS_MFA_MIN_RESEND_MS,
+} from "@/lib/supabase/sms-mfa-throttle";
 import { isMfaMandatoryRole } from "@/lib/supabase/mfa-gate";
 import type { UserRole } from "@/utils/helpers/role";
 import { isValidE164, maskPhone } from "@/utils/helpers/phone";
-
-// Auto-send throttle. Twilio Verify caps SMS at 5 per phone per 10 minutes;
-// without throttling, a refresh/back-button on this page burns through that
-// budget fast. Cookie holds the unix-second timestamp of the last server-
-// triggered send for this browser+user pair.
-const AUTO_SEND_COOLDOWN_COOKIE = "mp_sms_autosend_at";
-const AUTO_SEND_COOLDOWN_SECONDS = 25;
 
 export const metadata: Metadata = { title: "Verify your phone" };
 export const dynamic = "force-dynamic";
@@ -26,9 +22,13 @@ export const dynamic = "force-dynamic";
  * redirect us back to ourselves — that loop bit us with /sign-in/mfa once
  * (see comment in that file) and the same caveat applies here.
  *
- * Auto-sends a code on first render so the user lands on the form ready to
- * type. If Twilio errors (rate limit, etc.), we still render the form and
- * surface the error inline — Resend can be tried after the cooldown.
+ * Auto-send is gated by `tryClaimSmsMfaSend` (atomic DB throttle, 30s per
+ * user). Lets the user land on the form ready to type without us spamming
+ * Twilio every time they refresh, hit back, or open a second tab.
+ *
+ * Twilio failures (rate limit, geo block, bad creds, fraud lock) are
+ * caught and passed to the form so it can render an inline alert instead
+ * of silently showing an input that will never receive anything.
  *
  * Redirects:
  *   - not signed in              → /sign-in
@@ -45,6 +45,8 @@ function sanitizeReturnTo(raw: string | string[] | undefined): string {
   if (!raw.startsWith("/") || raw.startsWith("//")) return "/dashboard";
   return raw;
 }
+
+const FULL_COOLDOWN_SECONDS = Math.ceil(SMS_MFA_MIN_RESEND_MS / 1000);
 
 export default async function SmsMfaPage({
   searchParams,
@@ -79,36 +81,26 @@ export default async function SmsMfaPage({
     redirect(returnTo);
   }
 
-  // Skip the auto-send if we sent one to this browser within the cooldown
-  // window. Prevents reload-spamming Twilio (which silently 429s after 5
-  // sends in 10 minutes) and stops the user from receiving a stream of
-  // duplicate codes.
-  const cookieStore = await cookies();
-  const lastSentAtRaw = cookieStore.get(AUTO_SEND_COOLDOWN_COOKIE)?.value;
-  const lastSentAt = lastSentAtRaw ? parseInt(lastSentAtRaw, 10) : 0;
-  const now = Math.floor(Date.now() / 1000);
-  const withinCooldown =
-    Number.isFinite(lastSentAt) && now - lastSentAt < AUTO_SEND_COOLDOWN_SECONDS;
+  // Atomic claim before firing Twilio. If the slot is taken (a send went
+  // out within the last 30s — refresh, multi-tab, back-button, redirect
+  // chain), skip the call entirely and tell the form how long until the
+  // user can press Resend.
+  const { claimed, secondsLeft } = await tryClaimSmsMfaSend(user.id);
 
   let initialSendError: string | null = null;
+  let initialResendSeconds = secondsLeft;
 
-  if (!withinCooldown) {
+  if (claimed) {
     const result = await sendVerificationCode(phone);
     if (result.ok) {
-      cookieStore.set({
-        name: AUTO_SEND_COOLDOWN_COOKIE,
-        value: String(now),
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        path: "/",
-        maxAge: AUTO_SEND_COOLDOWN_SECONDS,
-      });
+      initialResendSeconds = FULL_COOLDOWN_SECONDS;
     } else {
-      // Surface the failure to the form so the user knows why no SMS arrived
-      // (rate limit, geo permission, missing creds, etc.) instead of staring
-      // at an input box and waiting.
+      // Surface the failure inline. Keep the throttle slot claimed even on
+      // failure — most Twilio errors are persistent (geo, fraud lock), so
+      // retrying immediately wouldn't help, and releasing the slot would
+      // re-open the burst window.
       initialSendError = result.error;
+      initialResendSeconds = FULL_COOLDOWN_SECONDS;
     }
   }
 
@@ -117,7 +109,7 @@ export default async function SmsMfaPage({
       maskedPhone={maskPhone(phone)}
       returnTo={returnTo}
       initialSendError={initialSendError}
-      initialSendSkipped={withinCooldown}
+      initialResendSeconds={initialResendSeconds}
     />
   );
 }

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Phone, ShieldCheck, KeyRound, MessageSquare } from "lucide-react";
+import { Phone, ShieldCheck, KeyRound, MessageSquare, AlertCircle } from "lucide-react";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,10 @@ interface Props {
    *  server-side has already sent the initial Twilio Verify code. The user
    *  can still click "Use a different number" to override. */
   initialPhone?: string;
+  /** Twilio error from the server-side auto-send (only meaningful when
+   *  initialPhone is set — that's when the server tried to send). Rendered
+   *  as an inline alert so the user knows the SMS won't arrive. */
+  initialSendError?: string | null;
 }
 
 /**
@@ -38,7 +42,7 @@ interface Props {
  * "Use a different number" in Phase 2 returns to Phase 1 — useful if the
  * profile phone is wrong, or the user no longer has access to that number.
  */
-export function PhoneEnrollmentForm({ initialPhone }: Props) {
+export function PhoneEnrollmentForm({ initialPhone, initialSendError = null }: Props) {
   const router = useRouter();
   const startedAtCodePhase = !!initialPhone;
   const [phase, setPhase] = useState<"phone" | "code">(
@@ -48,6 +52,7 @@ export function PhoneEnrollmentForm({ initialPhone }: Props) {
   const [verifiedPhone, setVerifiedPhone] = useState(initialPhone ?? "");
   const [code, setCode] = useState("");
   const [resendIn, setResendIn] = useState(startedAtCodePhase ? 30 : 0);
+  const [sendError, setSendError] = useState<string | null>(initialSendError);
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -58,27 +63,45 @@ export function PhoneEnrollmentForm({ initialPhone }: Props) {
 
   function handleSendCode() {
     startTransition(async () => {
-      const res = await startPhoneEnrollment(phone);
-      if (!res.success) {
-        toast.error(res.error);
-        return;
+      try {
+        const res = await startPhoneEnrollment(phone);
+        if (!res.success) {
+          setSendError(res.error);
+          toast.error(res.error);
+          return;
+        }
+        setSendError(null);
+        setVerifiedPhone(res.phoneE164);
+        setPhase("code");
+        setResendIn(30);
+        toast.success("Code sent.");
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Failed to send code.";
+        setSendError(message);
+        toast.error(message);
       }
-      setVerifiedPhone(res.phoneE164);
-      setPhase("code");
-      setResendIn(30);
-      toast.success("Code sent.");
     });
   }
 
   function handleResend() {
     startTransition(async () => {
-      const res = await startPhoneEnrollment(verifiedPhone);
-      if (!res.success) {
-        toast.error(res.error);
-        return;
+      try {
+        const res = await startPhoneEnrollment(verifiedPhone);
+        if (!res.success) {
+          setSendError(res.error);
+          toast.error(res.error);
+          return;
+        }
+        setSendError(null);
+        toast.success("Code sent.");
+        setResendIn(30);
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Failed to resend code.";
+        setSendError(message);
+        toast.error(message);
       }
-      toast.success("Code sent.");
-      setResendIn(30);
     });
   }
 
@@ -136,6 +159,16 @@ export function PhoneEnrollmentForm({ initialPhone }: Props) {
               )}
           </p>
         </div>
+
+        {sendError && (
+          <div className="mb-5 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+            <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={2} />
+            <div>
+              <p className="font-semibold">SMS not sent</p>
+              <p className="mt-0.5">{sendError}</p>
+            </div>
+          </div>
+        )}
 
         {phase === "phone" ? (
           <div className="space-y-4">
