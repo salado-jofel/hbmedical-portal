@@ -16,6 +16,8 @@ import {
 interface Props {
   /** Masked phone (e.g. "+63 ••••••••41"). Server-rendered for display only. */
   maskedPhone: string;
+  /** Where to send the user after successful verify. Defaults to /dashboard. */
+  returnTo?: string;
 }
 
 /**
@@ -26,7 +28,7 @@ interface Props {
  * Resend has a 30-second client-side cooldown to discourage button mashing
  * and stay well below Twilio's per-phone rate limits (5 sends per 10 min).
  */
-export function SmsMfaChallengeForm({ maskedPhone }: Props) {
+export function SmsMfaChallengeForm({ maskedPhone, returnTo = "/dashboard" }: Props) {
   const router = useRouter();
   const [code, setCode] = useState("");
   const [resendIn, setResendIn] = useState(30);
@@ -47,7 +49,7 @@ export function SmsMfaChallengeForm({ maskedPhone }: Props) {
         setCode("");
         return;
       }
-      router.replace("/dashboard");
+      router.replace(returnTo);
     });
   }
 

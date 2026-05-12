@@ -26,9 +26,26 @@ export const dynamic = "force-dynamic";
  *   - not signed in              → /sign-in
  *   - non-rep role               → /sign-in/mfa  (TOTP path)
  *   - rep without verified phone → /onboarding/phone
- *   - rep with active SMS session → /dashboard   (gate already satisfied)
+ *   - rep with active SMS session → returnTo (default /dashboard)
+ *
+ * Supports `?returnTo=/some/path` so flows other than sign-in can reuse this
+ * challenge (e.g. /reset-password redirects here to elevate AAL before the
+ * password update). Only internal paths are honored to prevent open-redirect.
  */
-export default async function SmsMfaPage() {
+function sanitizeReturnTo(raw: string | string[] | undefined): string {
+  if (typeof raw !== "string") return "/dashboard";
+  if (!raw.startsWith("/") || raw.startsWith("//")) return "/dashboard";
+  return raw;
+}
+
+export default async function SmsMfaPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ returnTo?: string | string[] }>;
+}) {
+  const sp = await searchParams;
+  const returnTo = sanitizeReturnTo(sp.returnTo);
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -43,7 +60,7 @@ export default async function SmsMfaPage() {
 
   if (!profile?.role) redirect("/sign-in");
   // Roles outside the MFA-mandatory set don't go through SMS MFA.
-  if (!isMfaMandatoryRole(profile.role as UserRole)) redirect("/dashboard");
+  if (!isMfaMandatoryRole(profile.role as UserRole)) redirect(returnTo);
 
   const phone = profile.phone;
   if (!phone || !profile.phone_verified_at || !isValidE164(phone)) {
@@ -51,7 +68,7 @@ export default async function SmsMfaPage() {
   }
 
   if (await hasActiveSmsMfaSession(user.id)) {
-    redirect("/dashboard");
+    redirect(returnTo);
   }
 
   // Fire-and-forget initial send. Errors are non-fatal — the form's Resend
@@ -59,5 +76,5 @@ export default async function SmsMfaPage() {
   // send within the cooldown window will be a no-op anyway.
   await sendVerificationCode(phone).catch(() => {});
 
-  return <SmsMfaChallengeForm maskedPhone={maskPhone(phone)} />;
+  return <SmsMfaChallengeForm maskedPhone={maskPhone(phone)} returnTo={returnTo} />;
 }
