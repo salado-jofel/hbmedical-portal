@@ -6,6 +6,7 @@ import {
   sendVerificationCode,
   checkVerificationCode,
 } from "@/lib/sms/twilio-verify";
+import { tryClaimSmsMfaSend } from "@/lib/supabase/sms-mfa-throttle";
 import { createSmsMfaSession } from "@/lib/supabase/sms-mfa-session";
 import { isValidE164, normalizePhoneInput } from "@/utils/helpers/phone";
 
@@ -23,6 +24,10 @@ type EnrollResult =
  * locks it in once the user proves ownership. This avoids a half-state
  * where someone types the wrong number, walks away, and we have an
  * unverified phone marked on the profile that won't receive future codes.
+ *
+ * Throttled at the DB layer (30s per user). The form's `handleResend`
+ * also calls this action with the already-entered phone, so this single
+ * throttle covers both "first send" and "resend" paths during onboarding.
  */
 export async function startPhoneEnrollment(
   rawPhone: string,
@@ -40,6 +45,14 @@ export async function startPhoneEnrollment(
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { success: false, error: "Not signed in." };
+
+  const { claimed, secondsLeft } = await tryClaimSmsMfaSend(user.id);
+  if (!claimed) {
+    return {
+      success: false,
+      error: `Please wait ${secondsLeft}s before requesting another code.`,
+    };
+  }
 
   const result = await sendVerificationCode(phone);
   if (!result.ok) {

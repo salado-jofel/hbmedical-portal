@@ -21,10 +21,10 @@ interface Props {
   /** Error message from the server-side auto-send, if any. Surfaced as
    *  an inline alert so the user knows the SMS won't arrive without action. */
   initialSendError?: string | null;
-  /** True when the server skipped the auto-send because a code was already
-   *  sent within the cooldown window. Used to soften the resend cooldown
-   *  copy ("Code already sent" instead of "Wait 30s"). */
-  initialSendSkipped?: boolean;
+  /** Seconds remaining on the Resend cooldown. Reflects the actual server-
+   *  side throttle state (the DB column `last_sms_mfa_send_at`) so the timer
+   *  is correct after refresh / multi-tab — not a fresh 30 every render. */
+  initialResendSeconds?: number;
 }
 
 /**
@@ -39,13 +39,15 @@ export function SmsMfaChallengeForm({
   maskedPhone,
   returnTo = "/dashboard",
   initialSendError = null,
-  initialSendSkipped = false,
+  initialResendSeconds = 30,
 }: Props) {
   const router = useRouter();
   const [code, setCode] = useState("");
-  // If the server send failed, allow Resend immediately (no cooldown — the
-  // user needs to retry to get any SMS at all).
-  const [resendIn, setResendIn] = useState(initialSendError ? 0 : 30);
+  // Mirror the server-side throttle exactly. If the server send failed we
+  // still respect the claimed slot (Twilio errors are mostly persistent and
+  // retrying instantly doesn't help) — but if the page knows there's no
+  // cooldown left, allow Resend right away.
+  const [resendIn, setResendIn] = useState(Math.max(0, initialResendSeconds));
   const [sendError, setSendError] = useState<string | null>(initialSendError);
   const [isPending, startTransition] = useTransition();
 
@@ -58,29 +60,44 @@ export function SmsMfaChallengeForm({
 
   function handleVerify() {
     startTransition(async () => {
-      const res = await verifySmsMfaCode(code);
-      if (!res.success) {
-        toast.error(res.error);
+      try {
+        const res = await verifySmsMfaCode(code);
+        if (!res.success) {
+          toast.error(res.error);
+          setCode("");
+          return;
+        }
+        router.replace(returnTo);
+      } catch (err) {
+        toast.error(
+          err instanceof Error ? err.message : "Failed to verify code.",
+        );
         setCode("");
-        return;
       }
-      router.replace(returnTo);
     });
   }
 
   function handleResend() {
     startTransition(async () => {
-      const res = await requestSmsMfaCode();
-      if (!res.success) {
-        // Promote to inline alert (persistent) + toast (transient) so the user
-        // can still see the reason after the toast fades.
-        setSendError(res.error);
-        toast.error(res.error);
-        return;
+      try {
+        const res = await requestSmsMfaCode();
+        if (!res.success) {
+          // Promote to inline alert (persistent) + toast (transient) so the
+          // user can still see the reason after the toast fades. Server's
+          // throttle error already includes the wait time, so respect it.
+          setSendError(res.error);
+          toast.error(res.error);
+          return;
+        }
+        setSendError(null);
+        toast.success("Code sent.");
+        setResendIn(30);
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Failed to resend code.";
+        setSendError(message);
+        toast.error(message);
       }
-      setSendError(null);
-      toast.success("Code sent.");
-      setResendIn(30);
     });
   }
 
@@ -109,11 +126,7 @@ export function SmsMfaChallengeForm({
             Verify your phone
           </h2>
           <p className="mt-1.5 text-sm text-[#64748B]">
-            {sendError
-              ? "Couldn't send a code to "
-              : initialSendSkipped
-                ? "A code was just sent to "
-                : "We sent a code to "}
+            {sendError ? "Couldn't send a code to " : "We sent a code to "}
             <span className="font-medium text-[var(--navy)]">
               {maskedPhone}
             </span>
