@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ShieldCheck, KeyRound, MessageSquare } from "lucide-react";
+import { ShieldCheck, KeyRound, MessageSquare, AlertCircle } from "lucide-react";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +18,13 @@ interface Props {
   maskedPhone: string;
   /** Where to send the user after successful verify. Defaults to /dashboard. */
   returnTo?: string;
+  /** Error message from the server-side auto-send, if any. Surfaced as
+   *  an inline alert so the user knows the SMS won't arrive without action. */
+  initialSendError?: string | null;
+  /** True when the server skipped the auto-send because a code was already
+   *  sent within the cooldown window. Used to soften the resend cooldown
+   *  copy ("Code already sent" instead of "Wait 30s"). */
+  initialSendSkipped?: boolean;
 }
 
 /**
@@ -28,10 +35,18 @@ interface Props {
  * Resend has a 30-second client-side cooldown to discourage button mashing
  * and stay well below Twilio's per-phone rate limits (5 sends per 10 min).
  */
-export function SmsMfaChallengeForm({ maskedPhone, returnTo = "/dashboard" }: Props) {
+export function SmsMfaChallengeForm({
+  maskedPhone,
+  returnTo = "/dashboard",
+  initialSendError = null,
+  initialSendSkipped = false,
+}: Props) {
   const router = useRouter();
   const [code, setCode] = useState("");
-  const [resendIn, setResendIn] = useState(30);
+  // If the server send failed, allow Resend immediately (no cooldown — the
+  // user needs to retry to get any SMS at all).
+  const [resendIn, setResendIn] = useState(initialSendError ? 0 : 30);
+  const [sendError, setSendError] = useState<string | null>(initialSendError);
   const [isPending, startTransition] = useTransition();
 
   // Cooldown timer for Resend button
@@ -57,9 +72,13 @@ export function SmsMfaChallengeForm({ maskedPhone, returnTo = "/dashboard" }: Pr
     startTransition(async () => {
       const res = await requestSmsMfaCode();
       if (!res.success) {
+        // Promote to inline alert (persistent) + toast (transient) so the user
+        // can still see the reason after the toast fades.
+        setSendError(res.error);
         toast.error(res.error);
         return;
       }
+      setSendError(null);
       toast.success("Code sent.");
       setResendIn(30);
     });
@@ -90,13 +109,39 @@ export function SmsMfaChallengeForm({ maskedPhone, returnTo = "/dashboard" }: Pr
             Verify your phone
           </h2>
           <p className="mt-1.5 text-sm text-[#64748B]">
-            We sent a code to{" "}
+            {sendError
+              ? "Couldn't send a code to "
+              : initialSendSkipped
+                ? "A code was just sent to "
+                : "We sent a code to "}
             <span className="font-medium text-[var(--navy)]">
               {maskedPhone}
             </span>
             .
           </p>
         </div>
+
+        {sendError && (
+          <div className="mb-5 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+            <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={2} />
+            <div>
+              <p className="font-semibold">SMS not sent</p>
+              <p className="mt-0.5">{sendError}</p>
+              <p className="mt-1 text-red-600/80">
+                Try{" "}
+                <button
+                  type="button"
+                  onClick={handleResend}
+                  disabled={isPending}
+                  className="underline underline-offset-2 hover:no-underline disabled:opacity-50"
+                >
+                  resend
+                </button>{" "}
+                — if it keeps failing, contact your administrator.
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="space-y-4">
           <div>
