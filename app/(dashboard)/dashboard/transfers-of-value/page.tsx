@@ -24,7 +24,7 @@ export default async function TransfersOfValuePage({
   if (!isSalesRep(role) && !isAdmin(role)) {
     redirect("/dashboard");
   }
-// test
+
   const admin = isAdmin(role);
   const sp = await searchParams;
   const selectedRepId = admin ? (sp.rep ?? null) : null;
