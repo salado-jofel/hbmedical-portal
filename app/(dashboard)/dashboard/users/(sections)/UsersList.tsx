@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { UserPlus, User } from "lucide-react";
+import { UserPlus, User, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import toast from "react-hot-toast";
 import { deactivateUser, reactivateUser, deleteUser, resendInvite } from "@/app/(dashboard)/dashboard/users/(services)/actions";
@@ -10,6 +10,7 @@ import { adminUnenrollUserMfa } from "@/app/(dashboard)/dashboard/settings/(serv
 import { useAppSelector, useAppDispatch } from "@/store/hooks";
 import { updateUserInStore, removeUserFromStore } from "@/app/(dashboard)/dashboard/users/(redux)/users-slice";
 import { CreateUserModal } from "../(components)/CreateUserModal";
+import { EditEmailModal } from "../(components)/EditEmailModal";
 import { PendingInvitesSection } from "../(components)/PendingInvitesSection";
 import ConfirmModal from "@/app/(components)/ConfirmModal";
 import { DataTable } from "@/app/(components)/DataTable";
@@ -47,6 +48,7 @@ export function UsersList() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [resetPinUserId, setResetPinUserId] = useState<string | null>(null);
   const [resetMfaUserId, setResetMfaUserId] = useState<string | null>(null);
+  const [editEmailUserId, setEditEmailUserId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
   // Live user list — reflects invites, status changes, role edits from
@@ -388,9 +390,28 @@ export function UsersList() {
                     >
                       <td className="px-4 py-2.5 pl-4">{renderUserCell(user)}</td>
                       <td className="px-4 py-2.5 hidden sm:table-cell">
-                        <span className="text-sm text-[var(--text2)]">
-                          {user.email}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-sm text-[var(--text2)] truncate">
+                            {user.email}
+                          </span>
+                          {/* Admin can edit a user's login email, except for
+                              pending invites (no auth.users row yet — admin
+                              should delete + re-invite instead). */}
+                          {user.status !== "pending" && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditEmailUserId(user.id);
+                              }}
+                              aria-label="Edit email"
+                              title="Edit email"
+                              className="p-1 rounded text-[var(--text3)] hover:text-[var(--navy)] hover:bg-[#EFF6FF] transition-colors opacity-0 group-hover:opacity-100"
+                            >
+                              <Pencil className="w-3 h-3" strokeWidth={1.8} />
+                            </button>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-2.5">
                         <span
@@ -479,6 +500,12 @@ export function UsersList() {
         confirmLabel="Reset MFA"
         isLoading={pendingId === resetMfaUserId && resetMfaUserId !== null}
         onConfirm={() => { if (resetMfaUserId) handleResetMfa(resetMfaUserId); }}
+      />
+
+      <EditEmailModal
+        open={editEmailUserId !== null}
+        onClose={() => setEditEmailUserId(null)}
+        user={users.find((u) => u.id === editEmailUserId) ?? null}
       />
     </div>
   );

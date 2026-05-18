@@ -14,6 +14,26 @@ import {
 
 const PROVIDER_CREDENTIALS_TABLE = "provider_credentials";
 
+// Explicit column list — matches the column-level GRANT to `authenticated`
+// in migration 20260429000000_rls_hardening.sql (plus medical_license_number
+// added by the follow-up migration). `pin_hash` is intentionally NOT here:
+// it stays REVOKEd from authenticated and is only readable via the service
+// role in dedicated PIN-verification flows. Using `select("*")` here would
+// trip permission_denied (42501) because Postgres requires SELECT on every
+// column the projection expands to.
+const PROVIDER_CREDENTIALS_READ_COLUMNS = [
+  "id",
+  "user_id",
+  "credential",
+  "npi_number",
+  "ptan_number",
+  "medical_license_number",
+  "baa_signed_at",
+  "terms_signed_at",
+  "created_at",
+  "updated_at",
+].join(", ");
+
 function toNullable(val: string | null | undefined): string | null {
   if (!val || val.trim() === "" || val.trim() === "none") return null;
   return val.trim();
@@ -29,7 +49,7 @@ export async function getMyCredentials(): Promise<IProviderCredentials | null> {
 
   const { data, error } = await supabase
     .from(PROVIDER_CREDENTIALS_TABLE)
-    .select("*")
+    .select(PROVIDER_CREDENTIALS_READ_COLUMNS)
     .eq("user_id", user.id)
     .maybeSingle();
 
