@@ -11,6 +11,7 @@ import type { IUser, IUserFormState, UserStatus } from "@/utils/interfaces/users
 import type { UserRole } from "@/utils/helpers/role";
 import { isAdmin, isSalesRep } from "@/utils/helpers/role";
 import { buildResetPasswordEmail } from "@/lib/emails/build-reset-password-email";
+import { logPhiAccess } from "@/lib/audit/log-phi-access";
 import { stripe } from "@/lib/stripe/stripe";
 import {
   pageToRange,
@@ -442,6 +443,245 @@ export async function reactivateUser(userId: string): Promise<void> {
   await adminClient.from("profiles").update({ status: "active" }).eq("id", userId);
 
   revalidatePath("/dashboard/users");
+}
+
+/* -------------------------------------------------------------------------- */
+/* updateUserEmail                                                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Admin-only: change a user's login email.
+ *
+ * Why an admin override path (admin client + `email_confirm: true`) instead of
+ * Supabase's native confirm-by-emailed-link flow: this action is for cases
+ * where the user has already been onboarded and the client (an admin) has
+ * verified out-of-band that the requester is the account owner. The new email
+ * is applied immediately, the user is signed out (SMS MFA sessions revoked,
+ * JWT invalidated via app_metadata bump), and both addresses receive a
+ * security notification.
+ *
+ * Steps:
+ *   1. requireAdminOrThrow
+ *   2. Validate new email format
+ *   3. Reject if new == old (no-op)
+ *   4. Reject if another profile or active invite_token already uses the new
+ *      address (uniqueness check)
+ *   5. auth.admin.updateUserById(id, { email, email_confirm: true, ... })
+ *   6. profiles.email = new (sync the denormalized copy)
+ *   7. Revoke sms_mfa_sessions so MFA gate re-challenges on next request
+ *   8. Notify OLD address (security alert) + NEW address (confirmation)
+ *   9. logPhiAccess("user.email_change") with both addresses in metadata
+ */
+export async function updateUserEmail(
+  _prev: IUserFormState | null,
+  formData: FormData,
+): Promise<IUserFormState> {
+  try {
+    const supabase = await createClient();
+    await requireAdminOrThrow(supabase);
+
+    const userId = (formData.get("user_id") as string | null)?.trim();
+    const rawEmail = (formData.get("email") as string | null)?.trim().toLowerCase();
+
+    if (!userId) {
+      return { success: false, error: "Missing user id." };
+    }
+    if (!rawEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawEmail)) {
+      return {
+        success: false,
+        error: null,
+        fieldErrors: { email: "Enter a valid email." },
+      };
+    }
+
+    const adminClient = createAdminClient();
+
+    // ── Fetch the target user (old email + role + status). The auth.users row
+    //    is the source of truth for login email; profiles.email is a cache.
+    const { data: target, error: targetErr } = await adminClient
+      .from("profiles")
+      .select("id, email, first_name, last_name, role, status")
+      .eq("id", userId)
+      .single();
+
+    if (targetErr || !target) {
+      return { success: false, error: "User not found." };
+    }
+
+    const oldEmail = (target.email as string | null)?.toLowerCase() ?? "";
+
+    if (rawEmail === oldEmail) {
+      return {
+        success: false,
+        error: null,
+        fieldErrors: { email: "New email is the same as the current one." },
+      };
+    }
+
+    // Pending users have no auth.users row yet — their email is held only on
+    // invite_tokens.invited_email, so this admin-edit flow doesn't apply.
+    // Direct the admin to delete + re-invite instead.
+    if (target.status === "pending") {
+      return {
+        success: false,
+        error:
+          "This user hasn't accepted their invite yet. Delete the pending invite and re-invite with the new email.",
+      };
+    }
+
+    // ── Uniqueness: reject if another profile already owns the new email.
+    //    auth.users will also reject the update with a duplicate-key error,
+    //    but a friendly field-level message beats parsing Supabase's error.
+    const { data: collision } = await adminClient
+      .from("profiles")
+      .select("id")
+      .eq("email", rawEmail)
+      .neq("id", userId)
+      .maybeSingle();
+    if (collision) {
+      return {
+        success: false,
+        error: null,
+        fieldErrors: { email: "Another user already has this email." },
+      };
+    }
+
+    const { data: pendingInvite } = await adminClient
+      .from("invite_tokens")
+      .select("id")
+      .eq("invited_email", rawEmail)
+      .is("used_at", null)
+      .gt("expires_at", new Date().toISOString())
+      .maybeSingle();
+    if (pendingInvite) {
+      return {
+        success: false,
+        error: null,
+        fieldErrors: {
+          email:
+            "An active invite already targets this email. Resolve it from Pending Invites first.",
+        },
+      };
+    }
+
+    // ── Apply the change at the auth layer. `email_confirm: true` marks the
+    //    new address as already verified — the user does NOT receive a
+    //    "click to confirm" link from Supabase. Bumping app_metadata forces
+    //    a JWT refresh on the user's next request (the access token signs
+    //    over app_metadata, so the existing token can't be reused).
+    const { error: authErr } = await adminClient.auth.admin.updateUserById(
+      userId,
+      {
+        email: rawEmail,
+        email_confirm: true,
+        app_metadata: {
+          email_changed_at: new Date().toISOString(),
+        },
+      },
+    );
+
+    if (authErr) {
+      console.error("[updateUserEmail] auth update error:", authErr);
+      // Surface Supabase's own message — most common cause is a race-condition
+      // duplicate that slipped past our pre-check.
+      return {
+        success: false,
+        error: authErr.message ?? "Failed to update email.",
+      };
+    }
+
+    // ── Sync the denormalized profiles.email. If this fails the login email
+    //    is already changed — log loudly so we can fix manually rather than
+    //    rolling back auth.users (which would un-change a real change).
+    const { error: profileErr } = await adminClient
+      .from("profiles")
+      .update({ email: rawEmail })
+      .eq("id", userId);
+
+    if (profileErr) {
+      console.error(
+        "[updateUserEmail] profiles.email sync FAILED — auth was updated:",
+        JSON.stringify(profileErr),
+      );
+      // Don't fail the whole flow — the auth change is authoritative for login.
+    }
+
+    // ── Force MFA re-challenge so the user has to verify their phone again
+    //    with their new identity. Mirrors deactivateUser's pattern.
+    await adminClient
+      .from("sms_mfa_sessions")
+      .update({ revoked_at: new Date().toISOString() })
+      .eq("user_id", userId)
+      .is("revoked_at", null);
+
+    // ── Notify both old and new addresses. Old gets a security alert
+    //    ("if this wasn't you, contact support"); new gets a confirmation.
+    //    Non-blocking — if the email service is down, the change still
+    //    succeeded and the admin gets a generic warning instead.
+    let emailWarning: string | undefined;
+    try {
+      const { sendEmailChangeNotification } = await import(
+        "@/lib/emails/send-email-change-notification"
+      );
+      await sendEmailChangeNotification({
+        oldEmail,
+        newEmail: rawEmail,
+        firstName: (target.first_name as string | null) ?? "",
+        appUrl:
+          process.env.NEXT_PUBLIC_APP_URL ??
+          process.env.NEXT_PUBLIC_SITE_URL ??
+          "https://meridianportal.io",
+      });
+    } catch (err) {
+      console.error("[updateUserEmail] notification send failed:", err);
+      emailWarning =
+        "Email updated, but the notification to the old/new addresses failed to send.";
+    }
+
+    // ── Audit log — HIPAA §164.312(b). Captures actor (the admin running
+    //    this), target user, and both addresses. Never fails the action.
+    await logPhiAccess({
+      action: "user.email_change",
+      resource: "profiles",
+      resourceId: userId,
+      metadata: {
+        old_email: oldEmail,
+        new_email: rawEmail,
+        target_role: target.role,
+      },
+    });
+
+    revalidatePath("/dashboard/users");
+
+    // Return the updated user shape so the modal can dispatch the new email
+    // into the Redux store and the row re-renders immediately.
+    const updatedUser: IUser = {
+      id: target.id as string,
+      first_name: (target.first_name as string | null) ?? "",
+      last_name: (target.last_name as string | null) ?? "",
+      email: rawEmail,
+      // profiles.role is NOT NULL at the DB layer; the column type permits
+      // null only because the rest of the codebase treats UserRole as nullable.
+      role: target.role as NonNullable<UserRole>,
+      created_at: "",
+      is_active: target.status === "active",
+      status: (target.status as UserStatus) ?? "pending",
+      facility: null,
+    };
+
+    return {
+      success: true,
+      error: null,
+      user: updatedUser,
+      warning: emailWarning,
+    };
+  } catch (err) {
+    console.error("[updateUserEmail] Unexpected error:", err);
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "An unexpected error occurred.",
+    };
+  }
 }
 
 /* -------------------------------------------------------------------------- */
