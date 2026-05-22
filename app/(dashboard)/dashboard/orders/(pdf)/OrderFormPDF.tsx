@@ -559,16 +559,22 @@ export function OrderFormPDF({
             </Text>
           )}
           <View style={{ flexDirection: "row", alignItems: "flex-end" }}>
-            <Text style={[s.label, { marginRight: 4 }]}>Description: </Text>
+            <Text style={[s.label, { marginRight: 4 }]}>
+              {isPostSurgical ? "Post-surgical thickness wound description: " : "Description: "}
+            </Text>
             <View style={[s.uline, { flex: 1 }]}>
               <Text style={s.val}>{v(form?.wound_stage)}</Text>
             </View>
           </View>
         </View>
 
-        {/* ── Fortify: Prior Treatments Tried (table) + Advancement Reason ── */}
-        {(Array.isArray(form?.prior_treatments) && (form.prior_treatments as unknown[]).length > 0) ||
-        form?.advancement_reason ? (
+        {/* ── Fortify: Prior Treatments Tried (table) + Advancement Reason ──
+            Chronic-only. Post-surgical orders skip this entire block in both
+            the UI and the rendered PDF per the client's post-surgical
+            template. DB columns remain populated if a wound is later
+            reclassified back to chronic. */}
+        {!isPostSurgical && ((Array.isArray(form?.prior_treatments) && (form.prior_treatments as unknown[]).length > 0) ||
+        form?.advancement_reason) ? (
           <View style={s.section}>
             <Text style={s.sectionLabel}>Prior Treatments Tried</Text>
             {Array.isArray(form?.prior_treatments) &&
@@ -599,13 +605,14 @@ export function OrderFormPDF({
           </View>
         ) : null}
 
-        {/* ── Fortify: Goal of Therapy + Adjuncts + Consults ── */}
-        {form?.goal_of_therapy ||
+        {/* ── Fortify: Goal of Therapy + Adjuncts + Consults ──
+            Chronic-only — see comment above the Prior Treatments block. */}
+        {!isPostSurgical && (form?.goal_of_therapy ||
         form?.adjunct_offloading === true ||
         form?.adjunct_compression === true ||
         form?.adjunct_debridement === true ||
         form?.adjunct_other ||
-        form?.specialty_consults ? (
+        form?.specialty_consults) ? (
           <View style={s.section}>
             <View style={cbRowStyle}>
               <Text style={[s.label, { marginRight: 4 }]}>Goal of Therapy:</Text>
@@ -642,14 +649,18 @@ export function OrderFormPDF({
           </View>
         ) : null}
 
-        {/* ── Treatment Plan ── */}
-        <View style={s.section}>
-          <Text style={s.sectionLabel}>Treatment Plan to Include Frequency of Dressing Changes</Text>
-          <Text style={{ fontSize: 7, color: GRAY, marginBottom: 2, fontFamily: "Helvetica-Oblique" }}>
-            All materials and supplies were dispensed per the patient&apos;s needs. Home instructions were reviewed and all questions were answered in detail.
-          </Text>
-          <Text style={s.textArea}>{v(form?.treatment_plan)}</Text>
-        </View>
+        {/* ── Treatment Plan ──
+            Chronic-only — fresh surgical wounds use the Clinical Notes block
+            below for any dressing-change orders. */}
+        {!isPostSurgical && (
+          <View style={s.section}>
+            <Text style={s.sectionLabel}>Treatment Plan to Include Frequency of Dressing Changes</Text>
+            <Text style={{ fontSize: 7, color: GRAY, marginBottom: 2, fontFamily: "Helvetica-Oblique" }}>
+              All materials and supplies were dispensed per the patient&apos;s needs. Home instructions were reviewed and all questions were answered in detail.
+            </Text>
+            <Text style={s.textArea}>{v(form?.treatment_plan)}</Text>
+          </View>
+        )}
 
         {/* ── Clinical Notes ── */}
         <View style={s.section}>
@@ -803,9 +814,16 @@ export function OrderFormPDF({
               <Text style={[s.label, { marginRight: 6 }]}>Wound meets LCD?</Text>
               <CB checked={form?.wound_meets_lcd === true} label="Yes" />
               <CB checked={form?.wound_meets_lcd === false} label="No" />
-              <Text style={[s.label, { marginLeft: 8, marginRight: 6 }]}>Conservative tx period met?</Text>
-              <CB checked={form?.conservative_tx_period_met === true} label="Yes" />
-              <CB checked={form?.conservative_tx_period_met === false} label="No" />
+              {/* Conservative-tx-period attestation is chronic-only — matches
+                  the UI hide for the same reason (post-surgical wounds bypass
+                  the LCD's conservative-trial requirement). */}
+              {!isPostSurgical && (
+                <>
+                  <Text style={[s.label, { marginLeft: 8, marginRight: 6 }]}>Conservative tx period met?</Text>
+                  <CB checked={form?.conservative_tx_period_met === true} label="Yes" />
+                  <CB checked={form?.conservative_tx_period_met === false} label="No" />
+                </>
+              )}
             </View>
             <View style={[cbRowStyle, { marginTop: 3 }]}>
               <Text style={[s.label, { marginRight: 6 }]}>Qty within LCD limits?</Text>
