@@ -754,6 +754,18 @@ ${
 - Focus on the surgical fields (date_of_surgery, cpt_codes, procedure_name, surgeon_name, within_global_period, surgical_qualifying_basis, debridement_date, dressing_change_frequency).
 - DO NOT extract wound dimensions — set wound_length_cm, wound_width_cm, wound_depth_cm, wound2_length_cm, wound2_width_cm, wound2_depth_cm, granulation_tissue_pct, wound_bed_slough_pct, wound_bed_eschar_pct, pain_level to null. Set wound_photo_taken to false. Those fields are NOT displayed on post-surgical orders.
 - DO NOT extract wound onset date/duration — set wound_onset_date and wound_duration_text to null.
+- DO NOT extract chronic-only treatment-plan fields. These are hidden on post-surgical orders so populating them would just create dead data:
+    - prior_treatments → []
+    - advancement_reason → null
+    - goal_of_therapy → null
+    - goal_of_therapy_other → null
+    - adjunct_offloading → false
+    - adjunct_compression → false
+    - adjunct_debridement → false
+    - adjunct_other → null
+    - specialty_consults → null
+    - treatment_plan → null
+    - conservative_tx_period_met → null
 - For attest_not_routine_care and attest_wound_measured_at_surgery: only set true if the source doc EXPLICITLY says so. Default false otherwise.`
     : `Because wound_type !== "post_surgical" (chronic etc.):
 - Extract all wound-bed and dimension fields as before (wound_length_cm, wound_width_cm, wound_depth_cm, wound2_*, granulation_tissue_pct, wound_bed_slough_pct, wound_bed_eschar_pct, pain_level, wound_photo_taken, wound_onset_date, wound_duration_text).
@@ -1947,6 +1959,18 @@ ${
 - Focus on the surgical fields (date_of_surgery, cpt_codes, procedure_name, surgeon_name, within_global_period, surgical_qualifying_basis, debridement_date, dressing_change_frequency).
 - DO NOT extract wound dimensions — set wound_length_cm, wound_width_cm, wound_depth_cm, wound2_length_cm, wound2_width_cm, wound2_depth_cm, granulation_tissue_pct, wound_bed_slough_pct, wound_bed_eschar_pct, pain_level to null. Set wound_photo_taken to false. Those fields are NOT displayed on post-surgical orders.
 - DO NOT extract wound onset date/duration — set wound_onset_date and wound_duration_text to null.
+- DO NOT extract chronic-only treatment-plan fields. These are hidden on post-surgical orders so populating them would just create dead data:
+    - prior_treatments → []
+    - advancement_reason → null
+    - goal_of_therapy → null
+    - goal_of_therapy_other → null
+    - adjunct_offloading → false
+    - adjunct_compression → false
+    - adjunct_debridement → false
+    - adjunct_other → null
+    - specialty_consults → null
+    - treatment_plan → null
+    - conservative_tx_period_met → null
 - For attest_not_routine_care and attest_wound_measured_at_surgery: only set true if the source doc EXPLICITLY says so. Default false otherwise.`
     : `Because wound_type !== "post_surgical" (chronic etc.):
 - Extract all wound-bed and dimension fields as before (wound_length_cm, wound_width_cm, wound_depth_cm, wound2_*, granulation_tissue_pct, wound_bed_slough_pct, wound_bed_eschar_pct, pain_level, wound_photo_taken, wound_onset_date, wound_duration_text).

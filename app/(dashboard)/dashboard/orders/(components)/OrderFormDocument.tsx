@@ -2564,7 +2564,11 @@ export function OrderFormDocument({
             </>
           )}
           <div className="flex space-y-1 flex-col">
-            <FL>Description</FL>
+            <FL>
+              {isPostSurgical
+                ? "Post-surgical thickness wound description"
+                : "Description"}
+            </FL>
             <AiWrap active={ai && !!formData.woundStage}>
               <AutoResizeTextarea
                 value={formData.woundStage}
@@ -2574,6 +2578,8 @@ export function OrderFormDocument({
                 placeholder={
                   !isPostSurgical && aiExtracted && !formData.woundStage
                     ? "Required — AI missed this field"
+                    : isPostSurgical
+                    ? "e.g. Post-surgical full-thickness wound, surgical site description…"
                     : "Enter wound stage, grade, or classification"
                 }
                 aiHighlight={ai && !!formData.woundStage}
@@ -2582,7 +2588,14 @@ export function OrderFormDocument({
           </div>
         </div>
 
-        {/* ── 15. TREATMENT PLAN ── */}
+        {/* ── 15. TREATMENT PLAN ──
+            Chronic-only block. Post-surgical orders skip the entire section
+            (Prior Treatments, Advancement Reason, Goals + Adjuncts, Specialty
+            Consults, Treatment Plan textarea) per the client's post-surgical
+            template — those fields don't apply to a fresh surgical wound.
+            DB columns are kept so toggling wound_type ↔ chronic re-shows the
+            data; data is only hidden, never destroyed. */}
+        {!isPostSurgical && (
         <div className="py-2 border-b border-[#e5e5e5] space-y-2 flex flex-col">
 
           {/* ── 15a (NESTED). PRIOR TREATMENTS TRIED (Fortify expansion) ──
@@ -2784,6 +2797,7 @@ export function OrderFormDocument({
             />
           </AiWrap>
         </div>
+        )}
 
         {/* Clinical notes — always visible */}
         <div className="py-2 border-b border-[#e5e5e5] space-y-1 flex flex-col">
@@ -3192,7 +3206,13 @@ export function OrderFormDocument({
           </div>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px]">
             <YesNoToggle label="Wound meets LCD?" value={formData.woundMeetsLcd} onChange={(v) => set("woundMeetsLcd", v)} />
-            <YesNoToggle label="Conservative tx period met?" value={formData.conservativeTxPeriodMet} onChange={(v) => set("conservativeTxPeriodMet", v)} />
+            {/* Conservative-therapy-period attestation is chronic-only — fresh
+                surgical wounds bypass the LCD's conservative-trial requirement
+                by definition, so we hide this Y/N on post-surgical. DB column
+                remains; data persists if a wound is later reclassified. */}
+            {!isPostSurgical && (
+              <YesNoToggle label="Conservative tx period met?" value={formData.conservativeTxPeriodMet} onChange={(v) => set("conservativeTxPeriodMet", v)} />
+            )}
             <YesNoToggle label="Qty within LCD?" value={formData.qtyWithinLcdLimits} onChange={(v) => set("qtyWithinLcdLimits", v)} />
             <span className="inline-flex items-center gap-1">
               <FL>KX criteria</FL>

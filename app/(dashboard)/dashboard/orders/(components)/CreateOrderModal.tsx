@@ -282,7 +282,10 @@ export function CreateOrderModal() {
 
   function reset() {
     setWoundType("chronic");
-    setOrderType(null);
+    // Keep orderType at the only allowed value — UI no longer collects this,
+    // but the server action still expects a non-null order_type. Clearing to
+    // null here would send null on the second submission of the same session.
+    setOrderType("omeza");
     setManualInput(false);
     setPatientFirstName("");
     setPatientLastName("");
@@ -509,25 +512,13 @@ export function CreateOrderModal() {
                 </div>
               </div>
 
-              {/* Order Type — locked to Omeza. Surgical Collagen removed per
-                  client request; if it ever needs to come back, restore the
-                  toggle array + onChange handler. */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-slate-700">
-                  Order Type
-                </label>
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    disabled
-                    aria-pressed="true"
-                    className="flex-1 py-2.5 px-3 rounded-xl border-2 text-sm font-medium border-[var(--navy)] bg-blue-50 text-[var(--navy)] cursor-default opacity-90"
-                  >
-                    Omeza
-                  </button>
-                  <div className="flex-1" aria-hidden="true" />
-                </div>
-              </div>
+              {/* Order Type UI is hidden — there's only one allowed value
+                  ("omeza") and the disabled single-choice button was just
+                  visual noise. The orderType state stays defaulted to
+                  "omeza" so the server action still receives order_type and
+                  downstream logic (PDF, exports, etc.) is unchanged. When
+                  the client wants Order Type back as a user choice, restore
+                  the toggle JSX here and add the additional options. */}
 
               {/* Date of Service */}
               <div className="flex flex-col gap-1.5">
