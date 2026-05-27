@@ -1,14 +1,45 @@
-// ── GOOGLE GEMINI (active for testing — free tier) ────────────────────────
+// ── AWS BEDROCK (Anthropic Claude via Bedrock — HIPAA covered under AWS BAA) ──
+//
+// We route Claude through AWS Bedrock instead of Anthropic-direct so the call
+// is covered by AWS's free BAA (signed 2026-05-27) instead of Anthropic's $1K
+// enterprise BAA. Same model, same prompts, same Zod-validated outputs —
+// only the transport changes.
+//
+// Cross-region inference profile: Bedrock now requires inference-profile IDs
+// (prefixed with `us.`) for Claude 4+ models. The profile auto-routes the
+// request across us-east-1 / us-east-2 / us-west-2 for capacity + resilience.
+// All three regions are HIPAA-eligible and covered by the BAA.
+//
+// Auth: createAmazonBedrock auto-picks up AWS_REGION, AWS_ACCESS_KEY_ID, and
+// AWS_SECRET_ACCESS_KEY from the environment. The IAM user behind those keys
+// (vercel-bedrock-meridianportal) holds AmazonBedrockLimitedAccess — scoped
+// to InvokeModel on the Anthropic foundation models only.
+//
+// To roll back: re-enable the `createAnthropic` block below + restore the
+// ANTHROPIC_API_KEY env var. `@ai-sdk/anthropic` is intentionally kept in
+// package.json as the rollback path.
+import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
+const aiModel = createAmazonBedrock({
+  region: process.env.AWS_REGION ?? "us-east-1",
+  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+});
+
+// ── ANTHROPIC CLAUDE (direct, retired) — keep import path & shape ready for
+//    a 1-line rollback if Bedrock ever has an outage or model-availability
+//    gap. To revert, replace `aiModel` above with the createAnthropic block.
+// import { createAnthropic } from "@ai-sdk/anthropic";
+// const aiModel = createAnthropic({
+//   apiKey: process.env.ANTHROPIC_API_KEY,
+// });
+
+// ── GOOGLE GEMINI (NOT HIPAA-eligible — AI Studio path has no BAA) ──
+//    Do not re-enable for PHI requests. Would need @ai-sdk/google-vertex
+//    + service-account auth for HIPAA-eligible Vertex AI Gemini.
 // import { createGoogleGenerativeAI } from "@ai-sdk/google";
 // const aiModel = createGoogleGenerativeAI({
 //   apiKey: process.env.GEMINI_API_KEY,
 // });
-
-// ── ANTHROPIC CLAUDE (commented out — restore when ready) ─────────────────
-import { createAnthropic } from "@ai-sdk/anthropic";
-const aiModel = createAnthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
 
 import { generateText } from "ai";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -954,7 +985,7 @@ async function handleCombinedExtraction(
   });
 
   const { text } = await generateText({
-    model: aiModel("claude-haiku-4-5-20251001"),
+    model: aiModel("us.anthropic.claude-haiku-4-5-20251001-v1:0"),
     messages: [{ role: "user", content: contentBlocks }],
     abortSignal: AbortSignal.timeout(CLAUDE_TIMEOUT_MS),
   });
@@ -1414,7 +1445,7 @@ export async function POST(req: NextRequest) {
           );
 
     const { text } = await generateText({
-      model: aiModel("claude-haiku-4-5-20251001"),
+      model: aiModel("us.anthropic.claude-haiku-4-5-20251001-v1:0"),
       messages: [
         {
           role: "user",
