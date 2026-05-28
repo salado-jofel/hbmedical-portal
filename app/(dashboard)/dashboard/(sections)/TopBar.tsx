@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useTopLoader } from "nextjs-toploader";
-import { Settings, LogOut, CheckSquare, UserPlus, ChevronDown, ScrollText } from "lucide-react";
+import { Settings, LogOut, CheckSquare, UserPlus, ChevronDown, ScrollText, Sparkles, ExternalLink } from "lucide-react";
 import { cn } from "@/utils/utils";
 import { useAppSelector } from "@/store/hooks";
 import { MeridianLogo } from "@/app/(components)/MeridianLogo";
@@ -172,6 +172,19 @@ export function TopBar() {
                       <ScrollText className="h-4 w-4 shrink-0" />
                       Audit Log
                     </Link>
+                  )}
+                  {isAdmin(role) && (
+                    <a
+                      href="https://meridianproai.com/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => setOpen(false)}
+                      className="flex w-full cursor-pointer items-center gap-2.5 rounded-[7px] px-3 py-2 text-[13px] font-medium text-[var(--navy)] transition hover:bg-[var(--bg)]"
+                    >
+                      <Sparkles className="h-4 w-4 shrink-0" />
+                      Meridian Pro AI
+                      <ExternalLink className="ml-auto h-3 w-3 shrink-0 text-[var(--text3)]" />
+                    </a>
                   )}
                 </div>
               )}
