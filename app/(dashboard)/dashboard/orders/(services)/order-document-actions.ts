@@ -656,6 +656,27 @@ export async function upsertForm1500(
     await requireOrderAccess(orderId);
     const adminClient = createAdminClient();
 
+    // Defense-in-depth gate for currency fields on the HCFA-1500.
+    // 0 is a valid value (no copay, no outside lab, no paid amount yet)
+    // but negative never is. Fields come in as strings from the form,
+    // so parse and validate before they hit the DB.
+    const FORM1500_NON_NEGATIVE_FIELDS = [
+      { key: "outside_lab_charges", label: "Outside Lab Charges" },
+      { key: "total_charge", label: "Total Charge" },
+      { key: "amount_paid", label: "Amount Paid" },
+    ] as const;
+    for (const { key, label } of FORM1500_NON_NEGATIVE_FIELDS) {
+      const v = formData[key];
+      if (v === undefined || v === null || v === "") continue;
+      const n = typeof v === "number" ? v : Number(v);
+      if (!Number.isFinite(n) || n < 0) {
+        return {
+          success: false,
+          error: `${label} must be 0 or greater, or left blank.`,
+        };
+      }
+    }
+
     if (ifMatchUpdatedAt) {
       const { data: current } = await adminClient
         .from("order_form_1500")

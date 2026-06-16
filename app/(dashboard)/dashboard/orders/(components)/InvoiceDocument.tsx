@@ -24,6 +24,18 @@ import type {
 const NAVY = "#0f2d4a";
 const TEAL = "#0d7a6b";
 
+// Coerce a free-text currency input to a non-negative number or null.
+// Allows 0 (no copay / no received payment is a valid scenario) but
+// rejects negative, NaN, infinity, and non-numeric. Treats those —
+// along with the empty string — all as "user cleared the field" → null.
+function coerceNonNegativeNumberOrNull(v: string): number | null {
+  const trimmed = v.trim();
+  if (!trimmed) return null;
+  const n = Number(trimmed);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return n;
+}
+
 const DELIVERY_OPTIONS: { value: DeliveryMethod; label: string }[] = [
   { value: "home_delivery",     label: "Home Delivery" },
   { value: "patient_picked_up", label: "Patient Picked-Up" },
@@ -482,7 +494,7 @@ export function InvoiceDocument({
             <Input
               type="number"
               value={invoice.dueCopay?.toString() ?? ""}
-              onChange={(v) => update("dueCopay", v ? Number(v) : null)}
+              onChange={(v) => update("dueCopay", coerceNonNegativeNumberOrNull(v))}
               className="w-32 text-right"
             />
           </div>
@@ -491,7 +503,7 @@ export function InvoiceDocument({
             <Input
               type="number"
               value={invoice.totalReceived?.toString() ?? ""}
-              onChange={(v) => update("totalReceived", v ? Number(v) : null)}
+              onChange={(v) => update("totalReceived", coerceNonNegativeNumberOrNull(v))}
               className="w-32 text-right"
             />
           </div>
