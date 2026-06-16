@@ -978,32 +978,19 @@ export function IVRFormDocument({
           </p>
         </div>
 
-        {/* ── 2. SALES REP ── */}
-        <div className="flex items-end gap-2 py-2 border-b border-[#e5e5e5]">
-          <FL>Sales Rep</FL>
-          <FormInput
-            value={formData.salesRepName}
-            onChange={(v) => set("salesRepName", v)}
-            deficient={aiExtracted}
-            className="flex-1 max-w-xs"
-            placeholder="Sales representative name"
-            disabled={!canEdit}
-          />
-        </div>
-
-        {/* ── 3. FACILITY INFORMATION ── */}
-        <SectionHeader title="Facility Information" />
-        <div className="px-2 pt-2 pb-1 border-b border-[#e5e5e5]">
-          {/* Place of Service — full-width row */}
+        {/* ── PLACE OF SERVICE (top-of-form per Dr. Ben — promoted out of
+            FACILITY INFORMATION so it's the very first input clinicians
+            interact with) ── */}
+        <SectionHeader title="Place of Service" />
+        <div className="px-2 pt-2 pb-2 border-b border-[#e5e5e5]">
           <div
             className={cn(
-              "flex flex-wrap items-center gap-x-3 gap-y-1 mb-2 rounded px-1",
+              "flex flex-wrap items-center gap-x-3 gap-y-1 rounded px-1",
               aiExtracted &&
                 !formData.placeOfService &&
                 "bg-red-50/50 ring-1 ring-red-300",
             )}
           >
-            <FL>Place of Service</FL>
             {[
               "Office",
               "Outpatient Hospital",
@@ -1020,6 +1007,26 @@ export function IVRFormDocument({
               />
             ))}
           </div>
+        </div>
+
+        {/* ── 2. SALES REP ── */}
+        <div className="flex items-end gap-2 py-2 border-b border-[#e5e5e5]">
+          <FL>Sales Rep</FL>
+          <FormInput
+            value={formData.salesRepName}
+            onChange={(v) => set("salesRepName", v)}
+            deficient={aiExtracted}
+            className="flex-1 max-w-xs"
+            placeholder="Sales representative name"
+            disabled={!canEdit}
+          />
+        </div>
+
+        {/* ── 3. FACILITY INFORMATION ──
+            Place of Service was promoted out of this section to the top
+            of the form per Dr. Ben's feedback. */}
+        <SectionHeader title="Facility Information" />
+        <div className="px-2 pt-2 pb-1 border-b border-[#e5e5e5]">
           <TwoCol className="px-0">
             <FieldBlock label="Facility Name">
               <FormInput

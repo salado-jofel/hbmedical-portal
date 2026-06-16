@@ -224,7 +224,10 @@ function buildFormState(
     isPatientAtSnf: form?.isPatientAtSnf ?? false,
     icd10Code: form?.icd10Code ?? "",
     followupDays: form?.followupDays ?? null,
-    surgicalDressingType: form?.surgicalDressingType ?? null,
+    // Default to Primary — overwhelmingly the right answer for the
+    // product set this portal sells. Clinician can still uncheck and
+    // pick Secondary if needed.
+    surgicalDressingType: form?.surgicalDressingType ?? "primary",
     woundType: opts?.woundType ?? "",
     anticipatedLengthDays: form?.anticipatedLengthDays ?? null,
     followupWeeks: form?.followupWeeks ?? null,
@@ -309,10 +312,15 @@ function buildFormState(
     adjunctOther: form?.adjunctOther ?? "",
     specialtyConsults: form?.specialtyConsults ?? "",
     applicationFrequency: form?.applicationFrequency ?? "",
-    specialModifiers: form?.specialModifiers ?? "",
+    // Default "KX" so clinicians don't have to type the most common
+    // wound-care modifier on every order. Editable if they need to
+    // override (add GA, clear it, etc.).
+    specialModifiers: form?.specialModifiers ?? "KX",
     priorAuthObtained: form?.priorAuthObtained ?? false,
     lcdReference: form?.lcdReference ?? "",
-    woundMeetsLcd: form?.woundMeetsLcd ?? null,
+    // Default Yes — wound-care orders that reach this form are
+    // overwhelmingly LCD-eligible; clinician can flip to No if not.
+    woundMeetsLcd: form?.woundMeetsLcd ?? true,
     conservativeTxPeriodMet: form?.conservativeTxPeriodMet ?? null,
     qtyWithinLcdLimits: form?.qtyWithinLcdLimits ?? null,
     kxCriteriaMet: form?.kxCriteriaMet ?? null,
@@ -1708,20 +1716,26 @@ export function OrderFormDocument({
               aiExtracted && !formData.patientDate ? "Required" : "MM/DD/YYYY"
             }
           />
-          <span className="text-[#ccc] mx-1">|</span>
-          <FL>Wound Visit #</FL>
-          <AiWrap active={ai && !!formData.woundVisitNumber}>
-            <FormInput
-              value={formData.woundVisitNumber}
-              onChange={(v) => set("woundVisitNumber", coercePositiveIntStringOrEmpty(v))}
-              deficient={visitDeficient}
-              type="number"
-              min={1}
-              step={1}
-              className="w-12 text-center"
-              placeholder="—"
-            />
-          </AiWrap>
+          {/* Wound Visit # is chronic-only — post-surgical wounds don't
+              have a visit-tracking sequence. */}
+          {!isPostSurgical && (
+            <>
+              <span className="text-[#ccc] mx-1">|</span>
+              <FL>Wound Visit #</FL>
+              <AiWrap active={ai && !!formData.woundVisitNumber}>
+                <FormInput
+                  value={formData.woundVisitNumber}
+                  onChange={(v) => set("woundVisitNumber", coercePositiveIntStringOrEmpty(v))}
+                  deficient={visitDeficient}
+                  type="number"
+                  min={1}
+                  step={1}
+                  className="w-12 text-center"
+                  placeholder="—"
+                />
+              </AiWrap>
+            </>
+          )}
         </DocRow>
 
         {/* ── 2b. PATIENT IDENTIFIERS + DOS (Fortify expansion) ── */}
