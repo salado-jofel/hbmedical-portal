@@ -395,6 +395,53 @@ function FormCheckbox({
   );
 }
 
+// Coerce a free-text numeric input to a positive integer or null.
+// Treats empty string, "0", negatives, decimals, and non-numeric input
+// all as "user cleared the field" (→ null). Matches the DB CHECK
+// `(col IS NULL) OR (col > 0)` used on order_form.followup_days +
+// followup_weeks + wound_visit_number, so the UI never submits a
+// value the DB will reject.
+function coercePositiveIntOrNull(v: string): number | null {
+  if (!v.trim()) return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1) return null;
+  return n;
+}
+
+// String-variant of the same coercion for inputs whose form-state is
+// stored as a string (e.g. woundVisitNumber). Also strips dashes,
+// preserving the original onChange's dash-strip behavior.
+function coercePositiveIntStringOrEmpty(v: string): string {
+  const cleaned = v.replace(/-/g, "").trim();
+  if (!cleaned) return "";
+  const n = Number(cleaned);
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1) return "";
+  return String(n);
+}
+
+// Strict positive decimal — for lab values where 0 is medically
+// impossible (A1C, albumin, eGFR). Preserves user input verbatim so
+// mid-typing characters like "6." stay rendered while they type "6.5".
+function coercePositiveDecimalOrEmpty(v: string): string {
+  const trimmed = v.trim();
+  if (!trimmed) return "";
+  const n = Number(trimmed);
+  if (!Number.isFinite(n) || n <= 0) return "";
+  return v;
+}
+
+// Allows 0 and any positive number; rejects negative, NaN, and
+// non-numeric input. For percentages (0% is valid), wound dimensions
+// (0 cm = closed wound), pain (0/10 = no pain), and currency (0 = no
+// charge). Replaces the dash-strip-only validation in those fields.
+function coerceNonNegativeOrEmpty(v: string): string {
+  const trimmed = v.trim();
+  if (!trimmed) return "";
+  const n = Number(trimmed);
+  if (!Number.isFinite(n) || n < 0) return "";
+  return v;
+}
+
 function FormInput({
   value,
   onChange,
@@ -1666,10 +1713,10 @@ export function OrderFormDocument({
           <AiWrap active={ai && !!formData.woundVisitNumber}>
             <FormInput
               value={formData.woundVisitNumber}
-              onChange={(v) => set("woundVisitNumber", v.replace(/-/g, ""))}
+              onChange={(v) => set("woundVisitNumber", coercePositiveIntStringOrEmpty(v))}
               deficient={visitDeficient}
               type="number"
-              min={0}
+              min={1}
               step={1}
               className="w-12 text-center"
               placeholder="—"
@@ -1915,8 +1962,10 @@ export function OrderFormDocument({
                   <FL>A1C</FL>
                   <FormInput
                     value={formData.a1cValue}
-                    onChange={(v) => set("a1cValue", v)}
+                    onChange={(v) => set("a1cValue", coercePositiveDecimalOrEmpty(v))}
                     type="number"
+                    min={0.1}
+                    step="any"
                     className="w-14"
                     placeholder="6.5"
                   />
@@ -1956,8 +2005,10 @@ export function OrderFormDocument({
                   <FL>Albumin</FL>
                   <FormInput
                     value={formData.albuminValue}
-                    onChange={(v) => set("albuminValue", v)}
+                    onChange={(v) => set("albuminValue", coercePositiveDecimalOrEmpty(v))}
                     type="number"
+                    min={0.1}
+                    step="any"
                     className="w-14"
                     placeholder="3.5"
                   />
@@ -1968,8 +2019,10 @@ export function OrderFormDocument({
                   <FL>eGFR</FL>
                   <FormInput
                     value={formData.egfrValue}
-                    onChange={(v) => set("egfrValue", v)}
+                    onChange={(v) => set("egfrValue", coercePositiveDecimalOrEmpty(v))}
                     type="number"
+                    min={0.1}
+                    step="any"
                     className="w-14"
                     placeholder="60"
                   />
@@ -2275,7 +2328,7 @@ export function OrderFormDocument({
               <AiWrap active={ai && !!formData.granulationTissuePct}>
                 <FormInput
                   value={formData.granulationTissuePct}
-                  onChange={(v) => set("granulationTissuePct", v.replace(/-/g, ""))}
+                  onChange={(v) => set("granulationTissuePct", coerceNonNegativeOrEmpty(v))}
                   deficient={granulationDeficient}
                   type="number"
                   min={0}
@@ -2302,7 +2355,7 @@ export function OrderFormDocument({
                   <AiWrap active={ai && !!formData.woundLengthCm}>
                     <FormInput
                       value={formData.woundLengthCm}
-                      onChange={(v) => set("woundLengthCm", v.replace(/-/g, ""))}
+                      onChange={(v) => set("woundLengthCm", coerceNonNegativeOrEmpty(v))}
                       deficient={aiExtracted && !formData.woundLengthCm}
                       type="number"
                       min={0}
@@ -2315,7 +2368,7 @@ export function OrderFormDocument({
                   <AiWrap active={ai && !!formData.woundWidthCm}>
                     <FormInput
                       value={formData.woundWidthCm}
-                      onChange={(v) => set("woundWidthCm", v.replace(/-/g, ""))}
+                      onChange={(v) => set("woundWidthCm", coerceNonNegativeOrEmpty(v))}
                       deficient={aiExtracted && !formData.woundWidthCm}
                       type="number"
                       min={0}
@@ -2328,7 +2381,7 @@ export function OrderFormDocument({
                   <AiWrap active={ai && !!formData.woundDepthCm}>
                     <FormInput
                       value={formData.woundDepthCm}
-                      onChange={(v) => set("woundDepthCm", v.replace(/-/g, ""))}
+                      onChange={(v) => set("woundDepthCm", coerceNonNegativeOrEmpty(v))}
                       deficient={aiExtracted && !formData.woundDepthCm}
                       type="number"
                       min={0}
@@ -2345,7 +2398,7 @@ export function OrderFormDocument({
                   <AiWrap active={ai && !!formData.wound2LengthCm}>
                     <FormInput
                       value={formData.wound2LengthCm}
-                      onChange={(v) => set("wound2LengthCm", v.replace(/-/g, ""))}
+                      onChange={(v) => set("wound2LengthCm", coerceNonNegativeOrEmpty(v))}
                       type="number"
                       min={0}
                       step={1}
@@ -2357,7 +2410,7 @@ export function OrderFormDocument({
                   <AiWrap active={ai && !!formData.wound2WidthCm}>
                     <FormInput
                       value={formData.wound2WidthCm}
-                      onChange={(v) => set("wound2WidthCm", v.replace(/-/g, ""))}
+                      onChange={(v) => set("wound2WidthCm", coerceNonNegativeOrEmpty(v))}
                       type="number"
                       min={0}
                       step={1}
@@ -2369,7 +2422,7 @@ export function OrderFormDocument({
                   <AiWrap active={ai && !!formData.wound2DepthCm}>
                     <FormInput
                       value={formData.wound2DepthCm}
-                      onChange={(v) => set("wound2DepthCm", v.replace(/-/g, ""))}
+                      onChange={(v) => set("wound2DepthCm", coerceNonNegativeOrEmpty(v))}
                       type="number"
                       min={0}
                       step={1}
@@ -2462,7 +2515,7 @@ export function OrderFormDocument({
             <span className="text-[11px] text-[#666] mr-1">Slough %</span>
             <FormInput
               value={formData.woundBedSloughPct}
-              onChange={(v) => set("woundBedSloughPct", v.replace(/-/g, ""))}
+              onChange={(v) => set("woundBedSloughPct", coerceNonNegativeOrEmpty(v))}
               type="number"
               min={0}
               max={100}
@@ -2473,7 +2526,7 @@ export function OrderFormDocument({
             <span className="text-[11px] text-[#666] mx-1">Eschar %</span>
             <FormInput
               value={formData.woundBedEscharPct}
-              onChange={(v) => set("woundBedEscharPct", v.replace(/-/g, ""))}
+              onChange={(v) => set("woundBedEscharPct", coerceNonNegativeOrEmpty(v))}
               type="number"
               min={0}
               max={100}
@@ -2485,7 +2538,7 @@ export function OrderFormDocument({
             <FL>Pain (0-10)</FL>
             <FormInput
               value={formData.painLevel}
-              onChange={(v) => set("painLevel", v.replace(/-/g, ""))}
+              onChange={(v) => set("painLevel", coerceNonNegativeOrEmpty(v))}
               type="number"
               min={0}
               max={10}
@@ -2863,10 +2916,12 @@ export function OrderFormDocument({
             <FormInput
               value={formData.anticipatedLengthDays?.toString() ?? ""}
               onChange={(v) =>
-                set("anticipatedLengthDays", v ? Number(v) : null)
+                set("anticipatedLengthDays", coercePositiveIntOrNull(v))
               }
               deficient={lengthDeficient}
               type="number"
+              min={1}
+              step={1}
               className="w-12 text-center"
               placeholder="—"
             />
@@ -3168,9 +3223,11 @@ export function OrderFormDocument({
           <AiWrap active={ai && !!formData.followupDays}>
             <FormInput
               value={formData.followupDays?.toString() ?? ""}
-              onChange={(v) => set("followupDays", v ? Number(v) : null)}
+              onChange={(v) => set("followupDays", coercePositiveIntOrNull(v))}
               deficient={followupDeficient}
               type="number"
+              min={1}
+              step={1}
               className="w-12 text-center"
               placeholder="—"
             />
@@ -3179,9 +3236,11 @@ export function OrderFormDocument({
           <span className="text-[#ccc] mx-2">|</span>
           <FormInput
             value={formData.followupWeeks?.toString() ?? ""}
-            onChange={(v) => set("followupWeeks", v ? Number(v) : null)}
+            onChange={(v) => set("followupWeeks", coercePositiveIntOrNull(v))}
             deficient={followupDeficient}
             type="number"
+            min={1}
+            step={1}
             className="w-12 text-center"
             placeholder="—"
           />
