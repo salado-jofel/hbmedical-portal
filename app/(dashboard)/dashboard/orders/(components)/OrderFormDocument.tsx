@@ -2307,7 +2307,8 @@ export function OrderFormDocument({
                     value={formData.albuminValue}
                     onChange={(v) => set("albuminValue", coercePositiveDecimalOrEmpty(v))}
                     type="number"
-                    min={0.1}
+                    min={0.5}
+                    max={6}
                     step="any"
                     className="w-14"
                     placeholder="3.5"
@@ -2321,7 +2322,8 @@ export function OrderFormDocument({
                     value={formData.egfrValue}
                     onChange={(v) => set("egfrValue", coercePositiveDecimalOrEmpty(v))}
                     type="number"
-                    min={0.1}
+                    min={0}
+                    max={200}
                     step="any"
                     className="w-14"
                     placeholder="60"
