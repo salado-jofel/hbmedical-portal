@@ -1013,7 +1013,11 @@ export function OrderFormDocument({
     if (!isPostSurgical && !formData.woundLengthCm) count++;
     if (!isPostSurgical && !formData.woundWidthCm) count++;
     if (!isPostSurgical && !formData.woundDepthCm) count++;
-    if (!formData.treatmentPlan) count++;
+    // Treatment Plan is hidden for post-surgical orders (post-surgical
+    // variant doesn't have a Treatment Plan section), so don't count it
+    // there — otherwise the deficiency count is permanently off-by-one
+    // and the user sees a phantom "missing field" they can't fill.
+    if (!isPostSurgical && !formData.treatmentPlan) count++;
     if (!isPostSurgical && !formData.woundVisitNumber) count++;
     if (!isPostSurgical && !formData.granulationTissuePct) count++;
     // Post-surgical-specific deficiency checks
@@ -1103,6 +1107,17 @@ export function OrderFormDocument({
   const lengthDeficient = aiExtracted && !formData.anticipatedLengthDays;
   const followupDeficient =
     aiExtracted && !formData.followupDays && !formData.followupWeeks;
+  // Post-surgical-only deficient flags. These three fields are required
+  // for the Medicare Surgical Dressings qualifying basis but the original
+  // post-surgical section never wired visible red-highlight feedback —
+  // they only contributed to the deficiency *count*, leaving the user to
+  // hunt for them with no visual cue.
+  const surgicalBasisDeficient =
+    aiExtracted && isPostSurgical && !formData.surgicalQualifyingBasis;
+  const surgeryDateDeficient =
+    aiExtracted && isPostSurgical && !formData.dateOfSurgery;
+  const attestSurgeryDeficient =
+    aiExtracted && isPostSurgical && !formData.attestWoundMeasuredAtSurgery;
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setFormData((prev) => ({ ...prev, [key]: value }));
@@ -2126,8 +2141,21 @@ export function OrderFormDocument({
         {isPostSurgical && (
           <>
             <DocRow>
-              <FL className="w-full mb-0.5">Surgical Information</FL>
-              <div className="flex flex-wrap gap-x-3 gap-y-1 w-full">
+              <FL
+                className={cn(
+                  "w-full mb-0.5",
+                  surgicalBasisDeficient && "text-[#dc2626]",
+                )}
+              >
+                Surgical Information
+              </FL>
+              <div
+                className={cn(
+                  "flex flex-wrap gap-x-3 gap-y-1 w-full",
+                  surgicalBasisDeficient &&
+                    "ring-1 ring-red-300 rounded bg-red-50/50 px-2 py-0.5",
+                )}
+              >
                 {(
                   [
                     { value: "surgically_created", label: "Surgically created or modified" },
@@ -2163,12 +2191,15 @@ export function OrderFormDocument({
             )}
 
             <DocRow>
-              <FL>Date of Surgery / Procedure</FL>
+              <FL className={cn(surgeryDateDeficient && "text-[#dc2626]")}>
+                Date of Surgery / Procedure
+              </FL>
               <AiWrap active={ai && !!formData.dateOfSurgery}>
                 <FormInput
                   type="date"
                   value={formData.dateOfSurgery}
                   onChange={(v) => set("dateOfSurgery", v)}
+                  deficient={surgeryDateDeficient}
                   className="w-36"
                 />
               </AiWrap>
@@ -2228,11 +2259,19 @@ export function OrderFormDocument({
             )}
 
             <DocRow>
-              <FormCheckbox
-                checked={formData.attestWoundMeasuredAtSurgery}
-                onChange={(v) => set("attestWoundMeasuredAtSurgery", v)}
-                label="I attest the wound was measured and documented at the time of surgery."
-              />
+              <div
+                className={cn(
+                  "w-full",
+                  attestSurgeryDeficient &&
+                    "ring-1 ring-red-300 rounded bg-red-50/50 px-2 py-1",
+                )}
+              >
+                <FormCheckbox
+                  checked={formData.attestWoundMeasuredAtSurgery}
+                  onChange={(v) => set("attestWoundMeasuredAtSurgery", v)}
+                  label="I attest the wound was measured and documented at the time of surgery."
+                />
+              </div>
             </DocRow>
           </>
         )}
