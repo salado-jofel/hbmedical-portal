@@ -371,9 +371,9 @@ export function IVRFormPDF({
           {/* Primary */}
           <View style={{ flex: 1, borderRight: `0.5pt solid ${LINE}`, paddingRight: 8 }}>
             <Text style={s.subHeader}>Primary Insurance</Text>
-            <Row label="Subscriber Name" value={subscriberName} labelW={90} />
+            <Row label="Patient Name" value={subscriberName} labelW={90} />
             <Row label="Policy / Member ID" value={memberId} labelW={90} />
-            <Row label="Subscriber DOB" value={fmtDate(subscriberDob)} labelW={90} />
+            <Row label="Patient DOB" value={fmtDate(subscriberDob)} labelW={90} />
             <View style={{ marginBottom: 4 }}>
               <Text style={[s.label, { marginBottom: 2 }]}>Type of Plan:</Text>
               <View style={s.cbRow}>
@@ -396,9 +396,9 @@ export function IVRFormPDF({
           {/* Secondary */}
           <View style={{ flex: 1 }}>
             <Text style={s.subHeader}>Secondary Insurance</Text>
-            <Row label="Subscriber Name" value={secSubscriberName} labelW={90} />
+            <Row label="Patient Name" value={secSubscriberName} labelW={90} />
             <Row label="Policy Number" value={secPolicyNumber} labelW={90} />
-            <Row label="Subscriber DOB" value={fmtDate(secSubscriberDob)} labelW={90} />
+            <Row label="Patient DOB" value={fmtDate(secSubscriberDob)} labelW={90} />
             <View style={{ marginBottom: 4 }}>
               <Text style={[s.label, { marginBottom: 2 }]}>Type of Plan:</Text>
               <View style={s.cbRow}>
@@ -501,14 +501,14 @@ export function IVRFormPDF({
                 <Text style={s.subHeader}>Primary</Text>
                 <Row label="Group Number"           value={groupNumber}            labelW={110} />
                 <Row label="Plan Name"              value={planName}               labelW={110} />
-                <Row label="Subscriber Relationship" value={subscriberRel}         labelW={130} />
+                <Row label="Patient Relationship" value={subscriberRel}         labelW={130} />
                 <Row label="Coverage Start"         value={fmtDate(coverageStart)} labelW={110} />
                 <Row label="Coverage End"           value={fmtDate(coverageEnd)}   labelW={110} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={s.subHeader}>Secondary</Text>
                 <Row label="Group Number"           value={secGroupNumber}     labelW={110} />
-                <Row label="Subscriber Relationship" value={secSubscriberRel} labelW={130} />
+                <Row label="Patient Relationship" value={secSubscriberRel} labelW={130} />
               </View>
             </View>
 
