@@ -561,18 +561,24 @@ export async function saveOrderForm(
       }
     }
 
-    const POSITIVE_DECIMAL_FIELDS = [
-      { key: "a1c_value", label: "A1C" },
-      { key: "albumin_value", label: "Albumin" },
-      { key: "egfr_value", label: "eGFR" },
+    // Lab values have clinically meaningful ranges enforced as DB CHECK
+    // constraints — `a1c_value_check`, `albumin_value_check`,
+    // `egfr_value_check`. Mirror those ranges here so the user gets a
+    // friendly toast like "A1C must be between 3.0 and 20.0" instead of
+    // a raw 23514 constraint violation when they enter values outside
+    // the medically plausible range.
+    const RANGED_DECIMAL_FIELDS = [
+      { key: "a1c_value",     label: "A1C %",     min: 3.0,  max: 20.0, unit: "%"     },
+      { key: "albumin_value", label: "Albumin",   min: 0.5,  max: 6.0,  unit: "g/dL"  },
+      { key: "egfr_value",    label: "eGFR",      min: 0,    max: 200,  unit: "mL/min" },
     ] as const;
-    for (const { key, label } of POSITIVE_DECIMAL_FIELDS) {
+    for (const { key, label, min, max, unit } of RANGED_DECIMAL_FIELDS) {
       const v = (data as Record<string, unknown>)[key];
       if (v === undefined || v === null) continue;
-      if (typeof v !== "number" || !Number.isFinite(v) || v <= 0) {
+      if (typeof v !== "number" || !Number.isFinite(v) || v < min || v > max) {
         return {
           success: false,
-          error: `${label} must be greater than 0, or left blank.`,
+          error: `${label} must be between ${min} and ${max} ${unit}, or left blank.`,
         };
       }
     }
