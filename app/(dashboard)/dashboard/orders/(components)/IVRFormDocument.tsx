@@ -1263,7 +1263,7 @@ export function IVRFormDocument({
               >
                 Primary Insurance
               </div>
-              <FieldBlock label="Subscriber Name">
+              <FieldBlock label="Patient Name">
                 <FormInput
                   value={formData.subscriberName}
                   onChange={(v) => set("subscriberName", v)}
@@ -1281,7 +1281,7 @@ export function IVRFormDocument({
                   disabled={!canEdit}
                 />
               </FieldBlock>
-              <FieldBlock label="Subscriber DOB">
+              <FieldBlock label="Patient DOB">
                 <FormInput
                   value={formData.subscriberDob}
                   onChange={(v) => set("subscriberDob", v)}
@@ -1348,7 +1348,7 @@ export function IVRFormDocument({
               >
                 Secondary Insurance
               </div>
-              <FieldBlock label="Subscriber Name">
+              <FieldBlock label="Patient Name">
                 <FormInput
                   value={formData.secondarySubscriberName}
                   onChange={(v) => set("secondarySubscriberName", v)}
@@ -1364,7 +1364,7 @@ export function IVRFormDocument({
                   disabled={!canEdit}
                 />
               </FieldBlock>
-              <FieldBlock label="Subscriber DOB">
+              <FieldBlock label="Patient DOB">
                 <FormInput
                   value={formData.secondarySubscriberDob}
                   onChange={(v) => set("secondarySubscriberDob", v)}
@@ -1436,7 +1436,7 @@ export function IVRFormDocument({
                     disabled={!canEdit}
                   />
                 </FieldBlock>
-                <FieldBlock label="Subscriber Relationship">
+                <FieldBlock label="Patient Relationship">
                   <div className="flex flex-wrap gap-3 pt-0.5">
                     {["Self", "Spouse", "Child", "Other"].map((t) => (
                       <FormCheckbox
@@ -1486,7 +1486,7 @@ export function IVRFormDocument({
                     disabled={!canEdit}
                   />
                 </FieldBlock>
-                <FieldBlock label="Subscriber Relationship">
+                <FieldBlock label="Patient Relationship">
                   <div className="flex flex-wrap gap-3 pt-0.5">
                     {["Self", "Spouse", "Child", "Other"].map((t) => (
                       <FormCheckbox
