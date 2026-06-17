@@ -260,7 +260,7 @@ function UploadZone({
 export function CreateOrderModal() {
   const dispatch = useAppDispatch();
   const [open, setOpen] = useState(false);
-  const [woundType, setWoundType] = useState<"chronic" | "post_surgical">(
+  const [woundType, setWoundType] = useState<"chronic" | "post_surgical" | "dfu" | "vlu">(
     "chronic",
   );
   // Order Type is locked to "omeza" per client request — Surgical Collagen
@@ -488,19 +488,25 @@ export function CreateOrderModal() {
                 Clinical Info
               </h3>
 
-              {/* Wound Type */}
+              {/* Wound Type — 2x2 grid: Chronic | Post-Surgical / DFU | VLU.
+                  DFU and VLU are first-class wound types per Dr. Ben (matches
+                  the Fortify workflow). Phase 1 ships the buttons + DB CHECK;
+                  Phase 2 wires custom DFU/VLU form variants once the file
+                  format arrives. In the interim DFU/VLU orders render the
+                  chronic form template with the matching etiology pre-checked
+                  and a banner noting the interim state. */}
               <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium text-slate-700">
                   Wound Type <span className="text-red-500">*</span>
                 </label>
-                <div className="flex gap-3">
+                <div className="grid grid-cols-2 gap-3">
                   {WOUND_TYPES.map((wt) => (
                     <button
                       key={wt.value}
                       type="button"
                       onClick={() => setWoundType(wt.value)}
                       className={cn(
-                        "flex-1 py-2.5 px-3 rounded-xl border-2 text-sm font-medium transition-all",
+                        "py-2.5 px-3 rounded-xl border-2 text-sm font-medium transition-all",
                         woundType === wt.value
                           ? "border-[var(--navy)] bg-blue-50 text-[var(--navy)]"
                           : "border-slate-200 text-slate-600 hover:border-slate-300",

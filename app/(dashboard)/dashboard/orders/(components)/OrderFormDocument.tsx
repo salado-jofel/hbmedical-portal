@@ -37,7 +37,17 @@ import {
 } from "../(services)/order-misc-actions";
 import { getOrderForm } from "../(services)/order-ivr-actions";
 import type { IOrderForm, DashboardOrder, ProductRecord } from "@/utils/interfaces/orders";
-import { isItemsEditable } from "@/utils/constants/orders";
+import {
+  isItemsEditable,
+  CEAP_CLASSIFICATIONS,
+  WAGNER_GRADES,
+  DIABETES_TYPE_OPTIONS,
+  OSTEOMYELITIS_STATUS_OPTIONS,
+  INFECTION_STATUS_OPTIONS,
+  PROCEDURE_SETTING_OPTIONS,
+  DFU_PROCEDURES_TEMPLATE,
+  DFU_NARRATIVE_TEMPLATES,
+} from "@/utils/constants/orders";
 import { ADVANCEMENT_REASONS } from "@/utils/constants/advancement-reasons";
 import { PriorTreatmentField } from "./PriorTreatmentField";
 import type { AiStatus } from "./OrderFormTab";
@@ -204,6 +214,62 @@ type FormState = {
     | "weekly"
     | "as_needed"
     | null;
+
+  // ── VLU Phase 2 fields (rendered only when isVlu) ──
+  ceapClassification: string;
+  relevantVascularHistory: string;
+  woundSurfaceAreaCm2: string;
+  periwoundStatus: string;
+  signsActiveInfection: string;
+  compressionTypeClass: string;
+  initialWoundAreaCm2: string;
+  currentWoundAreaCm2: string;
+  venousStudiesFindings: string;
+  arterialSupplyAdequateYn: boolean | null;
+  arterialSupplyBasis: string;
+  skinSubstituteProduct: string;
+  skinSubstituteHcpcs: string;
+  anticipatedApplicationsCount: number | null;
+  applicationInterval: string;
+  clinicalRationaleText: string;
+
+  // ── DFU Phase 2 fields (rendered only when isDfu) ──
+  referringProvider: string;
+  diabetesType: "type_1" | "type_2" | null;
+  wagnerGrade: number | null;
+  utStageGrade: string;
+  osteomyelitisStatus: "none" | "suspected" | "confirmed" | null;
+  osteomyelitisBasis: string;
+  depthStructuresExposed: string;
+  tissueQualityGranularPct: string;
+  tissueQualityFibrinousPct: string;
+  tissueQualityNecroticPct: string;
+  tissueQualityBiofilmPresent: boolean;
+  tissueQualityEscharPresent: boolean;
+  infectionStatusCategory: "none" | "local" | "deep" | "systemic" | null;
+  infectionCultures: string;
+  currentAntibiotics: string;
+  tcpo2Value: string;
+  pedalPulses: string;
+  vascularSurgeryReferral: boolean | null;
+  vascularSurgeryDetails: string;
+  perfusionSummary: string;
+  measuredResponse: string;
+  /** Multi-select procedures with CPT codes — keyed by DFU_PROCEDURES_TEMPLATE. */
+  dfuProcedures: Array<{ key: string; label: string; cpt: string | null; checked: boolean; cptOverride?: string | null }>;
+  plannedProcedureDate: string;
+  procedureSetting: "or" | "office" | "asc" | "other" | null;
+  narrativeProgressionStatements: string[];
+  narrativeProgressionCaseSpecific: string;
+  narrativeLessIntensiveStatements: string[];
+  narrativeLessIntensiveCaseSpecific: string;
+  narrativeLimbLossStatements: string[];
+  narrativeLimbLossCaseSpecific: string;
+  narrativePerfusionStatements: string[];
+  narrativePerfusionCaseSpecific: string;
+  additionalNarrative: string;
+  physicianSpecialty: string;
+  physicianStateLicense: string;
 };
 
 function buildFormState(
@@ -287,8 +353,13 @@ function buildFormState(
     conditionRenalDisease: form?.conditionRenalDisease ?? false,
     egfrValue: form?.egfrValue?.toString() ?? "",
     conditionOther: form?.conditionOther ?? "",
-    etiologyDfu: form?.etiologyDfu ?? false,
-    etiologyVenousStasis: form?.etiologyVenousStasis ?? false,
+    // For DFU/VLU wound types, pre-check the matching etiology when nothing
+    // is saved yet — saves the clinician a click since the wound-type
+    // selection already implies the etiology. Clinician can still uncheck
+    // and pick something else (DFU + venous co-existence is allowed).
+    etiologyDfu: form?.etiologyDfu ?? (opts?.woundType === "dfu"),
+    etiologyVenousStasis:
+      form?.etiologyVenousStasis ?? (opts?.woundType === "vlu"),
     etiologyPressureUlcer: form?.etiologyPressureUlcer ?? false,
     pressureUlcerStage: form?.pressureUlcerStage ?? "",
     etiologyArterial: form?.etiologyArterial ?? false,
@@ -358,6 +429,78 @@ function buildFormState(
     dressingChangeFrequency:
       form?.dressingChangeFrequency
       ?? (opts?.woundType === "post_surgical" ? "daily" : null),
+
+    // ── VLU Phase 2 defaults ──
+    ceapClassification: form?.ceapClassification ?? "",
+    relevantVascularHistory: form?.relevantVascularHistory ?? "",
+    woundSurfaceAreaCm2: form?.woundSurfaceAreaCm2?.toString() ?? "",
+    periwoundStatus: form?.periwoundStatus ?? "",
+    signsActiveInfection: form?.signsActiveInfection ?? "",
+    compressionTypeClass: form?.compressionTypeClass ?? "",
+    initialWoundAreaCm2: form?.initialWoundAreaCm2?.toString() ?? "",
+    currentWoundAreaCm2: form?.currentWoundAreaCm2?.toString() ?? "",
+    venousStudiesFindings: form?.venousStudiesFindings ?? "",
+    arterialSupplyAdequateYn: form?.arterialSupplyAdequateYn ?? null,
+    arterialSupplyBasis: form?.arterialSupplyBasis ?? "",
+    skinSubstituteProduct: form?.skinSubstituteProduct ?? "",
+    skinSubstituteHcpcs: form?.skinSubstituteHcpcs ?? "",
+    anticipatedApplicationsCount: form?.anticipatedApplicationsCount ?? null,
+    applicationInterval: form?.applicationInterval ?? "",
+    clinicalRationaleText: form?.clinicalRationaleText ?? "",
+
+    // ── DFU Phase 2 defaults ──
+    referringProvider: form?.referringProvider ?? "",
+    diabetesType: form?.diabetesType ?? null,
+    wagnerGrade: form?.wagnerGrade ?? null,
+    utStageGrade: form?.utStageGrade ?? "",
+    osteomyelitisStatus: form?.osteomyelitisStatus ?? null,
+    osteomyelitisBasis: form?.osteomyelitisBasis ?? "",
+    depthStructuresExposed: form?.depthStructuresExposed ?? "",
+    tissueQualityGranularPct:
+      form?.tissueQualityBreakdown?.granularPct?.toString() ?? "",
+    tissueQualityFibrinousPct:
+      form?.tissueQualityBreakdown?.fibrinousPct?.toString() ?? "",
+    tissueQualityNecroticPct:
+      form?.tissueQualityBreakdown?.necroticPct?.toString() ?? "",
+    tissueQualityBiofilmPresent:
+      form?.tissueQualityBreakdown?.biofilmPresent ?? false,
+    tissueQualityEscharPresent:
+      form?.tissueQualityBreakdown?.escharPresent ?? false,
+    infectionStatusCategory: form?.infectionStatusCategory ?? null,
+    infectionCultures: form?.infectionCultures ?? "",
+    currentAntibiotics: form?.currentAntibiotics ?? "",
+    tcpo2Value: form?.tcpo2Value?.toString() ?? "",
+    pedalPulses: form?.pedalPulses ?? "",
+    vascularSurgeryReferral: form?.vascularSurgeryReferral ?? null,
+    vascularSurgeryDetails: form?.vascularSurgeryDetails ?? "",
+    perfusionSummary: form?.perfusionSummary ?? "",
+    measuredResponse: form?.measuredResponse ?? "",
+    dfuProcedures:
+      form?.dfuProcedures ??
+      DFU_PROCEDURES_TEMPLATE.map((p) => ({
+        key: p.key,
+        label: p.label,
+        cpt: p.cpt,
+        checked: false,
+        cptOverride: null,
+      })),
+    plannedProcedureDate: form?.plannedProcedureDate ?? "",
+    procedureSetting: form?.procedureSetting ?? null,
+    narrativeProgressionStatements: form?.narrativeProgression?.statements ?? [],
+    narrativeProgressionCaseSpecific:
+      form?.narrativeProgression?.caseSpecific ?? "",
+    narrativeLessIntensiveStatements:
+      form?.narrativeLessIntensive?.statements ?? [],
+    narrativeLessIntensiveCaseSpecific:
+      form?.narrativeLessIntensive?.caseSpecific ?? "",
+    narrativeLimbLossStatements: form?.narrativeLimbLoss?.statements ?? [],
+    narrativeLimbLossCaseSpecific: form?.narrativeLimbLoss?.caseSpecific ?? "",
+    narrativePerfusionStatements: form?.narrativePerfusion?.statements ?? [],
+    narrativePerfusionCaseSpecific:
+      form?.narrativePerfusion?.caseSpecific ?? "",
+    additionalNarrative: form?.additionalNarrative ?? "",
+    physicianSpecialty: form?.physicianSpecialty ?? "",
+    physicianStateLicense: form?.physicianStateLicense ?? "",
   };
 }
 
@@ -789,6 +932,14 @@ export function OrderFormDocument({
   // to DFU/PU/VLU/Other inside the form). Otherwise the whole form variant
   // morphs when a post-surgical order's provider picks a granular subtype.
   const isPostSurgical = order.wound_type === "post_surgical";
+  // DFU and VLU are first-class wound types but custom form variants
+  // haven't been built yet (Phase 2). Until then they render the chronic
+  // template with the matching etiology pre-checked and an interim banner
+  // explains the temporary fallback.
+  const isDfu = order.wound_type === "dfu";
+  const isVlu = order.wound_type === "vlu";
+  const isInterimWoundType = isDfu || isVlu;
+  const interimWoundLabel = isDfu ? "DFU" : isVlu ? "VLU" : "";
 
   /* ── Items editing (moved from Overview) ───────────────────────────────
      Provider manages the product list in the Order Form now. Local draft
@@ -1002,53 +1153,78 @@ export function OrderFormDocument({
   const deficiencyCount = useMemo(() => {
     if (!aiExtracted) return 0;
     let count = 0;
-    // Text / number inputs
+
+    // ── Fields shared across ALL variants (chronic + PS + DFU + VLU) ──
     if (!formData.patientName) count++;
     if (!formData.patientDate) count++;
     if (!formData.chiefComplaint) count++;
     if (!formData.icd10Code) count++;
-    if (!formData.woundSite) count++;
-    if (!isPostSurgical && !formData.woundStage) count++;
-    if (!formData.clinicalNotes) count++;
-    if (!isPostSurgical && !formData.woundLengthCm) count++;
-    if (!isPostSurgical && !formData.woundWidthCm) count++;
-    if (!isPostSurgical && !formData.woundDepthCm) count++;
-    // Treatment Plan is hidden for post-surgical orders (post-surgical
-    // variant doesn't have a Treatment Plan section), so don't count it
-    // there — otherwise the deficiency count is permanently off-by-one
-    // and the user sees a phantom "missing field" they can't fill.
-    if (!isPostSurgical && !formData.treatmentPlan) count++;
-    if (!isPostSurgical && !formData.woundVisitNumber) count++;
-    if (!isPostSurgical && !formData.granulationTissuePct) count++;
-    // Post-surgical-specific deficiency checks
-    if (isPostSurgical && !formData.surgicalQualifyingBasis) count++;
-    if (isPostSurgical && !formData.dateOfSurgery) count++;
-    if (isPostSurgical && !formData.attestWoundMeasuredAtSurgery) count++;
-    // Follow up — days OR weeks counts as filled
-    if (!formData.followupDays && !formData.followupWeeks) count++;
-    // Anticipated length of need
-    if (!formData.anticipatedLengthDays) count++;
-    // Checkbox groups — at least one must be selected
-    if (!formData.woundType) count++;
-    if (!formData.woundLocationSide) count++;
-    if (!formData.exudateAmount) count++;
-    if (!isPostSurgical && !formData.skinCondition) count++;
-    if (!formData.surgicalDressingType) count++;
-    if (formData.subjectiveSymptoms.length === 0) count++;
-    // Medical conditions — at least one must be checked
-    const hasAnyCondition =
-      formData.conditionDecreasedMobility ||
-      formData.conditionDiabetes ||
-      formData.conditionInfection ||
-      formData.conditionCvd ||
-      formData.conditionCopd ||
-      formData.conditionChf ||
-      formData.conditionAnemia;
-    if (!hasAnyCondition) count++;
+
+    // ── DFU/VLU render their own Fortify-template-shaped form below.
+    //    Chronic-form deficiency checks below are gated so phantom
+    //    "missing field" entries don't appear for fields the clinician
+    //    physically cannot see/fill. DFU/VLU-specific deficiency checks
+    //    follow at the bottom of this hook. ──
+    if (!isDfu && !isVlu) {
+      if (!formData.woundSite) count++;
+      if (!isPostSurgical && !formData.woundStage) count++;
+      if (!formData.clinicalNotes) count++;
+      if (!isPostSurgical && !formData.woundLengthCm) count++;
+      if (!isPostSurgical && !formData.woundWidthCm) count++;
+      if (!isPostSurgical && !formData.woundDepthCm) count++;
+      if (!isPostSurgical && !formData.treatmentPlan) count++;
+      if (!isPostSurgical && !formData.woundVisitNumber) count++;
+      if (!isPostSurgical && !formData.granulationTissuePct) count++;
+      // Post-surgical-specific deficiency checks
+      if (isPostSurgical && !formData.surgicalQualifyingBasis) count++;
+      if (isPostSurgical && !formData.dateOfSurgery) count++;
+      if (isPostSurgical && !formData.attestWoundMeasuredAtSurgery) count++;
+      // Follow up — days OR weeks counts as filled
+      if (!formData.followupDays && !formData.followupWeeks) count++;
+      // Anticipated length of need
+      if (!formData.anticipatedLengthDays) count++;
+      // Checkbox groups — at least one must be selected
+      if (!formData.woundType) count++;
+      if (!formData.woundLocationSide) count++;
+      if (!formData.exudateAmount) count++;
+      if (!isPostSurgical && !formData.skinCondition) count++;
+      if (!formData.surgicalDressingType) count++;
+      if (formData.subjectiveSymptoms.length === 0) count++;
+      // Medical conditions — at least one must be checked
+      const hasAnyCondition =
+        formData.conditionDecreasedMobility ||
+        formData.conditionDiabetes ||
+        formData.conditionInfection ||
+        formData.conditionCvd ||
+        formData.conditionCopd ||
+        formData.conditionChf ||
+        formData.conditionAnemia;
+      if (!hasAnyCondition) count++;
+    }
+
+    // ── DFU-specific deficiency checks (visible fields only) ──
+    if (isDfu) {
+      // Wagner Grade 0 is a valid selection ("pre/post-ulcerative lesion
+      // or healed ulcer"). Use explicit null check instead of !value
+      // so 0 doesn't get treated as "not filled".
+      if (formData.wagnerGrade == null) count++;
+      if (!formData.diabetesType) count++;
+    }
+
+    // ── VLU-specific deficiency checks (visible fields only) ──
+    if (isVlu) {
+      if (!formData.ceapClassification) count++;
+    }
+
     return count;
   }, [
     aiExtracted,
     isPostSurgical,
+    isDfu,
+    isVlu,
+    formData.wagnerGrade,
+    formData.diabetesType,
+    formData.ceapClassification,
     formData.patientName,
     formData.patientDate,
     formData.chiefComplaint,
@@ -1118,6 +1294,24 @@ export function OrderFormDocument({
     aiExtracted && isPostSurgical && !formData.dateOfSurgery;
   const attestSurgeryDeficient =
     aiExtracted && isPostSurgical && !formData.attestWoundMeasuredAtSurgery;
+  // DFU/VLU-specific deficient flags. The deficiency counter increments
+  // for these required fields when empty; these flags drive the visible
+  // red label + red ring so the clinician can find what to fill.
+  // Wagner Grade 0 is valid (pre/post-ulcerative lesion). Explicit null
+  // check so the red-highlight goes away when the clinician selects 0.
+  const dfuWagnerDeficient =
+    aiExtracted && isDfu && formData.wagnerGrade == null;
+  const dfuDiabetesTypeDeficient =
+    aiExtracted && isDfu && !formData.diabetesType;
+  const vluCeapDeficient =
+    aiExtracted && isVlu && !formData.ceapClassification;
+  // Shared deficient flag for fields that appear in DFU/VLU patient/diagnosis
+  // blocks (the chronic-form sections render their own inline deficient
+  // prop; these are for the parallel DFU/VLU patient info blocks).
+  const patientNameDeficient = aiExtracted && !formData.patientName;
+  const patientDateDeficient = aiExtracted && !formData.patientDate;
+  const chiefComplaintDeficient = aiExtracted && !formData.chiefComplaint;
+  const icd10Deficient = aiExtracted && !formData.icd10Code;
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setFormData((prev) => ({ ...prev, [key]: value }));
@@ -1351,6 +1545,75 @@ export function OrderFormDocument({
         released_to_fulfillment_at: strOrNull(formData.officeReleasedToFulfillmentAt),
         filed_in_repository: formData.officeFiledInRepository,
       },
+      // ── VLU Phase 2 fields ──
+      ceap_classification: strOrNull(formData.ceapClassification),
+      relevant_vascular_history: strOrNull(formData.relevantVascularHistory),
+      wound_surface_area_cm2: numOrNull(formData.woundSurfaceAreaCm2),
+      periwound_status: strOrNull(formData.periwoundStatus),
+      signs_active_infection: strOrNull(formData.signsActiveInfection),
+      compression_type_class: strOrNull(formData.compressionTypeClass),
+      initial_wound_area_cm2: numOrNull(formData.initialWoundAreaCm2),
+      current_wound_area_cm2: numOrNull(formData.currentWoundAreaCm2),
+      venous_studies_findings: strOrNull(formData.venousStudiesFindings),
+      arterial_supply_adequate_yn: formData.arterialSupplyAdequateYn,
+      arterial_supply_basis: strOrNull(formData.arterialSupplyBasis),
+      skin_substitute_product: strOrNull(formData.skinSubstituteProduct),
+      skin_substitute_hcpcs: strOrNull(formData.skinSubstituteHcpcs),
+      anticipated_applications_count: formData.anticipatedApplicationsCount,
+      application_interval: strOrNull(formData.applicationInterval),
+      clinical_rationale_text: strOrNull(formData.clinicalRationaleText),
+      // ── DFU Phase 2 fields ──
+      referring_provider: strOrNull(formData.referringProvider),
+      diabetes_type: formData.diabetesType,
+      wagner_grade: formData.wagnerGrade,
+      ut_stage_grade: strOrNull(formData.utStageGrade),
+      osteomyelitis_status: formData.osteomyelitisStatus,
+      osteomyelitis_basis: strOrNull(formData.osteomyelitisBasis),
+      depth_structures_exposed: strOrNull(formData.depthStructuresExposed),
+      tissue_quality_breakdown: {
+        granular_pct: numOrNull(formData.tissueQualityGranularPct),
+        fibrinous_pct: numOrNull(formData.tissueQualityFibrinousPct),
+        necrotic_pct: numOrNull(formData.tissueQualityNecroticPct),
+        biofilm_present: formData.tissueQualityBiofilmPresent,
+        eschar_present: formData.tissueQualityEscharPresent,
+      },
+      infection_status_category: formData.infectionStatusCategory,
+      infection_cultures: strOrNull(formData.infectionCultures),
+      current_antibiotics: strOrNull(formData.currentAntibiotics),
+      tcpo2_value: numOrNull(formData.tcpo2Value),
+      pedal_pulses: strOrNull(formData.pedalPulses),
+      vascular_surgery_referral: formData.vascularSurgeryReferral,
+      vascular_surgery_details: strOrNull(formData.vascularSurgeryDetails),
+      perfusion_summary: strOrNull(formData.perfusionSummary),
+      measured_response: strOrNull(formData.measuredResponse),
+      dfu_procedures: formData.dfuProcedures.map((p) => ({
+        key: p.key,
+        label: p.label,
+        cpt: p.cpt,
+        checked: p.checked,
+        cpt_override: p.cptOverride ?? null,
+      })),
+      planned_procedure_date: strOrNull(formData.plannedProcedureDate),
+      procedure_setting: formData.procedureSetting,
+      narrative_progression: {
+        statements: formData.narrativeProgressionStatements,
+        case_specific: strOrNull(formData.narrativeProgressionCaseSpecific),
+      },
+      narrative_less_intensive: {
+        statements: formData.narrativeLessIntensiveStatements,
+        case_specific: strOrNull(formData.narrativeLessIntensiveCaseSpecific),
+      },
+      narrative_limb_loss: {
+        statements: formData.narrativeLimbLossStatements,
+        case_specific: strOrNull(formData.narrativeLimbLossCaseSpecific),
+      },
+      narrative_perfusion: {
+        statements: formData.narrativePerfusionStatements,
+        case_specific: strOrNull(formData.narrativePerfusionCaseSpecific),
+      },
+      additional_narrative: strOrNull(formData.additionalNarrative),
+      physician_specialty: strOrNull(formData.physicianSpecialty),
+      physician_state_license: strOrNull(formData.physicianStateLicense),
     }, localUpdatedAt);
 
     if (!result.success) {
@@ -1704,6 +1967,14 @@ export function OrderFormDocument({
 
         <HR />
 
+        {/* ── CHRONIC + POST-SURGICAL BODY ──
+            DFU and VLU render their own Fortify-template-shaped layouts
+            below (sections 8c + 8d). When wound_type is DFU or VLU, this
+            entire chronic body is hidden so the form mirrors the Fortify
+            template structure. The Meridian header above and the
+            signature block below stay shared across all variants. */}
+        {!isDfu && !isVlu && (
+        <>
         {/* ── 2. PATIENT ROW ── */}
         <DocRow>
           <FL>Patient Name</FL>
@@ -2275,7 +2546,848 @@ export function OrderFormDocument({
             </DocRow>
           </>
         )}
+        </>
+        )}
+        {/* ── End chronic+post-surgical body wrap ── */}
 
+        {/* ── 8c. VLU-SPECIFIC SECTIONS (Phase 2) ──
+            Renders only when order.wound_type === "vlu". Mirrors the
+            Fortify "Physician Order & Statement of Medical Necessity
+            for Cellular &/or Tissue-Based Skin Substitute (VLU)"
+            template. */}
+        {isVlu && (
+          <>
+            {/* ── PATIENT INFORMATION (shared shape — VLU template) ── */}
+            <div className="mt-2 px-2 py-1 bg-blue-50 border-l-2 border-blue-300">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-900">
+                Patient Information
+              </p>
+            </div>
+            <DocRow>
+              <FL className={cn(patientNameDeficient && "text-[#dc2626]")}>Patient Name</FL>
+              <FormInput value={formData.patientName} onChange={(v) => set("patientName", v)} deficient={patientNameDeficient} className="w-44" placeholder="Patient name" />
+              <span className="text-[#ccc] mx-1">|</span>
+              <FL className={cn(patientDateDeficient && "text-[#dc2626]")}>Date of Birth</FL>
+              <FormInput type="date" value={formData.patientDate} onChange={(v) => set("patientDate", v)} deficient={patientDateDeficient} className="w-32" />
+            </DocRow>
+            <DocRow>
+              <FL>Member / Policy ID</FL>
+              <FormInput value={formData.patientMbi} onChange={(v) => set("patientMbi", v)} className="w-44" placeholder="MBI / policy" />
+              <span className="text-[#ccc] mx-1">|</span>
+              <FL>Insurance / Payer</FL>
+              <FormInput value={formData.insuranceTypeLabel ?? ""} onChange={(v) => set("insuranceTypeLabel", v as FormState["insuranceTypeLabel"])} className="w-32" placeholder="payer" />
+            </DocRow>
+
+            {/* ── DIAGNOSIS ── */}
+            <div className="mt-2 px-2 py-1 bg-blue-50 border-l-2 border-blue-300">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-900">
+                Diagnosis
+              </p>
+            </div>
+            <DocRow>
+              <FL className={cn(chiefComplaintDeficient && "text-[#dc2626]")}>Primary Diagnosis</FL>
+              <FormInput value={formData.chiefComplaint} onChange={(v) => set("chiefComplaint", v)} deficient={chiefComplaintDeficient} className="flex-1" placeholder="Venous leg ulcer — specify laterality &amp; site" />
+            </DocRow>
+            <DocRow>
+              <FL className={cn(icd10Deficient && "text-[#dc2626]")}>ICD-10-CM</FL>
+              <FormInput value={formData.icd10Code} onChange={(v) => set("icd10Code", v)} deficient={icd10Deficient} className="w-28" placeholder="e.g. I83.0" />
+            </DocRow>
+
+            {/* ── VLU-SPECIFIC: CEAP + Vascular History + Wound + Conservative + Vascular + Product ── */}
+            <div className="mt-2 px-2 py-1 bg-blue-50 border-l-2 border-blue-300">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-900">
+                VLU — Venous Leg Ulcer Specifics
+              </p>
+            </div>
+
+            {/* CEAP Classification + Relevant Vascular History */}
+            <DocRow>
+              <FL className={cn(vluCeapDeficient && "text-[#dc2626]")}>
+                CEAP Classification
+              </FL>
+              <div
+                className={cn(
+                  vluCeapDeficient &&
+                    "ring-1 ring-red-300 rounded bg-red-50/50 px-1 py-0.5",
+                )}
+              >
+                <select
+                  value={formData.ceapClassification}
+                  onChange={(e) => set("ceapClassification", e.target.value)}
+                  className="border-0 border-b border-[#333] text-[12px] bg-transparent outline-none px-1 py-0.5 min-w-[280px]"
+                >
+                  <option value="">—</option>
+                  {CEAP_CLASSIFICATIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </DocRow>
+            <DocRow>
+              <FL>Relevant Vascular History</FL>
+              <FormInput
+                value={formData.relevantVascularHistory}
+                onChange={(v) => set("relevantVascularHistory", v)}
+                className="flex-1"
+                placeholder="CVI, prior DVT, varicosities, recurrence"
+              />
+            </DocRow>
+
+            {/* Wound surface area + periwound + signs of infection */}
+            <DocRow>
+              <FL>Wound Surface Area</FL>
+              <FormInput
+                value={formData.woundSurfaceAreaCm2}
+                onChange={(v) => set("woundSurfaceAreaCm2", coerceNonNegativeOrEmpty(v))}
+                type="number"
+                min={0}
+                step="any"
+                className="w-20 text-center"
+                placeholder="—"
+              />
+              <span className="text-[13px] text-[#444]">cm²</span>
+            </DocRow>
+            <DocRow>
+              <FL>Periwound / Edema Status</FL>
+              <FormInput
+                value={formData.periwoundStatus}
+                onChange={(v) => set("periwoundStatus", v)}
+                className="flex-1"
+                placeholder="maceration, hyperpigmentation, lipodermatosclerosis"
+              />
+            </DocRow>
+            <DocRow>
+              <FL>Signs of Active Infection</FL>
+              <FormInput
+                value={formData.signsActiveInfection}
+                onChange={(v) => set("signsActiveInfection", v)}
+                className="flex-1"
+                placeholder="If yes, note treatment status"
+              />
+            </DocRow>
+
+            {/* Conservative care: compression + healing trajectory */}
+            <DocRow>
+              <FL>Compression Type / Class</FL>
+              <FormInput
+                value={formData.compressionTypeClass}
+                onChange={(v) => set("compressionTypeClass", v)}
+                className="flex-1"
+                placeholder="e.g. multilayer wrap, 30-40 mmHg stockings"
+              />
+            </DocRow>
+            <DocRow>
+              <FL>Initial Wound Area</FL>
+              <FormInput
+                value={formData.initialWoundAreaCm2}
+                onChange={(v) => set("initialWoundAreaCm2", coerceNonNegativeOrEmpty(v))}
+                type="number"
+                min={0}
+                step="any"
+                className="w-20 text-center"
+                placeholder="—"
+              />
+              <span className="text-[13px] text-[#444]">cm²</span>
+              <span className="text-[#ccc] mx-2">|</span>
+              <FL>Current Wound Area</FL>
+              <FormInput
+                value={formData.currentWoundAreaCm2}
+                onChange={(v) => set("currentWoundAreaCm2", coerceNonNegativeOrEmpty(v))}
+                type="number"
+                min={0}
+                step="any"
+                className="w-20 text-center"
+                placeholder="—"
+              />
+              <span className="text-[13px] text-[#444]">cm²</span>
+            </DocRow>
+
+            {/* Vascular assessment */}
+            <DocRow>
+              <FL>Venous Studies Findings</FL>
+              <FormInput
+                value={formData.venousStudiesFindings}
+                onChange={(v) => set("venousStudiesFindings", v)}
+                className="flex-1"
+                placeholder="Duplex ultrasound, reflux time, etc."
+              />
+            </DocRow>
+            <DocRow>
+              <FL>Arterial Supply Adequate for Compression?</FL>
+              <div className="flex gap-3 items-center">
+                <FormCheckbox
+                  checked={formData.arterialSupplyAdequateYn === true}
+                  onChange={(v) =>
+                    set("arterialSupplyAdequateYn", v ? true : null)
+                  }
+                  label="Yes"
+                />
+                <FormCheckbox
+                  checked={formData.arterialSupplyAdequateYn === false}
+                  onChange={(v) =>
+                    set("arterialSupplyAdequateYn", v ? false : null)
+                  }
+                  label="No"
+                />
+              </div>
+              <FormInput
+                value={formData.arterialSupplyBasis}
+                onChange={(v) => set("arterialSupplyBasis", v)}
+                className="flex-1 ml-2"
+                placeholder="basis (e.g. ABI value)"
+              />
+            </DocRow>
+
+            {/* Ordered product + treatment plan */}
+            <DocRow>
+              <FL>Skin Substitute Product</FL>
+              <FormInput
+                value={formData.skinSubstituteProduct}
+                onChange={(v) => set("skinSubstituteProduct", v)}
+                className="flex-1"
+                placeholder="Product name"
+              />
+              <span className="text-[#ccc] mx-2">|</span>
+              <FL>HCPCS / Q-Code</FL>
+              <FormInput
+                value={formData.skinSubstituteHcpcs}
+                onChange={(v) => set("skinSubstituteHcpcs", v)}
+                className="w-32"
+                placeholder="e.g. Q4xxx"
+              />
+            </DocRow>
+            <DocRow>
+              <FL>Anticipated # of Applications</FL>
+              <FormInput
+                value={formData.anticipatedApplicationsCount?.toString() ?? ""}
+                onChange={(v) =>
+                  set("anticipatedApplicationsCount", coercePositiveIntOrNull(v))
+                }
+                type="number"
+                min={1}
+                step={1}
+                className="w-16 text-center"
+                placeholder="—"
+              />
+              <span className="text-[#ccc] mx-2">|</span>
+              <FL>Application Interval</FL>
+              <FormInput
+                value={formData.applicationInterval}
+                onChange={(v) => set("applicationInterval", v)}
+                className="flex-1"
+                placeholder="e.g. weekly, every 14 days"
+              />
+            </DocRow>
+            <DocRow>
+              <FL className="w-full mb-1">Clinical Rationale / Statement of Medical Necessity</FL>
+              <textarea
+                value={formData.clinicalRationaleText}
+                onChange={(e) => set("clinicalRationaleText", e.target.value)}
+                className="w-full border border-[#ddd] rounded text-[12px] p-2 min-h-[80px] outline-none focus:border-[#0d7a6b]"
+                placeholder="Clinical rationale narrative…"
+              />
+            </DocRow>
+
+            {/* ── ATTESTATION (VLU) ──
+                Mirrors the Fortify VLU template's single-paragraph
+                attestation. Checking this box sets all 5 underlying
+                chronic-form physician attestation booleans to true so
+                the existing 5-of-5 Sign gate is satisfied — clinicians
+                see one VLU-appropriate statement, not five chronic ones. */}
+            <div className="mt-2 px-2 py-1 bg-blue-50 border-l-2 border-blue-300">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-900">
+                Attestation
+              </p>
+            </div>
+            <div className="py-2 border-b border-[#e5e5e5]">
+              <p className="text-[11px] text-[#222] leading-snug mb-1.5">
+                I certify that the information above is accurate and that the
+                ordered skin substitute is medically necessary for treatment of
+                this patient&apos;s venous leg ulcer, based on my evaluation
+                and the documented failure of conservative care including
+                compression therapy. Supporting documentation is maintained in
+                the patient&apos;s medical record.
+              </p>
+              <FormCheckbox
+                checked={
+                  formData.attestExaminedPatient &&
+                  formData.attestMedicallyNecessary &&
+                  formData.attestConservativeTxInadequate &&
+                  formData.attestFreqQtyClinicalJudgment &&
+                  formData.attestLcdSupported
+                }
+                onChange={(v) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    attestExaminedPatient: v,
+                    attestMedicallyNecessary: v,
+                    attestConservativeTxInadequate: v,
+                    attestFreqQtyClinicalJudgment: v,
+                    attestLcdSupported: v,
+                  }))
+                }
+                label="I attest the statement above is accurate. (Required to sign)"
+              />
+            </div>
+          </>
+        )}
+
+        {/* ── 8d. DFU-SPECIFIC SECTIONS (Phase 2) ──
+            Renders only when order.wound_type === "dfu". Mirrors the
+            Fortify "Statement of Medical Necessity — Advanced Surgical
+            / Procedural Treatment of a Diabetic Foot Ulcer (DFU)"
+            template. */}
+        {isDfu && (
+          <>
+            {/* ── PATIENT INFORMATION (shared shape — DFU template) ── */}
+            <div className="mt-2 px-2 py-1 bg-blue-50 border-l-2 border-blue-300">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-900">
+                Patient Information
+              </p>
+            </div>
+            <DocRow>
+              <FL className={cn(patientNameDeficient && "text-[#dc2626]")}>Patient Name</FL>
+              <FormInput value={formData.patientName} onChange={(v) => set("patientName", v)} deficient={patientNameDeficient} className="w-44" placeholder="Patient name" />
+              <span className="text-[#ccc] mx-1">|</span>
+              <FL className={cn(patientDateDeficient && "text-[#dc2626]")}>Date of Birth</FL>
+              <FormInput type="date" value={formData.patientDate} onChange={(v) => set("patientDate", v)} deficient={patientDateDeficient} className="w-32" />
+            </DocRow>
+            <DocRow>
+              <FL>Member / Policy ID</FL>
+              <FormInput value={formData.patientMbi} onChange={(v) => set("patientMbi", v)} className="w-44" placeholder="MBI / policy" />
+              <span className="text-[#ccc] mx-1">|</span>
+              <FL>Insurance / Payer</FL>
+              <FormInput value={formData.insuranceTypeLabel ?? ""} onChange={(v) => set("insuranceTypeLabel", v as FormState["insuranceTypeLabel"])} className="w-32" placeholder="payer" />
+            </DocRow>
+
+            {/* ── DIAGNOSIS ── */}
+            <div className="mt-2 px-2 py-1 bg-blue-50 border-l-2 border-blue-300">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-900">
+                Diagnosis &amp; Clinical Severity
+              </p>
+            </div>
+            <DocRow>
+              <FL className={cn(chiefComplaintDeficient && "text-[#dc2626]")}>Primary Diagnosis</FL>
+              <FormInput value={formData.chiefComplaint} onChange={(v) => set("chiefComplaint", v)} deficient={chiefComplaintDeficient} className="flex-1" placeholder="Diabetic foot ulcer — specify laterality &amp; site" />
+            </DocRow>
+            <DocRow>
+              <FL className={cn(icd10Deficient && "text-[#dc2626]")}>ICD-10-CM</FL>
+              <FormInput value={formData.icd10Code} onChange={(v) => set("icd10Code", v)} deficient={icd10Deficient} className="w-28" placeholder="e.g. E11.621" />
+              <span className="text-[#ccc] mx-2">|</span>
+              <FL>HbA1c %</FL>
+              <FormInput value={formData.a1cValue} onChange={(v) => set("a1cValue", coercePositiveDecimalOrEmpty(v))} type="number" min={0.1} step="any" className="w-20" placeholder="6.5" />
+            </DocRow>
+
+            {/* ── DFU-SPECIFIC SECTIONS ── */}
+            <div className="mt-2 px-2 py-1 bg-blue-50 border-l-2 border-blue-300">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-900">
+                DFU — Diabetic Foot Ulcer Specifics
+              </p>
+            </div>
+
+            {/* Referring provider + diabetes type */}
+            <DocRow>
+              <FL>Referring Provider</FL>
+              <FormInput
+                value={formData.referringProvider}
+                onChange={(v) => set("referringProvider", v)}
+                className="flex-1"
+                placeholder="If applicable"
+              />
+              <span className="text-[#ccc] mx-2">|</span>
+              <FL className={cn(dfuDiabetesTypeDeficient && "text-[#dc2626]")}>
+                Diabetes Type
+              </FL>
+              <div
+                className={cn(
+                  dfuDiabetesTypeDeficient &&
+                    "ring-1 ring-red-300 rounded bg-red-50/50 px-1 py-0.5",
+                )}
+              >
+                <select
+                  value={formData.diabetesType ?? ""}
+                  onChange={(e) =>
+                    set(
+                      "diabetesType",
+                      (e.target.value || null) as FormState["diabetesType"],
+                    )
+                  }
+                  className="border-0 border-b border-[#333] text-[12px] bg-transparent outline-none px-1 py-0.5"
+                >
+                  <option value="">—</option>
+                  {DIABETES_TYPE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </DocRow>
+
+            {/* Wagner Grade + UT Stage/Grade */}
+            <DocRow>
+              <FL className={cn(dfuWagnerDeficient && "text-[#dc2626]")}>
+                Wagner Grade
+              </FL>
+              <div
+                className={cn(
+                  dfuWagnerDeficient &&
+                    "ring-1 ring-red-300 rounded bg-red-50/50 px-1 py-0.5",
+                )}
+              >
+                <select
+                  value={formData.wagnerGrade?.toString() ?? ""}
+                  onChange={(e) =>
+                    set(
+                      "wagnerGrade",
+                      e.target.value === "" ? null : Number(e.target.value),
+                    )
+                  }
+                  className="border-0 border-b border-[#333] text-[12px] bg-transparent outline-none px-1 py-0.5 min-w-[320px]"
+                >
+                  <option value="">—</option>
+                  {WAGNER_GRADES.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <span className="text-[#ccc] mx-2">|</span>
+              <FL>University of Texas Stage/Grade</FL>
+              <FormInput
+                value={formData.utStageGrade}
+                onChange={(v) => set("utStageGrade", v)}
+                className="w-24"
+                placeholder="e.g. 2-B"
+              />
+            </DocRow>
+
+            {/* Osteomyelitis */}
+            <DocRow>
+              <FL>Osteomyelitis / Bone Involvement</FL>
+              <select
+                value={formData.osteomyelitisStatus ?? ""}
+                onChange={(e) =>
+                  set(
+                    "osteomyelitisStatus",
+                    (e.target.value || null) as FormState["osteomyelitisStatus"],
+                  )
+                }
+                className="border-0 border-b border-[#333] text-[12px] bg-transparent outline-none px-1 py-0.5"
+              >
+                <option value="">—</option>
+                {OSTEOMYELITIS_STATUS_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              <FormInput
+                value={formData.osteomyelitisBasis}
+                onChange={(v) => set("osteomyelitisBasis", v)}
+                className="flex-1 ml-2"
+                placeholder="basis — imaging / pathology / clinical"
+              />
+            </DocRow>
+
+            {/* Depth / structures + tissue quality breakdown */}
+            <DocRow>
+              <FL>Depth / Structures Exposed</FL>
+              <FormInput
+                value={formData.depthStructuresExposed}
+                onChange={(v) => set("depthStructuresExposed", v)}
+                className="flex-1"
+                placeholder="e.g. tendon, capsule, bone"
+              />
+            </DocRow>
+            <DocRow>
+              <FL className="w-full mb-0.5">Tissue Quality Breakdown</FL>
+              <div className="flex flex-wrap gap-x-3 gap-y-1 items-center">
+                <FL>Granular %</FL>
+                <FormInput
+                  value={formData.tissueQualityGranularPct}
+                  onChange={(v) => set("tissueQualityGranularPct", coerceNonNegativeOrEmpty(v))}
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={10}
+                  className="w-14 text-center"
+                  placeholder="—"
+                />
+                <span className="text-[#ccc] mx-1">|</span>
+                <FL>Fibrinous %</FL>
+                <FormInput
+                  value={formData.tissueQualityFibrinousPct}
+                  onChange={(v) => set("tissueQualityFibrinousPct", coerceNonNegativeOrEmpty(v))}
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={10}
+                  className="w-14 text-center"
+                  placeholder="—"
+                />
+                <span className="text-[#ccc] mx-1">|</span>
+                <FL>Necrotic %</FL>
+                <FormInput
+                  value={formData.tissueQualityNecroticPct}
+                  onChange={(v) => set("tissueQualityNecroticPct", coerceNonNegativeOrEmpty(v))}
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={10}
+                  className="w-14 text-center"
+                  placeholder="—"
+                />
+                <span className="text-[#ccc] mx-2">|</span>
+                <FormCheckbox
+                  checked={formData.tissueQualityBiofilmPresent}
+                  onChange={(v) => set("tissueQualityBiofilmPresent", v)}
+                  label="Biofilm present"
+                />
+                <FormCheckbox
+                  checked={formData.tissueQualityEscharPresent}
+                  onChange={(v) => set("tissueQualityEscharPresent", v)}
+                  label="Eschar present"
+                />
+              </div>
+            </DocRow>
+
+            {/* Infection status */}
+            <DocRow>
+              <FL>Infection Status</FL>
+              <select
+                value={formData.infectionStatusCategory ?? ""}
+                onChange={(e) =>
+                  set(
+                    "infectionStatusCategory",
+                    (e.target.value || null) as FormState["infectionStatusCategory"],
+                  )
+                }
+                className="border-0 border-b border-[#333] text-[12px] bg-transparent outline-none px-1 py-0.5"
+              >
+                <option value="">—</option>
+                {INFECTION_STATUS_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              <span className="text-[#ccc] mx-2">|</span>
+              <FL>Cultures</FL>
+              <FormInput
+                value={formData.infectionCultures}
+                onChange={(v) => set("infectionCultures", v)}
+                className="flex-1"
+                placeholder="organisms / sensitivities"
+              />
+            </DocRow>
+            <DocRow>
+              <FL>Current Antibiotics</FL>
+              <FormInput
+                value={formData.currentAntibiotics}
+                onChange={(v) => set("currentAntibiotics", v)}
+                className="flex-1"
+                placeholder="drug, dose, duration"
+              />
+            </DocRow>
+
+            {/* Vascular / Perfusion */}
+            <DocRow>
+              <FL>TcPO₂</FL>
+              <FormInput
+                value={formData.tcpo2Value}
+                onChange={(v) => set("tcpo2Value", coerceNonNegativeOrEmpty(v))}
+                type="number"
+                min={0}
+                step="any"
+                className="w-20 text-center"
+                placeholder="mmHg"
+              />
+              <span className="text-[#ccc] mx-2">|</span>
+              <FL>Pedal Pulses</FL>
+              <FormInput
+                value={formData.pedalPulses}
+                onChange={(v) => set("pedalPulses", v)}
+                className="flex-1"
+                placeholder="DP / PT findings"
+              />
+            </DocRow>
+            <DocRow>
+              <FL>Vascular Surgery Referral?</FL>
+              <div className="flex gap-3 items-center">
+                <FormCheckbox
+                  checked={formData.vascularSurgeryReferral === true}
+                  onChange={(v) =>
+                    set("vascularSurgeryReferral", v ? true : null)
+                  }
+                  label="Yes"
+                />
+                <FormCheckbox
+                  checked={formData.vascularSurgeryReferral === false}
+                  onChange={(v) =>
+                    set("vascularSurgeryReferral", v ? false : null)
+                  }
+                  label="No"
+                />
+              </div>
+              <FormInput
+                value={formData.vascularSurgeryDetails}
+                onChange={(v) => set("vascularSurgeryDetails", v)}
+                className="flex-1 ml-2"
+                placeholder="details"
+              />
+            </DocRow>
+            <DocRow>
+              <FL className="w-full mb-1">Perfusion adequate to support healing / revascularization plan</FL>
+              <textarea
+                value={formData.perfusionSummary}
+                onChange={(e) => set("perfusionSummary", e.target.value)}
+                className="w-full border border-[#ddd] rounded text-[12px] p-2 min-h-[60px] outline-none focus:border-[#0d7a6b]"
+                placeholder="Summarize perfusion adequacy…"
+              />
+            </DocRow>
+            <DocRow>
+              <FL>Measured Response</FL>
+              <FormInput
+                value={formData.measuredResponse}
+                onChange={(v) => set("measuredResponse", v)}
+                className="flex-1"
+                placeholder="e.g. <50% area reduction in 4 weeks"
+              />
+            </DocRow>
+
+            {/* Procedures Requested (multi-select with CPT) */}
+            <div className="py-2 border-b border-[#e5e5e5]">
+              <FL className="w-full mb-1">Procedures Requested (select all that apply)</FL>
+              <div className="space-y-1">
+                {formData.dfuProcedures.map((proc, idx) => (
+                  <div key={proc.key} className="flex flex-wrap items-center gap-2">
+                    <FormCheckbox
+                      checked={proc.checked}
+                      onChange={(v) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          dfuProcedures: prev.dfuProcedures.map((p, i) =>
+                            i === idx ? { ...p, checked: v } : p,
+                          ),
+                        }))
+                      }
+                      label={proc.label}
+                    />
+                    {proc.cpt ? (
+                      <span className="text-[10px] text-[#666] font-mono">CPT {proc.cpt}</span>
+                    ) : proc.checked ? (
+                      <FormInput
+                        value={proc.cptOverride ?? ""}
+                        onChange={(v) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            dfuProcedures: prev.dfuProcedures.map((p, i) =>
+                              i === idx ? { ...p, cptOverride: v || null } : p,
+                            ),
+                          }))
+                        }
+                        className="w-24"
+                        placeholder="CPT —"
+                      />
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Planned procedure date + setting */}
+            <DocRow>
+              <FL>Planned Date of Procedure</FL>
+              <FormInput
+                type="date"
+                value={formData.plannedProcedureDate}
+                onChange={(v) => set("plannedProcedureDate", v)}
+                className="w-40"
+              />
+              <span className="text-[#ccc] mx-2">|</span>
+              <FL>Setting</FL>
+              <select
+                value={formData.procedureSetting ?? ""}
+                onChange={(e) =>
+                  set(
+                    "procedureSetting",
+                    (e.target.value || null) as FormState["procedureSetting"],
+                  )
+                }
+                className="border-0 border-b border-[#333] text-[12px] bg-transparent outline-none px-1 py-0.5"
+              >
+                <option value="">—</option>
+                {PROCEDURE_SETTING_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </DocRow>
+
+            {/* Narrative justification — 4 sub-sections */}
+            <div className="mt-2 px-2 py-1 bg-blue-50 border-l-2 border-blue-300">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-900">
+                Narrative Justification of Medical Necessity
+              </p>
+            </div>
+            {(
+              [
+                {
+                  key: "progression",
+                  section: DFU_NARRATIVE_TEMPLATES.progression,
+                  statements: formData.narrativeProgressionStatements,
+                  caseSpecific: formData.narrativeProgressionCaseSpecific,
+                  setStatements: (next: string[]) =>
+                    setFormData((p) => ({ ...p, narrativeProgressionStatements: next })),
+                  setCaseSpecific: (next: string) =>
+                    setFormData((p) => ({ ...p, narrativeProgressionCaseSpecific: next })),
+                },
+                {
+                  key: "lessIntensive",
+                  section: DFU_NARRATIVE_TEMPLATES.lessIntensive,
+                  statements: formData.narrativeLessIntensiveStatements,
+                  caseSpecific: formData.narrativeLessIntensiveCaseSpecific,
+                  setStatements: (next: string[]) =>
+                    setFormData((p) => ({ ...p, narrativeLessIntensiveStatements: next })),
+                  setCaseSpecific: (next: string) =>
+                    setFormData((p) => ({ ...p, narrativeLessIntensiveCaseSpecific: next })),
+                },
+                {
+                  key: "limbLoss",
+                  section: DFU_NARRATIVE_TEMPLATES.limbLoss,
+                  statements: formData.narrativeLimbLossStatements,
+                  caseSpecific: formData.narrativeLimbLossCaseSpecific,
+                  setStatements: (next: string[]) =>
+                    setFormData((p) => ({ ...p, narrativeLimbLossStatements: next })),
+                  setCaseSpecific: (next: string) =>
+                    setFormData((p) => ({ ...p, narrativeLimbLossCaseSpecific: next })),
+                },
+                {
+                  key: "perfusion",
+                  section: DFU_NARRATIVE_TEMPLATES.perfusion,
+                  statements: formData.narrativePerfusionStatements,
+                  caseSpecific: formData.narrativePerfusionCaseSpecific,
+                  setStatements: (next: string[]) =>
+                    setFormData((p) => ({ ...p, narrativePerfusionStatements: next })),
+                  setCaseSpecific: (next: string) =>
+                    setFormData((p) => ({ ...p, narrativePerfusionCaseSpecific: next })),
+                },
+              ] as const
+            ).map(({ key, section, statements, caseSpecific, setStatements, setCaseSpecific }) => (
+              <div key={key} className="py-2 border-b border-[#e5e5e5]">
+                <FL className="w-full mb-1">{section.title}</FL>
+                <div className="space-y-1 ml-2">
+                  {section.statements.map((stmt) => (
+                    <FormCheckbox
+                      key={stmt.key}
+                      checked={statements.includes(stmt.key)}
+                      onChange={(checked) => {
+                        if (checked) {
+                          if (!statements.includes(stmt.key)) {
+                            setStatements([...statements, stmt.key]);
+                          }
+                        } else {
+                          setStatements(statements.filter((s) => s !== stmt.key));
+                        }
+                      }}
+                      label={stmt.label}
+                    />
+                  ))}
+                </div>
+                <textarea
+                  value={caseSpecific}
+                  onChange={(e) => setCaseSpecific(e.target.value)}
+                  className="w-full border border-[#ddd] rounded text-[12px] p-2 mt-1 min-h-[50px] outline-none focus:border-[#0d7a6b]"
+                  placeholder="Case-specific narrative (optional)…"
+                />
+              </div>
+            ))}
+
+            <DocRow>
+              <FL className="w-full mb-1">Additional Narrative (optional)</FL>
+              <textarea
+                value={formData.additionalNarrative}
+                onChange={(e) => set("additionalNarrative", e.target.value)}
+                className="w-full border border-[#ddd] rounded text-[12px] p-2 min-h-[60px] outline-none focus:border-[#0d7a6b]"
+                placeholder="Any additional clinical narrative…"
+              />
+            </DocRow>
+
+            {/* Physician credentials (specific to DFU procedures) */}
+            <DocRow>
+              <FL>Specialty</FL>
+              <FormInput
+                value={formData.physicianSpecialty}
+                onChange={(v) => set("physicianSpecialty", v)}
+                className="flex-1"
+                placeholder="e.g. Podiatry, Vascular Surgery"
+              />
+              <span className="text-[#ccc] mx-2">|</span>
+              <FL>State License #</FL>
+              <FormInput
+                value={formData.physicianStateLicense}
+                onChange={(v) => set("physicianStateLicense", v)}
+                className="w-40"
+                placeholder="—"
+              />
+            </DocRow>
+
+            {/* ── ATTESTATION (DFU) ──
+                Mirrors the Fortify DFU template's single-paragraph
+                attestation. Checking this box sets all 5 underlying
+                chronic-form physician attestation booleans to true so
+                the existing 5-of-5 Sign gate is satisfied — clinicians
+                see one DFU-appropriate statement, not five chronic ones. */}
+            <div className="mt-2 px-2 py-1 bg-blue-50 border-l-2 border-blue-300">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-900">
+                Physician Attestation
+              </p>
+            </div>
+            <div className="py-2 border-b border-[#e5e5e5]">
+              <p className="text-[11px] text-[#222] leading-snug mb-1.5">
+                I certify that I am the treating podiatrist / surgeon, that the
+                information above is accurate, and that the procedure(s)
+                requested are medically necessary for treatment of this
+                patient&apos;s diabetic foot ulcer based on my evaluation and
+                the documented failure of conservative care. The intent is limb
+                salvage and prevention of further morbidity. Supporting
+                documentation, imaging, and operative planning are maintained
+                in the patient&apos;s medical record.
+              </p>
+              <FormCheckbox
+                checked={
+                  formData.attestExaminedPatient &&
+                  formData.attestMedicallyNecessary &&
+                  formData.attestConservativeTxInadequate &&
+                  formData.attestFreqQtyClinicalJudgment &&
+                  formData.attestLcdSupported
+                }
+                onChange={(v) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    attestExaminedPatient: v,
+                    attestMedicallyNecessary: v,
+                    attestConservativeTxInadequate: v,
+                    attestFreqQtyClinicalJudgment: v,
+                    attestLcdSupported: v,
+                  }))
+                }
+                label="I attest the statement above is accurate. (Required to sign)"
+              />
+            </div>
+          </>
+        )}
+
+        {/* ── CHRONIC + POST-SURGICAL BOTTOM ── (gate continues from above)
+            Same wrap reason as the top — hidden when DFU/VLU so the form
+            mirrors the Fortify template structure. */}
+        {!isDfu && !isVlu && (
+        <>
         {/* ── 8b. WOUND ETIOLOGY (Fortify expansion) ──
             Multi-select etiology breakdown. Co-existence is allowed (e.g. a
             DFU that is also venous). The parent `wound_type` from Section 8
@@ -3030,6 +4142,11 @@ export function OrderFormDocument({
             ))}
           </div>
         </DocRow>
+        </>
+        )}
+        {/* ── End chronic-only middle wrap. Product Dispensed below renders
+            for ALL wound types since DFU/VLU clinicians also need to
+            select skin substitute products + dressings on their orders. ── */}
 
         {/* ── 17. PRODUCT DISPENSED (editable) ── */}
         <div className="py-2 border-b border-[#e5e5e5]">
@@ -3240,6 +4357,14 @@ export function OrderFormDocument({
           )}
         </div>
 
+        {/* ── Re-open chronic+post-surgical wrap after Product Dispensed.
+            The 17b PRODUCT METADATA below (application frequency, KX
+            modifier, prior-auth) is currently chronic+PS only because the
+            DFU/VLU forms capture those concepts within their own sections.
+            Can be lifted out if Dr. Ben wants application frequency on
+            DFU/VLU too — flag for a future iteration. ── */}
+        {!isDfu && !isVlu && (
+        <>
         {/* ── 17b. PRODUCT METADATA (Fortify expansion) ──
             Application frequency, special HCPCS modifiers, prior-auth flag.
             Lives at the order-form level (not per item) since it describes
@@ -3410,6 +4535,9 @@ export function OrderFormDocument({
             placeholder="10-digit NPI"
           />
         </DocRow>
+        </>
+        )}
+        {/* ── End chronic+post-surgical bottom wrap ── */}
 
         {/* ── 19. SIGNATURE ──
             Layout mirrors the generated PDF: value sits on the line,
@@ -3442,7 +4570,9 @@ export function OrderFormDocument({
                 </button>
               ) : canSign && !allAttestationsChecked ? (
                 <span className="text-[11px] text-[#dc2626] italic">
-                  Check all 5 attestations to enable Sign
+                  {isDfu || isVlu
+                    ? "Check the attestation above to enable Sign"
+                    : "Check all 5 attestations to enable Sign"}
                 </span>
               ) : (
                 <span className="text-[11px] text-[#999] italic">

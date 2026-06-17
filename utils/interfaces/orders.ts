@@ -61,7 +61,7 @@ export const orderDeliveryStatusSchema = z.enum([
   "canceled",
 ]);
 
-export const woundTypeSchema = z.enum(["chronic", "post_surgical"]);
+export const woundTypeSchema = z.enum(["chronic", "post_surgical", "dfu", "vlu"]);
 export const documentTypeSchema = z.enum([
   "facesheet",
   "clinical_docs",
@@ -483,6 +483,36 @@ export interface IPriorTreatmentRow {
   outcome: string;
 }
 
+/* DFU tissue-quality breakdown — JSONB on order_form.tissue_quality_breakdown.
+ * Percentages don't need to sum to 100 (e.g., 60% granular + 20% necrotic
+ * leaves 20% other/unclassified). Biofilm + eschar are independent flags. */
+export interface ITissueQualityBreakdown {
+  granularPct?: number | null;
+  fibrinousPct?: number | null;
+  necroticPct?: number | null;
+  biofilmPresent?: boolean | null;
+  escharPresent?: boolean | null;
+}
+
+/* DFU procedure row inside `dfuProcedures` JSONB array. CPT codes are
+ * canonical (e.g., "11042") but `cptOverride` lets the physician write
+ * in a different code for the "Other" rows where the CPT isn't preset. */
+export interface IDfuProcedure {
+  key: string;
+  label: string;
+  cpt: string | null;
+  checked: boolean;
+  cptOverride?: string | null;
+}
+
+/* DFU narrative section — one of four (progression, less-intensive,
+ * limb-loss, perfusion). Each captures which pre-written statement
+ * keys the physician selected + a free-form case-specific addendum. */
+export interface INarrativeSection {
+  statements: string[];
+  caseSpecific: string | null;
+}
+
 export type GoalOfTherapy =
   | "complete_healing"
   | "wound_bed_prep"
@@ -687,6 +717,65 @@ export interface IOrderForm {
     | "weekly"
     | "as_needed"
     | null;
+
+  // ── VLU-specific (Phase 2 — Venous Leg Ulcer Skin Substitute order) ──
+  // All nullable. Used only when order.wound_type === "vlu"; the form UI
+  // hides them otherwise. Reuses existing chronic-form columns for
+  // overlapping fields (patient info, wound dims, A1C, etc.) — these
+  // are the VLU-template-specific additions.
+  ceapClassification: string | null;
+  relevantVascularHistory: string | null;
+  woundSurfaceAreaCm2: number | null;
+  periwoundStatus: string | null;
+  signsActiveInfection: string | null;
+  compressionTypeClass: string | null;
+  initialWoundAreaCm2: number | null;
+  currentWoundAreaCm2: number | null;
+  venousStudiesFindings: string | null;
+  arterialSupplyAdequateYn: boolean | null;
+  arterialSupplyBasis: string | null;
+  skinSubstituteProduct: string | null;
+  skinSubstituteHcpcs: string | null;
+  anticipatedApplicationsCount: number | null;
+  applicationInterval: string | null;
+  clinicalRationaleText: string | null;
+
+  // ── DFU-specific (Phase 2 — Diabetic Foot Ulcer Advanced Procedural order) ──
+  // All nullable. Used only when order.wound_type === "dfu". Larger field
+  // set than VLU because the DFU template captures procedure CPT codes +
+  // 4 structured narrative sections.
+  referringProvider: string | null;
+  diabetesType: "type_1" | "type_2" | null;
+  wagnerGrade: number | null;
+  utStageGrade: string | null;
+  osteomyelitisStatus: "none" | "suspected" | "confirmed" | null;
+  osteomyelitisBasis: string | null;
+  depthStructuresExposed: string | null;
+  /** Tissue quality breakdown — JSONB: granular_pct, fibrinous_pct,
+   *  necrotic_pct, biofilm_present, eschar_present. */
+  tissueQualityBreakdown: ITissueQualityBreakdown | null;
+  infectionStatusCategory: "none" | "local" | "deep" | "systemic" | null;
+  infectionCultures: string | null;
+  currentAntibiotics: string | null;
+  tcpo2Value: number | null;
+  pedalPulses: string | null;
+  vascularSurgeryReferral: boolean | null;
+  vascularSurgeryDetails: string | null;
+  perfusionSummary: string | null;
+  measuredResponse: string | null;
+  /** Procedures requested — JSONB array of { cpt: string, label: string, checked: boolean }. */
+  dfuProcedures: IDfuProcedure[] | null;
+  plannedProcedureDate: string | null;
+  procedureSetting: "or" | "office" | "asc" | "other" | null;
+  /** Four structured narrative sections — each JSONB:
+   *  { statements: ['key1', ...], case_specific: 'text' }. */
+  narrativeProgression: INarrativeSection | null;
+  narrativeLessIntensive: INarrativeSection | null;
+  narrativeLimbLoss: INarrativeSection | null;
+  narrativePerfusion: INarrativeSection | null;
+  additionalNarrative: string | null;
+  physicianSpecialty: string | null;
+  physicianStateLicense: string | null;
 
   // Meta
   aiExtracted: boolean;
