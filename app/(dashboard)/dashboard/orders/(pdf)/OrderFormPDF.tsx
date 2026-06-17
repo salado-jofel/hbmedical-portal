@@ -168,6 +168,8 @@ export function OrderFormPDF({
      subtype edits in the form. */
   const woundType = v(form?.wound_type) || v(order.wound_type);
   const isPostSurgical = v(order.wound_type) === "post_surgical";
+  const isVlu = v(order.wound_type) === "vlu";
+  const isDfu = v(order.wound_type) === "dfu";
 
   /* Anticipated length & follow-up */
   const ald = form?.anticipated_length_days != null
@@ -190,6 +192,14 @@ export function OrderFormPDF({
         {/* ── Header ── */}
         <PDFHeader title="Physicians Order Recommendation" />
 
+        {/* ── CHRONIC + POST-SURGICAL BODY ──
+            DFU and VLU render their own Fortify-template-shaped layouts
+            below. When wound_type is DFU or VLU the entire chronic body
+            is hidden so the printed form mirrors the on-screen DFU/VLU
+            variants instead of stacking both. The Meridian header above
+            and the Physician Attestation + Signature below stay shared. */}
+        {!isDfu && !isVlu && (
+        <>
         {/* ── Patient / Date / Visit # ── */}
         <View style={s.row}>
           <UField label="Patient Name" value={patientNameVal} width={120} />
@@ -722,6 +732,10 @@ export function OrderFormPDF({
             <CBVal current={form?.dressing_change_frequency} value="as_needed"       label="As needed" />
           </View>
         </View>
+        </>
+        )}
+        {/* ── End chronic-only middle wrap. Product Dispensed below renders
+            for ALL wound types so DFU/VLU PDFs include the products too. ── */}
 
         {/* ── Product Dispensed table ── */}
         <View style={s.section}>
@@ -768,6 +782,11 @@ export function OrderFormPDF({
           )}
         </View>
 
+        {/* ── Re-open chronic+post-surgical wrap after Product Dispensed.
+            Application metadata, follow-up, attestation etc. below stay
+            chronic+PS only. ── */}
+        {!isDfu && !isVlu && (
+        <>
         {/* ── Fortify: Product metadata (frequency / modifiers / prior auth) ── */}
         {form?.application_frequency ||
         form?.special_modifiers ||
@@ -847,6 +866,211 @@ export function OrderFormPDF({
             ) : null}
           </View>
         ) : null}
+
+        </>
+        )}
+        {/* ── End chronic+post-surgical body wrap ── */}
+
+        {/* ── DFU/VLU Phase 2: wound-type-specific layout ──
+            Renders only for DFU/VLU orders. Mirrors the Fortify templates
+            with proper section headers + custom rendering for the JSONB
+            fields (procedures list with CPT codes, tissue quality
+            percentages, narrative statement bullets) instead of raw JSON. */}
+        {(isVlu || isDfu) ? (() => {
+          const f: Record<string, unknown> = (form ?? {}) as Record<string, unknown>;
+          // Render a single label-value row.
+          const Row = ({ k, v: vv }: { k: string; v: unknown }) => {
+            const display =
+              vv === null || vv === undefined || vv === ""
+                ? "—"
+                : typeof vv === "boolean"
+                  ? vv ? "Yes" : "No"
+                  : String(vv);
+            return (
+              <View style={{ flexDirection: "row", marginBottom: 1.5 }}>
+                <Text style={{ fontSize: 7.5, color: BLACK, fontFamily: "Helvetica-Bold", width: 170 }}>
+                  {k}
+                </Text>
+                <Text style={{ fontSize: 7.5, color: BLACK, flex: 1 }}>
+                  {display}
+                </Text>
+              </View>
+            );
+          };
+          // Render a section header.
+          const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
+            <View style={s.section}>
+              <Text style={s.sectionLabel}>{title}</Text>
+              <View style={{ flexDirection: "column" }}>{children}</View>
+            </View>
+          );
+          // Human-readable tissue-quality summary.
+          const tqRaw = f.tissue_quality_breakdown as Record<string, unknown> | null | undefined;
+          const tqDisplay = (() => {
+            if (!tqRaw || typeof tqRaw !== "object") return "—";
+            const parts: string[] = [];
+            const g = tqRaw.granular_pct;
+            const fp = tqRaw.fibrinous_pct;
+            const n = tqRaw.necrotic_pct;
+            if (g != null && g !== "") parts.push(`Granular ${g}%`);
+            if (fp != null && fp !== "") parts.push(`Fibrinous ${fp}%`);
+            if (n != null && n !== "") parts.push(`Necrotic ${n}%`);
+            if (tqRaw.biofilm_present) parts.push("Biofilm present");
+            if (tqRaw.eschar_present) parts.push("Eschar present");
+            return parts.length ? parts.join("; ") : "—";
+          })();
+          // Procedures checklist — checked rows with CPT codes / overrides.
+          const procRaw = f.dfu_procedures as Array<Record<string, unknown>> | null | undefined;
+          const procChecked = Array.isArray(procRaw)
+            ? procRaw.filter((p) => p && (p.checked === true))
+            : [];
+          // Narrative — convert {statements: string[], case_specific} to
+          // readable bullet text. Uses statement keys; full labels live in
+          // the form-side template constants and aren't repeated here.
+          const narrativeText = (val: unknown): string => {
+            if (!val || typeof val !== "object") return "—";
+            const obj = val as Record<string, unknown>;
+            const stmts = Array.isArray(obj.statements) ? (obj.statements as string[]) : [];
+            const caseSpecific = typeof obj.case_specific === "string" ? obj.case_specific : "";
+            const parts: string[] = [];
+            if (stmts.length) {
+              parts.push(stmts.map((s) => `• ${s.replace(/_/g, " ")}`).join("\n"));
+            }
+            if (caseSpecific) parts.push(`Case-specific: ${caseSpecific}`);
+            return parts.length ? parts.join("\n") : "—";
+          };
+          return (
+            <>
+              <Section title="Patient Information">
+                <Row k="Patient Name" v={f.patient_name ?? patientNameVal} />
+                <Row k="Date of Birth" v={f.patient_date ?? patientDateVal} />
+                <Row k="MRN" v={f.patient_mrn} />
+                <Row k="Medicare ID (MBI)" v={f.patient_mbi} />
+                <Row k="Insurance / Payer" v={f.insurance_type_label} />
+                {isDfu ? <Row k="Referring Provider" v={f.referring_provider} /> : null}
+              </Section>
+
+              <Section title={isDfu ? "Diagnosis & Clinical Severity" : "Diagnosis"}>
+                <Row k="Primary Diagnosis" v={f.chief_complaint} />
+                <Row k="ICD-10-CM" v={f.icd10_code} />
+                {isDfu ? (
+                  <>
+                    <Row k="HbA1c %" v={f.a1c_value} />
+                    <Row k="Diabetes Type" v={f.diabetes_type} />
+                    <Row k="Wagner Grade" v={f.wagner_grade} />
+                    <Row k="University of Texas Stage/Grade" v={f.ut_stage_grade} />
+                    <Row k="Osteomyelitis Status" v={f.osteomyelitis_status} />
+                    <Row k="Osteomyelitis Basis" v={f.osteomyelitis_basis} />
+                  </>
+                ) : (
+                  <>
+                    <Row k="CEAP Classification" v={f.ceap_classification} />
+                    <Row k="Relevant Vascular History" v={f.relevant_vascular_history} />
+                  </>
+                )}
+              </Section>
+
+              <Section title="Wound Characteristics">
+                <Row k="Wound Surface Area (cm²)" v={f.wound_surface_area_cm2} />
+                {isDfu ? (
+                  <>
+                    <Row k="Depth / Structures Exposed" v={f.depth_structures_exposed} />
+                    <Row k="Tissue Quality" v={tqDisplay} />
+                    <Row k="Infection Status" v={f.infection_status_category} />
+                    <Row k="Cultures" v={f.infection_cultures} />
+                    <Row k="Current Antibiotics" v={f.current_antibiotics} />
+                  </>
+                ) : (
+                  <>
+                    <Row k="Periwound / Edema Status" v={f.periwound_status} />
+                    <Row k="Signs of Active Infection" v={f.signs_active_infection} />
+                  </>
+                )}
+              </Section>
+
+              <Section title="Vascular / Perfusion Assessment">
+                {isDfu ? (
+                  <>
+                    <Row k="TcPO₂" v={f.tcpo2_value} />
+                    <Row k="Pedal Pulses" v={f.pedal_pulses} />
+                    <Row k="Vascular Surgery Referral" v={f.vascular_surgery_referral} />
+                    <Row k="Vascular Surgery Details" v={f.vascular_surgery_details} />
+                    <Row k="Perfusion Summary" v={f.perfusion_summary} />
+                  </>
+                ) : (
+                  <>
+                    <Row k="Venous Studies" v={f.venous_studies_findings} />
+                    <Row k="Arterial Supply Adequate?" v={f.arterial_supply_adequate_yn} />
+                    <Row k="Arterial Supply Basis" v={f.arterial_supply_basis} />
+                  </>
+                )}
+              </Section>
+
+              <Section title={isDfu ? "Conservative Care" : "Medical Necessity — Conservative Care"}>
+                {isDfu ? (
+                  <Row k="Measured Response" v={f.measured_response} />
+                ) : (
+                  <Row k="Compression Type / Class" v={f.compression_type_class} />
+                )}
+                <Row k="Initial Wound Area (cm²)" v={f.initial_wound_area_cm2} />
+                <Row k="Current Wound Area (cm²)" v={f.current_wound_area_cm2} />
+              </Section>
+
+              {isDfu ? (
+                <>
+                  <Section title="Procedures Requested">
+                    {procChecked.length === 0 ? (
+                      <Text style={{ fontSize: 7.5, color: BLACK }}>—</Text>
+                    ) : (
+                      procChecked.map((p, idx) => {
+                        const cptDisplay =
+                          (p.cpt as string | null) ||
+                          (p.cpt_override as string | null) ||
+                          "—";
+                        return (
+                          <View key={`proc-${idx}`} style={{ flexDirection: "row", marginBottom: 1 }}>
+                            <Text style={{ fontSize: 7.5, color: BLACK, width: 14 }}>✓</Text>
+                            <Text style={{ fontSize: 7.5, color: BLACK, flex: 1 }}>
+                              {String(p.label ?? p.key ?? "Procedure")}
+                            </Text>
+                            <Text style={{ fontSize: 7.5, color: BLACK, fontFamily: "Helvetica-Bold", marginLeft: 4 }}>
+                              CPT {cptDisplay}
+                            </Text>
+                          </View>
+                        );
+                      })
+                    )}
+                    <View style={{ marginTop: 3 }}>
+                      <Row k="Planned Procedure Date" v={f.planned_procedure_date} />
+                      <Row k="Setting" v={f.procedure_setting} />
+                    </View>
+                  </Section>
+
+                  <Section title="Narrative Justification of Medical Necessity">
+                    <Row k="Progression / Expected Benefit" v={narrativeText(f.narrative_progression)} />
+                    <Row k="Less-Intensive Insufficient" v={narrativeText(f.narrative_less_intensive)} />
+                    <Row k="Limb-Loss Prevention" v={narrativeText(f.narrative_limb_loss)} />
+                    <Row k="Perfusion / Revascularization" v={narrativeText(f.narrative_perfusion)} />
+                    <Row k="Additional Narrative" v={f.additional_narrative} />
+                  </Section>
+
+                  <Section title="Physician">
+                    <Row k="Specialty" v={f.physician_specialty} />
+                    <Row k="State License #" v={f.physician_state_license} />
+                  </Section>
+                </>
+              ) : (
+                <Section title="Ordered Product & Treatment Plan">
+                  <Row k="Skin Substitute Product" v={f.skin_substitute_product} />
+                  <Row k="HCPCS / Q-Code" v={f.skin_substitute_hcpcs} />
+                  <Row k="Anticipated # of Applications" v={f.anticipated_applications_count} />
+                  <Row k="Application Interval" v={f.application_interval} />
+                  <Row k="Clinical Rationale" v={f.clinical_rationale_text} />
+                </Section>
+              )}
+            </>
+          );
+        })() : null}
 
         {/* ── Fortify: Physician 5-point Attestation ── */}
         <View style={s.section} wrap={false}>

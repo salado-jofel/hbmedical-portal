@@ -992,10 +992,13 @@ export function IVRFormDocument({
             )}
           >
             {[
-              "Office",
-              "Outpatient Hospital",
-              "Ambulatory Surgical Center",
-              "Other",
+              "Office (11)",
+              "Patient home (12)",
+              "Assisted Living Facility (13)",
+              "Off Campus Outpatient Hospital (19)",
+              "Hospital outpatient (22)",
+              "Ambulatory Surgical Center (24)",
+              "Independent Clinic (49)",
             ].map((pos) => (
               <FormCheckbox
                 key={pos}

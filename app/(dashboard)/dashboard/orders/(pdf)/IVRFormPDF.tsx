@@ -318,7 +318,15 @@ export function IVRFormPDF({
         <Text style={s.sectionHeader}>PLACE OF SERVICE</Text>
         <View style={s.sectionBody}>
           <View style={s.cbRow}>
-            {["Office", "Outpatient Hospital", "Ambulatory Surgical Center", "Other"].map((pos) => (
+            {[
+              "Office (11)",
+              "Patient home (12)",
+              "Assisted Living Facility (13)",
+              "Off Campus Outpatient Hospital (19)",
+              "Hospital outpatient (22)",
+              "Ambulatory Surgical Center (24)",
+              "Independent Clinic (49)",
+            ].map((pos) => (
               <CBVal key={pos} current={placeOfService} value={pos} label={pos} />
             ))}
           </View>
