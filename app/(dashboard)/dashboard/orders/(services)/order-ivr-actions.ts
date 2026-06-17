@@ -413,6 +413,25 @@ function mapFortifyFields(
   | "attestNotRoutineCare" | "attestWoundMeasuredAtSurgery"
   | "dressingChangeFrequency"
   | "officeTracking"
+  // ── VLU expansion (Phase 2) ──
+  | "ceapClassification" | "relevantVascularHistory" | "woundSurfaceAreaCm2"
+  | "periwoundStatus" | "signsActiveInfection" | "compressionTypeClass"
+  | "initialWoundAreaCm2" | "currentWoundAreaCm2" | "venousStudiesFindings"
+  | "arterialSupplyAdequateYn" | "arterialSupplyBasis"
+  | "skinSubstituteProduct" | "skinSubstituteHcpcs"
+  | "anticipatedApplicationsCount" | "applicationInterval"
+  | "clinicalRationaleText"
+  // ── DFU expansion (Phase 2) ──
+  | "referringProvider" | "diabetesType" | "wagnerGrade" | "utStageGrade"
+  | "osteomyelitisStatus" | "osteomyelitisBasis" | "depthStructuresExposed"
+  | "tissueQualityBreakdown" | "infectionStatusCategory"
+  | "infectionCultures" | "currentAntibiotics" | "tcpo2Value"
+  | "pedalPulses" | "vascularSurgeryReferral" | "vascularSurgeryDetails"
+  | "perfusionSummary" | "measuredResponse" | "dfuProcedures"
+  | "plannedProcedureDate" | "procedureSetting"
+  | "narrativeProgression" | "narrativeLessIntensive"
+  | "narrativeLimbLoss" | "narrativePerfusion" | "additionalNarrative"
+  | "physicianSpecialty" | "physicianStateLicense"
 > {
   const priorRaw = Array.isArray(form.prior_treatments)
     ? (form.prior_treatments as Array<Record<string, unknown>>)
@@ -501,6 +520,68 @@ function mapFortifyFields(
     attestNotRoutineCare:           (form.attest_not_routine_care as boolean | null) ?? false,
     attestWoundMeasuredAtSurgery:   (form.attest_wound_measured_at_surgery as boolean | null) ?? false,
     dressingChangeFrequency:        (form.dressing_change_frequency as IOrderForm["dressingChangeFrequency"]) ?? null,
+    // ── VLU mapping (Phase 2) ──
+    ceapClassification:             (form.ceap_classification as string | null) ?? null,
+    relevantVascularHistory:        (form.relevant_vascular_history as string | null) ?? null,
+    woundSurfaceAreaCm2:            num(form.wound_surface_area_cm2),
+    periwoundStatus:                (form.periwound_status as string | null) ?? null,
+    signsActiveInfection:           (form.signs_active_infection as string | null) ?? null,
+    compressionTypeClass:           (form.compression_type_class as string | null) ?? null,
+    initialWoundAreaCm2:            num(form.initial_wound_area_cm2),
+    currentWoundAreaCm2:            num(form.current_wound_area_cm2),
+    venousStudiesFindings:          (form.venous_studies_findings as string | null) ?? null,
+    arterialSupplyAdequateYn:       (form.arterial_supply_adequate_yn as boolean | null) ?? null,
+    arterialSupplyBasis:            (form.arterial_supply_basis as string | null) ?? null,
+    skinSubstituteProduct:          (form.skin_substitute_product as string | null) ?? null,
+    skinSubstituteHcpcs:            (form.skin_substitute_hcpcs as string | null) ?? null,
+    anticipatedApplicationsCount:   num(form.anticipated_applications_count),
+    applicationInterval:            (form.application_interval as string | null) ?? null,
+    clinicalRationaleText:          (form.clinical_rationale_text as string | null) ?? null,
+    // ── DFU mapping (Phase 2) ──
+    referringProvider:              (form.referring_provider as string | null) ?? null,
+    diabetesType:                   (form.diabetes_type as IOrderForm["diabetesType"]) ?? null,
+    wagnerGrade:                    num(form.wagner_grade),
+    utStageGrade:                   (form.ut_stage_grade as string | null) ?? null,
+    osteomyelitisStatus:            (form.osteomyelitis_status as IOrderForm["osteomyelitisStatus"]) ?? null,
+    osteomyelitisBasis:             (form.osteomyelitis_basis as string | null) ?? null,
+    depthStructuresExposed:         (form.depth_structures_exposed as string | null) ?? null,
+    tissueQualityBreakdown:
+      form.tissue_quality_breakdown && typeof form.tissue_quality_breakdown === "object"
+        ? (form.tissue_quality_breakdown as IOrderForm["tissueQualityBreakdown"])
+        : null,
+    infectionStatusCategory:        (form.infection_status_category as IOrderForm["infectionStatusCategory"]) ?? null,
+    infectionCultures:              (form.infection_cultures as string | null) ?? null,
+    currentAntibiotics:             (form.current_antibiotics as string | null) ?? null,
+    tcpo2Value:                     num(form.tcpo2_value),
+    pedalPulses:                    (form.pedal_pulses as string | null) ?? null,
+    vascularSurgeryReferral:        (form.vascular_surgery_referral as boolean | null) ?? null,
+    vascularSurgeryDetails:         (form.vascular_surgery_details as string | null) ?? null,
+    perfusionSummary:               (form.perfusion_summary as string | null) ?? null,
+    measuredResponse:               (form.measured_response as string | null) ?? null,
+    dfuProcedures: Array.isArray(form.dfu_procedures)
+      ? (form.dfu_procedures as IOrderForm["dfuProcedures"])
+      : null,
+    plannedProcedureDate:           (form.planned_procedure_date as string | null) ?? null,
+    procedureSetting:               (form.procedure_setting as IOrderForm["procedureSetting"]) ?? null,
+    narrativeProgression:
+      form.narrative_progression && typeof form.narrative_progression === "object"
+        ? (form.narrative_progression as IOrderForm["narrativeProgression"])
+        : null,
+    narrativeLessIntensive:
+      form.narrative_less_intensive && typeof form.narrative_less_intensive === "object"
+        ? (form.narrative_less_intensive as IOrderForm["narrativeLessIntensive"])
+        : null,
+    narrativeLimbLoss:
+      form.narrative_limb_loss && typeof form.narrative_limb_loss === "object"
+        ? (form.narrative_limb_loss as IOrderForm["narrativeLimbLoss"])
+        : null,
+    narrativePerfusion:
+      form.narrative_perfusion && typeof form.narrative_perfusion === "object"
+        ? (form.narrative_perfusion as IOrderForm["narrativePerfusion"])
+        : null,
+    additionalNarrative:            (form.additional_narrative as string | null) ?? null,
+    physicianSpecialty:             (form.physician_specialty as string | null) ?? null,
+    physicianStateLicense:          (form.physician_state_license as string | null) ?? null,
     officeTracking: {
       methodOfReceipt:          (ot.method_of_receipt as string | null) ?? null,
       baaInPlace:               (ot.baa_in_place as boolean | null) ?? null,

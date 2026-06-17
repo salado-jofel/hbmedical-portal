@@ -32,7 +32,7 @@ import { safeLogError } from "@/lib/logging/safe-log";
 /* -------------------------------------------------------------------------- */
 
 export async function createOrder(data: {
-  wound_type: "chronic" | "post_surgical";
+  wound_type: "chronic" | "post_surgical" | "dfu" | "vlu";
   date_of_service: string;
   notes?: string | null;
   order_type?: "surgical_collagen" | "omeza" | null;
@@ -471,6 +471,51 @@ export async function saveOrderForm(
     attest_wound_measured_at_surgery?: boolean;
     dressing_change_frequency?: string | null;
     office_tracking?: Record<string, unknown>;
+    // ── VLU Phase 2 fields ──
+    ceap_classification?: string | null;
+    relevant_vascular_history?: string | null;
+    wound_surface_area_cm2?: number | null;
+    periwound_status?: string | null;
+    signs_active_infection?: string | null;
+    compression_type_class?: string | null;
+    initial_wound_area_cm2?: number | null;
+    current_wound_area_cm2?: number | null;
+    venous_studies_findings?: string | null;
+    arterial_supply_adequate_yn?: boolean | null;
+    arterial_supply_basis?: string | null;
+    skin_substitute_product?: string | null;
+    skin_substitute_hcpcs?: string | null;
+    anticipated_applications_count?: number | null;
+    application_interval?: string | null;
+    clinical_rationale_text?: string | null;
+    // ── DFU Phase 2 fields ──
+    referring_provider?: string | null;
+    diabetes_type?: string | null;
+    wagner_grade?: number | null;
+    ut_stage_grade?: string | null;
+    osteomyelitis_status?: string | null;
+    osteomyelitis_basis?: string | null;
+    depth_structures_exposed?: string | null;
+    tissue_quality_breakdown?: Record<string, unknown> | null;
+    infection_status_category?: string | null;
+    infection_cultures?: string | null;
+    current_antibiotics?: string | null;
+    tcpo2_value?: number | null;
+    pedal_pulses?: string | null;
+    vascular_surgery_referral?: boolean | null;
+    vascular_surgery_details?: string | null;
+    perfusion_summary?: string | null;
+    measured_response?: string | null;
+    dfu_procedures?: Array<Record<string, unknown>> | null;
+    planned_procedure_date?: string | null;
+    procedure_setting?: string | null;
+    narrative_progression?: Record<string, unknown> | null;
+    narrative_less_intensive?: Record<string, unknown> | null;
+    narrative_limb_loss?: Record<string, unknown> | null;
+    narrative_perfusion?: Record<string, unknown> | null;
+    additional_narrative?: string | null;
+    physician_specialty?: string | null;
+    physician_state_license?: string | null;
   },
   ifMatchUpdatedAt?: string | null,
 ): Promise<{
