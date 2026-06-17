@@ -2498,7 +2498,10 @@ export function OrderDetailModal({
                       </div>
                     )}
 
-                    {/* Wound photos */}
+                    {/* Wound photos — hidden for post-surgical orders.
+                        Post-surgical wounds are fresh surgical incisions
+                        where a wound photo isn't clinically meaningful. */}
+                    {liveOrder.wound_type !== "post_surgical" && (
                     <div>
                       <h3 className="text-[10px] font-semibold uppercase tracking-[0.6px] text-[var(--text3)] mb-2">
                         Wound Photos
@@ -2540,6 +2543,7 @@ export function OrderDetailModal({
                         </div>
                       )}
                     </div>
+                    )}
                   </div>
 
                   {/* Right footer */}

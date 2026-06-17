@@ -680,19 +680,24 @@ export function CreateOrderModal() {
                 </p>
               )}
 
-              {/* Wound Pictures — always optional */}
-              <UploadZone
-                label="Wound Pictures"
-                description="Multiple images allowed"
-                docType="wound_pictures"
-                required={false}
-                multiple
-                files={docs}
-                onAdd={addDocs}
-                onRemove={removeDoc}
-                accept={ACCEPT_IMAGES}
-                fileType="image"
-              />
+              {/* Wound Pictures — chronic only. Post-surgical wounds are
+                  fresh surgical incisions where a wound photo isn't
+                  clinically meaningful (matches the post-surgical hide
+                  in OrderDetailModal sidebar + OrderFormDocument). */}
+              {woundType !== "post_surgical" && (
+                <UploadZone
+                  label="Wound Pictures"
+                  description="Multiple images allowed"
+                  docType="wound_pictures"
+                  required={false}
+                  multiple
+                  files={docs}
+                  onAdd={addDocs}
+                  onRemove={removeDoc}
+                  accept={ACCEPT_IMAGES}
+                  fileType="image"
+                />
+              )}
 
               {/* Valid ID — government-issued photo ID for the patient.
                   Full-width to match Wound Pictures above. Required by

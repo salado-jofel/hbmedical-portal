@@ -305,6 +305,24 @@ export async function updateOrderClinicalFields(
     const { userId } = await requireIVREditRole();
     const adminClient = createAdminClient();
 
+    // Match the defense-in-depth gate in saveOrderForm. The orders table
+    // has no DB CHECK on followup_days, so without this gate a 0/negative
+    // here would persist silently — worse than the order_form path which
+    // at least surfaces a constraint error.
+    if (
+      data.followup_days !== undefined &&
+      data.followup_days !== null &&
+      (typeof data.followup_days !== "number" ||
+        !Number.isFinite(data.followup_days) ||
+        !Number.isInteger(data.followup_days) ||
+        data.followup_days < 1)
+    ) {
+      return {
+        success: false,
+        error: "Follow-up days must be a whole number of 1 or more, or left blank.",
+      };
+    }
+
     const payload: Record<string, unknown> = {};
     if ("chief_complaint" in data) payload.chief_complaint = data.chief_complaint;
     if ("has_vasculitis_or_burns" in data) payload.has_vasculitis_or_burns = data.has_vasculitis_or_burns;
@@ -464,6 +482,78 @@ export async function saveOrderForm(
   try {
     await requireIVREditRole();
     const adminClient = createAdminClient();
+
+    // Defense-in-depth gate for numeric fields. Three buckets:
+    //  - POSITIVE_INT: durations/counts where 0 is meaningless. Mirrors
+    //    the DB CHECK constraints on order_form (followup_days_check,
+    //    followup_weeks_check, wound_visit_number_check,
+    //    anticipated_length_days_check) so a stale UI bundle or non-UI
+    //    caller can't slip 0/negative/non-integer past and get a raw
+    //    23514 constraint violation in the user's face.
+    //  - POSITIVE_DECIMAL: lab values where 0 is medically impossible
+    //    (A1C, albumin, eGFR). Decimals are fine — A1C of 6.5 is valid.
+    //  - NON_NEGATIVE: percentages, wound dimensions, pain. 0 is a real
+    //    clinical value (0% slough, 0/10 pain). Just rejects negative.
+    const POSITIVE_INT_FIELDS = [
+      { key: "followup_days", label: "Follow-up days" },
+      { key: "followup_weeks", label: "Follow-up weeks" },
+      { key: "wound_visit_number", label: "Wound visit number" },
+      { key: "anticipated_length_days", label: "Anticipated length of need (days)" },
+    ] as const;
+    for (const { key, label } of POSITIVE_INT_FIELDS) {
+      const v = (data as Record<string, unknown>)[key];
+      if (v === undefined || v === null) continue;
+      if (
+        typeof v !== "number" ||
+        !Number.isFinite(v) ||
+        !Number.isInteger(v) ||
+        v < 1
+      ) {
+        return {
+          success: false,
+          error: `${label} must be a whole number of 1 or more, or left blank.`,
+        };
+      }
+    }
+
+    const POSITIVE_DECIMAL_FIELDS = [
+      { key: "a1c_value", label: "A1C" },
+      { key: "albumin_value", label: "Albumin" },
+      { key: "egfr_value", label: "eGFR" },
+    ] as const;
+    for (const { key, label } of POSITIVE_DECIMAL_FIELDS) {
+      const v = (data as Record<string, unknown>)[key];
+      if (v === undefined || v === null) continue;
+      if (typeof v !== "number" || !Number.isFinite(v) || v <= 0) {
+        return {
+          success: false,
+          error: `${label} must be greater than 0, or left blank.`,
+        };
+      }
+    }
+
+    const NON_NEGATIVE_FIELDS = [
+      { key: "granulation_tissue_pct", label: "Granulation tissue %" },
+      { key: "wound_length_cm", label: "Wound length" },
+      { key: "wound_width_cm", label: "Wound width" },
+      { key: "wound_depth_cm", label: "Wound depth" },
+      { key: "wound2_length_cm", label: "Wound 2 length" },
+      { key: "wound2_width_cm", label: "Wound 2 width" },
+      { key: "wound2_depth_cm", label: "Wound 2 depth" },
+      { key: "wound_bed_slough_pct", label: "Slough %" },
+      { key: "wound_bed_eschar_pct", label: "Eschar %" },
+      { key: "pain_level", label: "Pain level" },
+    ] as const;
+    for (const { key, label } of NON_NEGATIVE_FIELDS) {
+      const v = (data as Record<string, unknown>)[key];
+      if (v === undefined || v === null) continue;
+      if (typeof v !== "number" || !Number.isFinite(v) || v < 0) {
+        return {
+          success: false,
+          error: `${label} must be 0 or greater, or left blank.`,
+        };
+      }
+    }
 
     // wound_type lives on the orders table — separate update
     const { wound_type, ...formData } = data;

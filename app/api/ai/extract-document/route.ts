@@ -366,6 +366,23 @@ const ORDER_FORM_FIELD_ALIASES: Record<string, string> = {
   ordering_physician_npi: "physician_npi",
 };
 
+// Numeric value-validation buckets for AI output. If Claude returns a
+// value that violates the field's contract, drop it to null silently
+// rather than letting the upsert hit a DB constraint violation. The
+// prompt asks for valid enums/types but defense-in-depth assumes the
+// model can hallucinate.
+const ORDER_FORM_POSITIVE_INT_FIELDS = new Set([
+  "followup_days",
+  "followup_weeks",
+  "wound_visit_number",
+  "anticipated_length_days",
+]);
+const ORDER_FORM_POSITIVE_DECIMAL_FIELDS = new Set([
+  "a1c_value",
+  "albumin_value",
+  "egfr_value",
+]);
+
 function sanitizeOrderFormFields(
   raw: Record<string, unknown>,
 ): Record<string, unknown> {
@@ -374,7 +391,31 @@ function sanitizeOrderFormFields(
     if (value === null || value === undefined) continue;
     const mappedKey = ORDER_FORM_FIELD_ALIASES[key] ?? key;
     if (ORDER_FORM_ALLOWED_FIELDS.has(mappedKey)) {
-      sanitized[mappedKey] = value;
+      if (ORDER_FORM_POSITIVE_INT_FIELDS.has(mappedKey)) {
+        const n = typeof value === "number" ? value : Number(value);
+        if (
+          !Number.isFinite(n) ||
+          !Number.isInteger(n) ||
+          n < 1
+        ) {
+          console.warn(
+            `[extract-document] Dropped invalid ${mappedKey} from AI output: ${JSON.stringify(value)}`,
+          );
+          continue;
+        }
+        sanitized[mappedKey] = n;
+      } else if (ORDER_FORM_POSITIVE_DECIMAL_FIELDS.has(mappedKey)) {
+        const n = typeof value === "number" ? value : Number(value);
+        if (!Number.isFinite(n) || n <= 0) {
+          console.warn(
+            `[extract-document] Dropped invalid ${mappedKey} from AI output: ${JSON.stringify(value)}`,
+          );
+          continue;
+        }
+        sanitized[mappedKey] = n;
+      } else {
+        sanitized[mappedKey] = value;
+      }
     } else {
       console.warn(
         `[extract-document] Unknown order_form field ignored: ${key}`,

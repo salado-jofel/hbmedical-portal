@@ -224,7 +224,10 @@ function buildFormState(
     isPatientAtSnf: form?.isPatientAtSnf ?? false,
     icd10Code: form?.icd10Code ?? "",
     followupDays: form?.followupDays ?? null,
-    surgicalDressingType: form?.surgicalDressingType ?? null,
+    // Default to Primary — overwhelmingly the right answer for the
+    // product set this portal sells. Clinician can still uncheck and
+    // pick Secondary if needed.
+    surgicalDressingType: form?.surgicalDressingType ?? "primary",
     woundType: opts?.woundType ?? "",
     anticipatedLengthDays: form?.anticipatedLengthDays ?? null,
     followupWeeks: form?.followupWeeks ?? null,
@@ -309,10 +312,15 @@ function buildFormState(
     adjunctOther: form?.adjunctOther ?? "",
     specialtyConsults: form?.specialtyConsults ?? "",
     applicationFrequency: form?.applicationFrequency ?? "",
-    specialModifiers: form?.specialModifiers ?? "",
+    // Default "KX" so clinicians don't have to type the most common
+    // wound-care modifier on every order. Editable if they need to
+    // override (add GA, clear it, etc.).
+    specialModifiers: form?.specialModifiers ?? "KX",
     priorAuthObtained: form?.priorAuthObtained ?? false,
     lcdReference: form?.lcdReference ?? "",
-    woundMeetsLcd: form?.woundMeetsLcd ?? null,
+    // Default Yes — wound-care orders that reach this form are
+    // overwhelmingly LCD-eligible; clinician can flip to No if not.
+    woundMeetsLcd: form?.woundMeetsLcd ?? true,
     conservativeTxPeriodMet: form?.conservativeTxPeriodMet ?? null,
     qtyWithinLcdLimits: form?.qtyWithinLcdLimits ?? null,
     kxCriteriaMet: form?.kxCriteriaMet ?? null,
@@ -393,6 +401,53 @@ function FormCheckbox({
       <span className="text-[12px] text-[#333] leading-none">{label}</span>
     </label>
   );
+}
+
+// Coerce a free-text numeric input to a positive integer or null.
+// Treats empty string, "0", negatives, decimals, and non-numeric input
+// all as "user cleared the field" (→ null). Matches the DB CHECK
+// `(col IS NULL) OR (col > 0)` used on order_form.followup_days +
+// followup_weeks + wound_visit_number, so the UI never submits a
+// value the DB will reject.
+function coercePositiveIntOrNull(v: string): number | null {
+  if (!v.trim()) return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1) return null;
+  return n;
+}
+
+// String-variant of the same coercion for inputs whose form-state is
+// stored as a string (e.g. woundVisitNumber). Also strips dashes,
+// preserving the original onChange's dash-strip behavior.
+function coercePositiveIntStringOrEmpty(v: string): string {
+  const cleaned = v.replace(/-/g, "").trim();
+  if (!cleaned) return "";
+  const n = Number(cleaned);
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1) return "";
+  return String(n);
+}
+
+// Strict positive decimal — for lab values where 0 is medically
+// impossible (A1C, albumin, eGFR). Preserves user input verbatim so
+// mid-typing characters like "6." stay rendered while they type "6.5".
+function coercePositiveDecimalOrEmpty(v: string): string {
+  const trimmed = v.trim();
+  if (!trimmed) return "";
+  const n = Number(trimmed);
+  if (!Number.isFinite(n) || n <= 0) return "";
+  return v;
+}
+
+// Allows 0 and any positive number; rejects negative, NaN, and
+// non-numeric input. For percentages (0% is valid), wound dimensions
+// (0 cm = closed wound), pain (0/10 = no pain), and currency (0 = no
+// charge). Replaces the dash-strip-only validation in those fields.
+function coerceNonNegativeOrEmpty(v: string): string {
+  const trimmed = v.trim();
+  if (!trimmed) return "";
+  const n = Number(trimmed);
+  if (!Number.isFinite(n) || n < 0) return "";
+  return v;
 }
 
 function FormInput({
@@ -958,7 +1013,11 @@ export function OrderFormDocument({
     if (!isPostSurgical && !formData.woundLengthCm) count++;
     if (!isPostSurgical && !formData.woundWidthCm) count++;
     if (!isPostSurgical && !formData.woundDepthCm) count++;
-    if (!formData.treatmentPlan) count++;
+    // Treatment Plan is hidden for post-surgical orders (post-surgical
+    // variant doesn't have a Treatment Plan section), so don't count it
+    // there — otherwise the deficiency count is permanently off-by-one
+    // and the user sees a phantom "missing field" they can't fill.
+    if (!isPostSurgical && !formData.treatmentPlan) count++;
     if (!isPostSurgical && !formData.woundVisitNumber) count++;
     if (!isPostSurgical && !formData.granulationTissuePct) count++;
     // Post-surgical-specific deficiency checks
@@ -1048,6 +1107,17 @@ export function OrderFormDocument({
   const lengthDeficient = aiExtracted && !formData.anticipatedLengthDays;
   const followupDeficient =
     aiExtracted && !formData.followupDays && !formData.followupWeeks;
+  // Post-surgical-only deficient flags. These three fields are required
+  // for the Medicare Surgical Dressings qualifying basis but the original
+  // post-surgical section never wired visible red-highlight feedback —
+  // they only contributed to the deficiency *count*, leaving the user to
+  // hunt for them with no visual cue.
+  const surgicalBasisDeficient =
+    aiExtracted && isPostSurgical && !formData.surgicalQualifyingBasis;
+  const surgeryDateDeficient =
+    aiExtracted && isPostSurgical && !formData.dateOfSurgery;
+  const attestSurgeryDeficient =
+    aiExtracted && isPostSurgical && !formData.attestWoundMeasuredAtSurgery;
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setFormData((prev) => ({ ...prev, [key]: value }));
@@ -1661,20 +1731,26 @@ export function OrderFormDocument({
               aiExtracted && !formData.patientDate ? "Required" : "MM/DD/YYYY"
             }
           />
-          <span className="text-[#ccc] mx-1">|</span>
-          <FL>Wound Visit #</FL>
-          <AiWrap active={ai && !!formData.woundVisitNumber}>
-            <FormInput
-              value={formData.woundVisitNumber}
-              onChange={(v) => set("woundVisitNumber", v.replace(/-/g, ""))}
-              deficient={visitDeficient}
-              type="number"
-              min={0}
-              step={1}
-              className="w-12 text-center"
-              placeholder="—"
-            />
-          </AiWrap>
+          {/* Wound Visit # is chronic-only — post-surgical wounds don't
+              have a visit-tracking sequence. */}
+          {!isPostSurgical && (
+            <>
+              <span className="text-[#ccc] mx-1">|</span>
+              <FL>Wound Visit #</FL>
+              <AiWrap active={ai && !!formData.woundVisitNumber}>
+                <FormInput
+                  value={formData.woundVisitNumber}
+                  onChange={(v) => set("woundVisitNumber", coercePositiveIntStringOrEmpty(v))}
+                  deficient={visitDeficient}
+                  type="number"
+                  min={1}
+                  step={1}
+                  className="w-12 text-center"
+                  placeholder="—"
+                />
+              </AiWrap>
+            </>
+          )}
         </DocRow>
 
         {/* ── 2b. PATIENT IDENTIFIERS + DOS (Fortify expansion) ── */}
@@ -1915,8 +1991,10 @@ export function OrderFormDocument({
                   <FL>A1C</FL>
                   <FormInput
                     value={formData.a1cValue}
-                    onChange={(v) => set("a1cValue", v)}
+                    onChange={(v) => set("a1cValue", coercePositiveDecimalOrEmpty(v))}
                     type="number"
+                    min={0.1}
+                    step="any"
                     className="w-14"
                     placeholder="6.5"
                   />
@@ -1956,8 +2034,10 @@ export function OrderFormDocument({
                   <FL>Albumin</FL>
                   <FormInput
                     value={formData.albuminValue}
-                    onChange={(v) => set("albuminValue", v)}
+                    onChange={(v) => set("albuminValue", coercePositiveDecimalOrEmpty(v))}
                     type="number"
+                    min={0.1}
+                    step="any"
                     className="w-14"
                     placeholder="3.5"
                   />
@@ -1968,8 +2048,10 @@ export function OrderFormDocument({
                   <FL>eGFR</FL>
                   <FormInput
                     value={formData.egfrValue}
-                    onChange={(v) => set("egfrValue", v)}
+                    onChange={(v) => set("egfrValue", coercePositiveDecimalOrEmpty(v))}
                     type="number"
+                    min={0.1}
+                    step="any"
                     className="w-14"
                     placeholder="60"
                   />
@@ -2059,8 +2141,21 @@ export function OrderFormDocument({
         {isPostSurgical && (
           <>
             <DocRow>
-              <FL className="w-full mb-0.5">Surgical Information</FL>
-              <div className="flex flex-wrap gap-x-3 gap-y-1 w-full">
+              <FL
+                className={cn(
+                  "w-full mb-0.5",
+                  surgicalBasisDeficient && "text-[#dc2626]",
+                )}
+              >
+                Surgical Information
+              </FL>
+              <div
+                className={cn(
+                  "flex flex-wrap gap-x-3 gap-y-1 w-full",
+                  surgicalBasisDeficient &&
+                    "ring-1 ring-red-300 rounded bg-red-50/50 px-2 py-0.5",
+                )}
+              >
                 {(
                   [
                     { value: "surgically_created", label: "Surgically created or modified" },
@@ -2096,12 +2191,15 @@ export function OrderFormDocument({
             )}
 
             <DocRow>
-              <FL>Date of Surgery / Procedure</FL>
+              <FL className={cn(surgeryDateDeficient && "text-[#dc2626]")}>
+                Date of Surgery / Procedure
+              </FL>
               <AiWrap active={ai && !!formData.dateOfSurgery}>
                 <FormInput
                   type="date"
                   value={formData.dateOfSurgery}
                   onChange={(v) => set("dateOfSurgery", v)}
+                  deficient={surgeryDateDeficient}
                   className="w-36"
                 />
               </AiWrap>
@@ -2161,11 +2259,19 @@ export function OrderFormDocument({
             )}
 
             <DocRow>
-              <FormCheckbox
-                checked={formData.attestWoundMeasuredAtSurgery}
-                onChange={(v) => set("attestWoundMeasuredAtSurgery", v)}
-                label="I attest the wound was measured and documented at the time of surgery."
-              />
+              <div
+                className={cn(
+                  "w-full",
+                  attestSurgeryDeficient &&
+                    "ring-1 ring-red-300 rounded bg-red-50/50 px-2 py-1",
+                )}
+              >
+                <FormCheckbox
+                  checked={formData.attestWoundMeasuredAtSurgery}
+                  onChange={(v) => set("attestWoundMeasuredAtSurgery", v)}
+                  label="I attest the wound was measured and documented at the time of surgery."
+                />
+              </div>
             </DocRow>
           </>
         )}
@@ -2275,7 +2381,7 @@ export function OrderFormDocument({
               <AiWrap active={ai && !!formData.granulationTissuePct}>
                 <FormInput
                   value={formData.granulationTissuePct}
-                  onChange={(v) => set("granulationTissuePct", v.replace(/-/g, ""))}
+                  onChange={(v) => set("granulationTissuePct", coerceNonNegativeOrEmpty(v))}
                   deficient={granulationDeficient}
                   type="number"
                   min={0}
@@ -2302,7 +2408,7 @@ export function OrderFormDocument({
                   <AiWrap active={ai && !!formData.woundLengthCm}>
                     <FormInput
                       value={formData.woundLengthCm}
-                      onChange={(v) => set("woundLengthCm", v.replace(/-/g, ""))}
+                      onChange={(v) => set("woundLengthCm", coerceNonNegativeOrEmpty(v))}
                       deficient={aiExtracted && !formData.woundLengthCm}
                       type="number"
                       min={0}
@@ -2315,7 +2421,7 @@ export function OrderFormDocument({
                   <AiWrap active={ai && !!formData.woundWidthCm}>
                     <FormInput
                       value={formData.woundWidthCm}
-                      onChange={(v) => set("woundWidthCm", v.replace(/-/g, ""))}
+                      onChange={(v) => set("woundWidthCm", coerceNonNegativeOrEmpty(v))}
                       deficient={aiExtracted && !formData.woundWidthCm}
                       type="number"
                       min={0}
@@ -2328,7 +2434,7 @@ export function OrderFormDocument({
                   <AiWrap active={ai && !!formData.woundDepthCm}>
                     <FormInput
                       value={formData.woundDepthCm}
-                      onChange={(v) => set("woundDepthCm", v.replace(/-/g, ""))}
+                      onChange={(v) => set("woundDepthCm", coerceNonNegativeOrEmpty(v))}
                       deficient={aiExtracted && !formData.woundDepthCm}
                       type="number"
                       min={0}
@@ -2345,7 +2451,7 @@ export function OrderFormDocument({
                   <AiWrap active={ai && !!formData.wound2LengthCm}>
                     <FormInput
                       value={formData.wound2LengthCm}
-                      onChange={(v) => set("wound2LengthCm", v.replace(/-/g, ""))}
+                      onChange={(v) => set("wound2LengthCm", coerceNonNegativeOrEmpty(v))}
                       type="number"
                       min={0}
                       step={1}
@@ -2357,7 +2463,7 @@ export function OrderFormDocument({
                   <AiWrap active={ai && !!formData.wound2WidthCm}>
                     <FormInput
                       value={formData.wound2WidthCm}
-                      onChange={(v) => set("wound2WidthCm", v.replace(/-/g, ""))}
+                      onChange={(v) => set("wound2WidthCm", coerceNonNegativeOrEmpty(v))}
                       type="number"
                       min={0}
                       step={1}
@@ -2369,7 +2475,7 @@ export function OrderFormDocument({
                   <AiWrap active={ai && !!formData.wound2DepthCm}>
                     <FormInput
                       value={formData.wound2DepthCm}
-                      onChange={(v) => set("wound2DepthCm", v.replace(/-/g, ""))}
+                      onChange={(v) => set("wound2DepthCm", coerceNonNegativeOrEmpty(v))}
                       type="number"
                       min={0}
                       step={1}
@@ -2462,7 +2568,7 @@ export function OrderFormDocument({
             <span className="text-[11px] text-[#666] mr-1">Slough %</span>
             <FormInput
               value={formData.woundBedSloughPct}
-              onChange={(v) => set("woundBedSloughPct", v.replace(/-/g, ""))}
+              onChange={(v) => set("woundBedSloughPct", coerceNonNegativeOrEmpty(v))}
               type="number"
               min={0}
               max={100}
@@ -2473,7 +2579,7 @@ export function OrderFormDocument({
             <span className="text-[11px] text-[#666] mx-1">Eschar %</span>
             <FormInput
               value={formData.woundBedEscharPct}
-              onChange={(v) => set("woundBedEscharPct", v.replace(/-/g, ""))}
+              onChange={(v) => set("woundBedEscharPct", coerceNonNegativeOrEmpty(v))}
               type="number"
               min={0}
               max={100}
@@ -2485,7 +2591,7 @@ export function OrderFormDocument({
             <FL>Pain (0-10)</FL>
             <FormInput
               value={formData.painLevel}
-              onChange={(v) => set("painLevel", v.replace(/-/g, ""))}
+              onChange={(v) => set("painLevel", coerceNonNegativeOrEmpty(v))}
               type="number"
               min={0}
               max={10}
@@ -2863,10 +2969,12 @@ export function OrderFormDocument({
             <FormInput
               value={formData.anticipatedLengthDays?.toString() ?? ""}
               onChange={(v) =>
-                set("anticipatedLengthDays", v ? Number(v) : null)
+                set("anticipatedLengthDays", coercePositiveIntOrNull(v))
               }
               deficient={lengthDeficient}
               type="number"
+              min={1}
+              step={1}
               className="w-12 text-center"
               placeholder="—"
             />
@@ -3168,9 +3276,11 @@ export function OrderFormDocument({
           <AiWrap active={ai && !!formData.followupDays}>
             <FormInput
               value={formData.followupDays?.toString() ?? ""}
-              onChange={(v) => set("followupDays", v ? Number(v) : null)}
+              onChange={(v) => set("followupDays", coercePositiveIntOrNull(v))}
               deficient={followupDeficient}
               type="number"
+              min={1}
+              step={1}
               className="w-12 text-center"
               placeholder="—"
             />
@@ -3179,9 +3289,11 @@ export function OrderFormDocument({
           <span className="text-[#ccc] mx-2">|</span>
           <FormInput
             value={formData.followupWeeks?.toString() ?? ""}
-            onChange={(v) => set("followupWeeks", v ? Number(v) : null)}
+            onChange={(v) => set("followupWeeks", coercePositiveIntOrNull(v))}
             deficient={followupDeficient}
             type="number"
+            min={1}
+            step={1}
             className="w-12 text-center"
             placeholder="—"
           />

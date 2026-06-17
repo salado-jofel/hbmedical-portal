@@ -313,24 +313,28 @@ export function IVRFormPDF({
           </Text>
         </View>
 
+        {/* ── PLACE OF SERVICE (top-of-form per Dr. Ben — promoted out
+            of FACILITY INFORMATION so the printed form mirrors the UI) ── */}
+        <Text style={s.sectionHeader}>PLACE OF SERVICE</Text>
+        <View style={s.sectionBody}>
+          <View style={s.cbRow}>
+            {["Office", "Outpatient Hospital", "Ambulatory Surgical Center", "Other"].map((pos) => (
+              <CBVal key={pos} current={placeOfService} value={pos} label={pos} />
+            ))}
+          </View>
+        </View>
+
         {/* ── 2. SALES REP ── */}
         <View style={[s.fieldRow, { marginBottom: 6 }]}>
           <Text style={s.fieldLabel}>Sales Rep:</Text>
           <Text style={s.uval}>{salesRep}</Text>
         </View>
 
-        {/* ── 3. FACILITY INFORMATION ── */}
+        {/* ── 3. FACILITY INFORMATION ──
+            Place of Service was promoted out of this section to the top
+            per Dr. Ben's feedback. */}
         <Text style={s.sectionHeader}>FACILITY INFORMATION</Text>
         <View style={s.sectionBody}>
-          {/* Place of Service */}
-          <View style={{ marginBottom: 4 }}>
-            <Text style={[s.label, { marginBottom: 2 }]}>Place of Service:</Text>
-            <View style={s.cbRow}>
-              {["Office", "Outpatient Hospital", "Ambulatory Surgical Center", "Other"].map((pos) => (
-                <CBVal key={pos} current={placeOfService} value={pos} label={pos} />
-              ))}
-            </View>
-          </View>
           <TwoRow left={{ label: "Facility Name", value: facilityName }} right={{ label: "Medicare Admin Contractor", value: medicareAdmin }} />
           <TwoRow left={{ label: "Address", value: facilityAddress }} right={{ label: "NPI", value: facilityNpi }} />
           <TwoRow left={{ label: "Contact Name", value: facilityContact }} right={{ label: "TIN", value: facilityTin }} />
