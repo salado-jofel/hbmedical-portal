@@ -356,6 +356,8 @@ export interface IOrderIVR {
   /** PNG data URL. Set by Sign; cleared by Unsign. */
   physicianSignatureImage: string | null;
   aiExtracted: boolean;
+  /** "built" = filled in our IVR form; "uploaded" = external IVR document. */
+  ivrMode: "built" | "uploaded";
   createdAt: string;
   updatedAt: string;
 }

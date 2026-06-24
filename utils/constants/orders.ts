@@ -155,6 +155,27 @@ export const ORDER_TYPES = [
   { value: "dme_collagen" as const, label: "DME Collagen" },
 ];
 
+// ── Product catalog category. Values intentionally match ORDER_TYPES so the
+// order picker can filter on `order.order_type === product.category`. Legacy
+// "Collagen" rows from the original seed are still valid (no DB CHECK on
+// the column per design decision — soft enum) and are bulk-migrated to
+// "dme_collagen" by 20260619000000_products_category_backfill_and_seed.sql.
+export const PRODUCT_CATEGORIES = [
+  { value: "skin_grafts" as const, label: "Skin Grafts" },
+  { value: "dme_collagen" as const, label: "DME Collagen" },
+];
+
+// Maps any raw category value (including the legacy "Collagen") to its
+// user-facing label. Returns the original string if no mapping — keeps
+// the UI resilient if a free-text category sneaks in.
+export function productCategoryLabel(value: string | null | undefined): string {
+  if (!value) return "—";
+  const found = PRODUCT_CATEGORIES.find((c) => c.value === value);
+  if (found) return found.label;
+  if (value === "Collagen") return "Collagen (legacy)";
+  return value;
+}
+
 // ── VLU: CEAP Classification (Comprehensive venous severity scale) ──
 // C0..C6 plus symptomatic variants (C0s..C6s).
 export const CEAP_CLASSIFICATIONS = [

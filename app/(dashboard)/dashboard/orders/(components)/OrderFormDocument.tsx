@@ -1034,17 +1034,30 @@ export function OrderFormDocument({
     [draftItems, itemsBaseline],
   );
 
+  // Filter the catalog two ways:
+  //  1. By the order's order_type (Skin Grafts / DME Collagen) — clinicians
+  //     only see products that match the order they're building. Legacy
+  //     order types ("omeza", "surgical_collagen") get no filter so old
+  //     orders still see every product.
+  //  2. By the active search query.
+  const orderTypeFilter =
+    order.order_type === "skin_grafts" || order.order_type === "dme_collagen"
+      ? order.order_type
+      : null;
   const filteredProducts = useMemo(() => {
     const q = productSearch.trim().toLowerCase();
-    if (!q) return products;
-    return products.filter(
+    const base = orderTypeFilter
+      ? products.filter((p) => p.category === orderTypeFilter)
+      : products;
+    if (!q) return base;
+    return base.filter(
       (p) =>
         p.name.toLowerCase().includes(q) ||
         p.sku.toLowerCase().includes(q) ||
         (p.category ?? "").toLowerCase().includes(q) ||
         (p.hcpcs_code ?? "").toLowerCase().includes(q),
     );
-  }, [products, productSearch]);
+  }, [products, productSearch, orderTypeFilter]);
 
   function handleAddProductToDraft(prod: ProductRecord) {
     setDraftItems((prev) => {
@@ -1735,7 +1748,16 @@ export function OrderFormDocument({
           : "Order form saved.",
     );
     setBaseline({ ...formData });
-    setItemsBaseline(draftItems);
+    // Use the functional updater to read the LATEST draftItems state, not
+    // the stale closure value captured when handleSave started. Otherwise
+    // a concurrent realtime/redux update (which replaces draftItems with
+    // server-assigned UUIDs during the save's await window) leaves
+    // baseline pointing at the pre-save draft IDs — the dirty diff sticks
+    // even after a successful save.
+    setDraftItems((current) => {
+      setItemsBaseline(current);
+      return current;
+    });
     // Clear the buffered PIN once committed; keep specimenSignatureUrl so
     // the signature stays visible on-screen for the current session. On
     // unsign save, clear the specimen too so the UI is consistent.
@@ -4337,6 +4359,11 @@ export function OrderFormDocument({
                   <p className="text-[10px] text-[#777] italic leading-tight">
                     Click <Plus className="inline w-3 h-3 -mt-0.5" /> to add. Changes save when you click Save.
                   </p>
+                  {orderTypeFilter && (
+                    <p className="text-[10px] text-[var(--navy)] italic leading-tight mt-0.5">
+                      Showing only {orderTypeFilter === "skin_grafts" ? "Skin Grafts" : "DME Collagen"} products.
+                    </p>
+                  )}
                 </div>
                 <div className="relative">
                   <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#999]" />
