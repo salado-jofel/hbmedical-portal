@@ -777,6 +777,11 @@ export interface IOrderForm {
   physicianSpecialty: string | null;
   physicianStateLicense: string | null;
 
+  // Place of Service — independent from order_ivr.place_of_service per
+  // Option B. Clinicians on the Order Form capture POS here without
+  // needing the IVR to be filled in first.
+  placeOfService: string | null;
+
   // Meta
   aiExtracted: boolean;
   aiExtractedAt: string | null;

@@ -24,7 +24,7 @@ import { compressImage } from "@/utils/helpers/compress-image";
 import toast from "react-hot-toast";
 import { cn } from "@/utils/utils";
 import type { DocumentType } from "@/utils/interfaces/orders";
-import { WOUND_TYPES } from "@/utils/constants/orders";
+import { WOUND_TYPES, ORDER_TYPES } from "@/utils/constants/orders";
 
 type DocFile = { file: File; type: string };
 
@@ -263,11 +263,14 @@ export function CreateOrderModal() {
   const [woundType, setWoundType] = useState<"chronic" | "post_surgical" | "dfu" | "vlu">(
     "chronic",
   );
-  // Order Type is locked to "omeza" per client request — Surgical Collagen
-  // is no longer offered as a selectable option. The state + submit payload
-  // still accept the broader type union so legacy orders with
-  // "surgical_collagen" continue to type-check downstream.
-  const [orderType, setOrderType] = useState<"surgical_collagen" | "omeza" | null>("omeza");
+  // Order Type is now a user choice: Skin Grafts or DME Collagen
+  // (Dr. Ben spec, 2026-06-18). The legacy "surgical_collagen" / "omeza"
+  // values stay in the type union so existing orders typecheck downstream,
+  // but aren't surfaced as buttons. Required at create time — submit
+  // is gated on a non-null choice via `canSubmit` below.
+  const [orderType, setOrderType] = useState<
+    "skin_grafts" | "dme_collagen" | "surgical_collagen" | "omeza" | null
+  >(null);
   const [manualInput, setManualInput] = useState(false);
   const [patientFirstName, setPatientFirstName] = useState("");
   const [patientLastName, setPatientLastName] = useState("");
@@ -282,10 +285,7 @@ export function CreateOrderModal() {
 
   function reset() {
     setWoundType("chronic");
-    // Keep orderType at the only allowed value — UI no longer collects this,
-    // but the server action still expects a non-null order_type. Clearing to
-    // null here would send null on the second submission of the same session.
-    setOrderType("omeza");
+    setOrderType(null);
     setManualInput(false);
     setPatientFirstName("");
     setPatientLastName("");
@@ -315,6 +315,7 @@ export function CreateOrderModal() {
     patientFirstName.trim().length > 0 && patientLastName.trim().length > 0;
 
   const canSubmit =
+    !!orderType &&
     !!woundType &&
     !!dateOfService &&
     (!docsRequired || (hasFacesheet && hasClinicalDocs && hasValidId)) &&
@@ -487,6 +488,45 @@ export function CreateOrderModal() {
               <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
                 Clinical Info
               </h3>
+
+              {/* Order Type — product category (Skin Grafts / DME Collagen).
+                  Independent of Wound Type per Option A — any wound type can
+                  be paired with any order type. Required to submit. Stored on
+                  orders.order_type, gated by the orders_order_type_check
+                  CHECK that accepts the two new values plus the legacy
+                  surgical_collagen/omeza values for backward compat.
+                  Inline error appears under the buttons once the user has
+                  attempted Submit without picking — same UX pattern as
+                  the other required fields below. */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">
+                  Order Type <span className="text-red-500">*</span>
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  {ORDER_TYPES.map((ot) => (
+                    <button
+                      key={ot.value}
+                      type="button"
+                      onClick={() => setOrderType(ot.value)}
+                      className={cn(
+                        "py-2.5 px-3 rounded-xl border-2 text-sm font-medium transition-all",
+                        orderType === ot.value
+                          ? "border-[var(--navy)] bg-blue-50 text-[var(--navy)]"
+                          : submitted && !orderType
+                            ? "border-red-300 bg-red-50/50 text-slate-600 hover:border-red-400"
+                            : "border-slate-200 text-slate-600 hover:border-slate-300",
+                      )}
+                    >
+                      {ot.label}
+                    </button>
+                  ))}
+                </div>
+                {submitted && !orderType && (
+                  <p className="text-xs text-red-500 mt-0.5">
+                    Please select an order type.
+                  </p>
+                )}
+              </div>
 
               {/* Wound Type — 2x2 grid: Chronic | Post-Surgical / DFU | VLU.
                   DFU and VLU are first-class wound types per Dr. Ben (matches

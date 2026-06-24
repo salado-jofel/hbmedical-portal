@@ -432,6 +432,7 @@ function mapFortifyFields(
   | "narrativeProgression" | "narrativeLessIntensive"
   | "narrativeLimbLoss" | "narrativePerfusion" | "additionalNarrative"
   | "physicianSpecialty" | "physicianStateLicense"
+  | "placeOfService"
 > {
   const priorRaw = Array.isArray(form.prior_treatments)
     ? (form.prior_treatments as Array<Record<string, unknown>>)
@@ -582,6 +583,7 @@ function mapFortifyFields(
     additionalNarrative:            (form.additional_narrative as string | null) ?? null,
     physicianSpecialty:             (form.physician_specialty as string | null) ?? null,
     physicianStateLicense:          (form.physician_state_license as string | null) ?? null,
+    placeOfService:                 (form.place_of_service as string | null) ?? null,
     officeTracking: {
       methodOfReceipt:          (ot.method_of_receipt as string | null) ?? null,
       baaInPlace:               (ot.baa_in_place as boolean | null) ?? null,

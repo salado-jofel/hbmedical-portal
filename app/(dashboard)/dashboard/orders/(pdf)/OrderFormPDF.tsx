@@ -192,6 +192,13 @@ export function OrderFormPDF({
         {/* ── Header ── */}
         <PDFHeader title="Physicians Order Recommendation" />
 
+        {/* ── Place of Service ── (shared across all wound-type variants) */}
+        {form?.place_of_service ? (
+          <View style={[s.row, { marginTop: 4 }]}>
+            <UField label="Place of Service" value={v(form?.place_of_service)} width={260} />
+          </View>
+        ) : null}
+
         {/* ── CHRONIC + POST-SURGICAL BODY ──
             DFU and VLU render their own Fortify-template-shaped layouts
             below. When wound_type is DFU or VLU the entire chronic body

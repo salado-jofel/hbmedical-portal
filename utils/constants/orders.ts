@@ -145,6 +145,16 @@ export const WOUND_TYPES = [
   { value: "vlu" as const, label: "VLU" },
 ];
 
+// ── Order product category — picked at order creation alongside wound type. ──
+// `surgical_collagen` and `omeza` are legacy values still present on existing
+// rows; they're intentionally NOT in this picker since the user-facing options
+// are now the two new values per Dr. Ben's spec. The DB CHECK constraint
+// (orders_order_type_check) accepts all four so legacy rows still validate.
+export const ORDER_TYPES = [
+  { value: "skin_grafts" as const, label: "Skin Grafts" },
+  { value: "dme_collagen" as const, label: "DME Collagen" },
+];
+
 // ── VLU: CEAP Classification (Comprehensive venous severity scale) ──
 // C0..C6 plus symptomatic variants (C0s..C6s).
 export const CEAP_CLASSIFICATIONS = [
@@ -197,6 +207,20 @@ export const PROCEDURE_SETTING_OPTIONS = [
   { value: "office" as const,  label: "Office" },
   { value: "asc" as const,     label: "ASC" },
   { value: "other" as const,   label: "Other" },
+];
+
+// ── Physician specialty options — Dr. Ben spec 2026-06-18. ──
+// Free-text fallback was removed in favor of a constrained list. If a
+// specialty not in this list ever becomes important, append below or
+// re-introduce a free-text "Other" option.
+export const PHYSICIAN_SPECIALTY_OPTIONS = [
+  "MD",
+  "DO",
+  "APRN",
+  "DR NP",
+  "Podiatrist",
+  "Vascular Surgeon",
+  "Orthopedic Surgeon",
 ];
 
 // ── DFU: preset procedure list with CPT codes ──
