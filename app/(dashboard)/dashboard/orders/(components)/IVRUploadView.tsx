@@ -273,10 +273,18 @@ export function IVRUploadView({
   }
 
   /** Entry point when the user picks files via the upload zone. Branches
-   *  on whether the wipe-confirmation modal is needed. */
+   *  on whether the wipe-confirmation modal is needed. Only one IVR file
+   *  is allowed at a time — if a file is already present, ignore further
+   *  picks (the upload zone is hidden in that state anyway). */
   async function handleUpload(files: FileList | null) {
     if (!files || files.length === 0) return;
-    const fileList = Array.from(files);
+    if (docs.length > 0) {
+      toast.error("Only one IVR file is allowed. Delete the current one first.");
+      return;
+    }
+    // Take only the first picked file — defense in depth, the input is
+    // single-select but multi-file drag/drop can still land here.
+    const fileList = [files[0]];
 
     // If we're already in uploaded mode, no destructive switch needed.
     if (dbMode === "uploaded") {
@@ -400,8 +408,10 @@ export function IVRUploadView({
         </div>
       )}
 
-      {/* ── Upload zone (hidden when locked) ── */}
-      {!isLocked && (
+      {/* ── Upload zone — hidden once an IVR file is attached (only one
+           allowed at a time) or when the order is status-locked. To
+           replace, the user deletes the existing file and re-uploads. ── */}
+      {!isLocked && !hasUploads && (
         <label
           className={cn(
             "block border-2 border-dashed rounded-xl px-6 py-6 text-center transition-colors",
@@ -413,7 +423,6 @@ export function IVRUploadView({
           <input
             type="file"
             accept={ACCEPTED_TYPES}
-            multiple
             className="sr-only"
             disabled={!canEdit || busy}
             onChange={(e) => {
@@ -430,18 +439,14 @@ export function IVRUploadView({
             <>
               <Upload className="w-6 h-6 mx-auto mb-2 text-[var(--navy)]" />
               <p className="text-[13px] font-medium text-[var(--text)]">
-                {hasUploads
-                  ? "Upload another IVR file"
-                  : "Upload completed IVR document"}
+                Upload completed IVR document
               </p>
               <p className="text-[11px] text-[var(--text3)] mt-1">
                 Optional · PDF, DOC, DOCX, JPG, PNG, HEIC · max {MAX_MB} MB
               </p>
-              {!hasUploads && (
-                <p className="text-[11px] text-[var(--text3)] mt-1">
-                  Uploading replaces the in-portal IVR form below.
-                </p>
-              )}
+              <p className="text-[11px] text-[var(--text3)] mt-1">
+                Uploading replaces the in-portal IVR form below.
+              </p>
             </>
           )}
         </label>
