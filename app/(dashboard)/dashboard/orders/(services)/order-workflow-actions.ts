@@ -407,7 +407,16 @@ export async function getUnsignedForms(
   try {
     const adminClient = createAdminClient();
 
-    const [{ data: orderForm }, { data: ivr }] = await Promise.all([
+    // The IVR has TWO valid signed-equivalent paths:
+    //   - Built form signed → order_ivr.physician_signed_at set
+    //   - External IVR document uploaded → order_documents row with
+    //     document_type='uploaded_ivr'. Per Dr. Ben (2026-06-26) an
+    //     uploaded IVR substitutes for signing the in-portal form.
+    const [
+      { data: orderForm },
+      { data: ivr },
+      { count: uploadedIvrCount },
+    ] = await Promise.all([
       adminClient
         .from("order_form")
         .select("physician_signed_at")
@@ -418,11 +427,18 @@ export async function getUnsignedForms(
         .select("physician_signed_at")
         .eq("order_id", orderId)
         .maybeSingle(),
+      adminClient
+        .from("order_documents")
+        .select("id", { count: "exact", head: true })
+        .eq("order_id", orderId)
+        .eq("document_type", "uploaded_ivr"),
     ]);
 
     const unsigned: string[] = [];
     if (!orderForm?.physician_signed_at) unsigned.push("Order Form");
-    if (!ivr?.physician_signed_at) unsigned.push("IVR Form");
+    const ivrCovered =
+      !!ivr?.physician_signed_at || (uploadedIvrCount ?? 0) > 0;
+    if (!ivrCovered) unsigned.push("IVR Form");
 
     return { unsignedForms: unsigned };
   } catch {
@@ -453,8 +469,15 @@ export async function submitSignedOrder(
 
     const adminClient = createAdminClient();
 
-    // Re-validate all required form signatures server-side
-    const [{ data: orderForm }, { data: ivr }] = await Promise.all([
+    // Re-validate all required form signatures server-side. The IVR can
+    // satisfy this requirement EITHER by being signed (built form path)
+    // OR by having at least one uploaded_ivr document attached (upload
+    // path). Kept in sync with getUnsignedForms above.
+    const [
+      { data: orderForm },
+      { data: ivr },
+      { count: uploadedIvrCount },
+    ] = await Promise.all([
       adminClient
         .from("order_form")
         .select("physician_signed_at")
@@ -465,13 +488,24 @@ export async function submitSignedOrder(
         .select("physician_signed_at")
         .eq("order_id", orderId)
         .maybeSingle(),
+      adminClient
+        .from("order_documents")
+        .select("id", { count: "exact", head: true })
+        .eq("order_id", orderId)
+        .eq("document_type", "uploaded_ivr"),
     ]);
 
     if (!orderForm?.physician_signed_at) {
       return { success: false, error: "Order Form is not signed." };
     }
-    if (!ivr?.physician_signed_at) {
-      return { success: false, error: "IVR Form is not signed." };
+    const ivrCovered =
+      !!ivr?.physician_signed_at || (uploadedIvrCount ?? 0) > 0;
+    if (!ivrCovered) {
+      return {
+        success: false,
+        error:
+          "IVR is missing — either sign the in-portal IVR form or upload a completed IVR document.",
+      };
     }
 
     const { data: order } = await adminClient

@@ -705,32 +705,40 @@ const IVR_MODE_LOCKED_STATUSES = new Set([
  *  when switching from "built" → "uploaded". The structural ID, order
  *  link, ai_extracted flag, and audit columns stay untouched. */
 const BUILT_IVR_DATA_COLUMNS: string[] = [
+  // Primary insurance
   "insurance_provider", "insurance_phone", "member_id", "group_number",
   "plan_name", "plan_type", "subscriber_name", "subscriber_dob",
   "subscriber_relationship", "coverage_start_date", "coverage_end_date",
   "deductible_amount", "deductible_met", "out_of_pocket_max",
   "out_of_pocket_met", "copay_amount", "coinsurance_percent",
-  "prior_auth_number", "prior_auth_start_date", "prior_auth_end_date",
-  "units_authorized", "prior_auth_required",
   "dme_covered", "wound_care_covered",
-  "place_of_service", "medicare_admin_contractor", "facility_npi",
-  "facility_tin", "facility_ptan", "facility_fax",
-  "patient_name", "patient_address", "ok_to_contact_patient",
-  "patient_dob", "patient_phone",
-  "physician_name", "physician_fax", "physician_address", "physician_npi",
-  "physician_phone", "physician_tin",
-  "sales_rep_name", "facility_name", "facility_address", "facility_contact",
-  "facility_phone", "secondary_subscriber_name", "secondary_policy_number",
-  "secondary_subscriber_dob", "secondary_plan_type",
-  "secondary_insurance_phone", "secondary_group_number",
-  "secondary_subscriber_relationship",
+  "prior_auth_required", "prior_auth_number", "prior_auth_start_date",
+  "prior_auth_end_date", "units_authorized",
+  "verified_by", "verified_date", "verification_reference", "notes",
+  // Place / MAC / extra physician/patient context
+  "place_of_service", "medicare_admin_contractor",
+  "facility_npi", "facility_tin", "facility_ptan", "facility_fax",
+  "physician_tin", "physician_fax", "physician_address",
+  "patient_phone", "patient_address", "ok_to_contact_patient",
+  // Secondary insurance + provider participation
   "provider_participates_primary", "provider_participates_secondary",
-  "patient_responsibility", "primary_insurance_carrier",
-  "policy_number", "icd10_codes", "wound_type", "wound_sizes",
-  "product_information", "anticipated_treatment_start",
+  "secondary_insurance_provider", "secondary_insurance_phone",
+  "secondary_subscriber_name", "secondary_policy_number",
+  "secondary_subscriber_dob", "secondary_plan_type",
+  "secondary_group_number", "secondary_subscriber_relationship",
+  // CPTs + global period
+  "application_cpts", "surgical_global_period", "global_period_cpt",
+  "prior_auth_permission",
+  // Facility / rep / clinical context
+  "specialty_site_name", "facility_name", "facility_address",
+  "facility_phone", "facility_contact",
+  "physician_name", "physician_phone", "physician_npi",
+  "patient_name", "patient_dob", "sales_rep_name",
+  "wound_type", "wound_sizes", "date_of_procedure", "icd10_codes",
+  "product_information", "is_patient_at_snf",
+  // Signature
   "physician_signature", "physician_signature_date",
-  "physician_signed_at", "physician_signed_by",
-  "physician_signature_image",
+  "physician_signed_at", "physician_signed_by", "physician_signature_image",
 ];
 
 export async function switchIvrMode(
@@ -759,14 +767,32 @@ export async function switchIvrMode(
       };
     }
 
+    // Whichever direction we go, the in-portal IVR form data changes
+    // (wiped on → uploaded; freshly reset on → built). Regenerate the
+    // system-generated IVR PDF (document_type=additional_ivr) so the
+    // sidebar "IVR Form" chip and any downstream consumer see the
+    // current portal state instead of a stale snapshot from before the
+    // switch. Fire-and-forget — pdf gen takes seconds and we don't want
+    // to block the user response on it.
+    const regenAfter = () =>
+      generateOrderPDFs(orderId, ["ivr"]).catch((err) =>
+        safeLogError("switchIvrMode", err, {
+          phase: "post-switch PDF regen",
+          orderId,
+          newMode,
+        }),
+      );
+
     if (newMode === "uploaded") {
       // Wipe built-IVR data so the existing form-state column values don't
       // bleed into a future "switched back to built" path. Sets every form
-      // column to NULL via an upsert on order_id.
+      // column to NULL via an upsert on order_id. NOTE: order_ivr does NOT
+      // have an `is_locked` column (unlike order_form) — the IVR's locked
+      // state is derived from physician_signed_at being non-null, which we
+      // null out below as part of the data wipe.
       const wipePayload: Record<string, unknown> = {
         order_id: orderId,
         ivr_mode: "uploaded",
-        is_locked: false,
         ai_extracted: false,
         ai_extracted_at: null,
       };
@@ -786,7 +812,7 @@ export async function switchIvrMode(
         .from("order_documents")
         .delete()
         .eq("order_id", orderId)
-        .eq("document_type", "additional_ivr");
+        .eq("document_type", "uploaded_ivr");
       if (delErr) {
         safeLogError("switchIvrMode", delErr, { phase: "delete-uploads", orderId });
         return { success: false, error: "Failed to switch IVR mode." };
@@ -797,7 +823,6 @@ export async function switchIvrMode(
           {
             order_id: orderId,
             ivr_mode: "built",
-            is_locked: false,
           },
           { onConflict: "order_id" },
         );
@@ -807,6 +832,7 @@ export async function switchIvrMode(
       }
     }
 
+    regenAfter();
     revalidatePath(ORDERS_PATH);
     return { success: true };
   } catch (err) {
@@ -822,7 +848,7 @@ export async function switchIvrMode(
 /* markIvrUploadedComplete                                                    */
 /*                                                                            */
 /* Equivalent of "Sign" for the uploaded-IVR path. Requires at least one      */
-/* additional_ivr document to be present. Locks the IVR row and stamps the    */
+/* uploaded_ivr document to be present. Locks the IVR row and stamps the      */
 /* signed_at/by columns so the audit trail is comparable to the built path.   */
 /* -------------------------------------------------------------------------- */
 
@@ -852,13 +878,14 @@ export async function markIvrUploadedComplete(
     }
 
     const nowIso = new Date().toISOString();
+    // Stamp physician_signed_at/by — that's the IVR's lock indicator
+    // (order_ivr has no is_locked column, only physician_signed_at).
     const { error: lockErr } = await adminClient
       .from("order_ivr")
       .upsert(
         {
           order_id: orderId,
           ivr_mode: "uploaded",
-          is_locked: true,
           physician_signed_at: nowIso,
           physician_signed_by: userId,
         },

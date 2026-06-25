@@ -1,18 +1,15 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import type { IOrderIVR, DashboardOrder } from "@/utils/interfaces/orders";
 import { IVRFormDocument } from "./IVRFormDocument";
 import { IVRUploadView } from "./IVRUploadView";
-import { switchIvrMode } from "../(services)/order-ivr-actions";
 import { cn } from "@/utils/utils";
-import { ClipboardCheck, Upload, Loader2 } from "lucide-react";
-import toast from "react-hot-toast";
 
-// Order statuses past which switching IVR mode is forbidden. Mirrors the
-// server-side IVR_MODE_LOCKED_STATUSES in order-ivr-actions.ts. Keep in
-// sync if either list is updated.
-const IVR_MODE_LOCKED_STATUSES = new Set([
+// Order statuses past which the IVR (built form OR uploaded file) is
+// locked from edits. Mirrors the server-side IVR_MODE_LOCKED_STATUSES in
+// order-ivr-actions.ts — keep in sync.
+const IVR_MODE_LOCKED_STATUSES = new Set<string>([
   "manufacturer_review",
   "additional_info_needed",
   "approved",
@@ -54,8 +51,40 @@ interface IVRTabProps {
   isExtracting?: boolean;
   onDirtyChange: (dirty: boolean) => void;
   onSave: (saved: Partial<IOrderIVR>) => void | Promise<void>;
+  /** Forwarded to IVRUploadView so the parent can sync localDocuments. */
+  onUploadDeleted?: (docId: string) => void;
+  onUploadAdded?: (doc: {
+    id: string;
+    documentType: string;
+    fileName: string;
+    filePath: string;
+    mimeType: string | null;
+    fileSize: number;
+  }) => void;
 }
 
+/**
+ * IVR tab — supports two paths the user can switch between freely:
+ *
+ *   1. BUILT — fill the in-portal IVR form (existing IVRFormDocument)
+ *   2. UPLOADED — attach a completed external IVR document
+ *
+ * There is no explicit mode toggle. The UPLOAD section sits at the top
+ * and is always visible (until the order is locked). The IVR form sits
+ * below and is visible only when no document has been uploaded.
+ *
+ * Switching paths is implicit:
+ *   - First upload after the form had data → wipe prompt → wipe + flip mode
+ *   - Last upload deleted → silently flip mode back to "built", empty form
+ *     reappears (built data was already wiped during the upload step)
+ *
+ * Lock semantics:
+ *   - physician_signed_at being non-null = IVR locked (works for both
+ *     paths: clinician signs the built form, OR clicks "Mark Complete"
+ *     on the uploaded path)
+ *   - Once locked, neither path can be edited
+ *   - Order statuses past pending_signature also lock everything
+ */
 export function IVRTab({
   isActive,
   order,
@@ -67,55 +96,21 @@ export function IVRTab({
   isReady,
   onDirtyChange,
   onSave,
+  onUploadDeleted,
+  onUploadAdded,
 }: IVRTabProps) {
-  const [switching, startSwitching] = useTransition();
-  // Local "in flight" mode value during the server round-trip. Lets the
-  // toggle visually flip immediately while we wait for revalidation to
-  // bring the fresh ivrData prop through.
-  const [pendingMode, setPendingMode] = useState<"built" | "uploaded" | null>(null);
-
-  const currentMode: "built" | "uploaded" =
-    pendingMode ?? (ivrData?.ivrMode ?? "built");
-  // The IVR is "locked" when it's been signed (built path) or marked
-  // complete (uploaded path). Both flows stamp physician_signed_at.
-  const isLocked = !!ivrData?.physicianSignedAt;
-  const isModeLocked =
-    isLocked || IVR_MODE_LOCKED_STATUSES.has(order.order_status);
-
-  function handleSwitch(target: "built" | "uploaded") {
-    if (target === currentMode) return;
-    if (isModeLocked) {
-      toast.error(
-        "IVR mode can no longer be changed — order has progressed past pending signature.",
-      );
-      return;
-    }
-    // Destructive-action confirmation — switching wipes the other mode's
-    // data per product spec.
-    const message =
-      target === "uploaded"
-        ? "Switch to Upload mode? Any data filled into the built IVR form will be erased."
-        : "Switch back to Build mode? Any uploaded IVR documents will be deleted.";
-    if (!window.confirm(message)) return;
-
-    setPendingMode(target);
-    startSwitching(async () => {
-      const res = await switchIvrMode(order.id, target);
-      if (!res.success) {
-        toast.error(res.error ?? "Failed to switch IVR mode.");
-        setPendingMode(null);
-        return;
-      }
-      toast.success(
-        target === "uploaded"
-          ? "Switched to Upload mode."
-          : "Switched to Build mode.",
-      );
-      // Trigger a parent reload so ivrData refreshes from the server.
-      await onSave({});
-      setPendingMode(null);
-    });
-  }
+  // Per Dr. Ben (2026-06-26): locking is purely status-based — once the
+  // order has moved past pending_signature, neither the built form nor
+  // the uploaded IVR can be edited. The old physician_signed_at /
+  // "Mark IVR Complete" gate is removed; users can freely delete and
+  // re-upload IVR files until the order is under manufacturer review.
+  const isLocked = IVR_MODE_LOCKED_STATUSES.has(order.order_status);
+  // True once any IVR document is attached (set by IVRUploadView via the
+  // onDocCountChange callback). Drives whether to show the built form
+  // below the upload section.
+  const [hasUploadedDoc, setHasUploadedDoc] = useState<boolean>(
+    (ivrData?.ivrMode ?? "built") === "uploaded",
+  );
 
   return (
     <div
@@ -128,53 +123,23 @@ export function IVRTab({
         <FormSkeleton />
       ) : (
         <>
-          {/* ── Mode picker (hidden once mode is locked by order status) ── */}
-          {!isModeLocked && (
-            <div className="flex items-center gap-2 px-2 py-3 border-b border-[var(--border)] mb-2">
-              <span className="text-[12px] font-semibold uppercase tracking-wide text-[var(--text3)]">
-                IVR source
-              </span>
-              <div className="inline-flex rounded-lg border border-[var(--border)] bg-white overflow-hidden">
-                <button
-                  type="button"
-                  disabled={switching}
-                  onClick={() => handleSwitch("built")}
-                  className={cn(
-                    "flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium transition-colors",
-                    currentMode === "built"
-                      ? "bg-[var(--navy)] text-white"
-                      : "text-[var(--text2)] hover:bg-[var(--bg)]",
-                  )}
-                >
-                  <ClipboardCheck className="w-3.5 h-3.5" />
-                  Build in portal
-                </button>
-                <button
-                  type="button"
-                  disabled={switching}
-                  onClick={() => handleSwitch("uploaded")}
-                  className={cn(
-                    "flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium transition-colors border-l border-[var(--border)]",
-                    currentMode === "uploaded"
-                      ? "bg-[var(--navy)] text-white"
-                      : "text-[var(--text2)] hover:bg-[var(--bg)]",
-                  )}
-                >
-                  <Upload className="w-3.5 h-3.5" />
-                  Upload completed document
-                </button>
-              </div>
-              {switching && (
-                <span className="flex items-center gap-1 text-[11px] text-[var(--text3)]">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  Switching…
-                </span>
-              )}
-            </div>
-          )}
+          {/* Upload section — always at the top. Hidden once the IVR is
+              fully locked (signed or marked complete) since no further
+              changes are allowed. */}
+          <IVRUploadView
+            order={order}
+            isLocked={isLocked}
+            canEdit={canEdit}
+            ivrData={ivrData}
+            onChange={() => onSave({})}
+            onDocCountChange={(count) => setHasUploadedDoc(count > 0)}
+            onUploadDeleted={onUploadDeleted}
+            onUploadAdded={onUploadAdded}
+          />
 
-          {/* ── Mode body ── */}
-          {currentMode === "built" ? (
+          {/* Built IVR form — visible only when there is no uploaded
+              document AND the order isn't sign-locked. */}
+          {!hasUploadedDoc && !isLocked && (
             <IVRFormDocument
               key={resetIvrKey}
               order={order}
@@ -185,12 +150,21 @@ export function IVRTab({
               onDirtyChange={onDirtyChange}
               onSaved={onSave}
             />
-          ) : (
-            <IVRUploadView
+          )}
+
+          {/* Signed-built-form view: keep the form visible read-only so
+              audit/PDF preview stays available, but no upload swap is
+              possible (locked = locked). */}
+          {!hasUploadedDoc && isLocked && (
+            <IVRFormDocument
+              key={resetIvrKey}
               order={order}
-              isLocked={isLocked}
-              canEdit={canEdit}
-              onChange={() => onSave({})}
+              canEdit={false}
+              canSign={false}
+              currentUserName={currentUserName}
+              ivrData={ivrData}
+              onDirtyChange={onDirtyChange}
+              onSaved={onSave}
             />
           )}
         </>

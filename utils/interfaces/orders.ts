@@ -68,7 +68,10 @@ export const documentTypeSchema = z.enum([
   "wound_pictures",
   "order_form",
   "form_1500",
+  // System-generated IVR PDF rendered from the built form.
   "additional_ivr",
+  // Clinician-uploaded external IVR document (alt to the built form).
+  "uploaded_ivr",
   "delivery_invoice",
   "valid_id",
   "other",
