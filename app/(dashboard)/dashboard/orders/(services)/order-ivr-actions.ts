@@ -100,6 +100,7 @@ function mapIvrRow(data: Record<string, unknown>): IOrderIVR {
     physicianSignedBy:           data.physician_signed_by as string | null,
     physicianSignatureImage:     data.physician_signature_image as string | null,
     aiExtracted:                 (data.ai_extracted as boolean) ?? false,
+    ivrMode:                     ((data.ivr_mode as string) ?? "built") as IOrderIVR["ivrMode"],
     createdAt:                   data.created_at as string,
     updatedAt:                   data.updated_at as string,
   };
@@ -432,6 +433,7 @@ function mapFortifyFields(
   | "narrativeProgression" | "narrativeLessIntensive"
   | "narrativeLimbLoss" | "narrativePerfusion" | "additionalNarrative"
   | "physicianSpecialty" | "physicianStateLicense"
+  | "placeOfService"
 > {
   const priorRaw = Array.isArray(form.prior_treatments)
     ? (form.prior_treatments as Array<Record<string, unknown>>)
@@ -582,6 +584,7 @@ function mapFortifyFields(
     additionalNarrative:            (form.additional_narrative as string | null) ?? null,
     physicianSpecialty:             (form.physician_specialty as string | null) ?? null,
     physicianStateLicense:          (form.physician_state_license as string | null) ?? null,
+    placeOfService:                 (form.place_of_service as string | null) ?? null,
     officeTracking: {
       methodOfReceipt:          (ot.method_of_receipt as string | null) ?? null,
       baaInPlace:               (ot.baa_in_place as boolean | null) ?? null,
@@ -674,5 +677,232 @@ export async function getOrderForm(
   } catch (err) {
     safeLogError("getOrderForm", err, { orderId });
     return null;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* switchIvrMode                                                              */
+/*                                                                            */
+/* Toggle the IVR source between the in-portal built form and an externally   */
+/* uploaded document. Wipes the opposite-mode data so there's a single        */
+/* source of truth at any time.                                               */
+/*                                                                            */
+/* Status gate: blocked once order_status reaches manufacturer_review or      */
+/* beyond — at that point the IVR (whichever shape) is already in the         */
+/* manufacturer's queue and editing it would invalidate downstream work.      */
+/* -------------------------------------------------------------------------- */
+
+const IVR_MODE_LOCKED_STATUSES = new Set([
+  "manufacturer_review",
+  "additional_info_needed",
+  "approved",
+  "shipped",
+  "delivered",
+  "canceled",
+]);
+
+/** Snake_case columns that hold the built-IVR form data — wiped to NULL
+ *  when switching from "built" → "uploaded". The structural ID, order
+ *  link, ai_extracted flag, and audit columns stay untouched. */
+const BUILT_IVR_DATA_COLUMNS: string[] = [
+  // Primary insurance
+  "insurance_provider", "insurance_phone", "member_id", "group_number",
+  "plan_name", "plan_type", "subscriber_name", "subscriber_dob",
+  "subscriber_relationship", "coverage_start_date", "coverage_end_date",
+  "deductible_amount", "deductible_met", "out_of_pocket_max",
+  "out_of_pocket_met", "copay_amount", "coinsurance_percent",
+  "dme_covered", "wound_care_covered",
+  "prior_auth_required", "prior_auth_number", "prior_auth_start_date",
+  "prior_auth_end_date", "units_authorized",
+  "verified_by", "verified_date", "verification_reference", "notes",
+  // Place / MAC / extra physician/patient context
+  "place_of_service", "medicare_admin_contractor",
+  "facility_npi", "facility_tin", "facility_ptan", "facility_fax",
+  "physician_tin", "physician_fax", "physician_address",
+  "patient_phone", "patient_address", "ok_to_contact_patient",
+  // Secondary insurance + provider participation
+  "provider_participates_primary", "provider_participates_secondary",
+  "secondary_insurance_provider", "secondary_insurance_phone",
+  "secondary_subscriber_name", "secondary_policy_number",
+  "secondary_subscriber_dob", "secondary_plan_type",
+  "secondary_group_number", "secondary_subscriber_relationship",
+  // CPTs + global period
+  "application_cpts", "surgical_global_period", "global_period_cpt",
+  "prior_auth_permission",
+  // Facility / rep / clinical context
+  "specialty_site_name", "facility_name", "facility_address",
+  "facility_phone", "facility_contact",
+  "physician_name", "physician_phone", "physician_npi",
+  "patient_name", "patient_dob", "sales_rep_name",
+  "wound_type", "wound_sizes", "date_of_procedure", "icd10_codes",
+  "product_information", "is_patient_at_snf",
+  // Signature
+  "physician_signature", "physician_signature_date",
+  "physician_signed_at", "physician_signed_by", "physician_signature_image",
+];
+
+export async function switchIvrMode(
+  orderId: string,
+  newMode: "built" | "uploaded",
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    await requireIVREditRole();
+    const adminClient = createAdminClient();
+
+    // Status gate — block switching once the order is at manufacturer review
+    // or beyond. UI also enforces this but server is the boundary.
+    const { data: order, error: orderErr } = await adminClient
+      .from("orders")
+      .select("order_status")
+      .eq("id", orderId)
+      .maybeSingle();
+    if (orderErr || !order) {
+      return { success: false, error: "Order not found." };
+    }
+    if (IVR_MODE_LOCKED_STATUSES.has(order.order_status as string)) {
+      return {
+        success: false,
+        error:
+          "IVR mode can no longer be changed — order is under manufacturer review or beyond.",
+      };
+    }
+
+    // Whichever direction we go, the in-portal IVR form data changes
+    // (wiped on → uploaded; freshly reset on → built). Regenerate the
+    // system-generated IVR PDF (document_type=additional_ivr) so the
+    // sidebar "IVR Form" chip and any downstream consumer see the
+    // current portal state instead of a stale snapshot from before the
+    // switch. Fire-and-forget — pdf gen takes seconds and we don't want
+    // to block the user response on it.
+    const regenAfter = () =>
+      generateOrderPDFs(orderId, ["ivr"]).catch((err) =>
+        safeLogError("switchIvrMode", err, {
+          phase: "post-switch PDF regen",
+          orderId,
+          newMode,
+        }),
+      );
+
+    if (newMode === "uploaded") {
+      // Wipe built-IVR data so the existing form-state column values don't
+      // bleed into a future "switched back to built" path. Sets every form
+      // column to NULL via an upsert on order_id. NOTE: order_ivr does NOT
+      // have an `is_locked` column (unlike order_form) — the IVR's locked
+      // state is derived from physician_signed_at being non-null, which we
+      // null out below as part of the data wipe.
+      const wipePayload: Record<string, unknown> = {
+        order_id: orderId,
+        ivr_mode: "uploaded",
+        ai_extracted: false,
+        ai_extracted_at: null,
+      };
+      for (const col of BUILT_IVR_DATA_COLUMNS) wipePayload[col] = null;
+      const { error: wipeErr } = await adminClient
+        .from("order_ivr")
+        .upsert(wipePayload, { onConflict: "order_id" });
+      if (wipeErr) {
+        safeLogError("switchIvrMode", wipeErr, { phase: "wipe-to-uploaded", orderId });
+        return { success: false, error: "Failed to switch IVR mode." };
+      }
+    } else {
+      // Switching back to built — delete any uploaded IVR documents so the
+      // user can't accidentally have both a half-filled form AND a stale
+      // upload. Single source of truth.
+      const { error: delErr } = await adminClient
+        .from("order_documents")
+        .delete()
+        .eq("order_id", orderId)
+        .eq("document_type", "uploaded_ivr");
+      if (delErr) {
+        safeLogError("switchIvrMode", delErr, { phase: "delete-uploads", orderId });
+        return { success: false, error: "Failed to switch IVR mode." };
+      }
+      const { error: modeErr } = await adminClient
+        .from("order_ivr")
+        .upsert(
+          {
+            order_id: orderId,
+            ivr_mode: "built",
+          },
+          { onConflict: "order_id" },
+        );
+      if (modeErr) {
+        safeLogError("switchIvrMode", modeErr, { phase: "set-built", orderId });
+        return { success: false, error: "Failed to switch IVR mode." };
+      }
+    }
+
+    regenAfter();
+    revalidatePath(ORDERS_PATH);
+    return { success: true };
+  } catch (err) {
+    safeLogError("switchIvrMode", err, { orderId });
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Unexpected error.",
+    };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* markIvrUploadedComplete                                                    */
+/*                                                                            */
+/* Equivalent of "Sign" for the uploaded-IVR path. Requires at least one      */
+/* uploaded_ivr document to be present. Locks the IVR row and stamps the      */
+/* signed_at/by columns so the audit trail is comparable to the built path.   */
+/* -------------------------------------------------------------------------- */
+
+export async function markIvrUploadedComplete(
+  orderId: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { userId } = await requireIVREditRole();
+    const adminClient = createAdminClient();
+
+    // Confirm there's an uploaded IVR document. Otherwise "complete" is
+    // meaningless.
+    const { count, error: countErr } = await adminClient
+      .from("order_documents")
+      .select("id", { count: "exact", head: true })
+      .eq("order_id", orderId)
+      .eq("document_type", "additional_ivr");
+    if (countErr) {
+      safeLogError("markIvrUploadedComplete", countErr, { phase: "count", orderId });
+      return { success: false, error: "Failed to verify upload." };
+    }
+    if (!count || count === 0) {
+      return {
+        success: false,
+        error: "Upload a completed IVR document before marking complete.",
+      };
+    }
+
+    const nowIso = new Date().toISOString();
+    // Stamp physician_signed_at/by — that's the IVR's lock indicator
+    // (order_ivr has no is_locked column, only physician_signed_at).
+    const { error: lockErr } = await adminClient
+      .from("order_ivr")
+      .upsert(
+        {
+          order_id: orderId,
+          ivr_mode: "uploaded",
+          physician_signed_at: nowIso,
+          physician_signed_by: userId,
+        },
+        { onConflict: "order_id" },
+      );
+    if (lockErr) {
+      safeLogError("markIvrUploadedComplete", lockErr, { phase: "lock", orderId });
+      return { success: false, error: "Failed to mark IVR complete." };
+    }
+
+    revalidatePath(ORDERS_PATH);
+    return { success: true };
+  } catch (err) {
+    safeLogError("markIvrUploadedComplete", err, { orderId });
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Unexpected error.",
+    };
   }
 }

@@ -267,6 +267,7 @@ const ORDER_FORM_ALLOWED_FIELDS = new Set([
   "additional_narrative",
   "physician_specialty",
   "physician_state_license",
+  "place_of_service",
 ]);
 
 const ORDER_FORM_FIELD_ALIASES: Record<string, string> = {

@@ -66,6 +66,14 @@ const ALLOWED_DOCUMENT_MIMES = new Set([
   "image/jpg",
   "image/heic",
   "image/heif",
+  // Added 2026-06-19 so the IVR upload path (additional_ivr docs) can
+  // accept clinic-emailed Word docs and other common image formats.
+  // AI extraction is unaffected — those surfaces use a separate allowlist
+  // that still excludes Word docs.
+  "image/gif",
+  "image/webp",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ]);
 
 export interface PrepareOrderDocumentUploadInput {

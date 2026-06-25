@@ -47,6 +47,7 @@ import {
   PROCEDURE_SETTING_OPTIONS,
   DFU_PROCEDURES_TEMPLATE,
   DFU_NARRATIVE_TEMPLATES,
+  PHYSICIAN_SPECIALTY_OPTIONS,
 } from "@/utils/constants/orders";
 import { ADVANCEMENT_REASONS } from "@/utils/constants/advancement-reasons";
 import { PriorTreatmentField } from "./PriorTreatmentField";
@@ -270,6 +271,10 @@ type FormState = {
   additionalNarrative: string;
   physicianSpecialty: string;
   physicianStateLicense: string;
+
+  // Place of Service — independent from order_ivr.place_of_service per
+  // Option B. Same 7 CMS options as the IVR picker.
+  placeOfService: string;
 };
 
 function buildFormState(
@@ -298,7 +303,13 @@ function buildFormState(
     anticipatedLengthDays: form?.anticipatedLengthDays ?? null,
     followupWeeks: form?.followupWeeks ?? null,
     woundSite: form?.woundSite ?? "",
-    woundStage: form?.woundStage ?? "",
+    // For post-surgical orders, default the description to "Full thickness"
+    // — overwhelmingly the right answer for fresh surgical wounds per
+    // Dr. Ben. Clinician can edit if a different description is needed.
+    // Chronic orders stay blank (the description is more variable).
+    woundStage:
+      form?.woundStage
+      ?? (opts?.woundType === "post_surgical" ? "Full thickness" : ""),
     woundLengthCm: form?.woundLengthCm?.toString() ?? "",
     woundWidthCm: form?.woundWidthCm?.toString() ?? "",
     woundDepthCm: form?.woundDepthCm?.toString() ?? "",
@@ -390,19 +401,26 @@ function buildFormState(
     priorAuthObtained: form?.priorAuthObtained ?? false,
     lcdReference: form?.lcdReference ?? "",
     // Default Yes — wound-care orders that reach this form are
-    // overwhelmingly LCD-eligible; clinician can flip to No if not.
+    // Default all four LCD coverage attestations to Yes — wound-care
+    // orders reaching this form are overwhelmingly LCD-eligible per
+    // Dr. Ben. Clinician can flip any individual one to No if not.
     woundMeetsLcd: form?.woundMeetsLcd ?? true,
     conservativeTxPeriodMet: form?.conservativeTxPeriodMet ?? null,
-    qtyWithinLcdLimits: form?.qtyWithinLcdLimits ?? null,
-    kxCriteriaMet: form?.kxCriteriaMet ?? null,
-    posEligible: form?.posEligible ?? null,
+    qtyWithinLcdLimits: form?.qtyWithinLcdLimits ?? true,
+    kxCriteriaMet: form?.kxCriteriaMet ?? "yes",
+    posEligible: form?.posEligible ?? true,
     coverageConcerns: form?.coverageConcerns ?? "",
     physicianNpi: form?.physicianNpi ?? "",
-    attestExaminedPatient: form?.attestExaminedPatient ?? false,
-    attestMedicallyNecessary: form?.attestMedicallyNecessary ?? false,
-    attestConservativeTxInadequate: form?.attestConservativeTxInadequate ?? false,
-    attestFreqQtyClinicalJudgment: form?.attestFreqQtyClinicalJudgment ?? false,
-    attestLcdSupported: form?.attestLcdSupported ?? false,
+    // Default all 5 physician attestations to checked per Dr. Ben's spec —
+    // the physician opening this form has, by definition, examined the
+    // patient and is approving the order. Clinician can still uncheck any
+    // individual one if it doesn't apply; the Sign button stays gated on
+    // all-five-checked so any unchecking blocks signing.
+    attestExaminedPatient: form?.attestExaminedPatient ?? true,
+    attestMedicallyNecessary: form?.attestMedicallyNecessary ?? true,
+    attestConservativeTxInadequate: form?.attestConservativeTxInadequate ?? true,
+    attestFreqQtyClinicalJudgment: form?.attestFreqQtyClinicalJudgment ?? true,
+    attestLcdSupported: form?.attestLcdSupported ?? true,
     officeMethodOfReceipt: form?.officeTracking?.methodOfReceipt ?? "",
     officeBaaInPlace: form?.officeTracking?.baaInPlace ?? null,
     officeReviewedBy: form?.officeTracking?.reviewedBy ?? "",
@@ -501,6 +519,7 @@ function buildFormState(
     additionalNarrative: form?.additionalNarrative ?? "",
     physicianSpecialty: form?.physicianSpecialty ?? "",
     physicianStateLicense: form?.physicianStateLicense ?? "",
+    placeOfService: form?.placeOfService ?? "",
   };
 }
 
@@ -1015,17 +1034,30 @@ export function OrderFormDocument({
     [draftItems, itemsBaseline],
   );
 
+  // Filter the catalog two ways:
+  //  1. By the order's order_type (Skin Grafts / DME Collagen) — clinicians
+  //     only see products that match the order they're building. Legacy
+  //     order types ("omeza", "surgical_collagen") get no filter so old
+  //     orders still see every product.
+  //  2. By the active search query.
+  const orderTypeFilter =
+    order.order_type === "skin_grafts" || order.order_type === "dme_collagen"
+      ? order.order_type
+      : null;
   const filteredProducts = useMemo(() => {
     const q = productSearch.trim().toLowerCase();
-    if (!q) return products;
-    return products.filter(
+    const base = orderTypeFilter
+      ? products.filter((p) => p.category === orderTypeFilter)
+      : products;
+    if (!q) return base;
+    return base.filter(
       (p) =>
         p.name.toLowerCase().includes(q) ||
         p.sku.toLowerCase().includes(q) ||
         (p.category ?? "").toLowerCase().includes(q) ||
         (p.hcpcs_code ?? "").toLowerCase().includes(q),
     );
-  }, [products, productSearch]);
+  }, [products, productSearch, orderTypeFilter]);
 
   function handleAddProductToDraft(prod: ProductRecord) {
     setDraftItems((prev) => {
@@ -1614,6 +1646,7 @@ export function OrderFormDocument({
       additional_narrative: strOrNull(formData.additionalNarrative),
       physician_specialty: strOrNull(formData.physicianSpecialty),
       physician_state_license: strOrNull(formData.physicianStateLicense),
+      place_of_service: strOrNull(formData.placeOfService),
     }, localUpdatedAt);
 
     if (!result.success) {
@@ -1715,7 +1748,16 @@ export function OrderFormDocument({
           : "Order form saved.",
     );
     setBaseline({ ...formData });
-    setItemsBaseline(draftItems);
+    // Use the functional updater to read the LATEST draftItems state, not
+    // the stale closure value captured when handleSave started. Otherwise
+    // a concurrent realtime/redux update (which replaces draftItems with
+    // server-assigned UUIDs during the save's await window) leaves
+    // baseline pointing at the pre-save draft IDs — the dirty diff sticks
+    // even after a successful save.
+    setDraftItems((current) => {
+      setItemsBaseline(current);
+      return current;
+    });
     // Clear the buffered PIN once committed; keep specimenSignatureUrl so
     // the signature stays visible on-screen for the current session. On
     // unsign save, clear the specimen too so the UI is consistent.
@@ -1966,6 +2008,35 @@ export function OrderFormDocument({
         </div>
 
         <HR />
+
+        {/* ── PLACE OF SERVICE ──
+            Shared across all wound-type variants. Independent of
+            order_ivr.place_of_service per Option B — captured separately
+            on the Order Form so clinicians don't need the IVR to be
+            filled in first. Same 7 CMS POS codes the IVR uses. */}
+        <div className="px-2 pt-2 pb-2 border-b border-[#e5e5e5]">
+          <FL className="block mb-1">Place of Service</FL>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            {[
+              "Office (11)",
+              "Patient home (12)",
+              "Assisted Living Facility (13)",
+              "Off Campus Outpatient Hospital (19)",
+              "Hospital outpatient (22)",
+              "Ambulatory Surgical Center (24)",
+              "Independent Clinic (49)",
+            ].map((pos) => (
+              <FormCheckbox
+                key={pos}
+                checked={formData.placeOfService === pos}
+                onChange={(checked) =>
+                  set("placeOfService", checked ? pos : "")
+                }
+                label={pos}
+              />
+            ))}
+          </div>
+        </div>
 
         {/* ── CHRONIC + POST-SURGICAL BODY ──
             DFU and VLU render their own Fortify-template-shaped layouts
@@ -3323,12 +3394,18 @@ export function OrderFormDocument({
             {/* Physician credentials (specific to DFU procedures) */}
             <DocRow>
               <FL>Specialty</FL>
-              <FormInput
+              <select
                 value={formData.physicianSpecialty}
-                onChange={(v) => set("physicianSpecialty", v)}
-                className="flex-1"
-                placeholder="e.g. Podiatry, Vascular Surgery"
-              />
+                onChange={(e) => set("physicianSpecialty", e.target.value)}
+                className="border-0 border-b border-[#333] text-[12px] bg-transparent outline-none px-1 py-0.5 flex-1 max-w-[260px]"
+              >
+                <option value="">—</option>
+                {PHYSICIAN_SPECIALTY_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt}>
+                    {opt}
+                  </option>
+                ))}
+              </select>
               <span className="text-[#ccc] mx-2">|</span>
               <FL>State License #</FL>
               <FormInput
@@ -4282,6 +4359,11 @@ export function OrderFormDocument({
                   <p className="text-[10px] text-[#777] italic leading-tight">
                     Click <Plus className="inline w-3 h-3 -mt-0.5" /> to add. Changes save when you click Save.
                   </p>
+                  {orderTypeFilter && (
+                    <p className="text-[10px] text-[var(--navy)] italic leading-tight mt-0.5">
+                      Showing only {orderTypeFilter === "skin_grafts" ? "Skin Grafts" : "DME Collagen"} products.
+                    </p>
+                  )}
                 </div>
                 <div className="relative">
                   <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#999]" />

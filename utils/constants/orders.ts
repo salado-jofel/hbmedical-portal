@@ -145,6 +145,37 @@ export const WOUND_TYPES = [
   { value: "vlu" as const, label: "VLU" },
 ];
 
+// ── Order product category — picked at order creation alongside wound type. ──
+// `surgical_collagen` and `omeza` are legacy values still present on existing
+// rows; they're intentionally NOT in this picker since the user-facing options
+// are now the two new values per Dr. Ben's spec. The DB CHECK constraint
+// (orders_order_type_check) accepts all four so legacy rows still validate.
+export const ORDER_TYPES = [
+  { value: "skin_grafts" as const, label: "Skin Grafts" },
+  { value: "dme_collagen" as const, label: "DME Collagen" },
+];
+
+// ── Product catalog category. Values intentionally match ORDER_TYPES so the
+// order picker can filter on `order.order_type === product.category`. Legacy
+// "Collagen" rows from the original seed are still valid (no DB CHECK on
+// the column per design decision — soft enum) and are bulk-migrated to
+// "dme_collagen" by 20260619000000_products_category_backfill_and_seed.sql.
+export const PRODUCT_CATEGORIES = [
+  { value: "skin_grafts" as const, label: "Skin Grafts" },
+  { value: "dme_collagen" as const, label: "DME Collagen" },
+];
+
+// Maps any raw category value (including the legacy "Collagen") to its
+// user-facing label. Returns the original string if no mapping — keeps
+// the UI resilient if a free-text category sneaks in.
+export function productCategoryLabel(value: string | null | undefined): string {
+  if (!value) return "—";
+  const found = PRODUCT_CATEGORIES.find((c) => c.value === value);
+  if (found) return found.label;
+  if (value === "Collagen") return "Collagen (legacy)";
+  return value;
+}
+
 // ── VLU: CEAP Classification (Comprehensive venous severity scale) ──
 // C0..C6 plus symptomatic variants (C0s..C6s).
 export const CEAP_CLASSIFICATIONS = [
@@ -197,6 +228,20 @@ export const PROCEDURE_SETTING_OPTIONS = [
   { value: "office" as const,  label: "Office" },
   { value: "asc" as const,     label: "ASC" },
   { value: "other" as const,   label: "Other" },
+];
+
+// ── Physician specialty options — Dr. Ben spec 2026-06-18. ──
+// Free-text fallback was removed in favor of a constrained list. If a
+// specialty not in this list ever becomes important, append below or
+// re-introduce a free-text "Other" option.
+export const PHYSICIAN_SPECIALTY_OPTIONS = [
+  "MD",
+  "DO",
+  "APRN",
+  "DR NP",
+  "Podiatrist",
+  "Vascular Surgeon",
+  "Orthopedic Surgeon",
 ];
 
 // ── DFU: preset procedure list with CPT codes ──

@@ -35,7 +35,7 @@ export async function createOrder(data: {
   wound_type: "chronic" | "post_surgical" | "dfu" | "vlu";
   date_of_service: string;
   notes?: string | null;
-  order_type?: "surgical_collagen" | "omeza" | null;
+  order_type?: "skin_grafts" | "dme_collagen" | "surgical_collagen" | "omeza" | null;
   manual_input?: boolean;
   patient_first_name?: string | null;
   patient_last_name?: string | null;
@@ -516,6 +516,7 @@ export async function saveOrderForm(
     additional_narrative?: string | null;
     physician_specialty?: string | null;
     physician_state_license?: string | null;
+    place_of_service?: string | null;
   },
   ifMatchUpdatedAt?: string | null,
 ): Promise<{
