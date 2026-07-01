@@ -365,63 +365,105 @@ export function CreateOrderModal() {
       // PDFs pass through unchanged (can't compress losslessly client-side).
       const supabase = createClient();
       const extractableDocs: Array<{ documentType: string; filePath: string }> = [];
+      // Collect per-doc failures so we can surface a PERSISTENT summary
+      // at the end. Ephemeral toasts inside the loop get covered by
+      // subsequent progress/success toasts and vanish before the user
+      // notices — that's the "Valid ID silently failed" mode Dr. Ben
+      // reported. This array is the single source of truth for whether
+      // to celebrate or warn on modal close.
+      type UploadFailure = { docType: string; fileName: string; reason: string };
+      const failures: UploadFailure[] = [];
+      // Human-readable labels for the failure summary. Kept local so we
+      // don't need to import from the shared constants file just for
+      // this narrow use case.
+      const DOC_TYPE_LABELS: Record<string, string> = {
+        facesheet: "Facesheet",
+        clinical_docs: "Clinical Docs",
+        valid_id: "Valid ID",
+        wound_pictures: "Wound Pictures",
+        additional_ivr: "IVR Form",
+        uploaded_ivr: "IVR Form",
+        order_form: "Order Form",
+        form_1500: "HCFA-1500",
+      };
+
       for (let i = 0; i < docs.length; i++) {
         const d = docs[i];
         setUploadProgress(`Uploading ${i + 1}/${docs.length}: ${d.file.name}`);
-        const file = await compressImage(d.file);
+        try {
+          const file = await compressImage(d.file);
 
-        const prepared = await prepareOrderDocumentUpload({
-          orderId,
-          documentType: d.type as DocumentType,
-          fileName: file.name,
-          mimeType: file.type,
-          size: file.size,
-        });
-        if (
-          !prepared.success ||
-          !prepared.bucket ||
-          !prepared.filePath ||
-          !prepared.uploadToken
-        ) {
-          toast.error(
-            `Failed to upload ${d.file.name}: ${prepared.error ?? "Could not prepare upload."}`,
-          );
-          continue;
-        }
-
-        const { error: uploadErr } = await supabase.storage
-          .from(prepared.bucket)
-          .uploadToSignedUrl(prepared.filePath, prepared.uploadToken, file, {
-            contentType: file.type,
+          const prepared = await prepareOrderDocumentUpload({
+            orderId,
+            documentType: d.type as DocumentType,
+            fileName: file.name,
+            mimeType: file.type,
+            size: file.size,
           });
-        if (uploadErr) {
-          console.error("[CreateOrderModal] storage upload:", uploadErr);
-          toast.error(
-            `Failed to upload ${d.file.name}: ${uploadErr.message ?? "Upload failed."}`,
-          );
-          continue;
-        }
+          if (
+            !prepared.success ||
+            !prepared.bucket ||
+            !prepared.filePath ||
+            !prepared.uploadToken
+          ) {
+            failures.push({
+              docType: d.type,
+              fileName: d.file.name,
+              reason: prepared.error ?? "Could not prepare upload.",
+            });
+            continue;
+          }
 
-        const completed = await completeOrderDocumentUpload({
-          orderId,
-          documentType: d.type as DocumentType,
-          bucket: prepared.bucket,
-          filePath: prepared.filePath,
-          fileName: file.name,
-          mimeType: file.type,
-          fileSize: file.size,
-        });
-        if (!completed.success || !completed.document) {
-          toast.error(
-            `Failed to upload ${d.file.name}: ${completed.error ?? "Could not save document."}`,
-          );
-          continue;
-        }
+          const { error: uploadErr } = await supabase.storage
+            .from(prepared.bucket)
+            .uploadToSignedUrl(prepared.filePath, prepared.uploadToken, file, {
+              contentType: file.type,
+            });
+          if (uploadErr) {
+            console.error("[CreateOrderModal] storage upload:", uploadErr);
+            failures.push({
+              docType: d.type,
+              fileName: d.file.name,
+              reason: uploadErr.message ?? "Upload failed.",
+            });
+            continue;
+          }
 
-        if (["facesheet", "clinical_docs"].includes(d.type)) {
-          extractableDocs.push({
-            documentType: d.type,
-            filePath: completed.document.filePath,
+          const completed = await completeOrderDocumentUpload({
+            orderId,
+            documentType: d.type as DocumentType,
+            bucket: prepared.bucket,
+            filePath: prepared.filePath,
+            fileName: file.name,
+            mimeType: file.type,
+            fileSize: file.size,
+          });
+          if (!completed.success || !completed.document) {
+            failures.push({
+              docType: d.type,
+              fileName: d.file.name,
+              reason: completed.error ?? "Could not save document.",
+            });
+            continue;
+          }
+
+          if (["facesheet", "clinical_docs"].includes(d.type)) {
+            extractableDocs.push({
+              documentType: d.type,
+              filePath: completed.document.filePath,
+            });
+          }
+        } catch (err) {
+          // e.g., compressImage threw on a corrupt image, or the network
+          // dropped mid-upload. Previously this uncaught-throw aborted
+          // the whole loop silently; now it's captured per-doc so the
+          // remaining docs still get their chance.
+          console.error("[CreateOrderModal] upload threw:", err);
+          failures.push({
+            docType: d.type,
+            fileName: d.file.name,
+            reason:
+              err instanceof Error ? err.message : "Unexpected upload error.",
           });
         }
       }
@@ -435,7 +477,31 @@ export function CreateOrderModal() {
       }
 
       setUploadProgress(null);
-      toast.success("Order created. Upload confirmed.");
+
+      // Persistent (Infinity duration) failure summary. Lists every doc
+      // that failed and the specific reason, so the user knows exactly
+      // what to re-upload from the OrderDetailModal. Success toast only
+      // fires when everything landed.
+      if (failures.length > 0) {
+        const succeeded = docs.length - failures.length;
+        const lines = failures.map(
+          (f) => `• ${DOC_TYPE_LABELS[f.docType] ?? f.docType} (${f.fileName}) — ${f.reason}`,
+        );
+        toast.error(
+          `Order created, but ${failures.length} of ${docs.length} uploads failed.\n${lines.join("\n")}\n\nOpen the order to re-upload the missing files.`,
+          { duration: Infinity },
+        );
+        // Also alert once so the user MUST dismiss before continuing —
+        // toast on its own could still be missed on a distracted screen.
+        if (typeof window !== "undefined") {
+          window.alert(
+            `Uploaded ${succeeded} of ${docs.length}. Missing:\n\n${lines.join("\n")}\n\nOpen the order to re-upload the missing files.`,
+          );
+        }
+      } else {
+        toast.success("Order created. All uploads confirmed.");
+      }
+
       setOpen(false);
       reset();
 
