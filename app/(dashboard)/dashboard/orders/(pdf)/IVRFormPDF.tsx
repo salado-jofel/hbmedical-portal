@@ -157,6 +157,7 @@ const WOUND_TYPES_ROW2 = [
   "Radiation Burns",
   "Necrotizing Fasciitis",
   "Dehisced Surgical Wound",
+  "Post-Surgical Incision",
 ] as const;
 
 const KNOWN_PRODUCTS = [

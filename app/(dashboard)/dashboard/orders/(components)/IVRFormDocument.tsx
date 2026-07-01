@@ -431,6 +431,7 @@ const IVR_WOUND_TYPES = [
   { value: "Radiation Burns", label: "Radiation Burns" },
   { value: "Necrotizing Fasciitis", label: "Necrotizing Fasciitis" },
   { value: "Dehisced Surgical Wound", label: "Dehisced Surgical Wound" },
+  { value: "Post-Surgical Incision", label: "Post-Surgical Incision" },
 ] as const;
 
 const KNOWN_PRODUCTS = [
@@ -1664,7 +1665,14 @@ export function IVRFormDocument({
                     <FormCheckbox
                       checked={isOther}
                       onChange={(checked) => {
-                        if (!checked) set("woundType", "");
+                        // Bug fix (2026-06-26): the previous handler
+                        // only cleared on uncheck and never set anything
+                        // on check, so the box appeared un-clickable.
+                        // Seeding with "Other" makes `isOther` true so
+                        // the "Specify" input renders; the user then
+                        // overwrites it with the actual wound type.
+                        if (checked) set("woundType", "Other");
+                        else set("woundType", "");
                       }}
                       label="Other"
                     />
