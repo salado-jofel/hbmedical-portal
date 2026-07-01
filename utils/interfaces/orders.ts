@@ -68,7 +68,10 @@ export const documentTypeSchema = z.enum([
   "wound_pictures",
   "order_form",
   "form_1500",
+  // System-generated IVR PDF rendered from the built form.
   "additional_ivr",
+  // Clinician-uploaded external IVR document (alt to the built form).
+  "uploaded_ivr",
   "delivery_invoice",
   "valid_id",
   "other",
@@ -356,6 +359,8 @@ export interface IOrderIVR {
   /** PNG data URL. Set by Sign; cleared by Unsign. */
   physicianSignatureImage: string | null;
   aiExtracted: boolean;
+  /** "built" = filled in our IVR form; "uploaded" = external IVR document. */
+  ivrMode: "built" | "uploaded";
   createdAt: string;
   updatedAt: string;
 }
@@ -776,6 +781,11 @@ export interface IOrderForm {
   additionalNarrative: string | null;
   physicianSpecialty: string | null;
   physicianStateLicense: string | null;
+
+  // Place of Service — independent from order_ivr.place_of_service per
+  // Option B. Clinicians on the Order Form capture POS here without
+  // needing the IVR to be filled in first.
+  placeOfService: string | null;
 
   // Meta
   aiExtracted: boolean;

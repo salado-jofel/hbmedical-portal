@@ -5,6 +5,7 @@ import { useState } from "react";
 import { addProduct } from "../(services)/actions";
 import { addProductToStore } from "../(redux)/products-slice";
 import type { Product } from "@/utils/interfaces/products";
+import { PRODUCT_CATEGORIES } from "@/utils/constants/orders";
 import {
   Dialog,
   DialogContent,
@@ -157,13 +158,20 @@ export function AddProductModal() {
                 <Tag className="w-4 h-4 text-[var(--navy)]" />
                 Category
               </label>
-              <Input
+              <select
                 name="category"
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
-                placeholder="e.g. Collagen"
                 disabled={isSubmitting}
-              />
+                className="w-full h-10 px-3 rounded-md border border-[#e5e7eb] bg-white text-sm text-[#374151] focus:outline-none focus:ring-2 focus:ring-[var(--navy)] focus:border-transparent disabled:opacity-50"
+              >
+                <option value="">— Select a category —</option>
+                {PRODUCT_CATEGORIES.map((c) => (
+                  <option key={c.value} value={c.value}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="space-y-1.5">

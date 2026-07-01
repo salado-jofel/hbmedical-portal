@@ -907,14 +907,35 @@ export function OrderDetailModal({
   }
 
   async function handleViewDocument(docType: string) {
-    const docs = localDocuments.filter((d: any) => d.documentType === docType);
-    if (docs.length === 0) {
+    // Mirror the chip-render aliasing in this file: the "IVR Form" chip
+    // catches BOTH additional_ivr (system-generated PDF) and uploaded_ivr
+    // (clinician-uploaded external IVR). When opening, prefer the user's
+    // upload over the system PDF since the upload is the source of truth.
+    const rawDocs = localDocuments.filter((d: any) =>
+      docType === "additional_ivr"
+        ? d.documentType === "additional_ivr" ||
+          d.documentType === "uploaded_ivr"
+        : d.documentType === docType,
+    );
+    if (rawDocs.length === 0) {
       toast.error("No document uploaded yet.");
       return;
     }
-    // Prefer generated PDF (has /generated/ in path) over manually uploaded
+    // Sort newest-first so a recently-regenerated additional_ivr (e.g.,
+    // after switchIvrMode wiped the built form and triggered a fresh
+    // PDF render) wins over any stale snapshot still in localDocuments.
+    const docs = [...rawDocs].sort(
+      (a: any, b: any) =>
+        new Date(b.createdAt ?? 0).getTime() -
+        new Date(a.createdAt ?? 0).getTime(),
+    );
     const doc =
-      docs.find((d: any) => d.filePath?.includes("/generated/")) ?? docs[0];
+      docType === "additional_ivr"
+        ? // Open the upload if one exists, else fall back to the newest
+          // system-generated PDF.
+          docs.find((d: any) => d.documentType === "uploaded_ivr") ?? docs[0]
+        : // Other chip types: prefer the generated PDF over a manual upload.
+          docs.find((d: any) => d.filePath?.includes("/generated/")) ?? docs[0];
     if (!doc?.filePath) {
       toast.error("Document path not found.");
       return;
@@ -1095,6 +1116,14 @@ export function OrderDetailModal({
     });
   }
 
+  // The IVR can come from either the built (in-portal) form or an uploaded
+  // external file. Submit requires ONE of the two — otherwise the order
+  // would reach manufacturer review with no IVR at all (e.g. user uploaded
+  // a file, changed their mind, deleted it, and the built form was wiped).
+  const ivrIsComplete =
+    !!ivrData?.physicianSignedAt ||
+    documents.some((d) => d.documentType === "uploaded_ivr");
+
   async function handleSubmitOrder() {
     if (draftItems.length === 0) {
       toast.error("Add at least one product in the Order Form tab before submitting.", {
@@ -1118,6 +1147,14 @@ export function OrderDetailModal({
     const facesheetOk = order.manual_input || hasFacesheet;
     if (!facesheetOk || !order.date_of_service || !order.wound_type) {
       setCompletionOpen(true);
+      return;
+    }
+    if (!ivrIsComplete) {
+      toast.error(
+        "IVR is required — either sign the in-portal IVR form or upload a completed IVR document before submitting.",
+        { duration: 5000 },
+      );
+      setTab("ivr");
       return;
     }
     setSubmitting(true);
@@ -1150,6 +1187,14 @@ export function OrderDetailModal({
     const facesheetOk = order.manual_input || hasFacesheet;
     if (!facesheetOk || !order.date_of_service || !order.wound_type) {
       setCompletionOpen(true);
+      return;
+    }
+    if (!ivrIsComplete) {
+      toast.error(
+        "IVR is required — either sign the in-portal IVR form or upload a completed IVR document before submitting.",
+        { duration: 5000 },
+      );
+      setTab("ivr");
       return;
     }
     setSubmitting(true);
@@ -1484,11 +1529,17 @@ export function OrderDetailModal({
   }, 0);
   const docCount = documents.length;
   const msgCount = messages.length;
-  const additionalDocs = documents.filter(
-    (d) =>
-      d.documentType === "other" ||
-      !REQUIRED_DOC_TYPES.some((r) => r.type === d.documentType),
-  );
+  const additionalDocs = documents.filter((d) => {
+    // Treat uploaded_ivr as if it were additional_ivr so it doesn't
+    // also surface in "Additional Documentation" — it already shows
+    // as the "IVR Form" chip above.
+    const aliased =
+      d.documentType === "uploaded_ivr" ? "additional_ivr" : d.documentType;
+    return (
+      aliased === "other" ||
+      !REQUIRED_DOC_TYPES.some((r) => r.type === aliased)
+    );
+  });
   const woundPhotos = documents.filter(
     (d) => d.documentType === "wound_pictures",
   );
@@ -1761,8 +1812,56 @@ export function OrderDetailModal({
                       isExtracting={false}
                       onDirtyChange={setIsIvrDirty}
                       onSave={async (saved) => {
-                        setIvrData(saved);
+                        // IVRUploadView calls onChange (→ onSave({})) as a
+                        // "refresh request" after upload/delete/mark-complete.
+                        // An empty object here means "go fetch the fresh
+                        // server copy" — naively setIvrData(saved) would
+                        // wipe physicianSignedAt and isLocked, so the
+                        // green "Marked Complete" banner never appears.
+                        if (!saved || Object.keys(saved).length === 0) {
+                          const { ivr } = await getOrderIVR(order.id);
+                          setIvrData(ivr ?? {});
+                        } else {
+                          setIvrData(saved);
+                        }
                         setIsIvrDirty(false);
+                      }}
+                      onUploadDeleted={(docId) => {
+                        // The IVR Form chip + handleViewDocument both
+                        // read from `localDocuments`. Update both arrays
+                        // so the chip stops pointing at a deleted path
+                        // AND the documents list stays consistent.
+                        setLocalDocuments((prev) =>
+                          prev.filter((d) => d.id !== docId),
+                        );
+                        setDocuments((prev) =>
+                          prev.filter((d) => d.id !== docId),
+                        );
+                      }}
+                      onUploadAdded={(doc) => {
+                        const next: IOrderDocument = {
+                          id: doc.id,
+                          orderId: liveOrder.id,
+                          documentType:
+                            doc.documentType as IOrderDocument["documentType"],
+                          bucket: "order-documents",
+                          fileName: doc.fileName,
+                          filePath: doc.filePath,
+                          mimeType: doc.mimeType,
+                          fileSize: doc.fileSize,
+                          uploadedBy: null,
+                          createdAt: new Date().toISOString(),
+                        };
+                        setLocalDocuments((prev) =>
+                          prev.some((d) => d.id === next.id)
+                            ? prev
+                            : [...prev, next],
+                        );
+                        setDocuments((prev) =>
+                          prev.some((d) => d.id === next.id)
+                            ? prev
+                            : [...prev, next],
+                        );
                       }}
                     />
                     <HCFATab
@@ -2037,14 +2136,42 @@ export function OrderDetailModal({
                       ) : (
                         <div className="grid grid-cols-2 gap-2">
                           {visibleRequiredDocTypes.map((doc) => {
-                            const typeDocs = localDocuments.filter(
-                              (d) => d.documentType === doc.type,
+                            // The "IVR Form" chip needs to catch BOTH the
+                            // system-generated additional_ivr PDF AND any
+                            // user-uploaded uploaded_ivr docs — Dr. Ben
+                            // wants the uploaded file surfaced in the
+                            // sidebar too. For other chip types the match
+                            // is exact on documentType.
+                            const rawTypeDocs = localDocuments.filter((d) =>
+                              doc.type === "additional_ivr"
+                                ? d.documentType === "additional_ivr" ||
+                                  d.documentType === "uploaded_ivr"
+                                : d.documentType === doc.type,
+                            );
+                            // Sort newest-first so duplicate rows (e.g.,
+                            // PDF gen produced a fresh row after a wipe
+                            // without removing the old one) don't surface
+                            // the stale snapshot.
+                            const typeDocs = [...rawTypeDocs].sort(
+                              (a, b) =>
+                                new Date(b.createdAt ?? 0).getTime() -
+                                new Date(a.createdAt ?? 0).getTime(),
                             );
                             const uploaded = typeDocs.length > 0;
+                            // For the IVR Form chip, prefer the user-
+                            // uploaded file over the system-generated PDF
+                            // when both exist — the upload is the source
+                            // of truth in that case. Within each kind,
+                            // typeDocs is newest-first so a newly
+                            // regenerated additional_ivr beats a stale one.
                             const docRecord =
-                              typeDocs.find((d) =>
-                                d.filePath?.includes("/generated/"),
-                              ) ?? typeDocs[0];
+                              doc.type === "additional_ivr"
+                                ? typeDocs.find(
+                                    (d) => d.documentType === "uploaded_ivr",
+                                  ) ?? typeDocs[0]
+                                : typeDocs.find((d) =>
+                                    d.filePath?.includes("/generated/"),
+                                  ) ?? typeDocs[0];
                             const isViewLoading =
                               viewingDocId === docRecord?.id;
                             const isPdfGenerating =

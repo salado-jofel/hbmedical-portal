@@ -24,6 +24,7 @@ import { useTableRealtimeRefresh } from "@/utils/hooks/useOrderRealtime";
 import { useListParams } from "@/utils/hooks/useListParams";
 import { useBriefBusy } from "@/utils/hooks/useBriefBusy";
 import { PRODUCT_SORT_COLUMNS } from "@/utils/constants/products-list";
+import { PRODUCT_CATEGORIES, productCategoryLabel } from "@/utils/constants/orders";
 import { cn } from "@/utils/utils";
 
 export default function ProductsTable() {
@@ -256,7 +257,10 @@ export default function ProductsTable() {
                       listParams.setFilter("category", v === "all" ? null : v),
                     options: [
                       { value: "all", label: "All Categories" },
-                      ...categoryOptions.map((c) => ({ value: c, label: c })),
+                      ...categoryOptions.map((c) => ({
+                        value: c,
+                        label: productCategoryLabel(c),
+                      })),
                     ],
                     placeholder: "All Categories",
                     className: "w-full sm:w-44",
@@ -419,17 +423,32 @@ export default function ProductsTable() {
                         </td>
                         <td className="px-4 py-[10px]">
                           {edit ? (
-                            <Input
+                            <select
                               value={edit.category}
                               onChange={(e) =>
                                 updateField(product.id, "category", e.target.value)
                               }
-                              className="h-8 text-sm"
                               disabled={saving}
-                            />
+                              className="h-8 text-sm w-full px-2 rounded border border-[#e5e7eb] bg-white focus:outline-none focus:ring-1 focus:ring-[var(--navy)] disabled:opacity-50"
+                            >
+                              <option value="">— Select —</option>
+                              {PRODUCT_CATEGORIES.map((c) => (
+                                <option key={c.value} value={c.value}>
+                                  {c.label}
+                                </option>
+                              ))}
+                              {/* Preserve legacy "Collagen" value for products
+                                  that haven't been re-categorized yet. */}
+                              {edit.category &&
+                                !PRODUCT_CATEGORIES.some((c) => c.value === edit.category) && (
+                                  <option value={edit.category}>
+                                    {productCategoryLabel(edit.category)}
+                                  </option>
+                                )}
+                            </select>
                           ) : (
                             <span className="text-sm text-[var(--text2)]">
-                              {product.category || "—"}
+                              {productCategoryLabel(product.category)}
                             </span>
                           )}
                         </td>
