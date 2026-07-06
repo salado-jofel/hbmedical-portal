@@ -361,6 +361,10 @@ export interface IOrderIVR {
   aiExtracted: boolean;
   /** "built" = filled in our IVR form; "uploaded" = external IVR document. */
   ivrMode: "built" | "uploaded";
+  /** Set when this order was created via "Create Order from Approved IVR"
+   *  in the standalone-IVR workflow. Powers the approval banner in the
+   *  IVR tab so everyone can see who approved externally. */
+  linkedStandaloneIvrId: string | null;
   createdAt: string;
   updatedAt: string;
 }

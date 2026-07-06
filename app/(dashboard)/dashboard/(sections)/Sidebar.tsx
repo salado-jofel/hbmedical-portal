@@ -15,6 +15,8 @@ import {
   DollarSign,
   TrendingUp,
   ShieldCheck,
+  FileCheck2,
+  UserCheck,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -86,6 +88,21 @@ export const NAV_GROUPS: NavGroupDef[] = [
           isClinicalStaff(role) ||
           isAdmin(role) ||
           isSupport(role),
+      },
+      // IVR Forms — standalone IVR workflow. Everyone with a portal
+      // account can see the list; RLS narrows the visible rows by role.
+      {
+        icon: FileCheck2,
+        label: "IVR Forms",
+        href: "/dashboard/ivrs",
+        visible: (role) => !!role,
+      },
+      // External Approvers directory — internal admin/support only.
+      {
+        icon: UserCheck,
+        label: "External Approvers",
+        href: "/dashboard/approvers",
+        visible: (role) => isAdmin(role) || isSupport(role),
       },
     ],
   },

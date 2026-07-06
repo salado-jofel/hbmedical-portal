@@ -316,6 +316,9 @@ export function CreateOrderModal() {
 
   const canSubmit =
     !!orderType &&
+    // Skin Grafts orders are blocked from direct creation — go through
+    // the IVR workflow instead.
+    orderType !== "skin_grafts" &&
     !!woundType &&
     !!dateOfService &&
     (!docsRequired || (hasFacesheet && hasClinicalDocs && hasValidId)) &&
@@ -591,6 +594,28 @@ export function CreateOrderModal() {
                   <p className="text-xs text-red-500 mt-0.5">
                     Please select an order type.
                   </p>
+                )}
+                {/* Skin Grafts gate (Dr. Ben spec 2026-07-02): Skin Grafts
+                    orders must originate from an approved IVR — direct
+                    creation is blocked here. The user is routed to the
+                    IVR workflow. DME Collagen keeps parallel creation. */}
+                {orderType === "skin_grafts" && (
+                  <div className="mt-2 rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-[12px] text-amber-900">
+                    <p className="font-semibold mb-1">
+                      Skin Grafts orders start from an approved IVR
+                    </p>
+                    <p className="text-[11.5px] leading-snug">
+                      Upload the completed IVR to{" "}
+                      <a
+                        href="/dashboard/ivrs"
+                        className="underline font-medium hover:text-amber-800"
+                      >
+                        IVR Forms
+                      </a>{" "}
+                      and send it to an external approver. Once approved,
+                      you can create the order from that IVR in one click.
+                    </p>
+                  </div>
                 )}
               </div>
 
