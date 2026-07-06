@@ -50,10 +50,25 @@ const HISTORY_SELECT =
   "id, standalone_ivr_id, event, actor_id, actor_display, note, created_at";
 
 function mapIvr(row: Record<string, unknown>): IStandaloneIvr {
-  const approver =
-    (row.external_approvers as Record<string, unknown> | null) ?? null;
-  const facility =
-    (row.facilities as { name: string | null } | null) ?? null;
+  // Supabase's PostgREST returns FK joins as EITHER a single object or a
+  // single-element array depending on the client's type inference — same
+  // row on the wire, different TS shape. Normalize before reading fields
+  // so `approver.name`/`facility.name` are never undefined by accident,
+  // which is what caused the empty "Approver" field in the detail modal.
+  const approverRaw = row.external_approvers as unknown as
+    | Record<string, unknown>
+    | Array<Record<string, unknown>>
+    | null;
+  const approver = Array.isArray(approverRaw)
+    ? approverRaw[0] ?? null
+    : approverRaw ?? null;
+  const facilityRaw = row.facilities as unknown as
+    | { name: string | null }
+    | Array<{ name: string | null }>
+    | null;
+  const facility = Array.isArray(facilityRaw)
+    ? facilityRaw[0] ?? null
+    : facilityRaw ?? null;
   return {
     id: row.id as string,
     status: row.status as IStandaloneIvr["status"],
@@ -684,14 +699,17 @@ export async function sendIvrsForApproval(
       return { success: false, error: "No IVRs selected." };
     }
 
-    // RLS-scoped fetch — user can only send IVRs they're allowed to see.
-    // Filter server-side to draft status; anything else silently skipped.
+    // Step 1: RLS-scoped fetch of just the IVR IDs the caller can see.
+    // We DELIBERATELY don't select the joined external_approvers here —
+    // that table's RLS is admin+support only, so a clinic-role caller
+    // gets back a null join for the approver. That was the root cause
+    // of the "No IVRs have an active approver assigned" toast when a
+    // provider hit Send for Approval on a properly-approved-set IVR.
     const { data: rows, error: readErr } = await supabase
       .from("standalone_ivrs")
       .select(
         `id, patient_name, patient_dob, physician_name, product_summary,
-         status, assigned_approver_id,
-         external_approvers ( id, name, email, is_active )`,
+         status, assigned_approver_id`,
       )
       .in("id", ivrIds);
     if (readErr) {
@@ -701,6 +719,37 @@ export async function sendIvrsForApproval(
     const drafts = (rows ?? []).filter((r) => r.status === "draft");
     if (drafts.length === 0) {
       return { success: false, error: "No draft IVRs to send." };
+    }
+
+    // Step 2: fetch the approver records via admin client (RLS bypass).
+    // Only pull the ones actually referenced by the drafts and only
+    // active ones. Same pattern as getActiveApprovers — the auth check
+    // already happened in step 1 by requiring RLS access to each IVR.
+    const adminForRead = createAdminClient();
+    const approverIds = Array.from(
+      new Set(
+        drafts
+          .map((d) => d.assigned_approver_id as string | null)
+          .filter((id): id is string => !!id),
+      ),
+    );
+    const approverById = new Map<
+      string,
+      { id: string; name: string; email: string; is_active: boolean }
+    >();
+    if (approverIds.length > 0) {
+      const { data: approverRows } = await adminForRead
+        .from("external_approvers")
+        .select("id, name, email, is_active")
+        .in("id", approverIds);
+      for (const a of approverRows ?? []) {
+        approverById.set(a.id as string, {
+          id: a.id as string,
+          name: a.name as string,
+          email: a.email as string,
+          is_active: Boolean(a.is_active),
+        });
+      }
     }
 
     // Group by approver — skip any IVR whose approver is missing or
@@ -713,13 +762,8 @@ export async function sendIvrsForApproval(
       }
     >();
     for (const d of drafts) {
-      // Supabase types the FK join as an array in TS even when it's a
-      // to-one relation. Cast via unknown + normalize to a single object.
-      const raw = d.external_approvers as unknown as
-        | { id: string; name: string; email: string; is_active: boolean }
-        | Array<{ id: string; name: string; email: string; is_active: boolean }>
-        | null;
-      const ap = Array.isArray(raw) ? raw[0] ?? null : raw;
+      const approverId = d.assigned_approver_id as string | null;
+      const ap = approverId ? approverById.get(approverId) ?? null : null;
       if (!ap || !ap.is_active) continue;
       if (!buckets.has(ap.id)) {
         buckets.set(ap.id, {
@@ -773,16 +817,35 @@ export async function sendIvrsForApproval(
         });
       }
 
+      // Pull the first file name for each IVR in this bucket so the
+      // email can fall back to it when patient_name is null (the new
+      // default since 2026-07-07 — patient info stays in the PDF).
+      // One admin query per bucket keeps this cheap.
+      const bucketIvrIds = bucket.ivrs.map((i) => i.id as string);
+      const { data: fileRows } = await adminForRead
+        .from("standalone_ivr_files")
+        .select("standalone_ivr_id, file_name, created_at")
+        .in("standalone_ivr_id", bucketIvrIds)
+        .order("created_at", { ascending: true });
+      const firstFileByIvr = new Map<string, string>();
+      for (const f of fileRows ?? []) {
+        const iid = f.standalone_ivr_id as string;
+        if (!firstFileByIvr.has(iid)) {
+          firstFileByIvr.set(iid, f.file_name as string);
+        }
+      }
+
       // Build + send ONE summary email for this approver.
       const email = buildIvrApprovalEmail({
         approverName: bucket.approver.name,
         approverEmail: bucket.approver.email,
         senderOrgName: "Meridian Portal",
         ivrs: bucket.ivrs.map((i) => ({
-          patientName: i.patient_name as string,
-          patientDob: i.patient_dob as string,
-          physicianName: i.physician_name as string,
-          productSummary: i.product_summary as string,
+          patientName: (i.patient_name as string | null) ?? null,
+          patientDob: (i.patient_dob as string | null) ?? null,
+          physicianName: (i.physician_name as string | null) ?? null,
+          productSummary: (i.product_summary as string | null) ?? null,
+          fileName: firstFileByIvr.get(i.id as string) ?? null,
           reviewUrl: absoluteUrl(`/ivr-decision/${tokenMap.get(i.id)}`),
         })),
         expiresLabel: "30 days",
@@ -1179,6 +1242,152 @@ export async function deleteIvrFile(
     revalidatePath(IVRS_PATH);
     return { success: true };
   } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Unexpected error.",
+    };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Finalize IVR → order linkage after the order was created via the normal    */
+/* CreateOrderModal flow.                                                     */
+/*                                                                            */
+/* This is the split-out "wire up the standalone IVR to an existing order"    */
+/* step — used when the "Create Order from Approved IVR" button opens the     */
+/* full CreateOrderModal instead of a stripped-down convert modal (Dr. Ben    */
+/* feedback 2026-07-07: keep the full order-creation UX intact). The order    */
+/* already exists at this point; we only need to:                             */
+/*                                                                            */
+/*   - Upsert order_ivr so linked_standalone_ivr_id points at the source,     */
+/*     and ivr_mode is 'uploaded' (external IVR is the source of truth).      */
+/*   - Register the standalone IVR's files as uploaded_ivr order documents    */
+/*     (same storage paths, metadata-only rows).                              */
+/*   - Flip standalone_ivrs → converted + write history.                      */
+/* -------------------------------------------------------------------------- */
+
+export async function finalizeIvrConversion(input: {
+  ivrId: string;
+  orderId: string;
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await createClient();
+    const user = await getCurrentUserOrThrow(supabase);
+    const adminClient = createAdminClient();
+
+    // Verify caller has access to the standalone IVR (RLS-scoped read).
+    const { data: ivr } = await supabase
+      .from("standalone_ivrs")
+      .select("id, status, patient_name, physician_name, physician_npi, product_summary, patient_dob, converted_to_order_id")
+      .eq("id", input.ivrId)
+      .maybeSingle();
+    if (!ivr) return { success: false, error: "IVR not found or access denied." };
+    if (ivr.status !== "approved" && ivr.status !== "converted") {
+      return { success: false, error: "Only approved IVRs can be linked." };
+    }
+    if (ivr.converted_to_order_id && ivr.converted_to_order_id !== input.orderId) {
+      return {
+        success: false,
+        error: "This IVR has already been converted to a different order.",
+      };
+    }
+
+    // Verify caller has access to the order too — RLS on orders.
+    const { data: order } = await supabase
+      .from("orders")
+      .select("id")
+      .eq("id", input.orderId)
+      .maybeSingle();
+    if (!order) return { success: false, error: "Order not found or access denied." };
+
+    const nowIso = new Date().toISOString();
+
+    // 1. Upsert order_ivr — set linked_standalone_ivr_id and copy any
+    // metadata from the IVR (patient_name, physician, product info).
+    // Trigger may or may not have created the row; either way this
+    // ensures the columns land.
+    const { data: existingIvr } = await adminClient
+      .from("order_ivr")
+      .select("id")
+      .eq("order_id", input.orderId)
+      .maybeSingle();
+    if (existingIvr) {
+      await adminClient
+        .from("order_ivr")
+        .update({
+          patient_name: ivr.patient_name,
+          patient_dob: ivr.patient_dob,
+          physician_name: ivr.physician_name,
+          physician_npi: ivr.physician_npi,
+          product_information: ivr.product_summary,
+          linked_standalone_ivr_id: input.ivrId,
+          ivr_mode: "uploaded",
+          updated_at: nowIso,
+        })
+        .eq("id", existingIvr.id);
+    } else {
+      await adminClient.from("order_ivr").insert({
+        order_id: input.orderId,
+        patient_name: ivr.patient_name,
+        patient_dob: ivr.patient_dob,
+        physician_name: ivr.physician_name,
+        physician_npi: ivr.physician_npi,
+        product_information: ivr.product_summary,
+        linked_standalone_ivr_id: input.ivrId,
+        ivr_mode: "uploaded",
+      });
+    }
+
+    // 2. Copy IVR files to order_documents as uploaded_ivr. Same
+    // storage paths — the files are shared between both surfaces.
+    const { data: ivrFiles } = await supabase
+      .from("standalone_ivr_files")
+      .select("file_path, file_name, mime_type, file_size")
+      .eq("standalone_ivr_id", input.ivrId);
+    if (ivrFiles && ivrFiles.length > 0) {
+      const docRows = ivrFiles.map((f) => ({
+        order_id: input.orderId,
+        document_type: "uploaded_ivr",
+        bucket: BUCKET,
+        file_path: f.file_path,
+        file_name: f.file_name,
+        mime_type: f.mime_type,
+        file_size: f.file_size,
+        uploaded_by: user.id,
+      }));
+      const { error: docsErr } = await adminClient
+        .from("order_documents")
+        .insert(docRows);
+      if (docsErr) {
+        console.error("[finalizeIvrConversion] docs insert", docsErr);
+        // Non-fatal — the linkage is what matters most. User can
+        // re-upload from the order if the copy failed.
+      }
+    }
+
+    // 3. Flip the IVR to converted (if not already) + history.
+    if (ivr.status !== "converted") {
+      await adminClient
+        .from("standalone_ivrs")
+        .update({
+          status: "converted",
+          converted_to_order_id: input.orderId,
+          updated_at: nowIso,
+        })
+        .eq("id", input.ivrId);
+      await adminClient.from("standalone_ivr_history").insert({
+        standalone_ivr_id: input.ivrId,
+        event: "converted",
+        actor_id: user.id,
+        note: `Converted to order`,
+      });
+    }
+
+    revalidatePath(IVRS_PATH);
+    revalidatePath("/dashboard/orders");
+    return { success: true };
+  } catch (err) {
+    console.error("[finalizeIvrConversion]", err);
     return {
       success: false,
       error: err instanceof Error ? err.message : "Unexpected error.",

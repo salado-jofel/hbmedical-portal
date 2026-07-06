@@ -7,7 +7,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
   FileText,
@@ -24,7 +23,8 @@ import {
   Upload,
 } from "lucide-react";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
-import { ConvertIvrModal } from "./ConvertIvrModal";
+import { CreateOrderModal } from "../../orders/(components)/CreateOrderModal";
+import { ConfirmModal } from "@/app/(dashboard)/(components)/ConfirmModal";
 import { useAppDispatch } from "@/store/hooks";
 import {
   updateIvrInStore,
@@ -70,10 +70,19 @@ const EVENT_LABELS: Record<StandaloneIvrHistoryEvent, string> = {
 };
 
 /**
- * Detail modal for a single standalone IVR. Shows metadata, files, and
- * history timeline. Metadata is editable while the IVR is in draft
- * state; once sent/approved/denied/converted the view is read-only.
- * Deletion is also draft-only.
+ * Detail modal for a single standalone IVR. Simplified per Dr. Ben
+ * feedback (2026-07-07):
+ *
+ *  - Patient, physician, and product info live INSIDE the PDF, so we no
+ *    longer show or edit them here. The uploaded file is the source of
+ *    truth for review.
+ *  - Facility is fixed at upload time (auto-derived from the caller's
+ *    account) and shown read-only.
+ *  - Approver is the ONLY editable field, and only while the IVR is
+ *    still in draft.
+ *
+ * What's rendered: status + files + (approval outcome banner) + facility
+ * + approver + history. That's it.
  */
 export function IvrDetailModal({
   ivrId,
@@ -94,23 +103,24 @@ export function IvrDetailModal({
   const [pending, startTransition] = useTransition();
   const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
   const [convertOpen, setConvertOpen] = useState(false);
+  // Confirm-modal state — one entry per user-triggered destructive/send
+  // action. Native window.confirm is banned per user feedback 2026-07-07.
+  const [confirmSend, setConfirmSend] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmResubmit, setConfirmResubmit] = useState(false);
+  const [confirmDeleteFile, setConfirmDeleteFile] = useState<
+    { fileId: string; fileName: string } | null
+  >(null);
 
-  // Edit-mode draft (only used while editing).
-  const [draft, setDraft] = useState({
-    patientName: "",
-    patientDob: "",
-    physicianName: "",
-    physicianNpi: "",
-    facilityId: "",
-    productSummary: "",
-    assignedApproverId: "",
-  });
+  // Only piece of editable state — approver assignment (draft only).
+  const [draftApproverId, setDraftApproverId] = useState("");
 
   useEffect(() => {
     if (!ivrId) {
       setIvr(null);
       setSignedUrls({});
       setEditing(false);
+      setDraftApproverId("");
       return;
     }
     setLoading(true);
@@ -118,18 +128,7 @@ export function IvrDetailModal({
       .then(async (fresh) => {
         setIvr(fresh);
         if (fresh) {
-          setDraft({
-            // Metadata fields are now optional in the DB (info lives in
-            // the PDF). Coalesce nulls to empty strings for the form inputs.
-            patientName: fresh.patientName ?? "",
-            patientDob: fresh.patientDob ?? "",
-            physicianName: fresh.physicianName ?? "",
-            physicianNpi: fresh.physicianNpi ?? "",
-            facilityId: fresh.facilityId,
-            productSummary: fresh.productSummary ?? "",
-            assignedApproverId: fresh.assignedApproverId ?? "",
-          });
-          // Sign URLs for inline preview.
+          setDraftApproverId(fresh.assignedApproverId ?? "");
           const urls: Record<string, string> = {};
           for (const f of fresh.files) {
             const { url } = await getIvrFileSignedUrl(f.filePath);
@@ -141,39 +140,43 @@ export function IvrDetailModal({
       .finally(() => setLoading(false));
   }, [ivrId]);
 
-  function handleSave() {
+  async function reloadIvr() {
     if (!ivr) return;
+    const fresh = await getStandaloneIvrById(ivr.id);
+    setIvr(fresh);
+    if (fresh) {
+      dispatch(updateIvrInStore(fresh));
+      setDraftApproverId(fresh.assignedApproverId ?? "");
+    }
+  }
+
+  function handleSaveApprover() {
+    if (!ivr) return;
+    if (!draftApproverId) {
+      toast.error("Please pick an approver.");
+      return;
+    }
     startTransition(async () => {
-      const res = await updateStandaloneIvr(ivr.id, draft);
+      // Only send the approver field — other fields stay as-is on the
+      // server since they're captured from the PDF at review time.
+      const res = await updateStandaloneIvr(ivr.id, {
+        assignedApproverId: draftApproverId,
+      });
       if (!res.success) {
         toast.error(res.error);
         return;
       }
       dispatch(updateIvrInStore(res.ivr));
-      // Refetch to pick up the new history entry too.
       const fresh = await getStandaloneIvrById(ivr.id);
       setIvr(fresh);
       setEditing(false);
-      toast.success("IVR updated.");
+      toast.success("Approver updated.");
     });
   }
 
-  async function reloadIvr() {
+  function doResubmit() {
     if (!ivr) return;
-    const fresh = await getStandaloneIvrById(ivr.id);
-    setIvr(fresh);
-    if (fresh) dispatch(updateIvrInStore(fresh));
-  }
-
-  function handleResubmit() {
-    if (!ivr) return;
-    if (
-      !window.confirm(
-        "Reset this denied IVR back to draft so you can edit and re-send it?",
-      )
-    ) {
-      return;
-    }
+    setConfirmResubmit(false);
     startTransition(async () => {
       const res = await resubmitDeniedIvr(ivr.id);
       if (!res.success) {
@@ -223,15 +226,10 @@ export function IvrDetailModal({
     });
   }
 
-  async function handleDeleteFile(fileId: string, fileName: string) {
-    if (!ivr) return;
-    if (
-      !window.confirm(
-        `Delete file "${fileName}" from this IVR? The file will be permanently removed.`,
-      )
-    ) {
-      return;
-    }
+  function doDeleteFile() {
+    if (!ivr || !confirmDeleteFile) return;
+    const { fileId } = confirmDeleteFile;
+    setConfirmDeleteFile(null);
     startTransition(async () => {
       const res = await deleteIvrFile(ivr.id, fileId);
       if (!res.success) {
@@ -243,15 +241,9 @@ export function IvrDetailModal({
     });
   }
 
-  function handleSend() {
+  function doSend() {
     if (!ivr) return;
-    if (
-      !window.confirm(
-        `Send this IVR to ${ivr.approver?.name ?? "the assigned approver"} for review?`,
-      )
-    ) {
-      return;
-    }
+    setConfirmSend(false);
     startTransition(async () => {
       const res = await sendIvrsForApproval([ivr.id]);
       if (!res.success) {
@@ -265,15 +257,9 @@ export function IvrDetailModal({
     });
   }
 
-  function handleDelete() {
+  function doDelete() {
     if (!ivr) return;
-    if (
-      !window.confirm(
-        `Delete this IVR for ${ivr.patientName}? Uploaded files will be removed.`,
-      )
-    ) {
-      return;
-    }
+    setConfirmDelete(false);
     startTransition(async () => {
       const res = await deleteStandaloneIvr(ivr.id);
       if (!res.success) {
@@ -289,21 +275,19 @@ export function IvrDetailModal({
   const isDraft = ivr?.status === "draft";
   const isApproved = ivr?.status === "approved";
   const isDenied = ivr?.status === "denied";
+
   const facilityName =
-    facilities.find((f) => f.id === (editing ? draft.facilityId : ivr?.facilityId))
-      ?.name ??
+    facilities.find((f) => f.id === ivr?.facilityId)?.name ??
     ivr?.facilityName ??
     "—";
-  const approverLabel = (() => {
-    if (editing) {
-      return approvers.find((a) => a.id === draft.assignedApproverId)?.name ?? "—";
-    }
-    return ivr?.approver?.name ?? "—";
-  })();
+  const approverName =
+    approvers.find((a) => a.id === ivr?.assignedApproverId)?.name ??
+    ivr?.approver?.name ??
+    "—";
 
   return (
     <Dialog open={!!ivrId} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="max-w-3xl p-0 overflow-hidden">
+      <DialogContent className="max-w-2xl p-0 overflow-hidden">
         <DialogHeader className="px-5 pt-5 pb-3 border-b border-[#eee]">
           <DialogTitle className="text-[15px] font-semibold flex items-center gap-2">
             IVR Details
@@ -337,189 +321,8 @@ export function IvrDetailModal({
             </div>
           ) : (
             <>
-              {/* Metadata */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text3)]">
-                    Details
-                  </h3>
-                  {isDraft && !editing && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 gap-1"
-                      onClick={() => setEditing(true)}
-                    >
-                      <Pencil className="w-3 h-3" />
-                      Edit
-                    </Button>
-                  )}
-                  {editing && (
-                    <div className="flex items-center gap-1.5">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 gap-1"
-                        disabled={pending}
-                        onClick={() => {
-                          setEditing(false);
-                          setDraft({
-                            patientName: ivr.patientName ?? "",
-                            patientDob: ivr.patientDob ?? "",
-                            physicianName: ivr.physicianName ?? "",
-                            physicianNpi: ivr.physicianNpi ?? "",
-                            facilityId: ivr.facilityId,
-                            productSummary: ivr.productSummary ?? "",
-                            assignedApproverId: ivr.assignedApproverId ?? "",
-                          });
-                        }}
-                      >
-                        <X className="w-3 h-3" />
-                        Cancel
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="h-7 gap-1"
-                        disabled={pending}
-                        onClick={handleSave}
-                      >
-                        {pending ? (
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                        ) : (
-                          <Save className="w-3 h-3" />
-                        )}
-                        Save
-                      </Button>
-                    </div>
-                  )}
-                </div>
-
-                {editing ? (
-                  <div className="grid grid-cols-2 gap-3">
-                    <Field
-                      label="Patient Name"
-                      value={draft.patientName}
-                      onChange={(v) => setDraft({ ...draft, patientName: v })}
-                    />
-                    <Field
-                      label="Patient DOB"
-                      type="date"
-                      value={draft.patientDob}
-                      onChange={(v) => setDraft({ ...draft, patientDob: v })}
-                    />
-                    <Field
-                      label="Physician Name"
-                      value={draft.physicianName}
-                      onChange={(v) => setDraft({ ...draft, physicianName: v })}
-                    />
-                    <Field
-                      label="Physician NPI"
-                      value={draft.physicianNpi}
-                      onChange={(v) => setDraft({ ...draft, physicianNpi: v })}
-                    />
-                    <SelectField
-                      label="Facility"
-                      value={draft.facilityId}
-                      onChange={(v) => setDraft({ ...draft, facilityId: v })}
-                      options={facilities.map((f) => ({
-                        value: f.id,
-                        label: f.name,
-                      }))}
-                    />
-                    <SelectField
-                      label="Approver"
-                      value={draft.assignedApproverId}
-                      onChange={(v) =>
-                        setDraft({ ...draft, assignedApproverId: v })
-                      }
-                      options={approvers.map((a) => ({
-                        value: a.id,
-                        label: `${a.name} — ${a.email}`,
-                      }))}
-                    />
-                    <div className="col-span-2">
-                      <label className="text-[11px] font-medium text-[#374151] block mb-1">
-                        Products
-                      </label>
-                      <textarea
-                        value={draft.productSummary}
-                        onChange={(e) =>
-                          setDraft({ ...draft, productSummary: e.target.value })
-                        }
-                        rows={2}
-                        className="w-full text-[12px] px-2 py-1.5 border border-[#e5e7eb] rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--navy)] focus:border-transparent"
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-[13px]">
-                    {/* Patient / physician / products are nullable now —
-                        info lives in the PDF. Show "See attached PDF"
-                        as a fallback so the row doesn't render as "null
-                        · DOB null". */}
-                    <ReadRow
-                      label="Patient"
-                      value={
-                        ivr.patientName
-                          ? `${ivr.patientName}${ivr.patientDob ? ` · DOB ${ivr.patientDob}` : ""}`
-                          : "See attached PDF"
-                      }
-                    />
-                    <ReadRow
-                      label="Physician"
-                      value={
-                        ivr.physicianName
-                          ? `${ivr.physicianName}${ivr.physicianNpi ? ` · NPI ${ivr.physicianNpi}` : ""}`
-                          : "See attached PDF"
-                      }
-                    />
-                    <ReadRow label="Facility" value={facilityName} />
-                    <ReadRow label="Approver" value={approverLabel} />
-                    <ReadRow
-                      className="col-span-2"
-                      label="Products"
-                      value={ivr.productSummary ?? "Added at order creation"}
-                    />
-                  </div>
-                )}
-              </div>
-
-              {/* Approval outcome (if applicable) */}
-              {(ivr.status === "approved" || ivr.status === "denied") && (
-                <div
-                  className={cn(
-                    "rounded-lg border px-3 py-2 space-y-1 text-[12px]",
-                    ivr.status === "approved"
-                      ? "bg-green-50 border-green-200 text-green-900"
-                      : "bg-red-50 border-red-200 text-red-900",
-                  )}
-                >
-                  <div className="flex items-center gap-1.5 font-semibold">
-                    {ivr.status === "approved" ? (
-                      <CheckCircle2 className="w-4 h-4" />
-                    ) : (
-                      <X className="w-4 h-4" />
-                    )}
-                    {ivr.status === "approved"
-                      ? "Approved"
-                      : "Denied"}{" "}
-                    by {ivr.approverDisplayName ?? "external approver"}
-                  </div>
-                  <div className="text-[11px] opacity-80">
-                    {ivr.status === "approved"
-                      ? new Date(ivr.approvedAt ?? "").toLocaleString()
-                      : new Date(ivr.deniedAt ?? "").toLocaleString()}
-                  </div>
-                  {ivr.status === "denied" && ivr.denialReason && (
-                    <p className="text-[12px] mt-1">
-                      <span className="font-medium">Reason:</span>{" "}
-                      {ivr.denialReason}
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {/* Files */}
+              {/* Files — this is the primary content since the PDF IS
+                  the source of patient/physician/product info. */}
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text3)]">
@@ -580,7 +383,12 @@ export function IvrDetailModal({
                         {isDraft && (
                           <button
                             type="button"
-                            onClick={() => handleDeleteFile(f.id, f.fileName)}
+                            onClick={() =>
+                              setConfirmDeleteFile({
+                                fileId: f.id,
+                                fileName: f.fileName,
+                              })
+                            }
                             disabled={pending}
                             className="shrink-0 p-1 rounded text-[var(--text3)] hover:text-red-500"
                             title="Delete file"
@@ -592,6 +400,113 @@ export function IvrDetailModal({
                     ))}
                   </div>
                 )}
+              </div>
+
+              {/* Approval outcome (if applicable) */}
+              {(isApproved || isDenied) && (
+                <div
+                  className={cn(
+                    "rounded-lg border px-3 py-2 space-y-1 text-[12px]",
+                    isApproved
+                      ? "bg-green-50 border-green-200 text-green-900"
+                      : "bg-red-50 border-red-200 text-red-900",
+                  )}
+                >
+                  <div className="flex items-center gap-1.5 font-semibold">
+                    {isApproved ? (
+                      <CheckCircle2 className="w-4 h-4" />
+                    ) : (
+                      <X className="w-4 h-4" />
+                    )}
+                    {isApproved ? "Approved" : "Denied"} by{" "}
+                    {ivr.approverDisplayName ?? "external approver"}
+                  </div>
+                  <div className="text-[11px] opacity-80">
+                    {isApproved
+                      ? new Date(ivr.approvedAt ?? "").toLocaleString()
+                      : new Date(ivr.deniedAt ?? "").toLocaleString()}
+                  </div>
+                  {isDenied && ivr.denialReason && (
+                    <p className="text-[12px] mt-1">
+                      <span className="font-medium">Reason:</span>{" "}
+                      {ivr.denialReason}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Facility (read-only) + Approver (editable in draft). */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <div className="text-[10.5px] uppercase tracking-wide text-[var(--text3)] font-semibold mb-1">
+                    Facility
+                  </div>
+                  <div className="text-[13px]">{facilityName}</div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="text-[10.5px] uppercase tracking-wide text-[var(--text3)] font-semibold">
+                      Assigned Approver
+                    </div>
+                    {isDraft && !editing && (
+                      <button
+                        type="button"
+                        onClick={() => setEditing(true)}
+                        className="text-[11px] text-[var(--navy)] hover:underline inline-flex items-center gap-1"
+                      >
+                        <Pencil className="w-3 h-3" />
+                        Change
+                      </button>
+                    )}
+                  </div>
+                  {editing ? (
+                    <div className="flex items-center gap-1.5">
+                      <select
+                        value={draftApproverId}
+                        onChange={(e) => setDraftApproverId(e.target.value)}
+                        disabled={pending}
+                        // block + w-full + min-w-0 stop the parent flex
+                        // from squeezing the select — same fix as the
+                        // upload modal.
+                        className="block w-full min-w-0 h-9 text-[13px] px-2 border border-[#e5e7eb] rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-[var(--navy)] focus:border-transparent"
+                      >
+                        <option value="">— Select —</option>
+                        {approvers.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {a.name} · {a.email}
+                          </option>
+                        ))}
+                      </select>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-9 shrink-0 gap-1"
+                        disabled={pending}
+                        onClick={() => {
+                          setEditing(false);
+                          setDraftApproverId(ivr.assignedApproverId ?? "");
+                        }}
+                      >
+                        <X className="w-3 h-3" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="h-9 shrink-0 gap-1"
+                        disabled={pending}
+                        onClick={handleSaveApprover}
+                      >
+                        {pending ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <Save className="w-3 h-3" />
+                        )}
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="text-[13px] truncate">{approverName}</div>
+                  )}
+                </div>
               </div>
 
               {/* History */}
@@ -627,7 +542,7 @@ export function IvrDetailModal({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={handleDelete}
+                onClick={() => setConfirmDelete(true)}
                 disabled={pending}
                 className="text-red-600 hover:text-red-700 gap-1"
               >
@@ -639,7 +554,7 @@ export function IvrDetailModal({
           <div className="flex items-center gap-2">
             {ivr && isDraft && !editing && (
               <Button
-                onClick={handleSend}
+                onClick={() => setConfirmSend(true)}
                 disabled={pending || !ivr.assignedApproverId}
                 className="gap-1"
               >
@@ -653,7 +568,7 @@ export function IvrDetailModal({
             )}
             {ivr && isDenied && (
               <Button
-                onClick={handleResubmit}
+                onClick={() => setConfirmResubmit(true)}
                 disabled={pending}
                 variant="outline"
                 className="gap-1"
@@ -681,90 +596,80 @@ export function IvrDetailModal({
             </Button>
           </div>
         </div>
-        <ConvertIvrModal
-          open={convertOpen}
-          ivrId={ivr?.id ?? null}
-          patientName={ivr?.patientName ?? ""}
-          onClose={() => setConvertOpen(false)}
+        {/* Opens the full CreateOrderModal driven by our state, with
+            fromStandaloneIvr set so it shows the approved-IVR banner,
+            pre-selects Skin Grafts, bypasses the direct-creation gate,
+            and finalizes the standalone_ivr → order link after save. */}
+        <CreateOrderModal
+          open={convertOpen && !!ivr}
+          onOpenChange={setConvertOpen}
+          hideTrigger
+          fromStandaloneIvr={
+            ivr
+              ? {
+                  ivrId: ivr.id,
+                  label:
+                    ivr.files?.[0]?.fileName ?? ivr.patientName ?? null,
+                }
+              : undefined
+          }
         />
       </DialogContent>
-    </Dialog>
-  );
-}
 
-function Field({
-  label,
-  value,
-  onChange,
-  type = "text",
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  type?: string;
-}) {
-  return (
-    <div>
-      <label className="text-[11px] font-medium text-[#374151] block mb-1">
-        {label}
-      </label>
-      <Input
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="h-8 text-[12px]"
+      {/* Confirmation modals — replace window.confirm per user feedback. */}
+      <ConfirmModal
+        open={confirmSend}
+        onOpenChange={setConfirmSend}
+        title="Send this IVR for approval?"
+        body={
+          <>
+            The assigned approver{" "}
+            <span className="font-semibold">
+              {ivr?.approver?.name ?? "for this IVR"}
+            </span>{" "}
+            will receive an email with a link to review and approve or deny.
+          </>
+        }
+        confirmLabel="Send for Approval"
+        pending={pending}
+        onConfirm={doSend}
       />
-    </div>
-  );
-}
-
-function SelectField({
-  label,
-  value,
-  onChange,
-  options,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  options: Array<{ value: string; label: string }>;
-}) {
-  return (
-    <div>
-      <label className="text-[11px] font-medium text-[#374151] block mb-1">
-        {label}
-      </label>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full h-8 text-[12px] px-2 border border-[#e5e7eb] rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-[var(--navy)] focus:border-transparent"
-      >
-        <option value="">— Select —</option>
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-}
-
-function ReadRow({
-  label,
-  value,
-  className,
-}: {
-  label: string;
-  value: string;
-  className?: string;
-}) {
-  return (
-    <div className={className}>
-      <div className="text-[10.5px] uppercase tracking-wide text-[var(--text3)] font-semibold">
-        {label}
-      </div>
-      <div className="text-[13px]">{value}</div>
-    </div>
+      <ConfirmModal
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title="Delete this IVR?"
+        body="All uploaded files will be permanently removed. This can't be undone."
+        tone="destructive"
+        confirmLabel="Delete IVR"
+        pending={pending}
+        onConfirm={doDelete}
+      />
+      <ConfirmModal
+        open={confirmResubmit}
+        onOpenChange={setConfirmResubmit}
+        title="Reset denied IVR to draft?"
+        body="Clears the denial and lets you edit and re-send. History of the denial stays on the audit trail."
+        confirmLabel="Reset to Draft"
+        pending={pending}
+        onConfirm={doResubmit}
+      />
+      <ConfirmModal
+        open={!!confirmDeleteFile}
+        onOpenChange={(next) => !next && setConfirmDeleteFile(null)}
+        title="Delete this file?"
+        body={
+          confirmDeleteFile ? (
+            <>
+              <span className="font-semibold">{confirmDeleteFile.fileName}</span>{" "}
+              will be permanently removed from this IVR.
+            </>
+          ) : null
+        }
+        tone="destructive"
+        confirmLabel="Delete File"
+        pending={pending}
+        onConfirm={doDeleteFile}
+      />
+    </Dialog>
   );
 }

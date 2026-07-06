@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import {
   Dialog,
   DialogContent,
@@ -11,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, Loader2, Upload, X, FileText } from "lucide-react";
 import { createOrder } from "../(services)/order-write-actions";
+import { finalizeIvrConversion } from "../../ivrs/(services)/actions";
 import {
   prepareOrderDocumentUpload,
   completeOrderDocumentUpload,
@@ -257,9 +259,40 @@ function UploadZone({
   );
 }
 
-export function CreateOrderModal() {
+interface CreateOrderModalProps {
+  /** External control for the open state. When provided, the modal
+   *  becomes controlled and the internal trigger button is hidden by
+   *  default (unless hideTrigger is explicitly false). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Hides the built-in "New Order" trigger button. Useful when opening
+   *  the modal from another component (e.g. IVR detail modal). */
+  hideTrigger?: boolean;
+  /** When creating an order from an approved standalone IVR, pass the
+   *  ID + a friendly label (usually the file name). This:
+   *    - shows a blue "Creating from approved IVR: <label>" banner up top
+   *    - pre-selects Skin Grafts as the order type and bypasses the
+   *      normal Skin-Grafts direct-creation gate
+   *    - after the order is created, calls finalizeIvrConversion() to
+   *      link order_ivr → standalone_ivrs, copy the IVR PDF to
+   *      order_documents, and flip the IVR to 'converted'. */
+  fromStandaloneIvr?: {
+    ivrId: string;
+    label: string | null;
+  };
+}
+
+export function CreateOrderModal(props: CreateOrderModalProps = {}) {
+  const { hideTrigger, fromStandaloneIvr } = props;
   const dispatch = useAppDispatch();
-  const [open, setOpen] = useState(false);
+  const router = useRouter();
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isControlled = props.open !== undefined;
+  const open = isControlled ? !!props.open : internalOpen;
+  const setOpen = (next: boolean) => {
+    if (isControlled) props.onOpenChange?.(next);
+    else setInternalOpen(next);
+  };
   const [woundType, setWoundType] = useState<"chronic" | "post_surgical" | "dfu" | "vlu">(
     "chronic",
   );
@@ -270,7 +303,7 @@ export function CreateOrderModal() {
   // is gated on a non-null choice via `canSubmit` below.
   const [orderType, setOrderType] = useState<
     "skin_grafts" | "dme_collagen" | "surgical_collagen" | "omeza" | null
-  >(null);
+  >(fromStandaloneIvr ? "skin_grafts" : null);
   const [manualInput, setManualInput] = useState(false);
   const [patientFirstName, setPatientFirstName] = useState("");
   const [patientLastName, setPatientLastName] = useState("");
@@ -285,7 +318,10 @@ export function CreateOrderModal() {
 
   function reset() {
     setWoundType("chronic");
-    setOrderType(null);
+    // From-IVR mode always keeps skin_grafts preselected across resets,
+    // since the whole point of the flow is to convert one specific IVR
+    // into a Skin Grafts order.
+    setOrderType(fromStandaloneIvr ? "skin_grafts" : null);
     setManualInput(false);
     setPatientFirstName("");
     setPatientLastName("");
@@ -317,8 +353,10 @@ export function CreateOrderModal() {
   const canSubmit =
     !!orderType &&
     // Skin Grafts orders are blocked from direct creation — go through
-    // the IVR workflow instead.
-    orderType !== "skin_grafts" &&
+    // the IVR workflow instead. When we're already IN the IVR-conversion
+    // flow (fromStandaloneIvr set), the gate is bypassed since the IVR
+    // approval upstream is what satisfies the compliance requirement.
+    (orderType !== "skin_grafts" || !!fromStandaloneIvr) &&
     !!woundType &&
     !!dateOfService &&
     (!docsRequired || (hasFacesheet && hasClinicalDocs && hasValidId)) &&
@@ -481,6 +519,24 @@ export function CreateOrderModal() {
 
       setUploadProgress(null);
 
+      // If we're finishing an IVR conversion, wire the standalone_ivr →
+      // order link now that the order + its uploads exist. Runs AFTER
+      // the user's uploads so the linkage summary comes at the end and
+      // any upload failures don't block the conversion (the IVR PDF and
+      // ivr_mode='uploaded' are what actually matter for compliance).
+      if (fromStandaloneIvr) {
+        const link = await finalizeIvrConversion({
+          ivrId: fromStandaloneIvr.ivrId,
+          orderId,
+        });
+        if (!link.success) {
+          toast.error(
+            `Order created, but linking to the approved IVR failed: ${link.error ?? "unknown error"}. Open the order to attach the IVR manually.`,
+            { duration: Infinity },
+          );
+        }
+      }
+
       // Persistent (Infinity duration) failure summary. Lists every doc
       // that failed and the specific reason, so the user knows exactly
       // what to re-upload from the OrderDetailModal. Success toast only
@@ -512,11 +568,25 @@ export function CreateOrderModal() {
       const fullOrder = await getOrderById(orderId);
       if (fullOrder) {
         dispatch(addOrderToStore(fullOrder));
+      }
+
+      // Routing: if we were on a different page (e.g. /dashboard/ivrs
+      // for the from-IVR conversion flow), navigate to /dashboard/orders
+      // with ?open=<id> — the Orders Kanban listens for that param and
+      // opens the modal, then strips it from the URL so a refresh
+      // doesn't re-open. On /dashboard/orders itself we dispatch the
+      // in-page custom event, which is a bit snappier than a route push.
+      const onOrdersPage =
+        typeof window !== "undefined" &&
+        window.location.pathname === "/dashboard/orders";
+      if (onOrdersPage) {
         window.dispatchEvent(
           new CustomEvent("open-order-modal", {
             detail: { orderId, tab: "overview" },
           }),
         );
+      } else {
+        router.push(`/dashboard/orders?open=${orderId}`);
       }
     });
   }
@@ -529,16 +599,24 @@ export function CreateOrderModal() {
   const patientLastNameError =
     submitted && manualInput && patientLastName.trim().length === 0;
 
+  // Auto-hide the internal trigger button whenever the parent is
+  // controlling `open` — otherwise you'd get a duplicate "New Order"
+  // button in whatever surface embedded us. Explicit hideTrigger can
+  // also force it hidden even in uncontrolled mode.
+  const showTrigger = !hideTrigger && !isControlled;
+
   return (
     <>
-      <Button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="bg-[var(--navy)] hover:bg-[var(--navy)]/80 text-white cursor-pointer rounded-lg shadow-sm"
-      >
-        <Plus className="w-4 h-4 mr-2" />
-        New Order
-      </Button>
+      {showTrigger && (
+        <Button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="bg-[var(--navy)] hover:bg-[var(--navy)]/80 text-white cursor-pointer rounded-lg shadow-sm"
+        >
+          <Plus className="w-4 h-4 mr-2" />
+          New Order
+        </Button>
+      )}
 
       <Dialog open={open} onOpenChange={handleClose}>
         <DialogContent className="w-[calc(100%-2rem)] sm:max-w-lg max-h-[92dvh] overflow-y-auto rounded-2xl border-[var(--border)] shadow-2xl p-0">
@@ -546,10 +624,33 @@ export function CreateOrderModal() {
           <div className="sticky top-0 bg-white z-10 px-6 pt-5 pb-4 border-b border-[var(--border)]">
             <DialogHeader>
               <DialogTitle className="text-lg font-semibold text-[var(--navy)]">
-                Create Order
+                {fromStandaloneIvr
+                  ? "Create Order from Approved IVR"
+                  : "Create Order"}
               </DialogTitle>
             </DialogHeader>
           </div>
+
+          {/* From-IVR banner. Small, unobtrusive hint at the top of the
+              body — everything else in the modal stays identical to the
+              standard flow. The IVR file gets attached as uploaded_ivr
+              via finalizeIvrConversion() after the order is saved. */}
+          {fromStandaloneIvr && (
+            <div className="px-6 pt-4">
+              <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2.5 text-[12.5px] text-green-900 flex items-start gap-2">
+                <FileText className="w-4 h-4 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold">Creating from approved IVR</p>
+                  <p className="text-[11.5px] mt-0.5 leading-snug">
+                    {fromStandaloneIvr.label
+                      ? `${fromStandaloneIvr.label} will be attached to this order automatically.`
+                      : "The approved IVR document will be attached to this order automatically."}{" "}
+                    Order type is pre-set to <b>Skin Grafts</b>.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="px-6 py-5 space-y-6">
             {/* Section 1 — Clinical Info */}
@@ -598,8 +699,11 @@ export function CreateOrderModal() {
                 {/* Skin Grafts gate (Dr. Ben spec 2026-07-02): Skin Grafts
                     orders must originate from an approved IVR — direct
                     creation is blocked here. The user is routed to the
-                    IVR workflow. DME Collagen keeps parallel creation. */}
-                {orderType === "skin_grafts" && (
+                    IVR workflow. When we're already IN the IVR conversion
+                    flow (fromStandaloneIvr), the gate is inverted — this
+                    IS the approved-IVR path, so no warning. DME Collagen
+                    keeps parallel creation. */}
+                {orderType === "skin_grafts" && !fromStandaloneIvr && (
                   <div className="mt-2 rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-[12px] text-amber-900">
                     <p className="font-semibold mb-1">
                       Skin Grafts orders start from an approved IVR

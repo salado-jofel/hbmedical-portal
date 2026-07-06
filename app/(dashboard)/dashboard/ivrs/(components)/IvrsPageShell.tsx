@@ -10,6 +10,7 @@ import { IvrsList } from "./IvrsList";
 import { sendIvrsForApproval, getStandaloneIvrs } from "../(services)/actions";
 import { setIvrs } from "../(redux)/ivrs-slice";
 import type { IExternalApprover } from "@/utils/interfaces/standalone-ivrs";
+import { ConfirmModal } from "@/app/(dashboard)/(components)/ConfirmModal";
 import toast from "react-hot-toast";
 
 interface IvrsPageShellProps {
@@ -39,16 +40,11 @@ export function IvrsPageShell({ facilities, approvers }: IvrsPageShellProps) {
   const noApprovers = approvers.length === 0;
   const noFacilities = facilities.length === 0;
   const uploadDisabled = noApprovers || noFacilities;
+  const [confirmSendAll, setConfirmSendAll] = useState(false);
 
-  function handleSendAll() {
+  function doSendAll() {
     if (draftIds.length === 0) return;
-    if (
-      !window.confirm(
-        `Send ${draftIds.length} draft IVR${draftIds.length !== 1 ? "s" : ""} to their assigned approver${draftIds.length !== 1 ? "s" : ""}? Each approver receives one summary email listing all IVRs assigned to them.`,
-      )
-    ) {
-      return;
-    }
+    setConfirmSendAll(false);
     startSendTransition(async () => {
       const res = await sendIvrsForApproval(draftIds);
       if (!res.success) {
@@ -56,7 +52,6 @@ export function IvrsPageShell({ facilities, approvers }: IvrsPageShellProps) {
         return;
       }
       toast.success(`Sent ${res.sent ?? draftIds.length} IVR${(res.sent ?? draftIds.length) !== 1 ? "s" : ""} for approval.`);
-      // Refresh the list so the newly-sent rows update their status.
       const fresh = await getStandaloneIvrs();
       dispatch(setIvrs(fresh));
     });
@@ -73,7 +68,7 @@ export function IvrsPageShell({ facilities, approvers }: IvrsPageShellProps) {
               <Button
                 variant="outline"
                 className="gap-2"
-                onClick={handleSendAll}
+                onClick={() => setConfirmSendAll(true)}
                 disabled={sendPending}
               >
                 {sendPending ? (
@@ -144,6 +139,20 @@ export function IvrsPageShell({ facilities, approvers }: IvrsPageShellProps) {
         onOpenChange={setUploadOpen}
         facilities={facilities}
         approvers={approvers}
+      />
+      <ConfirmModal
+        open={confirmSendAll}
+        onOpenChange={setConfirmSendAll}
+        title={`Send ${draftIds.length} draft IVR${draftIds.length !== 1 ? "s" : ""} for approval?`}
+        body={
+          <>
+            Each assigned approver will receive <span className="font-semibold">one summary email</span> listing every IVR assigned to
+            them. Once sent, IVRs can't be edited until the approver responds.
+          </>
+        }
+        confirmLabel={`Send ${draftIds.length}`}
+        pending={sendPending}
+        onConfirm={doSendAll}
       />
     </div>
   );

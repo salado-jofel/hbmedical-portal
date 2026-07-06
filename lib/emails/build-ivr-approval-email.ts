@@ -9,10 +9,15 @@
  */
 
 interface IvrLineItem {
-  patientName: string;
-  patientDob: string;
-  physicianName: string;
-  productSummary: string;
+  // Patient / physician / product metadata is stored inside the PDF
+  // itself and is optional at the DB level (nullable columns since the
+  // 2026-07-07 simplification). The email uses fileName as the reliable
+  // display label when the metadata is absent.
+  patientName: string | null;
+  patientDob: string | null;
+  physicianName: string | null;
+  productSummary: string | null;
+  fileName: string | null;
   reviewUrl: string;
 }
 
@@ -31,33 +36,54 @@ export function buildIvrApprovalEmail(params: Params): {
 } {
   const { approverName, senderOrgName, ivrs, expiresLabel } = params;
   const count = ivrs.length;
+
+  // Prefer the patient name when it's been captured, else the file name,
+  // else a generic label. Both the subject and the per-row heading use
+  // this helper so the email never renders "null" or "undefined".
+  function primaryLabel(i: IvrLineItem, idx: number): string {
+    if (i.patientName && i.patientName.trim()) return i.patientName;
+    if (i.fileName && i.fileName.trim()) return i.fileName;
+    return `IVR ${idx + 1}`;
+  }
+
   const subject =
     count === 1
-      ? `IVR ready for your review — ${ivrs[0].patientName}`
+      ? `IVR ready for your review — ${primaryLabel(ivrs[0], 0)}`
       : `${count} IVRs ready for your review`;
+
+  // Metadata rows (physician / DOB / products) only render when we
+  // actually have a value — otherwise we show the file name as the
+  // "see the attached PDF" hint. Keeps the email honest instead of
+  // shouting "Physician: (blank)".
+  function optionalRow(label: string, value: string | null): string {
+    if (!value || !value.trim()) return "";
+    return `
+        <div style="font-size:13px;color:#374151;margin-top:4px;">
+          <span style="color:#6b7280;">${label}:</span> ${escapeHtml(value)}
+        </div>`;
+  }
 
   const rows = ivrs
     .map((i, idx) => {
       const num = idx + 1;
+      const heading = primaryLabel(i, idx);
+      const dobLine = i.patientDob
+        ? ` <span style="color:#6b7280;font-weight:400;font-size:13px;">· DOB ${escapeHtml(i.patientDob)}</span>`
+        : "";
+      const fileHint =
+        i.fileName && i.fileName !== heading
+          ? `<div style="font-size:12px;color:#6b7280;margin-top:2px;">Attachment: ${escapeHtml(i.fileName)}</div>`
+          : "";
       return `
       <tr>
         <td style="padding:16px;border-top:1px solid #eee;">
           <div style="font-size:12px;color:#6b7280;">IVR ${num} of ${count}</div>
           <div style="font-size:15px;font-weight:600;color:#111827;margin-top:2px;">${escapeHtml(
-            i.patientName,
-          )} <span style="color:#6b7280;font-weight:400;font-size:13px;">· DOB ${escapeHtml(
-            i.patientDob,
-          )}</span></div>
-          <div style="font-size:13px;color:#374151;margin-top:4px;">
-            <span style="color:#6b7280;">Physician:</span> ${escapeHtml(
-              i.physicianName,
-            )}
-          </div>
-          <div style="font-size:13px;color:#374151;margin-top:4px;">
-            <span style="color:#6b7280;">Products:</span> ${escapeHtml(
-              i.productSummary,
-            )}
-          </div>
+            heading,
+          )}${dobLine}</div>
+          ${fileHint}
+          ${optionalRow("Physician", i.physicianName)}
+          ${optionalRow("Products", i.productSummary)}
           <div style="margin-top:12px;">
             <a href="${i.reviewUrl}"
                style="display:inline-block;padding:9px 18px;background:#0f2d4a;color:#fff;text-decoration:none;border-radius:6px;font-size:13px;font-weight:500;">
@@ -70,14 +96,18 @@ export function buildIvrApprovalEmail(params: Params): {
     .join("");
 
   const textRows = ivrs
-    .map(
-      (i, idx) =>
-        `IVR ${idx + 1} of ${count} — ${i.patientName} (DOB ${i.patientDob})\n` +
-        `Physician: ${i.physicianName}\n` +
-        `Products: ${i.productSummary}\n` +
-        `Review: ${i.reviewUrl}\n`,
-    )
-    .join("\n");
+    .map((i, idx) => {
+      const heading = primaryLabel(i, idx);
+      const parts: string[] = [`IVR ${idx + 1} of ${count} — ${heading}`];
+      if (i.patientDob) parts.push(`DOB: ${i.patientDob}`);
+      if (i.fileName && i.fileName !== heading)
+        parts.push(`Attachment: ${i.fileName}`);
+      if (i.physicianName) parts.push(`Physician: ${i.physicianName}`);
+      if (i.productSummary) parts.push(`Products: ${i.productSummary}`);
+      parts.push(`Review: ${i.reviewUrl}`);
+      return parts.join("\n");
+    })
+    .join("\n\n");
 
   const html = `<!doctype html>
 <html>
@@ -208,8 +238,9 @@ Open: ${ivrUrl}`;
   return { subject, html, text };
 }
 
-function escapeHtml(s: string): string {
-  return s
+function escapeHtml(s: string | null | undefined): string {
+  if (s == null) return "";
+  return String(s)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
