@@ -57,9 +57,9 @@ function mapIvr(row: Record<string, unknown>): IStandaloneIvr {
   return {
     id: row.id as string,
     status: row.status as IStandaloneIvr["status"],
-    patientName: row.patient_name as string,
-    patientDob: row.patient_dob as string,
-    physicianName: row.physician_name as string,
+    patientName: (row.patient_name as string | null) ?? null,
+    patientDob: (row.patient_dob as string | null) ?? null,
+    physicianName: (row.physician_name as string | null) ?? null,
     physicianNpi: (row.physician_npi as string | null) ?? null,
     facilityId: row.facility_id as string,
     productSummary: row.product_summary as string,
@@ -334,12 +334,17 @@ export async function prepareIvrFileUpload(input: {
 /* -------------------------------------------------------------------------- */
 
 interface CreateIvrInput {
-  patientName: string;
-  patientDob: string;
-  physicianName: string;
+  // Patient / physician / product metadata is now optional — all of it
+  // lives inside the uploaded IVR PDF (Dr. Ben feedback 2026-07-07).
+  // Kept in the interface as nullable so callers that used to pass real
+  // values still compile; upgrade calls to pass null unless there's a
+  // specific reason to keep it.
+  patientName?: string | null;
+  patientDob?: string | null;
+  physicianName?: string | null;
   physicianNpi?: string | null;
   facilityId: string;
-  productSummary: string;
+  productSummary?: string | null;
   assignedApproverId: string;
   files: Array<{
     filePath: string;
@@ -376,19 +381,13 @@ export async function createStandaloneIvr(
     const user = await getCurrentUserOrThrow(supabase);
     const adminClient = createAdminClient();
 
-    // Basic validation — required per Dr. Ben's answer to Q2.
-    const required = {
-      patientName: input.patientName?.trim(),
-      patientDob: input.patientDob?.trim(),
-      physicianName: input.physicianName?.trim(),
-      facilityId: input.facilityId,
-      productSummary: input.productSummary?.trim(),
-      assignedApproverId: input.assignedApproverId,
-    };
-    for (const [k, v] of Object.entries(required)) {
-      if (!v) {
-        return { success: false, error: `${k} is required.` };
-      }
+    // Only facility + approver + at least one file are required now —
+    // patient/physician/product metadata is inside the PDF.
+    if (!input.facilityId) {
+      return { success: false, error: "Facility is required." };
+    }
+    if (!input.assignedApproverId) {
+      return { success: false, error: "Assigned approver is required." };
     }
     if (!Array.isArray(input.files) || input.files.length === 0) {
       return { success: false, error: "At least one file is required." };
@@ -412,13 +411,13 @@ export async function createStandaloneIvr(
       .from("standalone_ivrs")
       .insert({
         status: "draft",
-        patient_name: required.patientName,
-        patient_dob: required.patientDob,
-        physician_name: required.physicianName,
+        patient_name: input.patientName?.trim() || null,
+        patient_dob: input.patientDob?.trim() || null,
+        physician_name: input.physicianName?.trim() || null,
         physician_npi: input.physicianNpi?.trim() || null,
-        facility_id: required.facilityId,
-        product_summary: required.productSummary,
-        assigned_approver_id: required.assignedApproverId,
+        facility_id: input.facilityId,
+        product_summary: input.productSummary?.trim() || null,
+        assigned_approver_id: input.assignedApproverId,
         uploaded_by: user.id,
       })
       .select(IVR_SELECT)

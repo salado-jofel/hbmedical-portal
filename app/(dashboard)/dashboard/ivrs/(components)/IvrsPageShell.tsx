@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { Upload, Send, Loader2 } from "lucide-react";
+import { Upload, Send, Loader2, AlertCircle } from "lucide-react";
 import { PageHeader } from "@/app/(components)/PageHeader";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { UploadIvrsModal } from "./UploadIvrsModal";
@@ -31,6 +31,14 @@ export function IvrsPageShell({ facilities, approvers }: IvrsPageShellProps) {
     () => ivrs.filter((i) => i.status === "draft").map((i) => i.id),
     [ivrs],
   );
+
+  // Surface WHY the upload button is disabled so users don't have to
+  // hover to figure it out. Two disable reasons — no approvers in the
+  // directory (admin needs to add some) or the caller has no facility
+  // to attach IVRs to.
+  const noApprovers = approvers.length === 0;
+  const noFacilities = facilities.length === 0;
+  const uploadDisabled = noApprovers || noFacilities;
 
   function handleSendAll() {
     if (draftIds.length === 0) return;
@@ -79,11 +87,11 @@ export function IvrsPageShell({ facilities, approvers }: IvrsPageShellProps) {
             <Button
               className="gap-2"
               onClick={() => setUploadOpen(true)}
-              disabled={approvers.length === 0 || facilities.length === 0}
+              disabled={uploadDisabled}
               title={
-                approvers.length === 0
+                noApprovers
                   ? "Ask an admin to add an external approver first."
-                  : facilities.length === 0
+                  : noFacilities
                     ? "You don't have any facilities to upload IVRs for."
                     : undefined
               }
@@ -94,6 +102,42 @@ export function IvrsPageShell({ facilities, approvers }: IvrsPageShellProps) {
           </div>
         }
       />
+
+      {/* Inline callout explaining why Upload IVRs is disabled — otherwise
+          the greyed button reads as a bug. Shown once, above the list. */}
+      {uploadDisabled && (
+        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex items-start gap-2 text-[12.5px] text-amber-900">
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-semibold">
+              {noApprovers
+                ? "No external approvers set up yet"
+                : "No facilities available for you"}
+            </p>
+            <p className="text-[12px] mt-0.5 leading-snug">
+              {noApprovers ? (
+                <>
+                  Uploading IVRs requires at least one external approver in
+                  the directory. Ask an admin to add one at{" "}
+                  <a
+                    href="/dashboard/approvers"
+                    className="underline font-medium hover:text-amber-800"
+                  >
+                    External Approvers
+                  </a>
+                  , then this page will unlock.
+                </>
+              ) : (
+                <>
+                  You need to be a member of at least one facility to upload
+                  IVRs. Ask an admin to add you to a clinic on their side.
+                </>
+              )}
+            </p>
+          </div>
+        </div>
+      )}
+
       <IvrsList facilities={facilities} approvers={approvers} />
       <UploadIvrsModal
         open={uploadOpen}

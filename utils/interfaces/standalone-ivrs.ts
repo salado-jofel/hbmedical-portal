@@ -21,13 +21,16 @@ export interface IStandaloneIvr {
   id: string;
   status: StandaloneIvrStatus;
 
-  // Required metadata captured at upload time
-  patientName: string;
-  patientDob: string; // ISO date YYYY-MM-DD
-  physicianName: string;
+  // Metadata is OPTIONAL — all of this info is inside the uploaded PDF
+  // (Dr. Ben feedback 2026-07-07). The DB columns were made nullable in
+  // migration 20260707000000_standalone_ivrs_metadata_optional.sql.
+  // Only facility_id stays required (RLS keys off it).
+  patientName: string | null;
+  patientDob: string | null; // ISO date YYYY-MM-DD
+  physicianName: string | null;
   physicianNpi: string | null;
   facilityId: string;
-  productSummary: string;
+  productSummary: string | null;
 
   // Approval routing
   assignedApproverId: string | null;

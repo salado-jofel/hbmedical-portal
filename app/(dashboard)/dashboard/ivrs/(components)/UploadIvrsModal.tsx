@@ -1,15 +1,14 @@
 "use client";
 
-import { useState, useTransition, useMemo } from "react";
+import { useRef, useState, useTransition } from "react";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Upload, X, Loader2, FileText, Plus } from "lucide-react";
+import { Upload, X, Loader2, FileText, Plus, AlertCircle } from "lucide-react";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { useAppDispatch } from "@/store/hooks";
 import { addIvrToStore } from "../(redux)/ivrs-slice";
@@ -31,12 +30,6 @@ interface UploadIvrsModalProps {
 interface DraftRow {
   key: string;
   file: File;
-  patientName: string;
-  patientDob: string;
-  physicianName: string;
-  physicianNpi: string;
-  facilityId: string;
-  productSummary: string;
   assignedApproverId: string;
   uploading: boolean;
   error: string | null;
@@ -45,11 +38,15 @@ interface DraftRow {
 const MAX_MB = 25;
 
 /**
- * Bulk IVR upload modal. Each dropped file becomes ONE draft IVR row
- * with its own metadata form. Uploader can mix multiple approvers per
- * batch. On submit each row is uploaded to Storage and its metadata
- * committed via createStandaloneIvr; per-row failures are surfaced but
- * don't abort the batch.
+ * Bulk IVR upload modal — simplified per Dr. Ben feedback (2026-07-07):
+ *   - Patient/physician/DOB/product info lives INSIDE the uploaded PDF;
+ *     the portal doesn't ask for it. The approver reads the PDF to review.
+ *   - Facility is derived from the caller's facility membership (single
+ *     facility → auto; multiple → one shared picker at the top).
+ *   - Products are added later, at order-creation time, not at IVR upload.
+ *
+ * Net effect: each dropped file only needs ONE choice — which external
+ * approver receives it.
  */
 export function UploadIvrsModal({
   open,
@@ -60,22 +57,21 @@ export function UploadIvrsModal({
   const dispatch = useAppDispatch();
   const [rows, setRows] = useState<DraftRow[]>([]);
   const [pending, startTransition] = useTransition();
+  const [dragActive, setDragActive] = useState(false);
+  const dragDepth = useRef(0);
 
-  // Preselect the first facility if the user only has one — friction saver.
-  const defaultFacilityId = facilities.length === 1 ? facilities[0].id : "";
+  // If the user belongs to exactly one facility, lock it in silently. If
+  // they cover multiple (typically reps), let them pick once for the whole
+  // batch — the choice applies to every file dropped.
+  const [selectedFacilityId, setSelectedFacilityId] = useState<string>(
+    facilities.length === 1 ? facilities[0].id : "",
+  );
+  const facilityLocked = facilities.length === 1;
+  const facilityName = facilities.find((f) => f.id === selectedFacilityId)?.name;
+
+  // Default approver: if there's only one, preselect it — most users
+  // will just drop files and click Upload.
   const defaultApproverId = approvers.length === 1 ? approvers[0].id : "";
-
-  const anyIncomplete = useMemo(() => {
-    return rows.some(
-      (r) =>
-        !r.patientName.trim() ||
-        !r.patientDob ||
-        !r.physicianName.trim() ||
-        !r.facilityId ||
-        !r.productSummary.trim() ||
-        !r.assignedApproverId,
-    );
-  }, [rows]);
 
   function addFiles(fileList: FileList | null) {
     if (!fileList || fileList.length === 0) return;
@@ -89,12 +85,6 @@ export function UploadIvrsModal({
       additions.push({
         key: `${file.name}-${file.size}-${Math.random().toString(36).slice(2, 6)}`,
         file,
-        patientName: "",
-        patientDob: "",
-        physicianName: "",
-        physicianNpi: "",
-        facilityId: defaultFacilityId,
-        productSummary: "",
         assignedApproverId: defaultApproverId,
         uploading: false,
         error: null,
@@ -113,6 +103,7 @@ export function UploadIvrsModal({
 
   function reset() {
     setRows([]);
+    if (!facilityLocked) setSelectedFacilityId("");
   }
 
   function handleClose(next: boolean) {
@@ -121,10 +112,51 @@ export function UploadIvrsModal({
     onOpenChange(next);
   }
 
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (pending) return;
+    e.dataTransfer.dropEffect = "copy";
+  }
+  function handleDragEnter(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (pending) return;
+    dragDepth.current += 1;
+    setDragActive(true);
+  }
+  function handleDragLeave(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (pending) return;
+    dragDepth.current -= 1;
+    if (dragDepth.current <= 0) {
+      dragDepth.current = 0;
+      setDragActive(false);
+    }
+  }
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    dragDepth.current = 0;
+    setDragActive(false);
+    if (pending) return;
+    addFiles(e.dataTransfer.files);
+  }
+
+  const missingFacility = !selectedFacilityId;
+  const missingApprover = rows.some((r) => !r.assignedApproverId);
+  const disableSubmit =
+    rows.length === 0 || pending || missingFacility || missingApprover;
+
   function handleSubmit() {
     if (rows.length === 0) return;
-    if (anyIncomplete) {
-      toast.error("Fill in every field on every row before uploading.");
+    if (missingFacility) {
+      toast.error("Please pick which facility these IVRs belong to.");
+      return;
+    }
+    if (missingApprover) {
+      toast.error("Every file needs an assigned approver.");
       return;
     }
     startTransition(async () => {
@@ -135,7 +167,6 @@ export function UploadIvrsModal({
       for (const row of rows) {
         updateRow(row.key, { uploading: true, error: null });
 
-        // 1. Sign a one-time upload URL.
         const prep = await prepareIvrFileUpload({
           fileName: row.file.name,
           mimeType: row.file.type || "application/octet-stream",
@@ -147,7 +178,6 @@ export function UploadIvrsModal({
           continue;
         }
 
-        // 2. Upload the bytes direct to Storage.
         const { error: uploadErr } = await supabase.storage
           .from(prep.bucket)
           .uploadToSignedUrl(prep.filePath, prep.uploadToken, row.file, {
@@ -160,14 +190,15 @@ export function UploadIvrsModal({
           continue;
         }
 
-        // 3. Create the IVR row + register the file.
         const res = await createStandaloneIvr({
-          patientName: row.patientName,
-          patientDob: row.patientDob,
-          physicianName: row.physicianName,
-          physicianNpi: row.physicianNpi || null,
-          facilityId: row.facilityId,
-          productSummary: row.productSummary,
+          // Patient/physician/product info is inside the PDF; pass nulls
+          // and let the DB store them (now nullable per migration).
+          patientName: null,
+          patientDob: null,
+          physicianName: null,
+          physicianNpi: null,
+          facilityId: selectedFacilityId,
+          productSummary: null,
           assignedApproverId: row.assignedApproverId,
           files: [
             {
@@ -187,16 +218,20 @@ export function UploadIvrsModal({
         created.push(row);
       }
 
-      // Drop successfully-created rows from the modal, keep failures so
-      // the user can retry.
       setRows((prev) => prev.filter((r) => !created.includes(r)));
 
       if (failures.length > 0 && created.length === 0) {
-        toast.error(`${failures.length} upload${failures.length !== 1 ? "s" : ""} failed. See row errors.`);
+        toast.error(
+          `${failures.length} upload${failures.length !== 1 ? "s" : ""} failed. See row errors.`,
+        );
       } else if (failures.length > 0) {
-        toast.success(`${created.length} uploaded · ${failures.length} failed. Fix and retry.`);
+        toast.success(
+          `${created.length} uploaded · ${failures.length} failed. Fix and retry.`,
+        );
       } else {
-        toast.success(`${created.length} IVR${created.length !== 1 ? "s" : ""} uploaded.`);
+        toast.success(
+          `${created.length} IVR${created.length !== 1 ? "s" : ""} uploaded.`,
+        );
         onOpenChange(false);
       }
     });
@@ -204,7 +239,7 @@ export function UploadIvrsModal({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-4xl p-0 overflow-hidden">
+      <DialogContent className="max-w-2xl p-0 overflow-hidden">
         <DialogHeader className="px-5 pt-5 pb-3 border-b border-[#eee]">
           <DialogTitle className="text-[15px] font-semibold">
             Upload IVRs
@@ -212,13 +247,60 @@ export function UploadIvrsModal({
         </DialogHeader>
 
         <div className="px-5 py-4 space-y-4 max-h-[70vh] overflow-y-auto">
+          {/* Facility banner / picker. Shows above the drop zone so it's
+              set for the whole batch before any files are dropped. */}
+          {facilityLocked ? (
+            <div className="rounded-md bg-slate-50 border border-slate-200 px-3 py-2 text-[12px] text-slate-700">
+              Uploading to{" "}
+              <span className="font-semibold">{facilityName}</span>. All IVRs
+              in this batch will be attached to this facility.
+            </div>
+          ) : (
+            <div>
+              <label className="text-[11px] font-semibold text-[#374151] block mb-1">
+                Facility <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={selectedFacilityId}
+                onChange={(e) => setSelectedFacilityId(e.target.value)}
+                disabled={pending}
+                className="w-full h-9 text-[13px] px-2 border border-[#e5e7eb] rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-[var(--navy)] focus:border-transparent"
+              >
+                <option value="">— Select facility for this batch —</option>
+                {facilities.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-[var(--text3)] mt-1">
+                Applies to every file in this batch.
+              </p>
+            </div>
+          )}
+
+          {/* Info notice — one line explaining what the portal DOES NOT need. */}
+          <div className="rounded-md bg-blue-50 border border-blue-200 px-3 py-2 text-[12px] text-blue-900 flex items-start gap-2">
+            <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+            <p>
+              Patient, physician, and product info stay in the PDF — no need to
+              re-type them here. Just pick an approver for each file.
+            </p>
+          </div>
+
           {/* Drop zone */}
           <label
+            onDragEnter={handleDragEnter}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
             className={cn(
               "block border-2 border-dashed rounded-xl px-6 py-6 text-center transition-colors cursor-pointer bg-white",
               pending
                 ? "border-[var(--border)] opacity-60 cursor-not-allowed"
-                : "border-[var(--border)] hover:border-[var(--navy)]",
+                : dragActive
+                  ? "border-[var(--navy)] bg-blue-50/60"
+                  : "border-[var(--border)] hover:border-[var(--navy)]",
             )}
           >
             <input
@@ -232,120 +314,76 @@ export function UploadIvrsModal({
                 e.target.value = "";
               }}
             />
-            <Upload className="w-6 h-6 mx-auto mb-2 text-[var(--navy)]" />
-            <p className="text-[13px] font-medium">
-              Drop IVR files here, or click to browse
-            </p>
-            <p className="text-[11px] text-[var(--text3)] mt-1">
-              PDF, DOC, DOCX, JPG, PNG, HEIC · max {MAX_MB} MB each · one file
-              per IVR
-            </p>
+            <div className="pointer-events-none">
+              <Upload className="w-6 h-6 mx-auto mb-2 text-[var(--navy)]" />
+              <p className="text-[13px] font-medium">
+                {dragActive
+                  ? "Drop to add"
+                  : "Drop IVR files here, or click to browse"}
+              </p>
+              <p className="text-[11px] text-[var(--text3)] mt-1">
+                PDF, DOC, DOCX, JPG, PNG, HEIC · max {MAX_MB} MB each · one file
+                per IVR
+              </p>
+            </div>
           </label>
 
-          {/* Draft rows */}
+          {/* Draft rows — one per file, only asking for the approver. */}
           {rows.length > 0 && (
-            <div className="space-y-3">
+            <div className="space-y-2">
               {rows.map((row, idx) => (
                 <div
                   key={row.key}
                   className={cn(
-                    "rounded-lg border border-[var(--border)] p-3 bg-white space-y-3",
+                    "rounded-lg border border-[var(--border)] p-3 bg-white",
                     row.error && "border-red-300 bg-red-50/40",
                   )}
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <FileText className="w-4 h-4 shrink-0 text-[var(--navy)]" />
-                      <p className="text-[13px] font-medium truncate">
-                        IVR {idx + 1} · {row.file.name}
-                      </p>
-                      {row.uploading && (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--text3)]" />
-                      )}
-                    </div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <FileText className="w-4 h-4 shrink-0 text-[var(--navy)]" />
+                    <p className="text-[12.5px] font-medium truncate flex-1 min-w-0">
+                      IVR {idx + 1} · {row.file.name}
+                    </p>
+                    {row.uploading && (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--text3)] shrink-0" />
+                    )}
                     <button
                       type="button"
                       onClick={() => removeRow(row.key)}
                       disabled={row.uploading || pending}
-                      className="p-1 rounded hover:bg-[var(--bg)] text-[var(--text3)]"
+                      className="p-1 rounded hover:bg-[var(--bg)] text-[var(--text3)] shrink-0"
                     >
                       <X className="w-4 h-4" />
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <FormField
-                      label="Patient Name"
-                      required
-                      value={row.patientName}
-                      onChange={(v) => updateRow(row.key, { patientName: v })}
-                      disabled={row.uploading || pending}
-                    />
-                    <FormField
-                      label="Patient DOB"
-                      required
-                      type="date"
-                      value={row.patientDob}
-                      onChange={(v) => updateRow(row.key, { patientDob: v })}
-                      disabled={row.uploading || pending}
-                    />
-                    <FormField
-                      label="Physician Name"
-                      required
-                      value={row.physicianName}
-                      onChange={(v) => updateRow(row.key, { physicianName: v })}
-                      disabled={row.uploading || pending}
-                    />
-                    <FormField
-                      label="Physician NPI"
-                      value={row.physicianNpi}
-                      onChange={(v) => updateRow(row.key, { physicianNpi: v })}
-                      disabled={row.uploading || pending}
-                      placeholder="Optional"
-                    />
-                    <SelectField
-                      label="Facility"
-                      required
-                      value={row.facilityId}
-                      onChange={(v) => updateRow(row.key, { facilityId: v })}
-                      disabled={row.uploading || pending}
-                      options={facilities.map((f) => ({
-                        value: f.id,
-                        label: f.name,
-                      }))}
-                    />
-                    <SelectField
-                      label="Assigned Approver"
-                      required
+                  <div>
+                    <label className="text-[11px] font-semibold text-[#374151] block mb-1">
+                      Assigned Approver{" "}
+                      <span className="text-red-500">*</span>
+                    </label>
+                    <select
                       value={row.assignedApproverId}
-                      onChange={(v) =>
-                        updateRow(row.key, { assignedApproverId: v })
+                      onChange={(e) =>
+                        updateRow(row.key, { assignedApproverId: e.target.value })
                       }
                       disabled={row.uploading || pending}
-                      options={approvers.map((a) => ({
-                        value: a.id,
-                        label: `${a.name} — ${a.email}`,
-                      }))}
-                    />
-                    <div className="col-span-2">
-                      <label className="text-[11px] font-medium text-[#374151] block mb-1">
-                        Products <span className="text-red-500">*</span>
-                      </label>
-                      <textarea
-                        value={row.productSummary}
-                        onChange={(e) =>
-                          updateRow(row.key, { productSummary: e.target.value })
-                        }
-                        disabled={row.uploading || pending}
-                        rows={2}
-                        className="w-full text-[12px] px-2 py-1.5 border border-[#e5e7eb] rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--navy)] focus:border-transparent disabled:opacity-60"
-                        placeholder="e.g. Carefirst 4x4 × 2, Resolve Matrix 2x2 × 1"
-                      />
-                    </div>
+                      // w-full + min-w-0 in a flex context stop the parent
+                      // from squeezing the select — was the cause of the
+                      // "Jofel Salado — salado..." truncation.
+                      className="block w-full h-9 text-[13px] px-2 border border-[#e5e7eb] rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-[var(--navy)] focus:border-transparent disabled:opacity-60"
+                    >
+                      <option value="">— Select approver —</option>
+                      {approvers.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name} · {a.email}
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
                   {row.error && (
-                    <p className="text-[11px] text-red-700 font-medium">
+                    <p className="text-[11px] text-red-700 font-medium mt-2">
                       {row.error}
                     </p>
                   )}
@@ -390,7 +428,7 @@ export function UploadIvrsModal({
           <Button
             type="button"
             onClick={handleSubmit}
-            disabled={pending || rows.length === 0}
+            disabled={disableSubmit}
             className="gap-2"
           >
             {pending && <Loader2 className="w-4 h-4 animate-spin" />}
@@ -399,76 +437,5 @@ export function UploadIvrsModal({
         </div>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function FormField({
-  label,
-  required,
-  type = "text",
-  value,
-  onChange,
-  disabled,
-  placeholder,
-}: {
-  label: string;
-  required?: boolean;
-  type?: string;
-  value: string;
-  onChange: (v: string) => void;
-  disabled?: boolean;
-  placeholder?: string;
-}) {
-  return (
-    <div>
-      <label className="text-[11px] font-medium text-[#374151] block mb-1">
-        {label} {required && <span className="text-red-500">*</span>}
-      </label>
-      <Input
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        disabled={disabled}
-        placeholder={placeholder}
-        className="h-8 text-[12px]"
-      />
-    </div>
-  );
-}
-
-function SelectField({
-  label,
-  required,
-  value,
-  onChange,
-  disabled,
-  options,
-}: {
-  label: string;
-  required?: boolean;
-  value: string;
-  onChange: (v: string) => void;
-  disabled?: boolean;
-  options: Array<{ value: string; label: string }>;
-}) {
-  return (
-    <div>
-      <label className="text-[11px] font-medium text-[#374151] block mb-1">
-        {label} {required && <span className="text-red-500">*</span>}
-      </label>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        disabled={disabled}
-        className="w-full h-8 text-[12px] px-2 border border-[#e5e7eb] rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-[var(--navy)] focus:border-transparent disabled:opacity-60"
-      >
-        <option value="">— Select —</option>
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-    </div>
   );
 }

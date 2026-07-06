@@ -119,12 +119,14 @@ export function IvrDetailModal({
         setIvr(fresh);
         if (fresh) {
           setDraft({
-            patientName: fresh.patientName,
-            patientDob: fresh.patientDob,
-            physicianName: fresh.physicianName,
+            // Metadata fields are now optional in the DB (info lives in
+            // the PDF). Coalesce nulls to empty strings for the form inputs.
+            patientName: fresh.patientName ?? "",
+            patientDob: fresh.patientDob ?? "",
+            physicianName: fresh.physicianName ?? "",
             physicianNpi: fresh.physicianNpi ?? "",
             facilityId: fresh.facilityId,
-            productSummary: fresh.productSummary,
+            productSummary: fresh.productSummary ?? "",
             assignedApproverId: fresh.assignedApproverId ?? "",
           });
           // Sign URLs for inline preview.
@@ -362,12 +364,12 @@ export function IvrDetailModal({
                         onClick={() => {
                           setEditing(false);
                           setDraft({
-                            patientName: ivr.patientName,
-                            patientDob: ivr.patientDob,
-                            physicianName: ivr.physicianName,
+                            patientName: ivr.patientName ?? "",
+                            patientDob: ivr.patientDob ?? "",
+                            physicianName: ivr.physicianName ?? "",
                             physicianNpi: ivr.physicianNpi ?? "",
                             facilityId: ivr.facilityId,
-                            productSummary: ivr.productSummary,
+                            productSummary: ivr.productSummary ?? "",
                             assignedApproverId: ivr.assignedApproverId ?? "",
                           });
                         }}
@@ -451,17 +453,32 @@ export function IvrDetailModal({
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-[13px]">
-                    <ReadRow label="Patient" value={`${ivr.patientName} · DOB ${ivr.patientDob}`} />
+                    {/* Patient / physician / products are nullable now —
+                        info lives in the PDF. Show "See attached PDF"
+                        as a fallback so the row doesn't render as "null
+                        · DOB null". */}
+                    <ReadRow
+                      label="Patient"
+                      value={
+                        ivr.patientName
+                          ? `${ivr.patientName}${ivr.patientDob ? ` · DOB ${ivr.patientDob}` : ""}`
+                          : "See attached PDF"
+                      }
+                    />
                     <ReadRow
                       label="Physician"
-                      value={`${ivr.physicianName}${ivr.physicianNpi ? ` · NPI ${ivr.physicianNpi}` : ""}`}
+                      value={
+                        ivr.physicianName
+                          ? `${ivr.physicianName}${ivr.physicianNpi ? ` · NPI ${ivr.physicianNpi}` : ""}`
+                          : "See attached PDF"
+                      }
                     />
                     <ReadRow label="Facility" value={facilityName} />
                     <ReadRow label="Approver" value={approverLabel} />
                     <ReadRow
                       className="col-span-2"
                       label="Products"
-                      value={ivr.productSummary}
+                      value={ivr.productSummary ?? "Added at order creation"}
                     />
                   </div>
                 )}

@@ -41,10 +41,12 @@ export function IvrsList({ facilities, approvers }: IvrsListProps) {
       if (approverFilter !== "all" && i.assignedApproverId !== approverFilter)
         return false;
       if (!q) return true;
+      // Patient/physician/product are now optional (info lives in the
+      // PDF), so guard each field with ?? "" before lowercasing.
       return (
-        i.patientName.toLowerCase().includes(q) ||
-        i.physicianName.toLowerCase().includes(q) ||
-        i.productSummary.toLowerCase().includes(q) ||
+        (i.patientName ?? "").toLowerCase().includes(q) ||
+        (i.physicianName ?? "").toLowerCase().includes(q) ||
+        (i.productSummary ?? "").toLowerCase().includes(q) ||
         (i.facilityName ?? "").toLowerCase().includes(q) ||
         (i.approver?.name ?? "").toLowerCase().includes(q)
       );
@@ -122,50 +124,59 @@ export function IvrsList({ facilities, approvers }: IvrsListProps) {
         <table className="w-full text-[13px]">
           <thead className="bg-[var(--bg)] text-[10px] font-semibold uppercase tracking-wide text-[var(--text3)]">
             <tr>
-              <th className="text-left px-4 py-2.5">Patient</th>
-              <th className="text-left px-4 py-2.5">Physician</th>
+              <th className="text-left px-4 py-2.5">IVR</th>
               <th className="text-left px-4 py-2.5">Facility</th>
-              <th className="text-left px-4 py-2.5">Products</th>
               <th className="text-left px-4 py-2.5">Status</th>
               <th className="text-left px-4 py-2.5">Approver</th>
               <th className="text-left px-4 py-2.5">Uploaded</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--border)]">
-            {filteredIvrs.map((i) => (
-              <tr
-                key={i.id}
-                onClick={() => setOpenIvrId(i.id)}
-                className="hover:bg-[var(--bg)] cursor-pointer transition-colors"
-              >
-                <td className="px-4 py-2.5">
-                  <div className="font-medium">{i.patientName}</div>
-                  <div className="text-[11px] text-[var(--text3)]">
-                    DOB {i.patientDob}
-                  </div>
-                </td>
-                <td className="px-4 py-2.5">{i.physicianName}</td>
-                <td className="px-4 py-2.5">{i.facilityName ?? "—"}</td>
-                <td className="px-4 py-2.5 max-w-xs truncate">
-                  {i.productSummary}
-                </td>
-                <td className="px-4 py-2.5">
-                  <span
-                    className={cn(
-                      "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border",
-                      STATUS_STYLES[i.status] ??
-                        "bg-gray-100 text-gray-700 border-gray-200",
+            {filteredIvrs.map((i) => {
+              // Patient / physician are optional now — all of that info
+              // is inside the uploaded PDF. Prefer the patient name if
+              // it's been captured (e.g. from a converted IVR), else
+              // fall back to a friendly placeholder.
+              const primary =
+                i.patientName?.trim() ||
+                (i.files?.[0]?.fileName as string | undefined) ||
+                "IVR document";
+              const secondary =
+                i.physicianName?.trim() ||
+                (i.patientDob ? `DOB ${i.patientDob}` : null);
+              return (
+                <tr
+                  key={i.id}
+                  onClick={() => setOpenIvrId(i.id)}
+                  className="hover:bg-[var(--bg)] cursor-pointer transition-colors"
+                >
+                  <td className="px-4 py-2.5 max-w-xs">
+                    <div className="font-medium truncate">{primary}</div>
+                    {secondary && (
+                      <div className="text-[11px] text-[var(--text3)] truncate">
+                        {secondary}
+                      </div>
                     )}
-                  >
-                    {STANDALONE_IVR_STATUS_LABELS[i.status]}
-                  </span>
-                </td>
-                <td className="px-4 py-2.5">{i.approver?.name ?? "—"}</td>
-                <td className="px-4 py-2.5 text-[11px] text-[var(--text3)]">
-                  {new Date(i.createdAt).toLocaleString()}
-                </td>
-              </tr>
-            ))}
+                  </td>
+                  <td className="px-4 py-2.5">{i.facilityName ?? "—"}</td>
+                  <td className="px-4 py-2.5">
+                    <span
+                      className={cn(
+                        "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border",
+                        STATUS_STYLES[i.status] ??
+                          "bg-gray-100 text-gray-700 border-gray-200",
+                      )}
+                    >
+                      {STANDALONE_IVR_STATUS_LABELS[i.status]}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2.5">{i.approver?.name ?? "—"}</td>
+                  <td className="px-4 py-2.5 text-[11px] text-[var(--text3)]">
+                    {new Date(i.createdAt).toLocaleString()}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
