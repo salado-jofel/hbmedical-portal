@@ -18,6 +18,12 @@ import type {
 
 const IVRS_PATH = "/dashboard/ivrs";
 
+// external_approvers is deliberately NOT joined here — its RLS policy
+// only permits admin+support to SELECT, so a clinic-role caller would
+// get back a null join even though assigned_approver_id is populated,
+// which is what caused the "Approver: —" column on the IVRs list. The
+// approver is hydrated in a second admin-client fetch (bypasses RLS)
+// scoped to the exact IDs already returned by this RLS-scoped read.
 const IVR_SELECT = `
   id,
   status,
@@ -41,27 +47,48 @@ const IVR_SELECT = `
   converted_to_order_id,
   created_at,
   updated_at,
-  external_approvers ( id, name, email, is_active ),
   facilities ( name )
 `;
+
+async function fetchApproversByIds(
+  ids: string[],
+): Promise<Map<string, IExternalApprover>> {
+  const out = new Map<string, IExternalApprover>();
+  if (ids.length === 0) return out;
+  const adminClient = createAdminClient();
+  const { data, error } = await adminClient
+    .from("external_approvers")
+    .select("id, name, email, is_active, created_at, updated_at")
+    .in("id", Array.from(new Set(ids)));
+  if (error || !data) {
+    console.error("[fetchApproversByIds]", error);
+    return out;
+  }
+  for (const a of data) {
+    out.set(a.id as string, {
+      id: a.id as string,
+      name: a.name as string,
+      email: a.email as string,
+      isActive: Boolean(a.is_active),
+      createdAt: (a.created_at as string) ?? "",
+      updatedAt: (a.updated_at as string) ?? "",
+    });
+  }
+  return out;
+}
 
 const FILE_SELECT = "id, standalone_ivr_id, file_path, file_name, mime_type, file_size, created_at";
 const HISTORY_SELECT =
   "id, standalone_ivr_id, event, actor_id, actor_display, note, created_at";
 
-function mapIvr(row: Record<string, unknown>): IStandaloneIvr {
+function mapIvr(
+  row: Record<string, unknown>,
+  approver: IExternalApprover | null = null,
+): IStandaloneIvr {
   // Supabase's PostgREST returns FK joins as EITHER a single object or a
   // single-element array depending on the client's type inference — same
   // row on the wire, different TS shape. Normalize before reading fields
-  // so `approver.name`/`facility.name` are never undefined by accident,
-  // which is what caused the empty "Approver" field in the detail modal.
-  const approverRaw = row.external_approvers as unknown as
-    | Record<string, unknown>
-    | Array<Record<string, unknown>>
-    | null;
-  const approver = Array.isArray(approverRaw)
-    ? approverRaw[0] ?? null
-    : approverRaw ?? null;
+  // so `facility.name` is never undefined by accident.
   const facilityRaw = row.facilities as unknown as
     | { name: string | null }
     | Array<{ name: string | null }>
@@ -92,16 +119,7 @@ function mapIvr(row: Record<string, unknown>): IStandaloneIvr {
     convertedToOrderId: (row.converted_to_order_id as string | null) ?? null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
-    approver: approver
-      ? {
-          id: approver.id as string,
-          name: approver.name as string,
-          email: approver.email as string,
-          isActive: Boolean(approver.is_active),
-          createdAt: "",
-          updatedAt: "",
-        }
-      : null,
+    approver,
     facilityName: facility?.name ?? null,
   };
 }
@@ -156,7 +174,16 @@ export async function getStandaloneIvrs(): Promise<IStandaloneIvr[]> {
     console.error("[getStandaloneIvrs]", error);
     return [];
   }
-  return (data ?? []).map((r) => mapIvr(r as Record<string, unknown>));
+  const rows = data ?? [];
+  const approverIds = rows
+    .map((r) => (r as { assigned_approver_id: string | null }).assigned_approver_id)
+    .filter((id): id is string => !!id);
+  const approverMap = await fetchApproversByIds(approverIds);
+  return rows.map((r) => {
+    const raw = r as Record<string, unknown>;
+    const approverId = raw.assigned_approver_id as string | null;
+    return mapIvr(raw, approverId ? approverMap.get(approverId) ?? null : null);
+  });
 }
 
 export async function getStandaloneIvrById(id: string): Promise<
@@ -180,7 +207,7 @@ export async function getStandaloneIvrById(id: string): Promise<
     .maybeSingle();
   if (error || !ivr) return null;
 
-  const [{ data: files }, { data: history }] = await Promise.all([
+  const [{ data: files }, { data: history }, approverMap] = await Promise.all([
     supabase
       .from("standalone_ivr_files")
       .select(FILE_SELECT)
@@ -191,10 +218,23 @@ export async function getStandaloneIvrById(id: string): Promise<
       .select(HISTORY_SELECT)
       .eq("standalone_ivr_id", id)
       .order("created_at", { ascending: false }),
+    // Approver hydration via admin client — same RLS bypass reason as
+    // getStandaloneIvrs; the parent IVR row was already gated by this
+    // caller's RLS so we can safely look up its one approver.
+    (async () => {
+      const approverId =
+        (ivr as { assigned_approver_id: string | null }).assigned_approver_id;
+      return approverId ? await fetchApproversByIds([approverId]) : new Map();
+    })(),
   ]);
 
+  const approverId =
+    (ivr as { assigned_approver_id: string | null }).assigned_approver_id;
   return {
-    ...mapIvr(ivr as Record<string, unknown>),
+    ...mapIvr(
+      ivr as Record<string, unknown>,
+      approverId ? approverMap.get(approverId) ?? null : null,
+    ),
     files: (files ?? []).map((f) => mapFile(f as Record<string, unknown>)),
     history: (history ?? []).map((h) =>
       mapHistory(h as Record<string, unknown>),
