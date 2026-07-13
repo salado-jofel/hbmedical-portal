@@ -101,6 +101,7 @@ function mapIvrRow(data: Record<string, unknown>): IOrderIVR {
     physicianSignatureImage:     data.physician_signature_image as string | null,
     aiExtracted:                 (data.ai_extracted as boolean) ?? false,
     ivrMode:                     ((data.ivr_mode as string) ?? "built") as IOrderIVR["ivrMode"],
+    linkedStandaloneIvrId:       (data.linked_standalone_ivr_id as string | null) ?? null,
     createdAt:                   data.created_at as string,
     updatedAt:                   data.updated_at as string,
   };
