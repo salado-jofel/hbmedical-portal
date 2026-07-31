@@ -185,29 +185,73 @@ async function fetchDocumoFax(
   apiKey: string,
 ): Promise<
   | { ok: true; bytes: Uint8Array; contentType: string }
-  | { ok: false; status: number; attempts: Array<{ url: string; status: number }> }
+  | {
+      ok: false;
+      status: number;
+      attempts: Array<{ url: string; status: number; snippet?: string }>;
+    }
 > {
-  const attempts: Array<{ url: string; status: number }> = [];
+  const attempts: Array<{ url: string; status: number; snippet?: string }> = [];
+
+  // Canonical Documo Download Fax URL (verified from published docs
+  // 2026-07-31):
+  //
+  //   GET https://api.documo.com/v1/fax/:messageId/download?format=pdf
+  //   Authorization: Basic <API_KEY>       (raw key, non-standard Basic
+  //                                         scheme — no base64, no colon)
+  //
+  // Note: `fax` is SINGULAR here, unlike `/v1/faxes` on Send Fax. Yes,
+  // that's inconsistent, and yes, I burned an hour on it. The kept
+  // fallbacks below cover the small chance Documo's docs are stale and
+  // the plural form works for some tenants; the snippet log will
+  // reveal the truth if the canonical URL 404s.
+  const canonical = `https://api.documo.com/v1/fax/${faxId}/download?format=pdf`;
   const candidates = [
-    `https://api.documo.com/v1/faxes/${faxId}/pdf`,
-    `https://api.documo.com/v1/faxes/${faxId}/download`,
-    `https://api.documo.com/v1/faxes/${faxId}/file`,
-    `https://api.documo.com/v1/faxes/${faxId}`,
+    canonical,
+    // Fallbacks — keep tight; snippet-log will guide further changes
+    `https://api.documo.com/v1/faxes/${faxId}/download?format=pdf`,
+    `https://api.documo.com/v1/fax/${faxId}`,
   ];
+
   for (const url of candidates) {
     const res = await fetch(url, {
       headers: {
-        // Documo docs show X-API-Key as the standard auth header for
-        // v1 REST calls. Bearer fallback covered too on the off chance
-        // the tenant is on the newer auth scheme.
-        "X-API-Key": apiKey,
-        Authorization: `Bearer ${apiKey}`,
-        Accept: "application/pdf",
+        // Documo uses NON-STANDARD "Basic" auth: the raw API key goes
+        // directly after "Basic ", without base64 encoding and without
+        // a colon-separated username. Verified against Documo's
+        // published API docs 2026-07-31 — they show
+        //   --header 'Authorization: Basic API_KEY'
+        // as the canonical form for /v1/faxes/* endpoints.
+        //
+        // Bug we just fixed: earlier code used `X-API-Key` and
+        // `Authorization: Bearer` — Documo silently returns 404 on
+        // auth failure to prevent resource enumeration, so every
+        // request looked like "endpoint not found" when it was really
+        // "wrong auth scheme".
+        Authorization: `Basic ${apiKey}`,
+        Accept: "application/pdf, application/json",
       },
     });
+
+    // Snapshot the first bit of any error body so we can see what
+    // Documo is actually complaining about (endpoint not found vs auth
+    // rejected vs wrong region etc). Cap at 240 chars to keep the log
+    // tidy — no PHI risk since these are pre-download error bodies.
+    let snippet: string | undefined;
+    if (!res.ok) {
+      try {
+        const text = await res.text();
+        snippet = text.slice(0, 240);
+      } catch {
+        /* ignore body-read failures */
+      }
+      attempts.push({ url, status: res.status, snippet });
+      continue;
+    }
+
     attempts.push({ url, status: res.status });
-    if (!res.ok) continue;
     const contentType = res.headers.get("content-type") ?? "application/pdf";
+
     // Some endpoints return JSON with a `fileUrl` — follow that if so.
     if (contentType.includes("application/json")) {
       const json = (await res.json()) as Record<string, unknown>;
@@ -215,7 +259,9 @@ async function fetchDocumoFax(
         (json.fileUrl ??
           json.url ??
           json.downloadUrl ??
-          (json.data as Record<string, unknown> | undefined)?.fileUrl) as
+          json.pdfUrl ??
+          (json.data as Record<string, unknown> | undefined)?.fileUrl ??
+          (json.data as Record<string, unknown> | undefined)?.pdfUrl) as
           | string
           | undefined;
       if (nestedUrl) {
@@ -225,13 +271,15 @@ async function fetchDocumoFax(
           return {
             ok: true,
             bytes,
-            contentType: inner.headers.get("content-type") ?? "application/pdf",
+            contentType:
+              inner.headers.get("content-type") ?? "application/pdf",
           };
         }
         attempts.push({ url: nestedUrl, status: inner.status });
       }
       continue;
     }
+
     const bytes = new Uint8Array(await res.arrayBuffer());
     return { ok: true, bytes, contentType };
   }
