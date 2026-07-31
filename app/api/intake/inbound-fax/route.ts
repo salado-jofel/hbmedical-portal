@@ -213,22 +213,18 @@ async function fetchDocumoFax(
     `https://api.documo.com/v1/fax/${faxId}`,
   ];
 
+  // Documo's docs write `Authorization: Basic API_KEY` — ambiguous about
+  // whether API_KEY is the raw value or a placeholder for the standard
+  // base64(user:pass) form. Try the raw form first (matches literal
+  // docs example), then base64(apiKey:) as fallback (standard Basic).
+  const authRaw = `Basic ${apiKey}`;
+  const authBase64 = `Basic ${Buffer.from(`${apiKey}:`).toString("base64")}`;
+
   for (const url of candidates) {
+    for (const authHeader of [authRaw, authBase64]) {
     const res = await fetch(url, {
       headers: {
-        // Documo uses NON-STANDARD "Basic" auth: the raw API key goes
-        // directly after "Basic ", without base64 encoding and without
-        // a colon-separated username. Verified against Documo's
-        // published API docs 2026-07-31 — they show
-        //   --header 'Authorization: Basic API_KEY'
-        // as the canonical form for /v1/faxes/* endpoints.
-        //
-        // Bug we just fixed: earlier code used `X-API-Key` and
-        // `Authorization: Bearer` — Documo silently returns 404 on
-        // auth failure to prevent resource enumeration, so every
-        // request looked like "endpoint not found" when it was really
-        // "wrong auth scheme".
-        Authorization: `Basic ${apiKey}`,
+        Authorization: authHeader,
         Accept: "application/pdf, application/json",
       },
     });
@@ -282,6 +278,7 @@ async function fetchDocumoFax(
 
     const bytes = new Uint8Array(await res.arrayBuffer());
     return { ok: true, bytes, contentType };
+    } // end auth-header loop
   }
   return { ok: false, status: attempts.at(-1)?.status ?? 0, attempts };
 }
