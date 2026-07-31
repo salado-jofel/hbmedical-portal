@@ -41,6 +41,11 @@ interface DocumoFaxPayload {
   receivedAt: string | null;
   fileUrl: string;
   fileName: string | null;
+  /** Documo's per-number webhook uses `fax.v1.inbound.complete` which
+   *  fires for BOTH successful and failed receptions. This flag lets
+   *  the handler skip the storage upload + intake row insert for
+   *  failed transmissions (no PDF to store). */
+  succeeded: boolean;
 }
 
 /**
@@ -56,8 +61,21 @@ function parseDocumoPayload(body: unknown): DocumoFaxPayload | null {
   // Accept both camelCase and snake_case forms — Documo docs use
   // camelCase but some historical webhook payloads have shown snake_case.
   const faxId = (b.faxId ?? b.fax_id ?? b.id) as string | undefined;
-  const fileUrl = (b.fileUrl ?? b.file_url ?? b.url) as string | undefined;
-  if (!faxId || !fileUrl) return null;
+  if (!faxId) return null;
+
+  // fileUrl may be absent on failed transmissions (`.complete` with
+  // status=failed) — we still parse the payload so we can log the
+  // failed reception, but skip the download step.
+  const fileUrl =
+    ((b.fileUrl ?? b.file_url ?? b.url) as string | undefined) ?? "";
+
+  // Documo signals success in a `status` field on `.complete` events.
+  // Known values: 'success' | 'succeed' | 'succeeded' (varies by tenant).
+  const rawStatus = (b.status ?? b.state ?? b.result ?? "") as string;
+  const succeeded =
+    !!fileUrl &&
+    (rawStatus === "" ||
+      /^(success|succeed|succeeded|complete)/i.test(rawStatus));
 
   return {
     faxId,
@@ -80,6 +98,7 @@ function parseDocumoPayload(body: unknown): DocumoFaxPayload | null {
     fileUrl,
     fileName:
       ((b.fileName ?? b.file_name) as string | null | undefined) ?? null,
+    succeeded,
   };
 }
 
@@ -150,6 +169,18 @@ export async function POST(request: Request) {
   if (!payload) {
     console.error("[intake.inbound-fax] Unrecognized payload shape");
     return new NextResponse("Unrecognized payload.", { status: 400 });
+  }
+
+  // `.complete` fires for failed transmissions too — no PDF to store.
+  // ACK the event so Documo stops retrying, log it, and move on. We
+  // don't create an intake row for failed receptions (the Documo
+  // dashboard is the source of truth for failed-fax troubleshooting).
+  if (!payload.succeeded) {
+    console.info("[intake.inbound-fax] Skipping non-successful event", {
+      faxId: payload.faxId,
+      hasFileUrl: !!payload.fileUrl,
+    });
+    return NextResponse.json({ ok: true, skipped: "not_succeeded" });
   }
 
   const admin = createAdminClient();
