@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import {
   Dialog,
   DialogContent,
@@ -16,6 +16,8 @@ import {
   createStandaloneIvr,
   prepareIvrFileUpload,
 } from "../(services)/actions";
+import { markIntakeConverted } from "../../intake/(services)/actions";
+import { updateIntakeInStore } from "../../intake/(redux)/intake-slice";
 import type { IExternalApprover } from "@/utils/interfaces/standalone-ivrs";
 import { cn } from "@/utils/utils";
 import toast from "react-hot-toast";
@@ -25,11 +27,30 @@ interface UploadIvrsModalProps {
   onOpenChange: (open: boolean) => void;
   facilities: Array<{ id: string; name: string }>;
   approvers: IExternalApprover[];
+  /** When present, the modal opens in single-file "build from intake"
+   *  mode: drop zone hidden, one row pre-populated with the intake fax,
+   *  and after save the intake is marked converted_ivr. */
+  intakeDocument?: {
+    intakeId: string;
+    filePath: string;
+    fileName: string;
+    mimeType: string;
+    fileSize: number;
+  };
 }
 
 interface DraftRow {
   key: string;
-  file: File;
+  /** File is null when the row was seeded from an existing intake fax
+   *  — the bytes are already in Storage, so we skip the upload step
+   *  and pass the intake filePath straight to createStandaloneIvr. */
+  file: File | null;
+  intakeFile: {
+    filePath: string;
+    fileName: string;
+    mimeType: string;
+    fileSize: number;
+  } | null;
   assignedApproverId: string;
   uploading: boolean;
   error: string | null;
@@ -53,12 +74,39 @@ export function UploadIvrsModal({
   onOpenChange,
   facilities,
   approvers,
+  intakeDocument,
 }: UploadIvrsModalProps) {
   const dispatch = useAppDispatch();
   const [rows, setRows] = useState<DraftRow[]>([]);
   const [pending, startTransition] = useTransition();
   const [dragActive, setDragActive] = useState(false);
   const dragDepth = useRef(0);
+  const isFromIntake = !!intakeDocument;
+
+  // When opened in intake mode, seed exactly one row with the intake
+  // file. Users can only pick an approver; drop zone stays hidden.
+  useEffect(() => {
+    if (!open) return;
+    if (intakeDocument && rows.length === 0) {
+      setRows([
+        {
+          key: `intake-${intakeDocument.intakeId}`,
+          file: null,
+          intakeFile: {
+            filePath: intakeDocument.filePath,
+            fileName: intakeDocument.fileName,
+            mimeType: intakeDocument.mimeType,
+            fileSize: intakeDocument.fileSize,
+          },
+          assignedApproverId:
+            approvers.length === 1 ? approvers[0].id : "",
+          uploading: false,
+          error: null,
+        },
+      ]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, intakeDocument?.intakeId]);
 
   // If the user belongs to exactly one facility, lock it in silently. If
   // they cover multiple (typically reps), let them pick once for the whole
@@ -85,6 +133,7 @@ export function UploadIvrsModal({
       additions.push({
         key: `${file.name}-${file.size}-${Math.random().toString(36).slice(2, 6)}`,
         file,
+        intakeFile: null,
         assignedApproverId: defaultApproverId,
         uploading: false,
         error: null,
@@ -167,26 +216,55 @@ export function UploadIvrsModal({
       for (const row of rows) {
         updateRow(row.key, { uploading: true, error: null });
 
-        const prep = await prepareIvrFileUpload({
-          fileName: row.file.name,
-          mimeType: row.file.type || "application/octet-stream",
-          size: row.file.size,
-        });
-        if (!prep.success) {
-          failures.push({ row, reason: prep.error });
-          updateRow(row.key, { uploading: false, error: prep.error });
-          continue;
-        }
+        // Determine the file's final storage location. Two paths:
+        //   1. Fresh drop → prepare signed URL, upload bytes, use
+        //      returned filePath. Standard flow.
+        //   2. Intake fax → bytes already in Storage at intakeFile.filePath
+        //      (put there by the Documo webhook). Skip upload entirely;
+        //      reuse the existing path in the standalone_ivr_files row.
+        let filePath: string;
+        let fileName: string;
+        let mimeType: string;
+        let fileSize: number;
 
-        const { error: uploadErr } = await supabase.storage
-          .from(prep.bucket)
-          .uploadToSignedUrl(prep.filePath, prep.uploadToken, row.file, {
-            contentType: row.file.type || undefined,
+        if (row.intakeFile) {
+          filePath = row.intakeFile.filePath;
+          fileName = row.intakeFile.fileName;
+          mimeType = row.intakeFile.mimeType;
+          fileSize = row.intakeFile.fileSize;
+        } else if (row.file) {
+          const prep = await prepareIvrFileUpload({
+            fileName: row.file.name,
+            mimeType: row.file.type || "application/octet-stream",
+            size: row.file.size,
           });
-        if (uploadErr) {
-          const reason = uploadErr.message ?? "Upload failed.";
-          failures.push({ row, reason });
-          updateRow(row.key, { uploading: false, error: reason });
+          if (!prep.success) {
+            failures.push({ row, reason: prep.error });
+            updateRow(row.key, { uploading: false, error: prep.error });
+            continue;
+          }
+
+          const { error: uploadErr } = await supabase.storage
+            .from(prep.bucket)
+            .uploadToSignedUrl(prep.filePath, prep.uploadToken, row.file, {
+              contentType: row.file.type || undefined,
+            });
+          if (uploadErr) {
+            const reason = uploadErr.message ?? "Upload failed.";
+            failures.push({ row, reason });
+            updateRow(row.key, { uploading: false, error: reason });
+            continue;
+          }
+
+          filePath = prep.filePath;
+          fileName = row.file.name;
+          mimeType = row.file.type || "application/octet-stream";
+          fileSize = row.file.size;
+        } else {
+          // Should be unreachable — every row must have either a File or
+          // an intakeFile.
+          failures.push({ row, reason: "Row has no file attached." });
+          updateRow(row.key, { uploading: false, error: "No file." });
           continue;
         }
 
@@ -200,14 +278,7 @@ export function UploadIvrsModal({
           facilityId: selectedFacilityId,
           productSummary: null,
           assignedApproverId: row.assignedApproverId,
-          files: [
-            {
-              filePath: prep.filePath,
-              fileName: row.file.name,
-              mimeType: row.file.type || "application/octet-stream",
-              fileSize: row.file.size,
-            },
-          ],
+          files: [{ filePath, fileName, mimeType, fileSize }],
         });
         if (!res.success) {
           failures.push({ row, reason: res.error });
@@ -215,6 +286,51 @@ export function UploadIvrsModal({
           continue;
         }
         dispatch(addIvrToStore(res.ivr));
+
+        // If this row came from an intake fax, mark the intake as
+        // converted so it drops off the pending list and shows in the
+        // Done tab with a link back to the new IVR.
+        if (row.intakeFile && intakeDocument) {
+          const conv = await markIntakeConverted({
+            intakeId: intakeDocument.intakeId,
+            toType: "standalone_ivr",
+            toId: res.ivr.id,
+          });
+          if (conv.success) {
+            // Optimistic Redux update — the row still needs a full fetch
+            // to pick up dismissed_by etc, but the status flip is what
+            // matters for the list re-render.
+            dispatch(
+              updateIntakeInStore({
+                id: intakeDocument.intakeId,
+                source: "fax",
+                provider: "documo",
+                externalId: null,
+                fromNumber: null,
+                toNumber: null,
+                receivedAt: new Date().toISOString(),
+                pageCount: null,
+                bucket: "hbmedical-bucket-private",
+                filePath: intakeDocument.filePath,
+                fileName: intakeDocument.fileName,
+                mimeType: intakeDocument.mimeType,
+                fileSize: intakeDocument.fileSize,
+                status: "converted_ivr",
+                classifiedAs: null,
+                convertedToType: "standalone_ivr",
+                convertedToId: res.ivr.id,
+                convertedAt: new Date().toISOString(),
+                convertedBy: null,
+                dismissedAt: null,
+                dismissedBy: null,
+                dismissReason: null,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              }),
+            );
+          }
+        }
+
         created.push(row);
       }
 
@@ -242,7 +358,7 @@ export function UploadIvrsModal({
       <DialogContent className="max-w-2xl p-0 overflow-hidden">
         <DialogHeader className="px-5 pt-5 pb-3 border-b border-[#eee]">
           <DialogTitle className="text-[15px] font-semibold">
-            Upload IVRs
+            {isFromIntake ? "Build IVR from Fax" : "Upload IVRs"}
           </DialogTitle>
         </DialogHeader>
 
@@ -279,54 +395,73 @@ export function UploadIvrsModal({
             </div>
           )}
 
-          {/* Info notice — one line explaining what the portal DOES NOT need. */}
-          <div className="rounded-md bg-blue-50 border border-blue-200 px-3 py-2 text-[12px] text-blue-900 flex items-start gap-2">
-            <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-            <p>
-              Patient, physician, and product info stay in the PDF — no need to
-              re-type them here. Just pick an approver for each file.
-            </p>
-          </div>
-
-          {/* Drop zone */}
-          <label
-            onDragEnter={handleDragEnter}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            className={cn(
-              "block border-2 border-dashed rounded-xl px-6 py-6 text-center transition-colors cursor-pointer bg-white",
-              pending
-                ? "border-[var(--border)] opacity-60 cursor-not-allowed"
-                : dragActive
-                  ? "border-[var(--navy)] bg-blue-50/60"
-                  : "border-[var(--border)] hover:border-[var(--navy)]",
-            )}
-          >
-            <input
-              type="file"
-              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.heic,.heif,.webp"
-              multiple
-              className="sr-only"
-              disabled={pending}
-              onChange={(e) => {
-                addFiles(e.target.files);
-                e.target.value = "";
-              }}
-            />
-            <div className="pointer-events-none">
-              <Upload className="w-6 h-6 mx-auto mb-2 text-[var(--navy)]" />
-              <p className="text-[13px] font-medium">
-                {dragActive
-                  ? "Drop to add"
-                  : "Drop IVR files here, or click to browse"}
-              </p>
-              <p className="text-[11px] text-[var(--text3)] mt-1">
-                PDF, DOC, DOCX, JPG, PNG, HEIC · max {MAX_MB} MB each · one file
-                per IVR
+          {isFromIntake && intakeDocument && (
+            <div className="rounded-md bg-blue-50 border border-blue-200 px-3 py-2 text-[12px] text-blue-900 flex items-start gap-2">
+              <FileText className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <p>
+                Building IVR from fax{" "}
+                <span className="font-semibold">
+                  {intakeDocument.fileName}
+                </span>
+                . The fax will be attached automatically — pick an approver
+                and click Upload.
               </p>
             </div>
-          </label>
+          )}
+
+          {!isFromIntake && (
+            <div className="rounded-md bg-blue-50 border border-blue-200 px-3 py-2 text-[12px] text-blue-900 flex items-start gap-2">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <p>
+                Patient, physician, and product info stay in the PDF — no
+                need to re-type them here. Just pick an approver for each
+                file.
+              </p>
+            </div>
+          )}
+
+          {/* Drop zone — hidden in intake mode since the file is
+              already staged by the caller. */}
+          {!isFromIntake && (
+            <label
+              onDragEnter={handleDragEnter}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              className={cn(
+                "block border-2 border-dashed rounded-xl px-6 py-6 text-center transition-colors cursor-pointer bg-white",
+                pending
+                  ? "border-[var(--border)] opacity-60 cursor-not-allowed"
+                  : dragActive
+                    ? "border-[var(--navy)] bg-blue-50/60"
+                    : "border-[var(--border)] hover:border-[var(--navy)]",
+              )}
+            >
+              <input
+                type="file"
+                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.heic,.heif,.webp"
+                multiple
+                className="sr-only"
+                disabled={pending}
+                onChange={(e) => {
+                  addFiles(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+              <div className="pointer-events-none">
+                <Upload className="w-6 h-6 mx-auto mb-2 text-[var(--navy)]" />
+                <p className="text-[13px] font-medium">
+                  {dragActive
+                    ? "Drop to add"
+                    : "Drop IVR files here, or click to browse"}
+                </p>
+                <p className="text-[11px] text-[var(--text3)] mt-1">
+                  PDF, DOC, DOCX, JPG, PNG, HEIC · max {MAX_MB} MB each · one
+                  file per IVR
+                </p>
+              </div>
+            </label>
+          )}
 
           {/* Draft rows — one per file, only asking for the approver. */}
           {rows.length > 0 && (
@@ -342,7 +477,8 @@ export function UploadIvrsModal({
                   <div className="flex items-center gap-2 mb-2">
                     <FileText className="w-4 h-4 shrink-0 text-[var(--navy)]" />
                     <p className="text-[12.5px] font-medium truncate flex-1 min-w-0">
-                      IVR {idx + 1} · {row.file.name}
+                      IVR {idx + 1} ·{" "}
+                      {row.file?.name ?? row.intakeFile?.fileName ?? "file"}
                     </p>
                     {row.uploading && (
                       <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--text3)] shrink-0" />
@@ -392,7 +528,7 @@ export function UploadIvrsModal({
             </div>
           )}
 
-          {rows.length > 0 && (
+          {rows.length > 0 && !isFromIntake && (
             <label className="flex items-center justify-center gap-2 text-[12px] text-[var(--navy)] font-medium cursor-pointer py-2 border border-dashed border-[var(--border)] rounded-lg hover:bg-[var(--bg)] transition-colors">
               <input
                 type="file"
