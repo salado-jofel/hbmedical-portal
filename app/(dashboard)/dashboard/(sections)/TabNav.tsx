@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAppSelector } from "@/store/hooks";
@@ -15,104 +15,95 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 
+/**
+ * Grouped top nav (Option A design, 2026-08-01):
+ *
+ *   Dashboard    Work ▾    Directory ▾    Catalog ▾    Reports ▾   Compliance ▾
+ *
+ * Previously we flattened every NAV_GROUPS item into a single horizontal
+ * strip and let it overflow-scroll. That worked with 5-6 items but hit
+ * ~12 items after the fax + IVR features shipped, and users on 1400px
+ * screens saw the first tab clipped ("board" instead of "Dashboard").
+ *
+ * The new layout keeps the shared NAV_GROUPS definition as the source
+ * of truth, but renders groups as top-level buttons:
+ *   - group with 0 visible items → hidden entirely
+ *   - group with 1 visible item  → direct link, shows the ITEM label + icon
+ *   - group with 2+ visible items → Popover-dropdown, shows the GROUP label
+ *
+ * Mobile (<md) collapses everything into a single "Menu" button that
+ * opens the full flat list — same behavior as the previous mobile mode.
+ */
+
 function isActive(href: string, pathname: string): boolean {
   if (href === "/dashboard") return pathname === "/dashboard";
   return pathname === href || pathname.startsWith(href + "/");
 }
 
-/**
- * Dashboard-wide top navigation. Two rendering modes, hard-swapped by
- * viewport width so each mode can be optimized for its ergonomics:
- *
- *   - < md (mobile / small tablet): a single "menu button" shows the
- *     current tab; tapping opens a full-width popover with every visible
- *     nav item stacked vertically. Cleaner than horizontal-scroll on a
- *     phone, and works with one thumb.
- *
- *   - >= md (tablet / desktop): the horizontal scrollable tab bar. Items
- *     take intrinsic width, container scrolls when they overflow the row,
- *     scroll-shadow gradients appear on either side only while there's
- *     more content in that direction, and the active tab auto-scrolls
- *     into view on route change.
- *
- * Roles with a short nav (rep, provider, clinic) never need to scroll on
- * desktop; admin/support who have 11+ items get the scroll UI.
- */
+// Friendlier top-nav labels for multi-item groups. Keys match the
+// `label` field in NAV_GROUPS; groups not listed here fall back to the
+// original label. Single-item groups always use the item's own label
+// (so "Overview" → "Dashboard") regardless of this map.
+const GROUP_DISPLAY: Record<string, string> = {
+  Clinic: "Work",
+  Management: "Directory",
+  Sales: "Reports",
+};
+
+// Items that live outside the tab bar entirely (they're in the avatar
+// menu, or role-gated pages we don't want cluttering the nav). Same
+// list the old TabNav filtered.
+const EXCLUDED_HREFS = new Set<string>([
+  "/dashboard/settings",
+  "/dashboard/tasks",
+  "/dashboard/onboarding",
+]);
+
 export function TabNav() {
   const pathname = usePathname();
   const role = useAppSelector((state) => state.dashboard.role) as UserRole;
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
-  const scrollerRef = useRef<HTMLDivElement | null>(null);
-  const [overflow, setOverflow] = useState({ left: false, right: false });
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
 
-  // Flatten NAV_GROUPS → items visible to this role (Settings/Profile
-  // live in the avatar dropdown, Tasks/Onboarding are excluded here to
-  // match the pre-existing behavior).
-  const visibleItems = useMemo(
-    () =>
-      NAV_GROUPS.flatMap((group) =>
-        group.items.filter((item) => role && item.visible(role)),
-      ).filter(
-        (item) =>
-          item.href !== "/dashboard/settings" &&
-          item.href !== "/dashboard/tasks" &&
-          item.href !== "/dashboard/onboarding",
-      ),
-    [role],
-  );
-
-  // Resolve display label — reused between mobile and desktop.
-  function labelFor(item: (typeof visibleItems)[number]): string {
-    if (item.href === "/dashboard/rep-performance") {
+  // Resolve display label for an item (rep-performance renames per role).
+  function labelFor(href: string, label: string): string {
+    if (href === "/dashboard/rep-performance") {
       return isSalesRep(role) ? "My Performance" : "Rep Performance";
     }
-    return item.label;
+    return label;
   }
 
-  const activeItem = visibleItems.find((i) => isActive(i.href, pathname));
+  // Filter every group by role visibility + excluded hrefs. Groups where
+  // no items are visible drop out entirely.
+  const visibleGroups = useMemo(() => {
+    return NAV_GROUPS.map((group) => ({
+      ...group,
+      items: group.items.filter(
+        (item) =>
+          role && item.visible(role) && !EXCLUDED_HREFS.has(item.href),
+      ),
+    })).filter((group) => group.items.length > 0);
+  }, [role]);
 
-  // Measure horizontal overflow so the scroll-shadow indicators only
-  // appear when they actually mean something.
+  // Flat list for the mobile menu (all visible items, no grouping).
+  const flatVisibleItems = useMemo(
+    () => visibleGroups.flatMap((g) => g.items),
+    [visibleGroups],
+  );
+
+  const activeFlatItem = flatVisibleItems.find((i) => isActive(i.href, pathname));
+
+  // Close any open dropdown when the route changes.
   useEffect(() => {
-    if (!mounted) return;
-    const el = scrollerRef.current;
-    if (!el) return;
-    const measure = () => {
-      const canScrollLeft = el.scrollLeft > 4;
-      const canScrollRight =
-        el.scrollLeft + el.clientWidth < el.scrollWidth - 4;
-      setOverflow({ left: canScrollLeft, right: canScrollRight });
-    };
-    measure();
-    el.addEventListener("scroll", measure, { passive: true });
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => {
-      el.removeEventListener("scroll", measure);
-      ro.disconnect();
-    };
-  }, [mounted, visibleItems.length]);
+    setOpenGroup(null);
+  }, [pathname]);
 
-  // Auto-scroll the active tab into view on route change — supports the
-  // deep-link case where you land on `/dashboard/transfers-of-value` and
-  // the tab is off-screen for admin.
-  useEffect(() => {
-    if (!mounted) return;
-    const el = scrollerRef.current;
-    if (!el) return;
-    const active = el.querySelector<HTMLAnchorElement>('[data-active="true"]');
-    active?.scrollIntoView({
-      inline: "center",
-      block: "nearest",
-      behavior: "smooth",
-    });
-  }, [mounted, pathname]);
-
-  // SSR-safe placeholder — matches roughly-the-same height so the sticky
-  // header doesn't reflow when hydration finishes populating the tabs.
+  // SSR-safe placeholder — the role comes from Redux and isn't populated
+  // until after hydration. Keeps a stable header height during first
+  // paint so the sticky nav doesn't reflow.
   if (!mounted) {
     return (
       <div
@@ -122,11 +113,11 @@ export function TabNav() {
     );
   }
 
-  if (visibleItems.length === 0) return null;
+  if (visibleGroups.length === 0) return null;
 
   return (
     <div className="mb-5">
-      {/* ── Mobile (< md): collapsed dropdown ────────────────────── */}
+      {/* ── Mobile (<md): single collapsed menu button ───────────── */}
       <div className="md:hidden">
         <Popover open={mobileOpen} onOpenChange={setMobileOpen}>
           <PopoverTrigger asChild>
@@ -141,8 +132,8 @@ export function TabNav() {
               )}
             >
               <span className="flex items-center gap-2 min-w-0">
-                {activeItem ? (
-                  <activeItem.icon
+                {activeFlatItem ? (
+                  <activeFlatItem.icon
                     className="h-4 w-4 shrink-0 text-[var(--navy)]"
                     strokeWidth={1.8}
                   />
@@ -153,7 +144,9 @@ export function TabNav() {
                   />
                 )}
                 <span className="truncate">
-                  {activeItem ? labelFor(activeItem) : "Menu"}
+                  {activeFlatItem
+                    ? labelFor(activeFlatItem.href, activeFlatItem.label)
+                    : "Menu"}
                 </span>
               </span>
               <ChevronDown
@@ -168,12 +161,6 @@ export function TabNav() {
             align="start"
             sideOffset={6}
             collisionPadding={12}
-            // Solid background + border + shadow because the shared
-            // PopoverContent primitive is transparent by default (it
-            // just sets z-50 + open/close animations). Without these
-            // the nav items float over the page as unreadable text.
-            // z-[70] beats the sticky header (z-50) so the popover
-            // sits ABOVE it instead of being clipped.
             className={cn(
               "z-[70]",
               "w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-16px)]",
@@ -182,89 +169,78 @@ export function TabNav() {
               "bg-white shadow-lg p-1",
             )}
           >
-            <ul className="flex flex-col">
-              {visibleItems.map((item) => {
-                const active = isActive(item.href, pathname);
-                const Icon = item.icon;
-                return (
-                  <li key={item.href}>
-                    <Link
-                      href={item.href}
-                      onClick={() => setMobileOpen(false)}
-                      className={cn(
-                        "flex items-center gap-2.5 rounded-[6px] px-3 py-2.5 text-[13px] font-medium transition-colors",
-                        active
-                          ? "bg-[var(--navy)] text-white"
-                          : "text-[var(--text)] hover:bg-[var(--bg)]",
-                      )}
-                    >
-                      <Icon className="h-4 w-4 shrink-0" strokeWidth={1.8} />
-                      <span className="truncate">{labelFor(item)}</span>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
+            {visibleGroups.map((group) => (
+              <div key={group.label} className="mb-1 last:mb-0">
+                <div className="px-2.5 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--text3)]">
+                  {group.label}
+                </div>
+                <ul className="flex flex-col">
+                  {group.items.map((item) => {
+                    const active = isActive(item.href, pathname);
+                    const Icon = item.icon;
+                    return (
+                      <li key={item.href}>
+                        <Link
+                          href={item.href}
+                          onClick={() => setMobileOpen(false)}
+                          className={cn(
+                            "flex items-center gap-2.5 rounded-[6px] px-3 py-2.5 text-[13px] font-medium transition-colors",
+                            active
+                              ? "bg-[var(--navy)] text-white"
+                              : "text-[var(--text)] hover:bg-[var(--bg)]",
+                          )}
+                        >
+                          <Icon
+                            className="h-4 w-4 shrink-0"
+                            strokeWidth={1.8}
+                          />
+                          <span className="truncate">
+                            {labelFor(item.href, item.label)}
+                          </span>
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
           </PopoverContent>
         </Popover>
       </div>
 
-      {/* ── Tablet + Desktop (>= md): horizontal scroll bar ────── */}
-      <div className="hidden md:block relative">
-        {overflow.left && (
-          <div
-            aria-hidden
-            className="absolute inset-y-0 left-0 w-6 z-10 pointer-events-none rounded-l-[var(--r)]"
-            style={{
-              background:
-                "linear-gradient(to right, var(--surface), rgba(255,255,255,0))",
-            }}
-          />
+      {/* ── Tablet + Desktop (md+): grouped tabs ─────────────────────
+          Layout: each top-level button gets `flex-1` so they share the
+          bar's width equally. `min-w-max` stops long labels from
+          getting truncated when the total would need to shrink below
+          their intrinsic widths — in that case the row grows past the
+          container and, in extreme cases, the whole thing would scroll
+          (unlikely with 5–6 groups even on small tablets).
+          `justify-center` centers each tab's label + chevron inside
+          its allocated slot so a wider slot doesn't look off-balance. */}
+      <div
+        className={cn(
+          "hidden md:flex items-stretch gap-1",
+          "rounded-[var(--r)] border border-[var(--border)] bg-[var(--surface)] p-1",
         )}
-        {overflow.right && (
-          <div
-            aria-hidden
-            className="absolute inset-y-0 right-0 w-6 z-10 pointer-events-none rounded-r-[var(--r)]"
-            style={{
-              background:
-                "linear-gradient(to left, var(--surface), rgba(255,255,255,0))",
-            }}
-          />
-        )}
-        <div
-          ref={scrollerRef}
-          className={cn(
-            "no-scrollbar rounded-[var(--r)] border border-[var(--border)] bg-[var(--surface)] p-1",
-            "flex items-center gap-[3px] overflow-x-auto",
-          )}
-          style={
-            {
-              scrollbarWidth: "none",
-              WebkitOverflowScrolling: "touch",
-            } as React.CSSProperties
-          }
-        >
-          {visibleItems.map((item) => {
-            const active = isActive(item.href, pathname);
+      >
+        {visibleGroups.map((group) => {
+          // Single-item group → render as a direct link showing the
+          // item's own label + icon. Skips the dropdown noise for
+          // things like Dashboard.
+          if (group.items.length === 1) {
+            const item = group.items[0];
             const Icon = item.icon;
-            const label = labelFor(item);
+            const active = isActive(item.href, pathname);
+            const label = labelFor(item.href, item.label);
             return (
               <Link
-                key={item.href}
+                key={group.label}
                 href={item.href}
-                data-active={active}
                 title={label}
-                // flex-1 → items GROW to fill leftover space evenly, so
-                //   the row is centrally distributed when there's slack.
-                // min-w-max → items never SHRINK below their intrinsic
-                //   width, which is what caused the old label-clipping
-                //   bug (e.g. "Rep Performanc"). When the total exceeds
-                //   the container, the parent's overflow-x-auto kicks
-                //   in and the row becomes horizontally scrollable.
                 className={cn(
                   "flex-1 min-w-max inline-flex items-center justify-center gap-1.5",
-                  "whitespace-nowrap rounded-[7px] transition-colors duration-150",
-                  "px-3 py-[7px] text-[12px] font-medium",
+                  "whitespace-nowrap rounded-[7px] px-3 py-[7px]",
+                  "text-[12.5px] font-medium transition-colors duration-150",
                   active
                     ? "bg-[var(--navy)] text-white"
                     : "text-[var(--text2)] hover:bg-[var(--bg)]",
@@ -278,15 +254,89 @@ export function TabNav() {
                 <span>{label}</span>
               </Link>
             );
-          })}
-        </div>
-      </div>
+          }
 
-      <style jsx>{`
-        .no-scrollbar::-webkit-scrollbar {
-          display: none;
-        }
-      `}</style>
+          // Multi-item group → dropdown. Highlight the whole button
+          // when any child is active so the user sees where they are.
+          const groupLabel = GROUP_DISPLAY[group.label] ?? group.label;
+          const anyChildActive = group.items.some((i) =>
+            isActive(i.href, pathname),
+          );
+          const isOpen = openGroup === group.label;
+          return (
+            <Popover
+              key={group.label}
+              open={isOpen}
+              onOpenChange={(next) => setOpenGroup(next ? group.label : null)}
+            >
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  className={cn(
+                    "flex-1 min-w-max inline-flex items-center justify-center gap-1.5",
+                    "whitespace-nowrap rounded-[7px] px-3 py-[7px]",
+                    "text-[12.5px] font-medium transition-colors duration-150",
+                    anyChildActive
+                      ? "bg-[var(--navy)] text-white"
+                      : "text-[var(--text2)] hover:bg-[var(--bg)]",
+                  )}
+                >
+                  <span>{groupLabel}</span>
+                  <ChevronDown
+                    className={cn(
+                      "h-[13px] w-[13px] shrink-0 transition-transform",
+                      isOpen && "rotate-180",
+                      anyChildActive ? "opacity-90" : "opacity-70",
+                    )}
+                    strokeWidth={2}
+                    aria-hidden
+                  />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent
+                align="start"
+                sideOffset={6}
+                collisionPadding={12}
+                className={cn(
+                  "z-[70] min-w-[220px] max-w-[calc(100vw-16px)]",
+                  "rounded-[var(--r)] border border-[var(--border)]",
+                  "bg-white shadow-lg p-1",
+                )}
+              >
+                <ul className="flex flex-col">
+                  {group.items.map((item) => {
+                    const active = isActive(item.href, pathname);
+                    const Icon = item.icon;
+                    return (
+                      <li key={item.href}>
+                        <Link
+                          href={item.href}
+                          onClick={() => setOpenGroup(null)}
+                          className={cn(
+                            "flex items-center gap-2.5 rounded-[6px]",
+                            "px-3 py-2 text-[13px] font-medium transition-colors",
+                            active
+                              ? "bg-[var(--navy)] text-white"
+                              : "text-[var(--text)] hover:bg-[var(--bg)]",
+                          )}
+                        >
+                          <Icon
+                            className="h-4 w-4 shrink-0"
+                            strokeWidth={1.8}
+                          />
+                          <span className="truncate">
+                            {labelFor(item.href, item.label)}
+                          </span>
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </PopoverContent>
+            </Popover>
+          );
+        })}
+      </div>
     </div>
   );
 }
