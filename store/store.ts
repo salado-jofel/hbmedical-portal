@@ -19,6 +19,7 @@ import trainingsSlice from "@/app/(dashboard)/dashboard/trainings/(redux)/traini
 import transfersOfValueSlice from "@/app/(dashboard)/dashboard/transfers-of-value/(redux)/transfers-of-value-slice";
 import approversSlice from "@/app/(dashboard)/dashboard/approvers/(redux)/approvers-slice";
 import ivrsSlice from "@/app/(dashboard)/dashboard/ivrs/(redux)/ivrs-slice";
+import intakeSlice from "@/app/(dashboard)/dashboard/intake/(redux)/intake-slice";
 import { configureStore } from "@reduxjs/toolkit";
 
 export const store = configureStore({
@@ -43,6 +44,7 @@ export const store = configureStore({
     transfersOfValue: transfersOfValueSlice,
     approvers: approversSlice,
     ivrs: ivrsSlice,
+    intake: intakeSlice,
     dashboard: dashboardSlice,
   },
 });

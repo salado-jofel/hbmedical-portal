@@ -17,6 +17,7 @@ import {
   ShieldCheck,
   FileCheck2,
   UserCheck,
+  Inbox,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -102,6 +103,14 @@ export const NAV_GROUPS: NavGroupDef[] = [
         icon: UserCheck,
         label: "External Approvers",
         href: "/dashboard/approvers",
+        visible: (role) => isAdmin(role) || isSupport(role),
+      },
+      // Fax Intake inbox — inbound faxes from Documo land here for
+      // admin/support to triage into IVRs or orders.
+      {
+        icon: Inbox,
+        label: "Fax Intake",
+        href: "/dashboard/intake",
         visible: (role) => isAdmin(role) || isSupport(role),
       },
     ],

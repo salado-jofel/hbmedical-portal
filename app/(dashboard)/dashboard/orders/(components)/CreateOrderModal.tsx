@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Plus, Loader2, Upload, X, FileText } from "lucide-react";
 import { createOrder } from "../(services)/order-write-actions";
 import { finalizeIvrConversion } from "../../ivrs/(services)/actions";
+import { attachIntakeToOrder } from "../../intake/(services)/actions";
 import {
   prepareOrderDocumentUpload,
   completeOrderDocumentUpload,
@@ -280,10 +281,21 @@ interface CreateOrderModalProps {
     ivrId: string;
     label: string | null;
   };
+  /** When creating an order from a fax intake: shows a "Building from
+   *  fax X.pdf" banner, and after the order + user's uploads are done,
+   *  attaches the intake PDF as a facesheet order_document and marks
+   *  the intake row as converted_order. */
+  fromIntake?: {
+    intakeId: string;
+    filePath: string;
+    fileName: string;
+    mimeType: string;
+    fileSize: number;
+  };
 }
 
 export function CreateOrderModal(props: CreateOrderModalProps = {}) {
-  const { hideTrigger, fromStandaloneIvr } = props;
+  const { hideTrigger, fromStandaloneIvr, fromIntake } = props;
   const dispatch = useAppDispatch();
   const router = useRouter();
   const [internalOpen, setInternalOpen] = useState(false);
@@ -537,6 +549,24 @@ export function CreateOrderModal(props: CreateOrderModalProps = {}) {
         }
       }
 
+      // If we're finishing a fax-intake conversion, attach the intake
+      // PDF as a facesheet doc (metadata insert against the shared
+      // storage path) and flip the intake row → converted_order. Same
+      // "runs after user's uploads" reasoning.
+      if (fromIntake) {
+        const link = await attachIntakeToOrder({
+          intakeId: fromIntake.intakeId,
+          orderId,
+          documentType: "facesheet",
+        });
+        if (!link.success) {
+          toast.error(
+            `Order created, but attaching the fax failed: ${link.error ?? "unknown error"}. Open the order to attach the fax manually.`,
+            { duration: Infinity },
+          );
+        }
+      }
+
       // Persistent (Infinity duration) failure summary. Lists every doc
       // that failed and the specific reason, so the user knows exactly
       // what to re-upload from the OrderDetailModal. Success toast only
@@ -626,7 +656,9 @@ export function CreateOrderModal(props: CreateOrderModalProps = {}) {
               <DialogTitle className="text-lg font-semibold text-[var(--navy)]">
                 {fromStandaloneIvr
                   ? "Create Order from Approved IVR"
-                  : "Create Order"}
+                  : fromIntake
+                    ? "Create Order from Fax"
+                    : "Create Order"}
               </DialogTitle>
             </DialogHeader>
           </div>
@@ -646,6 +678,26 @@ export function CreateOrderModal(props: CreateOrderModalProps = {}) {
                       ? `${fromStandaloneIvr.label} will be attached to this order automatically.`
                       : "The approved IVR document will be attached to this order automatically."}{" "}
                     Order type is pre-set to <b>Skin Grafts</b>.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* From-Fax banner — analogous hint for the fax-intake flow.
+              Intake PDF is attached as a facesheet document post-save.
+              Nothing about the docs section changes visually; users can
+              upload additional clinical/valid-ID docs as usual. */}
+          {fromIntake && (
+            <div className="px-6 pt-4">
+              <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5 text-[12.5px] text-blue-900 flex items-start gap-2">
+                <FileText className="w-4 h-4 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold">Creating from inbound fax</p>
+                  <p className="text-[11.5px] mt-0.5 leading-snug">
+                    <span className="font-medium">{fromIntake.fileName}</span>{" "}
+                    will be attached as the facesheet. Upload any additional
+                    clinical docs or Valid ID below as usual.
                   </p>
                 </div>
               </div>
