@@ -55,37 +55,44 @@ function describeShape(v: unknown, depth = 0): unknown {
 }
 
 interface DocumoFaxPayload {
+  /** Documo's identifier for this fax — used both as our idempotency
+   *  key and as the ID to fetch the PDF from their REST API. */
   faxId: string;
   fromNumber: string | null;
   toNumber: string | null;
   pageCount: number | null;
   receivedAt: string | null;
-  fileUrl: string;
   fileName: string | null;
-  /** Documo's per-number webhook uses `fax.v1.inbound.complete` which
-   *  fires for BOTH successful and failed receptions. This flag lets
-   *  the handler skip the storage upload + intake row insert for
-   *  failed transmissions (no PDF to store). */
+  /** True when the fax completed successfully AND the PDF is still
+   *  fetchable from Documo (not purged). Failed/purged events get
+   *  ACK'd with a 200 + no-op. */
   succeeded: boolean;
 }
 
 /**
- * Extract the fields we need from Documo's webhook body. Kept as a
- * separate function so if Documo changes their shape (or we swap
- * providers), only this one spot has to move. Documo's actual field
- * names may be snake_case in the wire format; we normalize here.
+ * Extract the fields we need from Documo's inbound-fax webhook body.
+ *
+ * Documo's actual field names (verified 2026-07-31 via shape log):
+ *   messageId       - the fax id (also used to fetch the PDF)
+ *   faxNumber       - the SENDER's fax number (our "from")
+ *   pagesCount      - total pages
+ *   pagesComplete   - pages actually received
+ *   status          - text status
+ *   resultCode      - "0" / short code on success
+ *   errorCode       - "0" / empty on success
+ *   isFilePurged    - true when the PDF is no longer available
+ *   createdAt       - ISO string, when the fax arrived
+ *
+ * Documo does NOT include a fileUrl in the webhook payload — the PDF
+ * must be fetched from their REST API using messageId + an API key.
+ * (See fetchDocumoFax below.)
  */
 function parseDocumoPayload(body: unknown): DocumoFaxPayload | null {
   if (!body || typeof body !== "object") return null;
   const root = body as Record<string, unknown>;
 
-  // Documo wraps the fax data one or two levels deep depending on the
-  // event type. Walk a few known shapes so we don't have to guess:
-  //   { faxId, fileUrl, ... }                (flat)
-  //   { data: { faxId, ... } }               (v1 wrapper)
-  //   { data: { fax: { ... } } }             (nested v1)
-  //   { event: "...", fax: { ... } }         (event wrapper)
-  //   { event: "...", data: { fax: {...} } } (event + nested)
+  // Documo may or may not wrap the fax in a `data` envelope depending
+  // on account tier. Try flat first, then a couple common wrappers.
   const candidates: Array<Record<string, unknown>> = [root];
   for (const key of ["data", "fax", "payload", "message", "body"]) {
     const val = root[key];
@@ -102,55 +109,133 @@ function parseDocumoPayload(body: unknown): DocumoFaxPayload | null {
     }
   }
 
+  // Look for messageId (Documo's real name) plus the historical guesses.
   let b: Record<string, unknown> | null = null;
   for (const c of candidates) {
-    if (c && (c.faxId ?? c.fax_id ?? c.id)) {
+    if (c && (c.messageId ?? c.faxId ?? c.fax_id ?? c.id)) {
       b = c;
       break;
     }
   }
   if (!b) return null;
 
-  const faxId = (b.faxId ?? b.fax_id ?? b.id) as string | undefined;
+  const faxId = (b.messageId ?? b.faxId ?? b.fax_id ?? b.id) as
+    | string
+    | undefined;
   if (!faxId) return null;
 
-  // fileUrl may be absent on failed transmissions (`.complete` with
-  // status=failed) — we still parse the payload so we can log the
-  // failed reception, but skip the download step.
-  const fileUrl =
-    ((b.fileUrl ?? b.file_url ?? b.url) as string | undefined) ?? "";
-
-  // Documo signals success in a `status` field on `.complete` events.
-  // Known values: 'success' | 'succeed' | 'succeeded' (varies by tenant).
-  const rawStatus = (b.status ?? b.state ?? b.result ?? "") as string;
-  const succeeded =
-    !!fileUrl &&
-    (rawStatus === "" ||
-      /^(success|succeed|succeeded|complete)/i.test(rawStatus));
+  // Success determination — Documo's `errorCode` is "0" or empty on
+  // success; `isFilePurged` means the PDF is no longer downloadable.
+  // Also fall back to string status when errorCode isn't present.
+  const errorCode = String(b.errorCode ?? "").trim();
+  const rawStatus = String(b.status ?? b.state ?? b.result ?? "").trim();
+  const isFilePurged = Boolean(b.isFilePurged);
+  const errorClean =
+    errorCode === "" || errorCode === "0" || errorCode === "OK";
+  const statusClean =
+    rawStatus === "" ||
+    /^(success|succeed|succeeded|complete|ok|received)/i.test(rawStatus);
+  const succeeded = !isFilePurged && errorClean && statusClean;
 
   return {
     faxId,
     fromNumber:
-      ((b.fromNumber ?? b.from_number ?? b.from) as string | null | undefined) ??
-      null,
+      ((b.faxNumber ??
+        b.faxCallerId ??
+        b.fromNumber ??
+        b.from_number ??
+        b.from) as string | null | undefined) ?? null,
     toNumber:
-      ((b.toNumber ?? b.to_number ?? b.to) as string | null | undefined) ?? null,
+      ((b.faxReceiverCsid ??
+        b.toNumber ??
+        b.to_number ??
+        b.to) as string | null | undefined) ?? null,
     pageCount:
-      typeof b.pageCount === "number"
-        ? (b.pageCount as number)
-        : typeof b.page_count === "number"
-          ? (b.page_count as number)
-          : typeof b.pages === "number"
-            ? (b.pages as number)
+      typeof b.pagesCount === "number"
+        ? (b.pagesCount as number)
+        : typeof b.pageCount === "number"
+          ? (b.pageCount as number)
+          : typeof b.page_count === "number"
+            ? (b.page_count as number)
             : null,
     receivedAt:
-      ((b.receivedAt ?? b.received_at ?? b.date) as string | null | undefined) ??
-      null,
-    fileUrl,
+      ((b.createdAt ??
+        b.resolvedDate ??
+        b.receivedAt ??
+        b.received_at ??
+        b.date) as string | null | undefined) ?? null,
     fileName:
       ((b.fileName ?? b.file_name) as string | null | undefined) ?? null,
     succeeded,
   };
+}
+
+/**
+ * Fetch the fax PDF from Documo's REST API. Documo doesn't push the
+ * bytes via webhook — we have to pull them ourselves using the
+ * messageId. Endpoint is authenticated with an API key from the
+ * Documo dashboard (Account Details → API Keys).
+ *
+ * Documo's file-download endpoint has moved a couple times in their
+ * v1 API. We try a small list of known-good paths in order and use
+ * whichever returns a 2xx first.
+ */
+async function fetchDocumoFax(
+  faxId: string,
+  apiKey: string,
+): Promise<
+  | { ok: true; bytes: Uint8Array; contentType: string }
+  | { ok: false; status: number; attempts: Array<{ url: string; status: number }> }
+> {
+  const attempts: Array<{ url: string; status: number }> = [];
+  const candidates = [
+    `https://api.documo.com/v1/faxes/${faxId}/pdf`,
+    `https://api.documo.com/v1/faxes/${faxId}/download`,
+    `https://api.documo.com/v1/faxes/${faxId}/file`,
+    `https://api.documo.com/v1/faxes/${faxId}`,
+  ];
+  for (const url of candidates) {
+    const res = await fetch(url, {
+      headers: {
+        // Documo docs show X-API-Key as the standard auth header for
+        // v1 REST calls. Bearer fallback covered too on the off chance
+        // the tenant is on the newer auth scheme.
+        "X-API-Key": apiKey,
+        Authorization: `Bearer ${apiKey}`,
+        Accept: "application/pdf",
+      },
+    });
+    attempts.push({ url, status: res.status });
+    if (!res.ok) continue;
+    const contentType = res.headers.get("content-type") ?? "application/pdf";
+    // Some endpoints return JSON with a `fileUrl` — follow that if so.
+    if (contentType.includes("application/json")) {
+      const json = (await res.json()) as Record<string, unknown>;
+      const nestedUrl =
+        (json.fileUrl ??
+          json.url ??
+          json.downloadUrl ??
+          (json.data as Record<string, unknown> | undefined)?.fileUrl) as
+          | string
+          | undefined;
+      if (nestedUrl) {
+        const inner = await fetch(nestedUrl);
+        if (inner.ok) {
+          const bytes = new Uint8Array(await inner.arrayBuffer());
+          return {
+            ok: true,
+            bytes,
+            contentType: inner.headers.get("content-type") ?? "application/pdf",
+          };
+        }
+        attempts.push({ url: nestedUrl, status: inner.status });
+      }
+      continue;
+    }
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    return { ok: true, bytes, contentType };
+  }
+  return { ok: false, status: attempts.at(-1)?.status ?? 0, attempts };
 }
 
 /** Constant-time Basic Auth compare so the caller can't time-attack the
@@ -235,7 +320,6 @@ export async function POST(request: Request) {
   if (!payload.succeeded) {
     console.info("[intake.inbound-fax] Skipping non-successful event", {
       faxId: payload.faxId,
-      hasFileUrl: !!payload.fileUrl,
     });
     return NextResponse.json({ ok: true, skipped: "not_succeeded" });
   }
@@ -254,20 +338,26 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, duplicate: true, id: existing.id });
   }
 
-  // Fetch the PDF bytes from Documo's file URL. Do this here (server-side)
-  // so the URL — which may include an auth token — never leaks to a
-  // browser. Response should be application/pdf; if it isn't, log +
-  // reject rather than store a suspect blob.
-  const fileRes = await fetch(payload.fileUrl);
-  if (!fileRes.ok) {
-    console.error("[intake.inbound-fax] Failed to download fax file", {
-      status: fileRes.status,
+  // Fetch the PDF from Documo's REST API. Documo doesn't push the
+  // file URL in the webhook payload — we have to pull it ourselves
+  // using the messageId + an API key from the Documo dashboard.
+  const apiKey = process.env.DOCUMO_API_KEY;
+  if (!apiKey) {
+    console.error("[intake.inbound-fax] Missing DOCUMO_API_KEY");
+    return new NextResponse("Server not configured (missing API key).", {
+      status: 500,
+    });
+  }
+  const fetched = await fetchDocumoFax(payload.faxId, apiKey);
+  if (!fetched.ok) {
+    console.error("[intake.inbound-fax] Failed to download fax", {
       faxId: payload.faxId,
+      status: fetched.status,
+      attempts: fetched.attempts,
     });
     return new NextResponse("Failed to download fax file.", { status: 502 });
   }
-  const contentType = fileRes.headers.get("content-type") ?? "application/pdf";
-  const bytes = new Uint8Array(await fileRes.arrayBuffer());
+  const { bytes, contentType } = fetched;
 
   // Deterministic storage path — one PDF per intake row, easy to sweep.
   const intakeId = randomUUID();
