@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createHmac, timingSafeEqual, randomUUID } from "crypto";
+import { timingSafeEqual, randomUUID } from "crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 /**
@@ -7,10 +7,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
  *
  * Documo POSTs one of these to us every time a fax completes on our
  * dedicated Meridian intake number. We:
- *   1. Verify the payload signature (HMAC-SHA256 over the raw body,
- *      keyed by DOCUMO_WEBHOOK_SECRET, presented in the `x-documo-signature`
- *      header). Reject non-matching or missing signatures — this is our
- *      only defense against a public URL being sprayed with fake PDFs.
+ *   1. Verify HTTP Basic Auth on the `Authorization` header. Documo's
+ *      webhook config only offers None / Basic Auth / OAuth 2.0 — no
+ *      HMAC signing — so Basic Auth is the practical HTTPS-native
+ *      defense against a public URL being sprayed with fake PDFs.
  *   2. Idempotency-check by fax_id — Documo retries on 5xx, so a naive
  *      insert would duplicate rows. Unique index in the DB gives us the
  *      hard guarantee; we surface a friendly 200 on the collision.
@@ -21,9 +21,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
  *      shows up on the Intake Inbox for staff triage.
  *
  * Environment:
- *   DOCUMO_WEBHOOK_SECRET  — the shared secret you set in Documo's
- *                            webhook config screen.
- *   SUPABASE_BUCKET        — Storage bucket; defaults to the HIPAA one.
+ *   DOCUMO_WEBHOOK_USERNAME  — Basic Auth username Documo sends.
+ *   DOCUMO_WEBHOOK_PASSWORD  — matching password.
+ *   SUPABASE_BUCKET          — Storage bucket; defaults to the HIPAA one.
  *
  * NOTE on the payload shape: Documo publishes the JSON schema at
  * https://developer.documo.com/reference/inbound-fax-webhook. If they
@@ -83,41 +83,62 @@ function parseDocumoPayload(body: unknown): DocumoFaxPayload | null {
   };
 }
 
-/** Constant-time HMAC compare so the caller can't time-attack the secret. */
-function verifySignature(
-  rawBody: string,
-  headerSig: string | null,
-  secret: string,
+/** Constant-time Basic Auth compare so the caller can't time-attack the
+ *  credentials. Both username and password are compared independently
+ *  under timingSafeEqual — length-safe padding to avoid the trivial
+ *  early-exit on length mismatch. */
+function verifyBasicAuth(
+  authHeader: string | null,
+  expectedUser: string,
+  expectedPass: string,
 ): boolean {
-  if (!headerSig) return false;
-  // Some providers prefix with "sha256=" — strip it.
-  const provided = headerSig.replace(/^sha256=/, "").trim();
-  const expected = createHmac("sha256", secret).update(rawBody).digest("hex");
-  const providedBuf = Buffer.from(provided, "hex");
-  const expectedBuf = Buffer.from(expected, "hex");
-  if (providedBuf.length !== expectedBuf.length) return false;
-  return timingSafeEqual(providedBuf, expectedBuf);
+  if (!authHeader || !authHeader.startsWith("Basic ")) return false;
+  const base64 = authHeader.slice(6).trim();
+  let decoded: string;
+  try {
+    decoded = Buffer.from(base64, "base64").toString("utf-8");
+  } catch {
+    return false;
+  }
+  const idx = decoded.indexOf(":");
+  if (idx < 0) return false;
+  const user = decoded.slice(0, idx);
+  const pass = decoded.slice(idx + 1);
+
+  const eqLen = (a: string, b: string) => {
+    // Pad both to the longer length so timingSafeEqual doesn't reveal
+    // whether the difference was in length or content.
+    const max = Math.max(Buffer.byteLength(a), Buffer.byteLength(b));
+    const pa = Buffer.alloc(max);
+    const pb = Buffer.alloc(max);
+    pa.write(a);
+    pb.write(b);
+    const eq = timingSafeEqual(pa, pb);
+    return eq && Buffer.byteLength(a) === Buffer.byteLength(b);
+  };
+
+  return eqLen(user, expectedUser) && eqLen(pass, expectedPass);
 }
 
 export async function POST(request: Request) {
-  const secret = process.env.DOCUMO_WEBHOOK_SECRET;
-  if (!secret) {
-    console.error("[intake.inbound-fax] Missing DOCUMO_WEBHOOK_SECRET");
+  const expectedUser = process.env.DOCUMO_WEBHOOK_USERNAME;
+  const expectedPass = process.env.DOCUMO_WEBHOOK_PASSWORD;
+  if (!expectedUser || !expectedPass) {
+    console.error(
+      "[intake.inbound-fax] Missing DOCUMO_WEBHOOK_USERNAME/PASSWORD",
+    );
     return new NextResponse("Server not configured.", { status: 500 });
   }
 
-  // Raw body needed for HMAC verification — must be read as text before
-  // JSON.parse, since any re-serialization would break the signature.
-  const rawBody = await request.text();
-  const signature = request.headers.get("x-documo-signature");
-
-  if (!verifySignature(rawBody, signature, secret)) {
-    console.warn("[intake.inbound-fax] Signature verification failed", {
-      hasHeader: !!signature,
-      bodyLength: rawBody.length,
+  const authHeader = request.headers.get("authorization");
+  if (!verifyBasicAuth(authHeader, expectedUser, expectedPass)) {
+    console.warn("[intake.inbound-fax] Basic auth failed", {
+      hasHeader: !!authHeader,
     });
-    return new NextResponse("Invalid signature.", { status: 401 });
+    return new NextResponse("Unauthorized.", { status: 401 });
   }
+
+  const rawBody = await request.text();
 
   let payloadJson: unknown;
   try {
