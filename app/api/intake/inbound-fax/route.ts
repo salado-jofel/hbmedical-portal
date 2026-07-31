@@ -137,19 +137,64 @@ function parseDocumoPayload(body: unknown): DocumoFaxPayload | null {
     /^(success|succeed|succeeded|complete|ok|received)/i.test(rawStatus);
   const succeeded = !isFilePurged && errorClean && statusClean;
 
+  // For inbound, `faxNumber` is OUR own receiving line, not the
+  // sender. The sender identity lives in `faxCsid` or `faxCallerId`
+  // — verified against Documo's own notification email which labels
+  // them "To: <our number>" and "Sender CSID: <sender number>".
+  //
+  // `??` only falls through on null/undefined, so an empty-string
+  // faxCallerId (common when caller ID isn't transmitted) would
+  // pin fromNumber to "" instead of falling back to faxCsid. This
+  // helper treats null / undefined / empty-string / whitespace-only
+  // as "no value" so the fallback chain actually works.
+  //
+  // Extra safety: also skip any candidate that MATCHES the receiver
+  // number (faxNumber) — some Documo tenants echo our own number
+  // into faxCallerId, which would show us as our own sender.
+  const pick = (
+    candidates: Array<unknown>,
+    exclude?: string | null,
+  ): string | null => {
+    for (const c of candidates) {
+      if (c == null) continue;
+      const s = String(c).trim();
+      if (!s) continue;
+      if (exclude && s === exclude) continue;
+      return s;
+    }
+    return null;
+  };
+
+  const toNumber = pick([
+    b.faxNumber,
+    b.faxReceiverCsid,
+    b.toNumber,
+    b.to_number,
+    b.to,
+  ]);
+  const fromNumber = pick(
+    [b.faxCallerId, b.faxCsid, b.fromNumber, b.from_number, b.from],
+    toNumber, // don't let our own receiver number show up as sender
+  );
+
+  // Debug logging (WITH sender-identity fields ONLY; no PHI/message
+  // bodies) so a future misroute can be diagnosed in one push. The
+  // shape-log fired only on parse failure; this one fires on parse
+  // success so we can see the resolved from/to for real faxes.
+  console.info("[intake.inbound-fax] Parsed sender identity", {
+    faxId,
+    fromNumber,
+    toNumber,
+    raw_faxNumber: b.faxNumber,
+    raw_faxCsid: b.faxCsid,
+    raw_faxCallerId: b.faxCallerId,
+    raw_faxReceiverCsid: b.faxReceiverCsid,
+  });
+
   return {
     faxId,
-    fromNumber:
-      ((b.faxNumber ??
-        b.faxCallerId ??
-        b.fromNumber ??
-        b.from_number ??
-        b.from) as string | null | undefined) ?? null,
-    toNumber:
-      ((b.faxReceiverCsid ??
-        b.toNumber ??
-        b.to_number ??
-        b.to) as string | null | undefined) ?? null,
+    fromNumber,
+    toNumber,
     pageCount:
       typeof b.pagesCount === "number"
         ? (b.pagesCount as number)
