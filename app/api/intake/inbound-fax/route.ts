@@ -33,6 +33,27 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 const BUCKET = process.env.SUPABASE_BUCKET ?? "hbmedical-bucket-private";
 
+/** Return a shape sketch of an unknown JSON value: keys and their types,
+ *  drilling one level down into nested objects. NO scalar values are
+ *  emitted — safe to log for debugging Documo's actual webhook shape
+ *  without leaking any PHI that might be in a field like patient_name.
+ */
+function describeShape(v: unknown, depth = 0): unknown {
+  if (v === null) return "null";
+  if (Array.isArray(v)) {
+    return `array(${v.length})${v.length > 0 && depth < 2 ? ":" + JSON.stringify(describeShape(v[0], depth + 1)) : ""}`;
+  }
+  if (typeof v === "object") {
+    if (depth > 2) return "object{...}";
+    const out: Record<string, unknown> = {};
+    for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+      out[k] = describeShape(val, depth + 1);
+    }
+    return out;
+  }
+  return typeof v;
+}
+
 interface DocumoFaxPayload {
   faxId: string;
   fromNumber: string | null;
@@ -56,10 +77,40 @@ interface DocumoFaxPayload {
  */
 function parseDocumoPayload(body: unknown): DocumoFaxPayload | null {
   if (!body || typeof body !== "object") return null;
-  const b = body as Record<string, unknown>;
+  const root = body as Record<string, unknown>;
 
-  // Accept both camelCase and snake_case forms — Documo docs use
-  // camelCase but some historical webhook payloads have shown snake_case.
+  // Documo wraps the fax data one or two levels deep depending on the
+  // event type. Walk a few known shapes so we don't have to guess:
+  //   { faxId, fileUrl, ... }                (flat)
+  //   { data: { faxId, ... } }               (v1 wrapper)
+  //   { data: { fax: { ... } } }             (nested v1)
+  //   { event: "...", fax: { ... } }         (event wrapper)
+  //   { event: "...", data: { fax: {...} } } (event + nested)
+  const candidates: Array<Record<string, unknown>> = [root];
+  for (const key of ["data", "fax", "payload", "message", "body"]) {
+    const val = root[key];
+    if (val && typeof val === "object") {
+      candidates.push(val as Record<string, unknown>);
+      const inner = (val as Record<string, unknown>)["fax"];
+      if (inner && typeof inner === "object") {
+        candidates.push(inner as Record<string, unknown>);
+      }
+      const innerData = (val as Record<string, unknown>)["data"];
+      if (innerData && typeof innerData === "object") {
+        candidates.push(innerData as Record<string, unknown>);
+      }
+    }
+  }
+
+  let b: Record<string, unknown> | null = null;
+  for (const c of candidates) {
+    if (c && (c.faxId ?? c.fax_id ?? c.id)) {
+      b = c;
+      break;
+    }
+  }
+  if (!b) return null;
+
   const faxId = (b.faxId ?? b.fax_id ?? b.id) as string | undefined;
   if (!faxId) return null;
 
@@ -167,7 +218,13 @@ export async function POST(request: Request) {
   }
   const payload = parseDocumoPayload(payloadJson);
   if (!payload) {
-    console.error("[intake.inbound-fax] Unrecognized payload shape");
+    // Log the SHAPE (top-level keys + one level down) so we can adapt
+    // the parser without PHI leaking into logs. Values are stringified
+    // with type tags, not contents.
+    const shape = describeShape(payloadJson);
+    console.error("[intake.inbound-fax] Unrecognized payload shape", {
+      shape,
+    });
     return new NextResponse("Unrecognized payload.", { status: 400 });
   }
 
