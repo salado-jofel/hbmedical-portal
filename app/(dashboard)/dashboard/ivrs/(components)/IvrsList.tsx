@@ -170,7 +170,20 @@ export function IvrsList({ facilities, approvers }: IvrsListProps) {
                       {STANDALONE_IVR_STATUS_LABELS[i.status]}
                     </span>
                   </td>
-                  <td className="px-4 py-2.5">{i.approver?.name ?? "—"}</td>
+                  <td className="px-4 py-2.5">
+                    {/* Fax-originated IVRs have no external approver row
+                        (assigned_approver_id is null); the approver
+                        display name is stamped with a marker string at
+                        create time. Show a "From Fax" chip in that case
+                        so the origin is scannable from the list. */}
+                    {i.approverDisplayName?.startsWith("Approved from fax") ? (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border bg-purple-50 text-purple-700 border-purple-200">
+                        From Fax
+                      </span>
+                    ) : (
+                      (i.approver?.name ?? "—")
+                    )}
+                  </td>
                   <td className="px-4 py-2.5 text-[11px] text-[var(--text3)]">
                     {new Date(i.createdAt).toLocaleString()}
                   </td>

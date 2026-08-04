@@ -11,6 +11,7 @@ import { randomUUID } from "crypto";
 import type {
   IStandaloneIvr,
   IStandaloneIvrFile,
+  IStandaloneIvrForm,
   IStandaloneIvrHistoryEntry,
   StandaloneIvrHistoryEvent,
   IExternalApprover,
@@ -47,7 +48,76 @@ const IVR_SELECT = `
   converted_to_order_id,
   created_at,
   updated_at,
-  facilities ( name )
+  facilities ( name ),
+  ai_extracted,
+  ai_extracted_at,
+  sales_rep_name,
+  place_of_service,
+  specialty_site_name,
+  medicare_admin_contractor,
+  facility_name,
+  facility_address,
+  facility_contact,
+  facility_phone,
+  facility_fax,
+  facility_npi,
+  facility_tin,
+  facility_ptan,
+  physician_phone,
+  physician_fax,
+  physician_address,
+  physician_tin,
+  patient_phone,
+  patient_address,
+  ok_to_contact_patient,
+  insurance_provider,
+  insurance_phone,
+  member_id,
+  group_number,
+  plan_name,
+  plan_type,
+  subscriber_name,
+  subscriber_dob,
+  subscriber_relationship,
+  provider_participates_primary,
+  coverage_start_date,
+  coverage_end_date,
+  deductible_amount,
+  deductible_met,
+  out_of_pocket_max,
+  out_of_pocket_met,
+  copay_amount,
+  coinsurance_percent,
+  dme_covered,
+  wound_care_covered,
+  prior_auth_required,
+  prior_auth_number,
+  prior_auth_start_date,
+  prior_auth_end_date,
+  units_authorized,
+  verified_by,
+  verified_date,
+  verification_reference,
+  secondary_insurance_provider,
+  secondary_insurance_phone,
+  secondary_subscriber_name,
+  secondary_policy_number,
+  secondary_subscriber_dob,
+  secondary_plan_type,
+  secondary_group_number,
+  secondary_subscriber_relationship,
+  provider_participates_secondary,
+  wound_type,
+  wound_sizes,
+  application_cpts,
+  date_of_procedure,
+  icd10_codes,
+  product_information,
+  is_patient_at_snf,
+  surgical_global_period,
+  global_period_cpt,
+  prior_auth_permission,
+  form_notes
 `;
 
 async function fetchApproversByIds(
@@ -121,6 +191,96 @@ function mapIvr(
     updatedAt: row.updated_at as string,
     approver,
     facilityName: facility?.name ?? null,
+    aiExtracted: Boolean(row.ai_extracted ?? false),
+    aiExtractedAt: (row.ai_extracted_at as string | null) ?? null,
+    form: mapIvrForm(row),
+  };
+}
+
+/** Hydrates the nested `form` bag from a standalone_ivrs row. Every
+ *  column is optional and defaults to null so we can return a full
+ *  IStandaloneIvrForm even when nothing has been filled in yet. */
+function mapIvrForm(row: Record<string, unknown>): IStandaloneIvrForm {
+  const s = (v: unknown): string | null =>
+    typeof v === "string" && v.length > 0 ? v : null;
+  const n = (v: unknown): number | null =>
+    typeof v === "number"
+      ? v
+      : typeof v === "string" && v !== "" && !isNaN(Number(v))
+        ? Number(v)
+        : null;
+  const b = (v: unknown): boolean | null =>
+    typeof v === "boolean" ? v : null;
+  return {
+    salesRepName: s(row.sales_rep_name),
+    placeOfService: s(row.place_of_service),
+    specialtySiteName: s(row.specialty_site_name),
+    medicareAdminContractor: s(row.medicare_admin_contractor),
+    facilityName: s(row.facility_name),
+    facilityAddress: s(row.facility_address),
+    facilityContact: s(row.facility_contact),
+    facilityPhone: s(row.facility_phone),
+    facilityFax: s(row.facility_fax),
+    facilityNpi: s(row.facility_npi),
+    facilityTin: s(row.facility_tin),
+    facilityPtan: s(row.facility_ptan),
+    physicianPhone: s(row.physician_phone),
+    physicianFax: s(row.physician_fax),
+    physicianAddress: s(row.physician_address),
+    physicianTin: s(row.physician_tin),
+    patientPhone: s(row.patient_phone),
+    patientAddress: s(row.patient_address),
+    okToContactPatient: b(row.ok_to_contact_patient),
+    insuranceProvider: s(row.insurance_provider),
+    insurancePhone: s(row.insurance_phone),
+    memberId: s(row.member_id),
+    groupNumber: s(row.group_number),
+    planName: s(row.plan_name),
+    planType: s(row.plan_type),
+    subscriberName: s(row.subscriber_name),
+    subscriberDob: s(row.subscriber_dob),
+    subscriberRelationship: s(row.subscriber_relationship),
+    providerParticipatesPrimary: s(row.provider_participates_primary),
+    coverageStartDate: s(row.coverage_start_date),
+    coverageEndDate: s(row.coverage_end_date),
+    deductibleAmount: n(row.deductible_amount),
+    deductibleMet: n(row.deductible_met),
+    outOfPocketMax: n(row.out_of_pocket_max),
+    outOfPocketMet: n(row.out_of_pocket_met),
+    copayAmount: n(row.copay_amount),
+    coinsurancePercent: n(row.coinsurance_percent),
+    dmeCovered: b(row.dme_covered),
+    woundCareCovered: b(row.wound_care_covered),
+    priorAuthRequired: b(row.prior_auth_required),
+    priorAuthNumber: s(row.prior_auth_number),
+    priorAuthStartDate: s(row.prior_auth_start_date),
+    priorAuthEndDate: s(row.prior_auth_end_date),
+    unitsAuthorized: n(row.units_authorized),
+    verifiedBy: s(row.verified_by),
+    verifiedDate: s(row.verified_date),
+    verificationReference: s(row.verification_reference),
+    secondaryInsuranceProvider: s(row.secondary_insurance_provider),
+    secondaryInsurancePhone: s(row.secondary_insurance_phone),
+    secondarySubscriberName: s(row.secondary_subscriber_name),
+    secondaryPolicyNumber: s(row.secondary_policy_number),
+    secondarySubscriberDob: s(row.secondary_subscriber_dob),
+    secondaryPlanType: s(row.secondary_plan_type),
+    secondaryGroupNumber: s(row.secondary_group_number),
+    secondarySubscriberRelationship: s(
+      row.secondary_subscriber_relationship,
+    ),
+    providerParticipatesSecondary: s(row.provider_participates_secondary),
+    woundType: s(row.wound_type),
+    woundSizes: s(row.wound_sizes),
+    applicationCpts: s(row.application_cpts),
+    dateOfProcedure: s(row.date_of_procedure),
+    icd10Codes: s(row.icd10_codes),
+    productInformation: s(row.product_information),
+    isPatientAtSnf: b(row.is_patient_at_snf),
+    surgicalGlobalPeriod: b(row.surgical_global_period),
+    globalPeriodCpt: s(row.global_period_cpt),
+    priorAuthPermission: b(row.prior_auth_permission),
+    formNotes: s(row.form_notes),
   };
 }
 
@@ -542,6 +702,434 @@ export async function createStandaloneIvr(
   }
 }
 
+/* -------------------------------------------------------------------------- */
+/* createStandaloneIvrFromFax                                                 */
+/*                                                                            */
+/* Fax-intake → IVR handoff. Called from the intake surface's "Build IVR"     */
+/* modal. Semantics differ from createStandaloneIvr in two ways:              */
+/*                                                                            */
+/*  1. No external approver. The faxed IVR IS the approved artifact from     */
+/*     the client-side approver's office — the save action IS the approval   */
+/*     step, so we insert status='approved' and stamp approver_display_name  */
+/*     = 'Approved from fax intake' + approved_at = now(). The IVRs list     */
+/*     detects the fax origin via that display-name prefix and shows a       */
+/*     "From Fax" chip.                                                       */
+/*                                                                            */
+/*  2. Storage bytes are COPIED from the intake path                          */
+/*     (intake/{intakeId}.pdf) to standalone-ivrs/{ivrId}/{name}.pdf so the   */
+/*     existing getIvrFileSignedUrl path-authorization regex still works and  */
+/*     dismissing the intake later doesn't break the IVR preview. The intake  */
+/*     row is then flipped to converted_ivr with converted_to_id=ivrId so     */
+/*     the fax stops appearing in the pending inbox.                          */
+/* -------------------------------------------------------------------------- */
+
+const FAX_INTAKE_APPROVAL_MARKER = "Approved from fax intake";
+
+/**
+ * Whitelist of standalone_ivrs columns the "rich IVR form" is allowed
+ * to write. Keyed by the interface field name (camelCase); value is the
+ * DB column name. Used by both createStandaloneIvrFromFax (initial
+ * save) and saveStandaloneIvrForm (subsequent edits) so the two paths
+ * can't drift on which fields are persistable.
+ */
+const FORM_COLUMN_MAP: Record<keyof IStandaloneIvrForm, string> = {
+  salesRepName: "sales_rep_name",
+  placeOfService: "place_of_service",
+  specialtySiteName: "specialty_site_name",
+  medicareAdminContractor: "medicare_admin_contractor",
+  facilityName: "facility_name",
+  facilityAddress: "facility_address",
+  facilityContact: "facility_contact",
+  facilityPhone: "facility_phone",
+  facilityFax: "facility_fax",
+  facilityNpi: "facility_npi",
+  facilityTin: "facility_tin",
+  facilityPtan: "facility_ptan",
+  physicianPhone: "physician_phone",
+  physicianFax: "physician_fax",
+  physicianAddress: "physician_address",
+  physicianTin: "physician_tin",
+  patientPhone: "patient_phone",
+  patientAddress: "patient_address",
+  okToContactPatient: "ok_to_contact_patient",
+  insuranceProvider: "insurance_provider",
+  insurancePhone: "insurance_phone",
+  memberId: "member_id",
+  groupNumber: "group_number",
+  planName: "plan_name",
+  planType: "plan_type",
+  subscriberName: "subscriber_name",
+  subscriberDob: "subscriber_dob",
+  subscriberRelationship: "subscriber_relationship",
+  providerParticipatesPrimary: "provider_participates_primary",
+  coverageStartDate: "coverage_start_date",
+  coverageEndDate: "coverage_end_date",
+  deductibleAmount: "deductible_amount",
+  deductibleMet: "deductible_met",
+  outOfPocketMax: "out_of_pocket_max",
+  outOfPocketMet: "out_of_pocket_met",
+  copayAmount: "copay_amount",
+  coinsurancePercent: "coinsurance_percent",
+  dmeCovered: "dme_covered",
+  woundCareCovered: "wound_care_covered",
+  priorAuthRequired: "prior_auth_required",
+  priorAuthNumber: "prior_auth_number",
+  priorAuthStartDate: "prior_auth_start_date",
+  priorAuthEndDate: "prior_auth_end_date",
+  unitsAuthorized: "units_authorized",
+  verifiedBy: "verified_by",
+  verifiedDate: "verified_date",
+  verificationReference: "verification_reference",
+  secondaryInsuranceProvider: "secondary_insurance_provider",
+  secondaryInsurancePhone: "secondary_insurance_phone",
+  secondarySubscriberName: "secondary_subscriber_name",
+  secondaryPolicyNumber: "secondary_policy_number",
+  secondarySubscriberDob: "secondary_subscriber_dob",
+  secondaryPlanType: "secondary_plan_type",
+  secondaryGroupNumber: "secondary_group_number",
+  secondarySubscriberRelationship: "secondary_subscriber_relationship",
+  providerParticipatesSecondary: "provider_participates_secondary",
+  woundType: "wound_type",
+  woundSizes: "wound_sizes",
+  applicationCpts: "application_cpts",
+  dateOfProcedure: "date_of_procedure",
+  icd10Codes: "icd10_codes",
+  productInformation: "product_information",
+  isPatientAtSnf: "is_patient_at_snf",
+  surgicalGlobalPeriod: "surgical_global_period",
+  globalPeriodCpt: "global_period_cpt",
+  priorAuthPermission: "prior_auth_permission",
+  formNotes: "form_notes",
+};
+
+/**
+ * Turn a partial rich-form patch (interface camelCase, whatever
+ * subset the caller provided) into a DB row (snake_case). Unknown
+ * keys are silently dropped — the whitelist is the boundary.
+ * Empty strings collapse to null so the DB doesn't hold `""` values
+ * that would break date parsing on the way back out.
+ */
+function formPatchToRow(
+  patch: Partial<IStandaloneIvrForm>,
+): Record<string, unknown> {
+  const row: Record<string, unknown> = {};
+  for (const [key, colName] of Object.entries(FORM_COLUMN_MAP)) {
+    if (!(key in patch)) continue;
+    const raw = (patch as Record<string, unknown>)[key];
+    if (typeof raw === "string" && raw.trim() === "") {
+      row[colName] = null;
+    } else {
+      row[colName] = raw ?? null;
+    }
+  }
+  return row;
+}
+
+export async function createStandaloneIvrFromFax(input: {
+  intakeId: string;
+  facilityId: string;
+  patientName?: string | null;
+  patientDob?: string | null;
+  physicianName?: string | null;
+  physicianNpi?: string | null;
+  productSummary?: string | null;
+  /** Every editable field on the rich IVR form. Optional — the modal
+   *  can save early with just the top-level metadata and the user can
+   *  fill the rest later via saveStandaloneIvrForm on /dashboard/ivrs. */
+  form?: Partial<IStandaloneIvrForm>;
+  /** Set true when the values came from AI pre-fill so we can stamp
+   *  ai_extracted_at for observability. User edits after save don't
+   *  reset this. */
+  aiExtracted?: boolean;
+}): Promise<
+  | { success: true; ivr: IStandaloneIvr }
+  | { success: false; error: string }
+> {
+  try {
+    const supabase = await createClient();
+    const user = await getCurrentUserOrThrow(supabase);
+    const role = await getUserRole(supabase);
+    if (role !== "admin" && role !== "support_staff") {
+      return {
+        success: false,
+        error: "Only admin or support staff can build an IVR from a fax.",
+      };
+    }
+    if (!input.intakeId) {
+      return { success: false, error: "Missing intake reference." };
+    }
+    if (!input.facilityId) {
+      return {
+        success: false,
+        error: "Pick which clinic this IVR belongs to.",
+      };
+    }
+
+    const adminClient = createAdminClient();
+
+    // Load the intake row (admin — RLS is already tight, and we need the
+    // storage path either way). Fail early if it's not pending — a
+    // double-submit shouldn't spawn two IVRs from the same fax.
+    const { data: intake, error: intakeErr } = await adminClient
+      .from("intake_documents")
+      .select("id, status, bucket, file_path, file_name, mime_type, file_size")
+      .eq("id", input.intakeId)
+      .maybeSingle();
+    if (intakeErr || !intake) {
+      return { success: false, error: "Intake not found." };
+    }
+    if (intake.status !== "pending") {
+      return {
+        success: false,
+        error: "This fax has already been triaged.",
+      };
+    }
+
+    // Verify caller can access the target facility. Admin/support have
+    // broad RLS on facilities, so this is really a "does it exist"
+    // check — but running it through the user client keeps the auth
+    // model consistent with createStandaloneIvr.
+    const { data: fac } = await supabase
+      .from("facilities")
+      .select("id")
+      .eq("id", input.facilityId)
+      .maybeSingle();
+    if (!fac) {
+      return {
+        success: false,
+        error: "That facility isn't available to you.",
+      };
+    }
+
+    // Insert the standalone_ivrs row (admin — we're setting fields the
+    // user's INSERT policy wouldn't allow, namely status='approved').
+    // The rich-form patch is spread on top of the top-level metadata
+    // so single-source save covers both.
+    const nowIso = new Date().toISOString();
+    const formRow = input.form ? formPatchToRow(input.form) : {};
+    const { data: ivr, error: insertErr } = await adminClient
+      .from("standalone_ivrs")
+      .insert({
+        ...formRow,
+        status: "approved",
+        patient_name: input.patientName?.trim() || null,
+        patient_dob: input.patientDob?.trim() || null,
+        physician_name: input.physicianName?.trim() || null,
+        physician_npi: input.physicianNpi?.trim() || null,
+        facility_id: input.facilityId,
+        product_summary: input.productSummary?.trim() || null,
+        assigned_approver_id: null,
+        approver_display_name: FAX_INTAKE_APPROVAL_MARKER,
+        approved_at: nowIso,
+        uploaded_by: user.id,
+        ai_extracted: input.aiExtracted ?? false,
+        ai_extracted_at: input.aiExtracted ? nowIso : null,
+      })
+      .select(IVR_SELECT)
+      .single();
+    if (insertErr || !ivr) {
+      console.error("[createStandaloneIvrFromFax] insert", insertErr);
+      return { success: false, error: "Failed to create IVR record." };
+    }
+
+    // Copy the fax bytes into the standalone-ivrs prefix so the IVR
+    // preview goes through the standard getIvrFileSignedUrl regex and
+    // survives the intake row being dismissed later. `.copy` is a
+    // server-side S3 copy — no bytes traverse Vercel.
+    const fileName =
+      (intake.file_name as string | null) ?? `fax-${intake.id}.pdf`;
+    const destPath = `standalone-ivrs/${ivr.id}/${fileName}`;
+    const { error: copyErr } = await adminClient.storage
+      .from(intake.bucket as string)
+      .copy(intake.file_path as string, destPath);
+    if (copyErr) {
+      // Roll back the IVR row so the user can retry. Copy failures here
+      // are usually a storage-permission drift — better to fail loud
+      // than leave a dangling IVR with no attached file.
+      console.error("[createStandaloneIvrFromFax] storage.copy", copyErr);
+      await adminClient
+        .from("standalone_ivrs")
+        .delete()
+        .eq("id", ivr.id as string);
+      return {
+        success: false,
+        error: "Failed to copy the fax file into the IVR record.",
+      };
+    }
+
+    const { error: fileInsertErr } = await adminClient
+      .from("standalone_ivr_files")
+      .insert({
+        standalone_ivr_id: ivr.id,
+        file_path: destPath,
+        file_name: fileName,
+        mime_type:
+          (intake.mime_type as string | null) ?? "application/pdf",
+        file_size: (intake.file_size as number | null) ?? null,
+      });
+    if (fileInsertErr) {
+      console.error("[createStandaloneIvrFromFax] file row", fileInsertErr);
+      // Non-fatal — the IVR row exists and the storage bytes exist; the
+      // user can re-attach from the IVR detail modal if needed.
+    }
+
+    // Two history entries: creation + implicit approval. Notes carry the
+    // origin so a future audit can trace back to the fax.
+    await insertIvrHistory(
+      adminClient,
+      ivr.id as string,
+      "created",
+      user.id,
+      `Built from fax intake ${input.intakeId}`,
+    );
+    await insertIvrHistory(
+      adminClient,
+      ivr.id as string,
+      "approved",
+      user.id,
+      FAX_INTAKE_APPROVAL_MARKER,
+    );
+
+    // Flip the intake to converted_ivr so it drops off the pending list.
+    const { error: intakeUpdErr } = await adminClient
+      .from("intake_documents")
+      .update({
+        status: "converted_ivr",
+        converted_to_type: "standalone_ivr",
+        converted_to_id: ivr.id,
+        converted_at: nowIso,
+        converted_by: user.id,
+        updated_at: nowIso,
+      })
+      .eq("id", input.intakeId);
+    if (intakeUpdErr) {
+      console.error(
+        "[createStandaloneIvrFromFax] intake update",
+        intakeUpdErr,
+      );
+      // Non-fatal — the IVR is real; worst case the fax lingers as pending
+      // and the user manually dismisses it.
+    }
+
+    revalidatePath(IVRS_PATH);
+    revalidatePath("/dashboard/intake");
+    return { success: true, ivr: mapIvr(ivr as Record<string, unknown>) };
+  } catch (err) {
+    console.error("[createStandaloneIvrFromFax]", err);
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Unexpected error.",
+    };
+  }
+}
+
+/**
+ * Save (or re-save) the rich IVR form for a standalone IVR. Called
+ * from the "Build IVR from fax" modal and from a future editable view
+ * on /dashboard/ivrs.
+ *
+ * The write goes through the admin client so we can bypass the
+ * "draft-only" status gate that updateStandaloneIvr enforces — a
+ * fax-originated IVR lands as 'approved' immediately (save IS the
+ * approval) and still needs to remain editable for typo fixes before
+ * the user converts it to an order. RLS-scoped read up front is what
+ * keeps this admin-write from being an authorization hole.
+ */
+export async function saveStandaloneIvrForm(
+  id: string,
+  patch: Partial<IStandaloneIvrForm> & {
+    patientName?: string | null;
+    patientDob?: string | null;
+    physicianName?: string | null;
+    physicianNpi?: string | null;
+    productSummary?: string | null;
+  },
+): Promise<
+  | { success: true; ivr: IStandaloneIvr }
+  | { success: false; error: string }
+> {
+  try {
+    const supabase = await createClient();
+    const user = await getCurrentUserOrThrow(supabase);
+
+    // Confirm the caller can see the IVR via RLS. If they can't, they
+    // can't edit it either — even though the actual write below uses
+    // admin client to bypass the draft-only UPDATE policy.
+    const { data: existing } = await supabase
+      .from("standalone_ivrs")
+      .select("id, status, converted_to_order_id")
+      .eq("id", id)
+      .maybeSingle();
+    if (!existing) {
+      return { success: false, error: "IVR not found or access denied." };
+    }
+    if (existing.converted_to_order_id) {
+      // Once the IVR has become an order, edits should go through the
+      // order's IVR tab so the same edit doesn't have to be replayed
+      // on both records.
+      return {
+        success: false,
+        error:
+          "This IVR has already been converted to an order — edit the order's IVR tab instead.",
+      };
+    }
+
+    const adminClient = createAdminClient();
+
+    // Split the patch: top-level metadata columns are updated as-is,
+    // form columns go through the map so the whitelist keeps us honest.
+    const formOnly: Partial<IStandaloneIvrForm> = { ...patch };
+    delete (formOnly as Record<string, unknown>).patientName;
+    delete (formOnly as Record<string, unknown>).patientDob;
+    delete (formOnly as Record<string, unknown>).physicianName;
+    delete (formOnly as Record<string, unknown>).physicianNpi;
+    delete (formOnly as Record<string, unknown>).productSummary;
+
+    const row: Record<string, unknown> = {
+      ...formPatchToRow(formOnly),
+      updated_at: new Date().toISOString(),
+    };
+    if ("patientName" in patch)
+      row.patient_name = patch.patientName?.trim() || null;
+    if ("patientDob" in patch)
+      row.patient_dob = patch.patientDob?.trim() || null;
+    if ("physicianName" in patch)
+      row.physician_name = patch.physicianName?.trim() || null;
+    if ("physicianNpi" in patch)
+      row.physician_npi = patch.physicianNpi?.trim() || null;
+    if ("productSummary" in patch)
+      row.product_summary = patch.productSummary?.trim() || null;
+
+    const { data: updated, error: updErr } = await adminClient
+      .from("standalone_ivrs")
+      .update(row)
+      .eq("id", id)
+      .select(IVR_SELECT)
+      .single();
+    if (updErr || !updated) {
+      console.error("[saveStandaloneIvrForm] update", updErr);
+      return { success: false, error: "Failed to save IVR form." };
+    }
+
+    await insertIvrHistory(
+      adminClient,
+      id,
+      "edited",
+      user.id,
+      "Rich IVR form updated",
+    );
+
+    revalidatePath(IVRS_PATH);
+    return { success: true, ivr: mapIvr(updated as Record<string, unknown>) };
+  } catch (err) {
+    console.error("[saveStandaloneIvrForm]", err);
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Unexpected error.",
+    };
+  }
+}
+
 export async function updateStandaloneIvr(
   id: string,
   patch: Partial<{
@@ -954,19 +1542,31 @@ export async function convertIvrToOrder(input: {
     const adminClient = createAdminClient();
 
     // Load the IVR + files under the caller's RLS scope — if they can't
-    // see it, they can't convert it.
-    const { data: ivr } = await supabase
+    // see it, they can't convert it. `select("*")` because we need
+    // every rich-form column to copy over to order_ivr and enumerating
+    // them again would drift from FORM_COLUMN_MAP over time. We cast
+    // to Record<string, unknown> for the copy loop below — Supabase's
+    // generic type inference can't type-check a splat select against
+    // a dynamic column list anyway.
+    const { data: ivrRow } = await supabase
       .from("standalone_ivrs")
-      .select(
-        `id, status, patient_name, patient_dob, physician_name, physician_npi,
-         facility_id, product_summary, assigned_approver_id,
-         approved_at, approver_display_name, converted_to_order_id`,
-      )
+      .select("*")
       .eq("id", input.ivrId)
       .maybeSingle();
-    if (!ivr) {
+    if (!ivrRow) {
       return { success: false, error: "IVR not found or access denied." };
     }
+    const ivr = ivrRow as unknown as Record<string, unknown> & {
+      id: string;
+      status: string;
+      patient_name: string | null;
+      patient_dob: string | null;
+      physician_name: string | null;
+      physician_npi: string | null;
+      facility_id: string;
+      product_summary: string | null;
+      converted_to_order_id: string | null;
+    };
     if (ivr.status !== "approved") {
       return {
         success: false,
@@ -1008,20 +1608,39 @@ export async function convertIvrToOrder(input: {
       return { success: false, error: "Failed to create order." };
     }
 
-    // 2. Seed order_ivr — carry patient/physician/facility over and link
-    // back to the standalone IVR for the approval banner.
+    // 2. Seed order_ivr — carry every rich-form column over and link
+    // back to the standalone IVR for the approval banner. Same column
+    // names both sides, so this is a dumb 1:1 copy driven by
+    // FORM_COLUMN_MAP.
+    const formCopy: Record<string, unknown> = {};
+    for (const col of Object.values(FORM_COLUMN_MAP)) {
+      // order_ivr doesn't have form_notes — that's the standalone-only
+      // back-office field. Skip it during the copy; if we ever add it
+      // to order_ivr we can drop this exception.
+      if (col === "form_notes") continue;
+      const val = (ivr as Record<string, unknown>)[col];
+      if (val !== undefined && val !== null) formCopy[col] = val;
+    }
     const { error: ivrRowErr } = await adminClient.from("order_ivr").insert({
+      ...formCopy,
       order_id: order.id,
       patient_name: ivr.patient_name,
       patient_dob: ivr.patient_dob,
       physician_name: ivr.physician_name,
       physician_npi: ivr.physician_npi,
-      product_information: ivr.product_summary,
+      // product_information from the form takes precedence when filled;
+      // otherwise fall back to the summary the uploader typed.
+      product_information:
+        (formCopy.product_information as string | undefined) ??
+        ivr.product_summary,
       linked_standalone_ivr_id: ivr.id,
-      // ivr_mode 'uploaded' — the external IVR file IS the IVR now; the
-      // in-portal form stays empty. Same semantics as clinicians uploading
-      // a completed IVR directly via the order's IVR tab.
-      ivr_mode: "uploaded",
+      // Default to 'built' now — the rich form on the standalone side
+      // gave us real data to display in the order's IVR tab. The fax
+      // PDF is ALSO attached as an uploaded_ivr doc below so it stays
+      // one click away for reference, and the user can toggle to
+      // 'uploaded' mode if they'd rather see the fax as source of
+      // truth.
+      ivr_mode: "built",
     });
     if (ivrRowErr) {
       console.error("[convertIvrToOrder] order_ivr insert", ivrRowErr);
