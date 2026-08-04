@@ -39,9 +39,28 @@ export async function createOrder(data: {
   manual_input?: boolean;
   patient_first_name?: string | null;
   patient_last_name?: string | null;
+  /** Explicit facility override — required for admin/support callers
+   *  (they have no facility_members membership so requireClinicRole
+   *  returns null). Clinic staff can omit this and their own facility
+   *  is used. Introduced 2026-08-03 to unblock the fax-intake → order
+   *  handoff where the triager must pick which clinic owns the fax. */
+  facility_id?: string | null;
 }): Promise<IOrderFormState> {
   try {
-    const { userId, facilityId } = await requireClinicRole();
+    const { userId, facilityId: userFacilityId } = await requireClinicRole();
+
+    // Explicit facility_id from caller wins (admin/support triage flow);
+    // otherwise fall back to the user's own facility membership. If
+    // neither is present, orders.facility_id NOT NULL would blow up on
+    // insert — surface a friendly error instead of leaking the DB code.
+    const facilityId = data.facility_id?.trim() || userFacilityId;
+    if (!facilityId) {
+      return {
+        success: false,
+        error:
+          "No facility selected. Pick which clinic this order belongs to before submitting.",
+      };
+    }
 
     if (!data.wound_type) return { success: false, error: "Wound type is required." };
     if (!data.date_of_service) return { success: false, error: "Date of service is required." };
