@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   Dialog,
@@ -280,6 +280,12 @@ interface CreateOrderModalProps {
   fromStandaloneIvr?: {
     ivrId: string;
     label: string | null;
+    /** The IVR's owning clinic. Forwarded straight into createOrder so
+     *  admin/support (who have no facility_members of their own) don't
+     *  fail the NOT NULL check on orders.facility_id. Clinic staff
+     *  don't need this — their own facility is used — but passing it
+     *  always is harmless and keeps the two callers symmetrical. */
+    facilityId?: string | null;
   };
   /** When creating an order from a fax intake: shows a "Building from
    *  fax X.pdf" banner, and after the order + user's uploads are done,
@@ -329,13 +335,17 @@ export function CreateOrderModal(props: CreateOrderModalProps = {}) {
     new Date().toISOString().split("T")[0],
   );
   const [notes, setNotes] = useState("");
-  // Facility picker — only rendered + required in the fromIntake path
-  // (admin/support triaging a fax has no membership of their own, so
-  // createOrder can't derive facility_id and needs the choice explicitly).
-  // Auto-picks the only option when there's exactly one, to save a click.
-  const [facilityId, setFacilityId] = useState<string>(() =>
-    fromIntake && facilities?.length === 1 ? facilities[0].id : "",
-  );
+  // Facility picker — rendered + required in the fromIntake path
+  // (admin/support triaging a fax has no membership of their own).
+  // In the fromStandaloneIvr path the picker stays hidden — the IVR
+  // already knows its owning clinic — but we still initialize the
+  // state from it so createOrder gets a non-null facility_id when
+  // admin/support runs the conversion.
+  const [facilityId, setFacilityId] = useState<string>(() => {
+    if (fromStandaloneIvr?.facilityId) return fromStandaloneIvr.facilityId;
+    if (fromIntake && facilities?.length === 1) return facilities[0].id;
+    return "";
+  });
   const [docs, setDocs] = useState<DocFile[]>([]);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -352,7 +362,11 @@ export function CreateOrderModal(props: CreateOrderModalProps = {}) {
     setPatientLastName("");
     setDateOfService(new Date().toISOString().split("T")[0]);
     setNotes("");
-    setFacilityId(fromIntake && facilities?.length === 1 ? facilities[0].id : "");
+    setFacilityId(() => {
+      if (fromStandaloneIvr?.facilityId) return fromStandaloneIvr.facilityId;
+      if (fromIntake && facilities?.length === 1) return facilities[0].id;
+      return "";
+    });
     setDocs([]);
     setUploadProgress(null);
     setSubmitted(false);
@@ -656,6 +670,20 @@ export function CreateOrderModal(props: CreateOrderModalProps = {}) {
     submitted && manualInput && patientFirstName.trim().length === 0;
   const patientLastNameError =
     submitted && manualInput && patientLastName.trim().length === 0;
+
+  // Sync `facilityId` state from props whenever the modal transitions
+  // to open. The modal is mounted once by the parent and just toggled
+  // — the useState default only fires at mount, so a fresh IVR opened
+  // 30 seconds later wouldn't otherwise pick up its facilityId. Same
+  // for fromIntake's single-facility auto-pick.
+  useEffect(() => {
+    if (!open) return;
+    if (fromStandaloneIvr?.facilityId) {
+      setFacilityId(fromStandaloneIvr.facilityId);
+    } else if (fromIntake && facilities?.length === 1) {
+      setFacilityId(facilities[0].id);
+    }
+  }, [open, fromStandaloneIvr?.facilityId, fromIntake, facilities]);
 
   // Auto-hide the internal trigger button whenever the parent is
   // controlling `open` — otherwise you'd get a duplicate "New Order"

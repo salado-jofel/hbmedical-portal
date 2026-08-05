@@ -22,108 +22,31 @@ import { useMemo, type InputHTMLAttributes } from "react";
 import { MapPin, Mail, Globe, Phone } from "lucide-react";
 import { MeridianLogo } from "@/app/(components)/MeridianLogo";
 import { cn } from "@/utils/utils";
-import type { IStandaloneIvrForm } from "@/utils/interfaces/standalone-ivrs";
+// Value shape + fold/merge helpers now live in a server-safe file so
+// server routes (PDF gen, etc.) can import them without pulling in
+// this "use client" module. Re-exported below for browser callers
+// that still expect them from this path.
+import {
+  emptyStandaloneIvrForm,
+  foldIvrToFormValue,
+  mergeAiExtract,
+  type StandaloneIvrFormValue,
+} from "./standalone-ivr-form-value";
+export {
+  emptyStandaloneIvrForm,
+  foldIvrToFormValue,
+  mergeAiExtract,
+  type StandaloneIvrFormValue,
+};
 
 /* ── Design tokens (mirror IVRFormDocument) ── */
 const NAVY = "#0f2d4a";
 const TEAL = "#0d7a6b";
 
-/* ── Value shape the parent owns ──
-   Broader than IStandaloneIvrForm: patient name / DOB / physician
-   name+NPI / product summary live on the parent standalone_ivrs row,
-   not the form bag. Bundling them here so this component is the sole
-   source of truth for the whole IVR paper document. */
-export interface StandaloneIvrFormValue extends IStandaloneIvrForm {
-  patientName: string | null;
-  patientDob: string | null;
-  physicianName: string | null;
-  physicianNpi: string | null;
-  productSummary: string | null;
-}
-
 /** Utility — turn an incoming value (any of null/undefined/number/etc) into
  *  the string the underlying <input> expects. Empty string when null. */
 const s = (v: unknown): string =>
   v === null || v === undefined ? "" : String(v);
-
-/** Blank-form factory — used for "reset" and initial-load fallbacks so
- *  callers never have to remember which columns exist. */
-export function emptyStandaloneIvrForm(): StandaloneIvrFormValue {
-  return {
-    patientName: null,
-    patientDob: null,
-    physicianName: null,
-    physicianNpi: null,
-    productSummary: null,
-    salesRepName: null,
-    placeOfService: null,
-    specialtySiteName: null,
-    medicareAdminContractor: null,
-    facilityName: null,
-    facilityAddress: null,
-    facilityContact: null,
-    facilityPhone: null,
-    facilityFax: null,
-    facilityNpi: null,
-    facilityTin: null,
-    facilityPtan: null,
-    physicianPhone: null,
-    physicianFax: null,
-    physicianAddress: null,
-    physicianTin: null,
-    patientPhone: null,
-    patientAddress: null,
-    okToContactPatient: null,
-    insuranceProvider: null,
-    insurancePhone: null,
-    memberId: null,
-    groupNumber: null,
-    planName: null,
-    planType: null,
-    subscriberName: null,
-    subscriberDob: null,
-    subscriberRelationship: null,
-    providerParticipatesPrimary: null,
-    coverageStartDate: null,
-    coverageEndDate: null,
-    deductibleAmount: null,
-    deductibleMet: null,
-    outOfPocketMax: null,
-    outOfPocketMet: null,
-    copayAmount: null,
-    coinsurancePercent: null,
-    dmeCovered: null,
-    woundCareCovered: null,
-    priorAuthRequired: null,
-    priorAuthNumber: null,
-    priorAuthStartDate: null,
-    priorAuthEndDate: null,
-    unitsAuthorized: null,
-    verifiedBy: null,
-    verifiedDate: null,
-    verificationReference: null,
-    secondaryInsuranceProvider: null,
-    secondaryInsurancePhone: null,
-    secondarySubscriberName: null,
-    secondaryPolicyNumber: null,
-    secondarySubscriberDob: null,
-    secondaryPlanType: null,
-    secondaryGroupNumber: null,
-    secondarySubscriberRelationship: null,
-    providerParticipatesSecondary: null,
-    woundType: null,
-    woundSizes: null,
-    applicationCpts: null,
-    dateOfProcedure: null,
-    icd10Codes: null,
-    productInformation: null,
-    isPatientAtSnf: null,
-    surgicalGlobalPeriod: null,
-    globalPeriodCpt: null,
-    priorAuthPermission: null,
-    formNotes: null,
-  };
-}
 
 interface StandaloneIvrFormProps {
   value: StandaloneIvrFormValue;
@@ -877,34 +800,6 @@ export function StandaloneIvrForm({
       </div>
     </fieldset>
   );
-}
-
-/* ── Small helper the modal uses to fold AI-extracted fields into the
-   current form value, only overwriting keys the user hasn't touched
-   from empty. Exported so the modal + a future /dashboard/ivrs edit
-   view can share it. ── */
-export function mergeAiExtract(
-  current: StandaloneIvrFormValue,
-  extracted: Partial<StandaloneIvrFormValue>,
-): StandaloneIvrFormValue {
-  const next = { ...current };
-  for (const [k, v] of Object.entries(extracted)) {
-    const key = k as keyof StandaloneIvrFormValue;
-    const cur = current[key];
-    const curEmpty =
-      cur === null ||
-      cur === undefined ||
-      (typeof cur === "string" && cur.trim() === "");
-    const nextEmpty =
-      v === null ||
-      v === undefined ||
-      (typeof v === "string" && (v as string).trim() === "");
-    if (curEmpty && !nextEmpty) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (next as any)[key] = v;
-    }
-  }
-  return next;
 }
 
 /* Empty-fields hook — used by the modal to gate the auto-fill CTA

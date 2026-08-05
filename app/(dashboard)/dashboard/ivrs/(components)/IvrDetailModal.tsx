@@ -418,8 +418,20 @@ export function IvrDetailModal({
                     ) : (
                       <X className="w-4 h-4" />
                     )}
-                    {isApproved ? "Approved" : "Denied"} by{" "}
-                    {ivr.approverDisplayName ?? "external approver"}
+                    {/* Fax-originated IVRs stamp approver_display_name
+                        with "Approved from fax intake" — reads as its
+                        own sentence, so skip the "Approved by" prefix
+                        that would produce "Approved by Approved from
+                        fax intake". Everything else keeps the standard
+                        "Approved by [Name]" line. */}
+                    {ivr.approverDisplayName?.startsWith("Approved from fax") ? (
+                      ivr.approverDisplayName
+                    ) : (
+                      <>
+                        {isApproved ? "Approved" : "Denied"} by{" "}
+                        {ivr.approverDisplayName ?? "external approver"}
+                      </>
+                    )}
                   </div>
                   <div className="text-[11px] opacity-80">
                     {isApproved
@@ -508,6 +520,43 @@ export function IvrDetailModal({
                   )}
                 </div>
               </div>
+
+              {/* Built IVR form — only rendered when the IVR came from
+                  a fax intake. Non-fax IVRs (bulk upload path) don't
+                  populate the rich-form columns, so they get the
+                  original file-only view. Read-only here: edits should
+                  happen upstream at build time or downstream on the
+                  order's IVR tab after convert. */}
+              {ivr.approverDisplayName?.startsWith("Approved from fax") && (
+                <div>
+                  <h3 className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text3)] mb-2">
+                    Built IVR Form
+                  </h3>
+                  {/* File-row style matching the UPLOADED FILE list
+                      above — icon + name + subtitle + "View" link that
+                      opens the full-page preview in a new tab. Same
+                      target/rel as the fax file's link. */}
+                  <div className="flex items-center gap-2 p-2 rounded-lg border border-[var(--border)] bg-white">
+                    <FileText className="w-4 h-4 shrink-0 text-[var(--navy)]" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[12.5px] font-medium truncate">
+                        IVR Form — {ivr.patientName ?? "unnamed patient"}
+                      </p>
+                      <p className="text-[10.5px] text-[var(--text3)]">
+                        Built {new Date(ivr.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                    <a
+                      href={`/api/ivrs/${ivr.id}/pdf`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[12px] text-[var(--navy)] hover:underline shrink-0"
+                    >
+                      View
+                    </a>
+                  </div>
+                </div>
+              )}
 
               {/* History */}
               <div>
@@ -610,6 +659,10 @@ export function IvrDetailModal({
                   ivrId: ivr.id,
                   label:
                     ivr.files?.[0]?.fileName ?? ivr.patientName ?? null,
+                  // Standalone IVR already knows its clinic — forward
+                  // it so createOrder doesn't need to derive one from
+                  // facility_members (which admin/support don't have).
+                  facilityId: ivr.facilityId,
                 }
               : undefined
           }
@@ -673,3 +726,4 @@ export function IvrDetailModal({
     </Dialog>
   );
 }
+

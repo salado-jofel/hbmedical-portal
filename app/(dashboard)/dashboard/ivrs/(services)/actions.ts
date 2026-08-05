@@ -1935,12 +1935,26 @@ export async function finalizeIvrConversion(input: {
     const adminClient = createAdminClient();
 
     // Verify caller has access to the standalone IVR (RLS-scoped read).
-    const { data: ivr } = await supabase
+    // `select("*")` because we're copying every rich-form column onto
+    // order_ivr below — enumerating them would drift from
+    // FORM_COLUMN_MAP over time. TS parser can't infer a dynamic list
+    // anyway so we cast the row for the copy loop.
+    const { data: ivrRow } = await supabase
       .from("standalone_ivrs")
-      .select("id, status, patient_name, physician_name, physician_npi, product_summary, patient_dob, converted_to_order_id")
+      .select("*")
       .eq("id", input.ivrId)
       .maybeSingle();
-    if (!ivr) return { success: false, error: "IVR not found or access denied." };
+    if (!ivrRow) return { success: false, error: "IVR not found or access denied." };
+    const ivr = ivrRow as unknown as Record<string, unknown> & {
+      id: string;
+      status: string;
+      patient_name: string | null;
+      patient_dob: string | null;
+      physician_name: string | null;
+      physician_npi: string | null;
+      product_summary: string | null;
+      converted_to_order_id: string | null;
+    };
     if (ivr.status !== "approved" && ivr.status !== "converted") {
       return { success: false, error: "Only approved IVRs can be linked." };
     }
@@ -1961,10 +1975,21 @@ export async function finalizeIvrConversion(input: {
 
     const nowIso = new Date().toISOString();
 
-    // 1. Upsert order_ivr — set linked_standalone_ivr_id and copy any
-    // metadata from the IVR (patient_name, physician, product info).
-    // Trigger may or may not have created the row; either way this
-    // ensures the columns land.
+    // 1. Upsert order_ivr — copy every rich-form column plus the
+    // top-level metadata. Same column names both sides (FORM_COLUMN_MAP
+    // drives this), so a dumb 1:1 copy is enough. ivr_mode='built' so
+    // the order's IVR tab shows the paper form we filled in on the
+    // fax-build stage instead of surfacing the raw fax PDF as an
+    // "uploaded IVR" — the fax stays one click away via the
+    // "IVR approved externally · View original IVR" banner already
+    // rendered at the top of the tab.
+    const formCopy: Record<string, unknown> = {};
+    for (const col of Object.values(FORM_COLUMN_MAP)) {
+      if (col === "form_notes") continue; // standalone-only
+      const val = ivr[col];
+      if (val !== undefined && val !== null) formCopy[col] = val;
+    }
+
     const { data: existingIvr } = await adminClient
       .from("order_ivr")
       .select("id")
@@ -1974,55 +1999,40 @@ export async function finalizeIvrConversion(input: {
       await adminClient
         .from("order_ivr")
         .update({
+          ...formCopy,
           patient_name: ivr.patient_name,
           patient_dob: ivr.patient_dob,
           physician_name: ivr.physician_name,
           physician_npi: ivr.physician_npi,
-          product_information: ivr.product_summary,
+          product_information:
+            (formCopy.product_information as string | undefined) ??
+            ivr.product_summary,
           linked_standalone_ivr_id: input.ivrId,
-          ivr_mode: "uploaded",
+          ivr_mode: "built",
           updated_at: nowIso,
         })
         .eq("id", existingIvr.id);
     } else {
       await adminClient.from("order_ivr").insert({
+        ...formCopy,
         order_id: input.orderId,
         patient_name: ivr.patient_name,
         patient_dob: ivr.patient_dob,
         physician_name: ivr.physician_name,
         physician_npi: ivr.physician_npi,
-        product_information: ivr.product_summary,
+        product_information:
+          (formCopy.product_information as string | undefined) ??
+          ivr.product_summary,
         linked_standalone_ivr_id: input.ivrId,
-        ivr_mode: "uploaded",
+        ivr_mode: "built",
       });
     }
 
-    // 2. Copy IVR files to order_documents as uploaded_ivr. Same
-    // storage paths — the files are shared between both surfaces.
-    const { data: ivrFiles } = await supabase
-      .from("standalone_ivr_files")
-      .select("file_path, file_name, mime_type, file_size")
-      .eq("standalone_ivr_id", input.ivrId);
-    if (ivrFiles && ivrFiles.length > 0) {
-      const docRows = ivrFiles.map((f) => ({
-        order_id: input.orderId,
-        document_type: "uploaded_ivr",
-        bucket: BUCKET,
-        file_path: f.file_path,
-        file_name: f.file_name,
-        mime_type: f.mime_type,
-        file_size: f.file_size,
-        uploaded_by: user.id,
-      }));
-      const { error: docsErr } = await adminClient
-        .from("order_documents")
-        .insert(docRows);
-      if (docsErr) {
-        console.error("[finalizeIvrConversion] docs insert", docsErr);
-        // Non-fatal — the linkage is what matters most. User can
-        // re-upload from the order if the copy failed.
-      }
-    }
+    // 2. Intentionally NOT copying the standalone_ivr's files to
+    // order_documents as uploaded_ivr — doing so would make the fax
+    // PDF appear as the "uploaded IVR document" on the order's IVR
+    // tab, competing with the built form we just seeded. The fax
+    // stays accessible via the "View original IVR" banner up top.
 
     // 3. Flip the IVR to converted (if not already) + history.
     if (ivr.status !== "converted") {
