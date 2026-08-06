@@ -321,16 +321,34 @@ export async function getDocumentSignedUrl(
   filePath: string,
 ): Promise<{ url: string | null; error?: string }> {
   try {
-    // Authorization gate. The path always starts with
-    // `order-documents/{orderId}/...`. Parse the order id and run the per-
-    // order access check before issuing a signed URL — service role bypasses
-    // RLS, so without this check any signed-in user could read another
-    // facility's PHI documents.
-    const orderIdMatch = filePath.match(/^order-documents\/([0-9a-f-]{36})\//i);
-    if (!orderIdMatch) {
-      return { url: null, error: "Invalid document path." };
+    // Authorization gate. Fast path: paths uploaded through the normal
+    // order-doc pipeline live at `order-documents/{orderId}/...` so we
+    // can parse the order id straight from the path and skip a DB round-
+    // trip. Fallback path (below): docs attached from other sources —
+    // right now that means intake faxes at `intake/{intakeId}.pdf`
+    // reused as order_documents rows via attachIntakeToOrder — don't
+    // encode the order id in the path, so we look up the owning order
+    // through the order_documents table (admin client, since PHI RLS
+    // may hide the row from the caller). Either way, the resulting
+    // order id is fed through requireOrderAccess before signing, so a
+    // caller who doesn't have access to that order can't fish for
+    // signed URLs by guessing paths.
+    const bucketPathMatch = filePath.match(
+      /^order-documents\/([0-9a-f-]{36})\//i,
+    );
+    let orderId: string | null = bucketPathMatch ? bucketPathMatch[1] : null;
+    if (!orderId) {
+      const adminForLookup = createAdminClient();
+      const { data: doc, error: docErr } = await adminForLookup
+        .from("order_documents")
+        .select("order_id")
+        .eq("file_path", filePath)
+        .maybeSingle();
+      if (docErr || !doc?.order_id) {
+        return { url: null, error: "Invalid document path." };
+      }
+      orderId = doc.order_id as string;
     }
-    const orderId = orderIdMatch[1];
 
     try {
       await requireOrderAccess(orderId);
@@ -373,13 +391,29 @@ export async function deleteOrderDocument(
   filePath: string,
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    // Authorization gate via the order id parsed from the storage path.
-    const orderIdMatch = filePath.match(/^order-documents\/([0-9a-f-]{36})\//i);
-    if (!orderIdMatch) {
-      return { success: false, error: "Invalid document path." };
+    // Authorization gate — same two-step strategy as
+    // getDocumentSignedUrl above: parse the order id from the path when
+    // the doc came through the normal order-doc pipeline, else look it
+    // up on the order_documents row (admin client). Intake-attached
+    // faxes live at `intake/{uuid}.pdf`, so the fast-path regex misses.
+    const bucketPathMatch = filePath.match(
+      /^order-documents\/([0-9a-f-]{36})\//i,
+    );
+    let orderId: string | null = bucketPathMatch ? bucketPathMatch[1] : null;
+    const adminClient = createAdminClient();
+    if (!orderId) {
+      const { data: doc, error: docErr } = await adminClient
+        .from("order_documents")
+        .select("order_id")
+        .eq("id", docId)
+        .maybeSingle();
+      if (docErr || !doc?.order_id) {
+        return { success: false, error: "Invalid document path." };
+      }
+      orderId = doc.order_id as string;
     }
     try {
-      await requireOrderAccess(orderIdMatch[1]);
+      await requireOrderAccess(orderId);
     } catch (err) {
       if (err instanceof OrderAccessError) {
         return { success: false, error: err.message };
@@ -387,15 +421,22 @@ export async function deleteOrderDocument(
       throw err;
     }
 
-    const adminClient = createAdminClient();
+    // For intake-attached docs the storage bytes are shared with the
+    // intake_documents row (attachIntakeToOrder reused the path rather
+    // than copying the PDF). Removing the file here would break the
+    // intake preview / audit trail. Detect that case by comparing the
+    // path prefix and skip the storage.remove — the order_documents
+    // row still gets deleted so the doc leaves the order surface.
+    const isSharedIntakePath = filePath.startsWith("intake/");
+    if (!isSharedIntakePath) {
+      const { error: storageErr } = await adminClient.storage
+        .from(BUCKET)
+        .remove([filePath]);
 
-    const { error: storageErr } = await adminClient.storage
-      .from(BUCKET)
-      .remove([filePath]);
-
-    if (storageErr) {
-      safeLogError("deleteOrderDocument", storageErr, { phase: "storage", docId });
-      // Non-fatal
+      if (storageErr) {
+        safeLogError("deleteOrderDocument", storageErr, { phase: "storage", docId });
+        // Non-fatal
+      }
     }
 
     const { error } = await adminClient

@@ -28,8 +28,7 @@ import { getIntakeSignedUrl, dismissIntake } from "../(services)/actions";
 import { INTAKE_STATUS_LABELS } from "@/utils/interfaces/intake";
 import type { IExternalApprover } from "@/utils/interfaces/standalone-ivrs";
 import { ConfirmModal } from "@/app/(dashboard)/(components)/ConfirmModal";
-import { UploadIvrsModal } from "../../ivrs/(components)/UploadIvrsModal";
-import { CreateOrderModal } from "../../orders/(components)/CreateOrderModal";
+import { BuildIvrFromFaxModal } from "./BuildIvrFromFaxModal";
 import { cn } from "@/utils/utils";
 import toast from "react-hot-toast";
 
@@ -42,10 +41,7 @@ interface IntakeDetailModalProps {
 
 /**
  * Detail modal for a single intake fax. Left side: PDF preview via
- * signed URL. Right side: metadata + three action buttons —
- *   - Build IVR:   opens the Upload IVRs modal, pre-filled with THIS
- *                  fax as the file. On save the intake is marked as
- *                  converted_ivr with a link back to the standalone IVR.
+ * signed URL. Right side: metadata + two action buttons —
  *   - Build Order: opens the Create Order modal with THIS fax as the
  *                  facesheet doc. Marked converted_order on save.
  *   - Dismiss:     confirm modal → mark dismissed with a short reason
@@ -58,8 +54,13 @@ export function IntakeDetailModal({
   intakeId,
   onClose,
   facilities,
-  approvers,
 }: IntakeDetailModalProps) {
+  // `approvers` is accepted in the type (kept so IntakeList doesn't
+  // need a cascading refactor) but no longer read here — the fax-to-IVR
+  // flow doesn't assign an external approver (saving IS the approval).
+  // `facilities` is forwarded into BuildIvrFromFaxModal so the triager
+  // can pick which clinic the IVR belongs to (admin/support have no
+  // facility of their own so RLS won't auto-scope it for them).
   const dispatch = useAppDispatch();
   const intake = useAppSelector((s) =>
     intakeId ? (s.intake.items.find((i) => i.id === intakeId) ?? null) : null,
@@ -68,8 +69,7 @@ export function IntakeDetailModal({
   const [pending, startTransition] = useTransition();
   const [confirmDismiss, setConfirmDismiss] = useState(false);
   const [dismissReason, setDismissReason] = useState("");
-  const [uploadIvrOpen, setUploadIvrOpen] = useState(false);
-  const [createOrderOpen, setCreateOrderOpen] = useState(false);
+  const [buildIvrOpen, setBuildIvrOpen] = useState(false);
 
   useEffect(() => {
     if (!intake) {
@@ -231,27 +231,20 @@ export function IntakeDetailModal({
                   <p className="text-[10.5px] font-semibold uppercase tracking-wide text-[var(--text3)]">
                     Triage
                   </p>
+                  {/* Build IVR is the sole primary action for a fax
+                      intake (Dr. Ben spec, 2026-08-05): every inbound
+                      fax IS a completed IVR from a client's approver,
+                      so we skip the send-for-approval loop and land the
+                      record on /dashboard/ivrs with status='approved'.
+                      Order creation happens later from that IVR via
+                      the standard convert-to-order flow. */}
                   <Button
                     className="w-full justify-start gap-2"
-                    onClick={() => setUploadIvrOpen(true)}
-                    disabled={pending || approvers.length === 0}
-                    title={
-                      approvers.length === 0
-                        ? "Add an external approver first"
-                        : undefined
-                    }
-                  >
-                    <ArrowRight className="w-4 h-4" />
-                    Build IVR from this fax
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full justify-start gap-2"
-                    onClick={() => setCreateOrderOpen(true)}
+                    onClick={() => setBuildIvrOpen(true)}
                     disabled={pending}
                   >
                     <ArrowRight className="w-4 h-4" />
-                    Build Order from this fax
+                    Build IVR from this fax
                   </Button>
                   <Button
                     variant="outline"
@@ -318,41 +311,18 @@ export function IntakeDetailModal({
         onConfirm={doDismiss}
       />
 
-      {/* Build IVR handoff — opens the same UploadIvrsModal used on
-          /dashboard/ivrs, but pre-attached to this intake file so no
-          re-upload is needed. */}
-      {intake && (
-        <UploadIvrsModal
-          open={uploadIvrOpen && intake.status === "pending"}
-          onOpenChange={setUploadIvrOpen}
-          facilities={facilities}
-          approvers={approvers}
-          intakeDocument={{
-            intakeId: intake.id,
-            filePath: intake.filePath,
-            fileName: intake.fileName ?? `fax-${intake.id}.pdf`,
-            mimeType: intake.mimeType ?? "application/pdf",
-            fileSize: intake.fileSize ?? 0,
-          }}
-        />
-      )}
-
-      {/* Build Order handoff — opens the full CreateOrderModal with the
-          intake file pre-attached as a facesheet doc. */}
-      {intake && (
-        <CreateOrderModal
-          open={createOrderOpen && intake.status === "pending"}
-          onOpenChange={setCreateOrderOpen}
-          hideTrigger
-          fromIntake={{
-            intakeId: intake.id,
-            filePath: intake.filePath,
-            fileName: intake.fileName ?? `fax-${intake.id}.pdf`,
-            mimeType: intake.mimeType ?? "application/pdf",
-            fileSize: intake.fileSize ?? 0,
-          }}
-        />
-      )}
+      {/* Build IVR handoff — side-by-side modal with fax preview + IVR
+          form + AI pre-fill. On save, the IVR is created with
+          status='approved' and the intake row flips to converted_ivr;
+          the modal navigates the user to /dashboard/ivrs so the newly-
+          built record is one click away from becoming an order. */}
+      <BuildIvrFromFaxModal
+        intake={intake}
+        open={buildIvrOpen && intake?.status === "pending"}
+        onOpenChange={setBuildIvrOpen}
+        facilities={facilities}
+        onCreated={onClose}
+      />
     </RadixDialog.Root>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   Dialog,
@@ -280,6 +280,12 @@ interface CreateOrderModalProps {
   fromStandaloneIvr?: {
     ivrId: string;
     label: string | null;
+    /** The IVR's owning clinic. Forwarded straight into createOrder so
+     *  admin/support (who have no facility_members of their own) don't
+     *  fail the NOT NULL check on orders.facility_id. Clinic staff
+     *  don't need this — their own facility is used — but passing it
+     *  always is harmless and keeps the two callers symmetrical. */
+    facilityId?: string | null;
   };
   /** When creating an order from a fax intake: shows a "Building from
    *  fax X.pdf" banner, and after the order + user's uploads are done,
@@ -292,10 +298,16 @@ interface CreateOrderModalProps {
     mimeType: string;
     fileSize: number;
   };
+  /** Selectable clinic facilities. Required for the fromIntake path:
+   *  admin/support triaging a fax don't belong to a facility themselves,
+   *  so createOrder can't derive facility_id from facility_members and
+   *  the triager must pick which clinic owns the fax. Ignored in the
+   *  standard flow — clinic staff always use their own facility. */
+  facilities?: Array<{ id: string; name: string }>;
 }
 
 export function CreateOrderModal(props: CreateOrderModalProps = {}) {
-  const { hideTrigger, fromStandaloneIvr, fromIntake } = props;
+  const { hideTrigger, fromStandaloneIvr, fromIntake, facilities } = props;
   const dispatch = useAppDispatch();
   const router = useRouter();
   const [internalOpen, setInternalOpen] = useState(false);
@@ -323,6 +335,17 @@ export function CreateOrderModal(props: CreateOrderModalProps = {}) {
     new Date().toISOString().split("T")[0],
   );
   const [notes, setNotes] = useState("");
+  // Facility picker — rendered + required in the fromIntake path
+  // (admin/support triaging a fax has no membership of their own).
+  // In the fromStandaloneIvr path the picker stays hidden — the IVR
+  // already knows its owning clinic — but we still initialize the
+  // state from it so createOrder gets a non-null facility_id when
+  // admin/support runs the conversion.
+  const [facilityId, setFacilityId] = useState<string>(() => {
+    if (fromStandaloneIvr?.facilityId) return fromStandaloneIvr.facilityId;
+    if (fromIntake && facilities?.length === 1) return facilities[0].id;
+    return "";
+  });
   const [docs, setDocs] = useState<DocFile[]>([]);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -339,6 +362,11 @@ export function CreateOrderModal(props: CreateOrderModalProps = {}) {
     setPatientLastName("");
     setDateOfService(new Date().toISOString().split("T")[0]);
     setNotes("");
+    setFacilityId(() => {
+      if (fromStandaloneIvr?.facilityId) return fromStandaloneIvr.facilityId;
+      if (fromIntake && facilities?.length === 1) return facilities[0].id;
+      return "";
+    });
     setDocs([]);
     setUploadProgress(null);
     setSubmitted(false);
@@ -362,6 +390,11 @@ export function CreateOrderModal(props: CreateOrderModalProps = {}) {
   const patientNameProvided =
     patientFirstName.trim().length > 0 && patientLastName.trim().length > 0;
 
+  // Facility is required only in the fromIntake path — admin/support
+  // don't have a facility_members row so createOrder can't derive one
+  // and would otherwise 500 on the NOT NULL constraint on
+  // orders.facility_id.
+  const facilityRequired = !!fromIntake;
   const canSubmit =
     !!orderType &&
     // Skin Grafts orders are blocked from direct creation — go through
@@ -371,6 +404,7 @@ export function CreateOrderModal(props: CreateOrderModalProps = {}) {
     (orderType !== "skin_grafts" || !!fromStandaloneIvr) &&
     !!woundType &&
     !!dateOfService &&
+    (!facilityRequired || !!facilityId) &&
     (!docsRequired || (hasFacesheet && hasClinicalDocs && hasValidId)) &&
     (!manualInput || patientNameProvided);
 
@@ -394,6 +428,9 @@ export function CreateOrderModal(props: CreateOrderModalProps = {}) {
         manual_input: manualInput,
         patient_first_name: manualInput ? patientFirstName.trim() : null,
         patient_last_name: manualInput ? patientLastName.trim() : null,
+        // Only forward when actually chosen — clinic staff never set
+        // this, and their own facility is used by requireClinicRole.
+        facility_id: facilityId || null,
       });
 
       if (!result.success || !result.orderId) {
@@ -554,10 +591,15 @@ export function CreateOrderModal(props: CreateOrderModalProps = {}) {
       // storage path) and flip the intake row → converted_order. Same
       // "runs after user's uploads" reasoning.
       if (fromIntake) {
+        // Attach the fax as the completed IVR document (default doctype
+        // in attachIntakeToOrder). The server-side helper also flips
+        // order_ivr.ivr_mode → 'uploaded' so the IVR Form tab shows the
+        // fax as the source of truth. Facesheet / clinical docs / valid
+        // ID are still uploaded separately above via the modal's own
+        // UploadZones — the fax alone is not enough.
         const link = await attachIntakeToOrder({
           intakeId: fromIntake.intakeId,
           orderId,
-          documentType: "facesheet",
         });
         if (!link.success) {
           toast.error(
@@ -629,6 +671,20 @@ export function CreateOrderModal(props: CreateOrderModalProps = {}) {
   const patientLastNameError =
     submitted && manualInput && patientLastName.trim().length === 0;
 
+  // Sync `facilityId` state from props whenever the modal transitions
+  // to open. The modal is mounted once by the parent and just toggled
+  // — the useState default only fires at mount, so a fresh IVR opened
+  // 30 seconds later wouldn't otherwise pick up its facilityId. Same
+  // for fromIntake's single-facility auto-pick.
+  useEffect(() => {
+    if (!open) return;
+    if (fromStandaloneIvr?.facilityId) {
+      setFacilityId(fromStandaloneIvr.facilityId);
+    } else if (fromIntake && facilities?.length === 1) {
+      setFacilityId(facilities[0].id);
+    }
+  }, [open, fromStandaloneIvr?.facilityId, fromIntake, facilities]);
+
   // Auto-hide the internal trigger button whenever the parent is
   // controlling `open` — otherwise you'd get a duplicate "New Order"
   // button in whatever surface embedded us. Explicit hideTrigger can
@@ -687,19 +743,59 @@ export function CreateOrderModal(props: CreateOrderModalProps = {}) {
           {/* From-Fax banner — analogous hint for the fax-intake flow.
               Intake PDF is attached as a facesheet document post-save.
               Nothing about the docs section changes visually; users can
-              upload additional clinical/valid-ID docs as usual. */}
+              upload additional clinical/valid-ID docs as usual.
+
+              Facility picker sits right under the banner: admin/support
+              triaging a fax don't belong to any facility, so the order's
+              facility_id has to be picked explicitly here (otherwise the
+              NOT NULL constraint on orders.facility_id blows the insert). */}
           {fromIntake && (
-            <div className="px-6 pt-4">
+            <div className="px-6 pt-4 space-y-3">
               <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5 text-[12.5px] text-blue-900 flex items-start gap-2">
                 <FileText className="w-4 h-4 shrink-0 mt-0.5" />
                 <div>
                   <p className="font-semibold">Creating from inbound fax</p>
                   <p className="text-[11.5px] mt-0.5 leading-snug">
                     <span className="font-medium">{fromIntake.fileName}</span>{" "}
-                    will be attached as the facesheet. Upload any additional
-                    clinical docs or Valid ID below as usual.
+                    will be attached as the completed <b>IVR document</b>{" "}
+                    and shown in the order&apos;s IVR Form tab. Upload the
+                    patient facesheet, clinical docs, and Valid ID below.
                   </p>
                 </div>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">
+                  Clinic / Facility <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={facilityId}
+                  onChange={(e) => setFacilityId(e.target.value)}
+                  className={cn(
+                    "border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--navy)]/20 focus:border-[var(--navy)]",
+                    submitted && !facilityId
+                      ? "border-red-300 bg-red-50"
+                      : "border-slate-200",
+                  )}
+                >
+                  <option value="">— Select the clinic this fax is for —</option>
+                  {(facilities ?? []).map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name}
+                    </option>
+                  ))}
+                </select>
+                {submitted && !facilityId && (
+                  <p className="text-xs text-red-500 mt-0.5">
+                    Pick which clinic this fax belongs to.
+                  </p>
+                )}
+                {(facilities?.length ?? 0) === 0 && (
+                  <p className="text-xs text-amber-600 mt-0.5">
+                    No clinics available to pick from. Add a facility before
+                    building an order from this fax.
+                  </p>
+                )}
               </div>
             </div>
           )}

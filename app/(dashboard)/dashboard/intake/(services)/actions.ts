@@ -247,9 +247,10 @@ export async function attachIntakeToOrder(input: {
       return { success: false, error: "Order not found or access denied." };
     }
 
+    const docType = input.documentType ?? "uploaded_ivr";
     const { error: docErr } = await admin.from("order_documents").insert({
       order_id: input.orderId,
-      document_type: input.documentType ?? "facesheet",
+      document_type: docType,
       bucket: intake.bucket,
       file_path: intake.file_path,
       file_name: intake.file_name,
@@ -260,6 +261,27 @@ export async function attachIntakeToOrder(input: {
     if (docErr) {
       console.error("[attachIntakeToOrder] doc insert", docErr);
       return { success: false, error: "Failed to attach fax to order." };
+    }
+
+    // When the fax IS the IVR (default for the fromIntake flow), also
+    // flip order_ivr.ivr_mode → 'uploaded' so the IVR Form tab shows the
+    // uploaded doc as the source of truth and hides the empty in-portal
+    // built form below it. Fresh orders don't have an order_ivr row yet,
+    // so we upsert on order_id. Non-IVR doctypes (facesheet, etc.) skip
+    // this step — they don't own the IVR surface.
+    if (docType === "uploaded_ivr") {
+      const { error: ivrErr } = await admin
+        .from("order_ivr")
+        .upsert(
+          { order_id: input.orderId, ivr_mode: "uploaded" },
+          { onConflict: "order_id" },
+        );
+      if (ivrErr) {
+        // Non-fatal — the doc is attached and visible in the tab.
+        // Worst case the built form still shows below and the user
+        // switches modes manually. Log so we notice if it becomes noisy.
+        console.error("[attachIntakeToOrder] ivr_mode upsert", ivrErr);
+      }
     }
 
     const { error: updErr } = await admin
