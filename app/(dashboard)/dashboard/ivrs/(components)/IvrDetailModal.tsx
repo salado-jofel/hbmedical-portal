@@ -663,6 +663,14 @@ export function IvrDetailModal({
                   // it so createOrder doesn't need to derive one from
                   // facility_members (which admin/support don't have).
                   facilityId: ivr.facilityId,
+                  // Fax-origin detected via the marker string admin/
+                  // support stamped on approver_display_name at fax-
+                  // build time. Same signal that drives the purple
+                  // "From Fax" chip on /dashboard/ivrs and the Built
+                  // IVR Form section here.
+                  isFromFax: ivr.approverDisplayName?.startsWith(
+                    "Approved from fax",
+                  ) ?? false,
                 }
               : undefined
           }

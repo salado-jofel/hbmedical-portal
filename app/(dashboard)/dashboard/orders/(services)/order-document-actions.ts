@@ -11,6 +11,7 @@ import type { IOrderDocument } from "@/utils/interfaces/orders";
 import {
   ORDERS_PATH,
   BUCKET,
+  captureCookieHeader,
   getDocumentLabel,
   insertOrderHistory,
   triggerAiExtraction,
@@ -950,7 +951,14 @@ export async function triggerOrderExtraction(
     return { success: true, error: null };
   }
 
-  triggerCombinedExtraction(orderId, documents).catch((err) =>
+  // Capture the caller's cookie header SYNCHRONOUSLY here — the fire-
+  // and-forget below returns before triggerCombinedExtraction's own
+  // internal `await cookies()` would run, and by then the Next.js
+  // request context has been reaped, so cookies() returns empty and
+  // the extractor endpoint 401s. Passing the pre-captured header
+  // sidesteps that entirely.
+  const cookieHeader = await captureCookieHeader();
+  triggerCombinedExtraction(orderId, documents, cookieHeader).catch((err) =>
     safeLogError("triggerOrderExtraction", err, { orderId }),
   );
   return { success: true, error: null };

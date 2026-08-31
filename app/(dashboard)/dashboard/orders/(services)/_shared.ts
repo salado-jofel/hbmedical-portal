@@ -8,6 +8,7 @@ import {
 import {
   isAdmin,
   isClinicSide,
+  isSalesRep,
   isSupport,
 } from "@/utils/helpers/role";
 import { safeLogError, safeLogInfo } from "@/lib/logging/safe-log";
@@ -28,6 +29,18 @@ async function forwardCookieHeader(): Promise<string> {
     .getAll()
     .map((c) => `${c.name}=${encodeURIComponent(c.value)}`)
     .join("; ");
+}
+
+/**
+ * Public helper for callers that want to capture the caller's cookie
+ * header eagerly (while still in the outer request context) and pass
+ * it into a fire-and-forget fetch. Needed when triggerCombinedExtraction
+ * is invoked from inside another server action without awaiting — by
+ * the time the internal `await cookies()` runs, the outer request
+ * context can be gone and the AI endpoint 401s.
+ */
+export async function captureCookieHeader(): Promise<string> {
+  return forwardCookieHeader();
 }
 
 export const ORDER_WITH_RELATIONS_SELECT = `
@@ -71,10 +84,12 @@ export async function getUserFacilityId(userId: string): Promise<string | null> 
 export async function requireClinicRole(): Promise<{
   userId: string;
   /** Facility scope. Clinic-side users always have one (validated below).
-   *  Admins/support staff have no facility membership, so this is `null`
-   *  for them — callers that need a facility id (e.g. createOrder) must
-   *  guard against null themselves. Most order-mutation callers only need
-   *  `userId` and so accept the broader role set transparently. */
+   *  Admins / support / sales reps have no facility membership, so this
+   *  is `null` for them — callers that need a facility id (e.g.
+   *  createOrder) must guard against null themselves. For sales reps
+   *  specifically, callers also need to gate the operation with
+   *  is_rep_facility() so a rep can only mutate at clinics in their
+   *  tree; passing a null facilityId is the signal to run that gate. */
   facilityId: string | null;
   role: string;
 }> {
@@ -83,14 +98,23 @@ export async function requireClinicRole(): Promise<{
   const role = await getUserRole(supabase);
 
   // Admin + support get unconditional pass — they're org-wide and edit
-  // orders across facilities. Clinical roles still need a facility.
+  // orders across facilities.
   if (isAdmin(role) || isSupport(role)) {
+    return { userId: user.id, facilityId: null, role: role! };
+  }
+
+  // Sales reps also get through the role check but with facilityId=null
+  // — the actual per-facility authorization happens in the caller via
+  // is_rep_facility (see createOrder). Reps CAN create orders at
+  // clinics in their tree today (client requirement, 2026-08-31) but
+  // not at arbitrary clinics.
+  if (isSalesRep(role)) {
     return { userId: user.id, facilityId: null, role: role! };
   }
 
   if (!isClinicSide(role)) {
     throw new Error(
-      "Only clinical providers, staff, admins, or support can perform this action.",
+      "Only clinical providers, staff, admins, support, or sales reps can perform this action.",
     );
   }
 
@@ -247,6 +271,14 @@ export async function createNotifications(params: {
 export async function triggerCombinedExtraction(
   orderId: string,
   documents: Array<{ documentType: string; filePath: string; bucket?: string }>,
+  /** Pre-captured cookie header from the outer server-action context.
+   *  When present, we skip the internal cookies() read — that call
+   *  fails silently if the outer request context has been reaped
+   *  (which happens on every fire-and-forget invocation), and the
+   *  receiving /api/ai/extract-document endpoint then 401s. Callers
+   *  that fire-and-forget MUST pass this; direct awaited callers can
+   *  omit and fall back to the eager read. */
+  preCapturedCookieHeader?: string,
 ): Promise<{ success: boolean; error: string | null; skipped?: boolean }> {
   try {
     const extractable = documents.filter((d) =>
@@ -257,7 +289,8 @@ export async function triggerCombinedExtraction(
     }
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-    const cookieHeader = await forwardCookieHeader();
+    const cookieHeader =
+      preCapturedCookieHeader ?? (await forwardCookieHeader());
 
     const response = await fetch(`${baseUrl}/api/ai/extract-document`, {
       method: "POST",
