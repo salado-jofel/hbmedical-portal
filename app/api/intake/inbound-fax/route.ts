@@ -17,8 +17,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
  * are entirely in transport:
  *
  *   Documo → JSON POST + we pull PDF via their REST API using messageId
- *   iFax   → multipart/form-data POST with the PDF as a file part
- *            (no follow-up download call needed)
+ *   iFax   → JSON POST + we pull PDF via their REST API using jobId +
+ *            transactionId (endpoint returns base64-encoded bytes).
+ *            iFax's docs suggested multipart at one point but the live
+ *            webhook actually posts application/json — verified against
+ *            a real inbound fax 2026-09-16.
  *
  * Environment variables:
  *   FAX_PROVIDER                   documo | ifax  (default: documo)
@@ -33,11 +36,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
  *     IFAX_WEBHOOK_BASIC_USERNAME  Basic Auth username configured on
  *                                  iFax's webhook settings.
  *     IFAX_WEBHOOK_BASIC_PASSWORD  matching password.
- *     IFAX_API_KEY                 API key. Not currently needed at
- *                                  the webhook layer (PDF is in the
- *                                  multipart body) but reserved for
- *                                  future actions like acknowledging
- *                                  or listing faxes on demand.
+ *     IFAX_API_KEY                 API key used to pull the PDF bytes
+ *                                  via POST /v1/customer/inbound/fax-download
+ *                                  (sent as `accessToken` header).
  */
 
 const BUCKET = process.env.SUPABASE_BUCKET ?? "hbmedical-bucket-private";
@@ -525,295 +526,183 @@ async function handleDocumoInbound(request: Request) {
 /* ────────────────────────────────────────────────────────────────────────
  * iFax handler
  *
- * iFax's inbound webhook is `multipart/form-data`:
- *   - PDF is a file part named `filename` (verified from their public
- *     docs — see WebFetch cache 2026-09-16).
- *   - Metadata (sender number, receiver number, event type, page count)
- *     lives in other form fields. iFax has not published the exact
- *     schema anywhere I could find, so parseIfaxMultipart uses a
- *     defensive walker of common candidate names AND logs every field
- *     key on first receipt so we can lock in the schema after the
- *     first live fax.
- *   - Basic Auth (username + password) verified against
- *     IFAX_WEBHOOK_BASIC_USERNAME / _PASSWORD, configured on iFax's
- *     "Webhooks" settings page in the Developer API section.
+ * iFax's inbound webhook is JSON (application/json). Confirmed 2026-09-16
+ * against a live test fax:
+ *
+ *   {
+ *     "direction":        "inbound",
+ *     "jobId":            7067845,
+ *     "transactionId":    8660564,
+ *     "faxCallLength":    127,
+ *     "faxCallStart":     1745442509,     // UTC seconds
+ *     "faxCallEnd":       1745442636,
+ *     "faxTotalPages":    11,
+ *     "faxReceivedPages": 11,
+ *     "faxStatus":        "received",
+ *     "success":          true,
+ *     "fromNumber":       "+2512445025",
+ *     "toNumber":         "+12096380085",
+ *     "code":             0,
+ *     "message":          "NORMAL_CLEARING"
+ *   }
+ *
+ * The webhook does NOT ship the PDF — we pull it in a follow-up call:
+ *
+ *   POST https://api.ifaxapp.com/v1/customer/inbound/fax-download
+ *   Header: accessToken: <IFAX_API_KEY>
+ *   Body:   { "jobId": "...", "transactionId": "..." }
+ *   Result: { "status": 1, "data": "<base64-PDF>" }
+ *
+ * Auth on the webhook itself is Basic Auth (username + password
+ * configured on iFax's Webhooks settings page), verified against
+ * IFAX_WEBHOOK_BASIC_USERNAME / _PASSWORD.
  *
  * Differences vs Documo:
- *   - No follow-up API call needed to fetch the PDF — the bytes are
- *     in the multipart body, one round-trip instead of two.
+ *   - Auth header source: iFax uses `accessToken`, Documo uses `Basic <apikey>`
+ *   - PDF wire format:    iFax returns base64 inside JSON,
+ *                         Documo returns raw application/pdf bytes
+ *   - Idempotency key:    iFax uses jobId; Documo uses messageId
  *   - We use `provider="ifax"` on the intake_documents row, so the
  *     Fax Intake UI treats them identically alongside Documo rows.
  * ──────────────────────────────────────────────────────────────────────── */
 
 interface IfaxFaxPayload {
-  /** iFax's identifier for this fax — used as our idempotency key.
-   *  Falls back to a random UUID when the payload doesn't include one
-   *  (unlikely, but keeps us from crashing). */
-  faxId: string;
+  /** iFax's identifier for this fax event — used as our idempotency key
+   *  AND the primary parameter to the download API. Non-null on any
+   *  webhook we accept. */
+  jobId: string;
+  transactionId: string;
   fromNumber: string | null;
   toNumber: string | null;
   pageCount: number | null;
+  /** ISO-8601. Derived from `faxCallEnd` (UTC seconds) when present. */
   receivedAt: string | null;
   fileName: string | null;
-  /** The actual PDF bytes lifted from the multipart body. */
-  bytes: Uint8Array;
-  contentType: string;
-  /** True on the "received" event; false on failed / status-only events
-   *  that we should ACK but not persist. Absence of an event field is
-   *  treated as success — safer default given iFax's docs are sparse. */
+  /** True on the "received"/success event; false on failed / status-only
+   *  events that we should ACK but not persist. */
   succeeded: boolean;
 }
 
-/** Same defensive first-non-empty pick used by Documo, extracted here
- *  so both parsers share behavior. Empty-string / whitespace-only /
- *  null / undefined are all treated as "no value". */
-function pickFirst(
-  candidates: Array<unknown>,
-  exclude?: string | null,
-): string | null {
-  for (const c of candidates) {
-    if (c == null) continue;
-    const s = String(c).trim();
-    if (!s) continue;
-    if (exclude && s === exclude) continue;
-    return s;
-  }
-  return null;
-}
-
 /**
- * Extract fax metadata + PDF bytes from an iFax multipart POST body.
+ * Extract fax metadata from an iFax JSON webhook body.
  *
- * Field-name candidates are ordered by "most likely first" based on
- * common webhook naming conventions across the fax-API market. If iFax
- * uses a name not in our candidate list, the `unrecognized_fields` log
- * on the first live receipt will surface it and we can add it here.
+ * Returns null for events we can't identify as inbound faxes (unknown
+ * direction, missing jobId+transactionId, etc.) — the handler ACKs
+ * those with a 200 so iFax stops retrying.
  */
-async function parseIfaxMultipart(
-  formData: FormData,
-): Promise<IfaxFaxPayload | null> {
-  // ─── 1. The PDF file part ─────────────────────────────────────────
-  // Per iFax's docs the file part is named `filename`. We also check a
-  // couple of common aliases in case a future iFax API version
-  // (v2, v3, etc.) renames it.
-  const fileCandidates = ["filename", "file", "attachment", "fax_file", "pdf"];
-  let fileBlob: File | null = null;
-  for (const name of fileCandidates) {
-    const v = formData.get(name);
-    if (v instanceof File) {
-      fileBlob = v;
-      break;
-    }
-  }
-  if (!fileBlob) {
-    // Extreme fallback — walk every entry and grab the first File. This
-    // helps us survive an undocumented rename without dropping the fax
-    // (we can rely on the debug log to add the real name to our list
-    // for the next deploy).
-    for (const [key, value] of formData.entries()) {
-      if (value instanceof File) {
-        console.warn(
-          "[intake.inbound-fax] iFax: PDF file part had unexpected name",
-          { fieldName: key, size: value.size },
-        );
-        fileBlob = value;
-        break;
-      }
-    }
-  }
-  if (!fileBlob) {
-    console.error(
-      "[intake.inbound-fax] iFax: no file part found on multipart POST",
-      {
-        formKeys: Array.from(formData.keys()),
-      },
-    );
-    return null;
-  }
+function parseIfaxPayload(body: unknown): IfaxFaxPayload | null {
+  if (!body || typeof body !== "object") return null;
+  const b = body as Record<string, unknown>;
 
-  const bytes = new Uint8Array(await fileBlob.arrayBuffer());
-  const contentType = fileBlob.type || "application/pdf";
-  const uploadedFileName = fileBlob.name || null;
+  // Only care about inbound faxes. Outbound / status-change events
+  // reuse the same webhook URL when subscribed to "Inbound Fax Events"
+  // shouldn't happen, but defense in depth.
+  const direction = String(b.direction ?? "").toLowerCase();
+  if (direction && direction !== "inbound") return null;
 
-  // ─── 2. Metadata fields ────────────────────────────────────────────
-  // Grab everything as strings — FormData values are strings or File,
-  // and we only care about string metadata here.
-  const str = (name: string): string | null => {
-    const v = formData.get(name);
-    return typeof v === "string" && v.trim() ? v.trim() : null;
-  };
+  const jobIdRaw = b.jobId ?? b.job_id;
+  const transactionIdRaw = b.transactionId ?? b.transaction_id;
+  if (jobIdRaw == null || transactionIdRaw == null) return null;
+  const jobId = String(jobIdRaw);
+  const transactionId = String(transactionIdRaw);
 
-  const faxId =
-    pickFirst([
-      str("fax_id"),
-      str("faxId"),
-      str("id"),
-      str("uuid"),
-      str("message_id"),
-      str("messageId"),
-      str("transaction_id"),
-    ]) ?? randomUUID();
+  const fromNumber =
+    typeof b.fromNumber === "string" && b.fromNumber.trim()
+      ? b.fromNumber.trim()
+      : null;
+  const toNumber =
+    typeof b.toNumber === "string" && b.toNumber.trim()
+      ? b.toNumber.trim()
+      : null;
 
-  const toNumber = pickFirst([
-    str("to"),
-    str("toNumber"),
-    str("to_number"),
-    str("recipient"),
-    str("recipient_number"),
-    str("destination"),
-    str("destination_number"),
-    str("receiver"),
-    str("receiver_number"),
-  ]);
-
-  const fromNumber = pickFirst(
-    [
-      str("from"),
-      str("fromNumber"),
-      str("from_number"),
-      str("sender"),
-      str("sender_number"),
-      str("caller"),
-      str("caller_id"),
-      str("callerId"),
-      str("csid"),
-      str("ani"),
-    ],
-    toNumber, // never let our own receiver leak into the sender slot
-  );
-
-  const pageCountRaw = pickFirst([
-    str("pages"),
-    str("page_count"),
-    str("pageCount"),
-    str("num_pages"),
-    str("numPages"),
-    str("total_pages"),
-  ]);
   const pageCount =
-    pageCountRaw && !isNaN(Number(pageCountRaw)) ? Number(pageCountRaw) : null;
+    typeof b.faxReceivedPages === "number"
+      ? (b.faxReceivedPages as number)
+      : typeof b.faxTotalPages === "number"
+        ? (b.faxTotalPages as number)
+        : null;
 
-  const receivedAt = pickFirst([
-    str("received_at"),
-    str("receivedAt"),
-    str("created_at"),
-    str("createdAt"),
-    str("timestamp"),
-    str("date"),
-  ]);
+  // faxCallEnd is a UTC epoch in SECONDS. Multiply to ms for the ISO.
+  const callEnd =
+    typeof b.faxCallEnd === "number" ? (b.faxCallEnd as number) : null;
+  const receivedAt =
+    callEnd && callEnd > 0 ? new Date(callEnd * 1000).toISOString() : null;
 
-  const fileName =
-    pickFirst([
-      uploadedFileName,
-      str("filename"),
-      str("file_name"),
-      str("fileName"),
-    ]) ?? `fax-${faxId}.pdf`;
-
-  // ─── 3. Event / status classification ─────────────────────────────
-  // iFax's Webhooks tab labels the subscription "Inbound Fax Events"
-  // (plural) — so the same webhook may fire for received / failed /
-  // status-changed. Only "received"-flavored events should insert a
-  // row. Anything unrecognized is treated as success (fail-open) so
-  // we don't silently drop good faxes if iFax adds a new event value.
-  const event = pickFirst([
-    str("event"),
-    str("event_type"),
-    str("eventType"),
-    str("type"),
-    str("status"),
-  ]);
+  // `success: true` + `faxStatus: "received"` are the canonical happy
+  // path. A `code !== 0` or `success === false` means the fax event
+  // failed and there's no downloadable file.
+  const success = b.success !== false;
+  const code = typeof b.code === "number" ? (b.code as number) : 0;
+  const status = String(b.faxStatus ?? "").toLowerCase();
   const succeeded =
-    !event ||
-    /(received|inbound|complete|success|delivered)/i.test(event);
-
-  // ─── 4. Debug log — first-pass field discovery ────────────────────
-  // Fire once per receipt so we can nail down iFax's exact field names
-  // after one live fax. Logs KEYS + TYPES only — no values — so PHI
-  // stays out of the log stream. Sender/receiver numbers ARE logged
-  // (mirrors Documo) since routing debugging needs them.
-  const knownFields = new Set([
-    "filename",
-    "file",
-    "attachment",
-    "fax_file",
-    "pdf",
-    "fax_id",
-    "faxId",
-    "id",
-    "uuid",
-    "message_id",
-    "messageId",
-    "transaction_id",
-    "to",
-    "toNumber",
-    "to_number",
-    "recipient",
-    "recipient_number",
-    "destination",
-    "destination_number",
-    "receiver",
-    "receiver_number",
-    "from",
-    "fromNumber",
-    "from_number",
-    "sender",
-    "sender_number",
-    "caller",
-    "caller_id",
-    "callerId",
-    "csid",
-    "ani",
-    "pages",
-    "page_count",
-    "pageCount",
-    "num_pages",
-    "numPages",
-    "total_pages",
-    "received_at",
-    "receivedAt",
-    "created_at",
-    "createdAt",
-    "timestamp",
-    "date",
-    "file_name",
-    "fileName",
-    "event",
-    "event_type",
-    "eventType",
-    "type",
-    "status",
-  ]);
-  const unrecognizedFields: Array<{ key: string; kind: string }> = [];
-  for (const [key, value] of formData.entries()) {
-    if (knownFields.has(key)) continue;
-    unrecognizedFields.push({
-      key,
-      kind: value instanceof File ? "File" : "string",
-    });
-  }
-  console.info("[intake.inbound-fax] iFax parsed", {
-    faxId,
-    fromNumber,
-    toNumber,
-    pageCount,
-    event,
-    succeeded,
-    fileBytes: bytes.byteLength,
-    unrecognizedFields,
-  });
+    success &&
+    code === 0 &&
+    (status === "" || /(received|success|complete|delivered)/i.test(status));
 
   return {
-    faxId,
+    jobId,
+    transactionId,
     fromNumber,
     toNumber,
     pageCount,
     receivedAt,
-    fileName,
-    bytes,
-    contentType,
+    fileName: `fax-${jobId}.pdf`,
     succeeded,
   };
+}
+
+/**
+ * Download the PDF bytes for one inbound fax from iFax's REST API.
+ * Returns base64 → Uint8Array. Endpoint verified 2026-09-16 against
+ * iFax's public API docs (v1).
+ */
+async function fetchIfaxFax(
+  jobId: string,
+  transactionId: string,
+  apiKey: string,
+): Promise<
+  | { ok: true; bytes: Uint8Array; contentType: string }
+  | { ok: false; status: number; snippet?: string }
+> {
+  const url = "https://api.ifaxapp.com/v1/customer/inbound/fax-download";
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      accessToken: apiKey,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({ jobId, transactionId }),
+  });
+
+  if (!res.ok) {
+    let snippet: string | undefined;
+    try {
+      snippet = (await res.text()).slice(0, 240);
+    } catch {
+      /* ignore body-read failures */
+    }
+    return { ok: false, status: res.status, snippet };
+  }
+
+  const json = (await res.json()) as {
+    status?: number | string;
+    message?: string;
+    data?: string;
+  };
+  const b64 = json.data;
+  if (!b64 || typeof b64 !== "string") {
+    return {
+      ok: false,
+      status: 200,
+      snippet: `Missing data field. status=${json.status} message=${json.message}`,
+    };
+  }
+
+  // iFax's base64 field may include a data URI prefix; strip if present.
+  const cleaned = b64.replace(/^data:application\/pdf;base64,/i, "");
+  const bytes = new Uint8Array(Buffer.from(cleaned, "base64"));
+  return { ok: true, bytes, contentType: "application/pdf" };
 }
 
 async function handleIfaxInbound(request: Request) {
@@ -834,35 +723,39 @@ async function handleIfaxInbound(request: Request) {
     return new NextResponse("Unauthorized.", { status: 401 });
   }
 
-  // Content-Type guard — iFax always sends multipart/form-data on this
-  // webhook. A JSON body would mean something changed on their side
-  // and we should surface that loudly instead of silently returning
-  // 400 with an unhelpful message.
-  const contentType = request.headers.get("content-type") ?? "";
-  if (!contentType.toLowerCase().includes("multipart/form-data")) {
-    console.error(
-      "[intake.inbound-fax] iFax: expected multipart/form-data, got:",
-      contentType,
-    );
-    return new NextResponse("Expected multipart/form-data.", { status: 400 });
-  }
-
-  let formData: FormData;
+  const rawBody = await request.text();
+  let payloadJson: unknown;
   try {
-    formData = await request.formData();
-  } catch (err) {
-    console.error("[intake.inbound-fax] iFax: multipart parse failed", err);
-    return new NextResponse("Invalid multipart body.", { status: 400 });
+    payloadJson = JSON.parse(rawBody);
+  } catch {
+    console.error("[intake.inbound-fax] iFax: invalid JSON body");
+    return new NextResponse("Invalid JSON.", { status: 400 });
   }
 
-  const payload = await parseIfaxMultipart(formData);
+  const payload = parseIfaxPayload(payloadJson);
   if (!payload) {
-    return new NextResponse("Unrecognized payload.", { status: 400 });
+    const shape = describeShape(payloadJson);
+    console.error("[intake.inbound-fax] iFax: unrecognized payload shape", {
+      shape,
+    });
+    // 200 (not 400) so iFax doesn't hammer us with retries on payload
+    // shapes we don't yet understand. The shape log tells us how to
+    // adapt on the next deploy.
+    return NextResponse.json({ ok: true, ignored: "unknown_shape" });
   }
+
+  console.info("[intake.inbound-fax] iFax parsed", {
+    jobId: payload.jobId,
+    transactionId: payload.transactionId,
+    fromNumber: payload.fromNumber,
+    toNumber: payload.toNumber,
+    pageCount: payload.pageCount,
+    succeeded: payload.succeeded,
+  });
 
   if (!payload.succeeded) {
     console.info("[intake.inbound-fax] iFax: skipping non-success event", {
-      faxId: payload.faxId,
+      jobId: payload.jobId,
     });
     return NextResponse.json({ ok: true, skipped: "not_succeeded" });
   }
@@ -870,29 +763,52 @@ async function handleIfaxInbound(request: Request) {
   const admin = createAdminClient();
 
   // Idempotency check — iFax retries on 5xx too, and the unique index
-  // on (provider, external_id) is what prevents duplicate rows. The
-  // pre-check just makes the retry case cheap.
+  // on (provider, external_id) is what prevents duplicate rows.
   const { data: existing } = await admin
     .from("intake_documents")
     .select("id")
     .eq("provider", "ifax")
-    .eq("external_id", payload.faxId)
+    .eq("external_id", payload.jobId)
     .maybeSingle();
   if (existing) {
     return NextResponse.json({ ok: true, duplicate: true, id: existing.id });
   }
+
+  const apiKey = process.env.IFAX_API_KEY;
+  if (!apiKey) {
+    console.error("[intake.inbound-fax] iFax: missing IFAX_API_KEY");
+    return new NextResponse("Server not configured (missing API key).", {
+      status: 500,
+    });
+  }
+
+  const fetched = await fetchIfaxFax(
+    payload.jobId,
+    payload.transactionId,
+    apiKey,
+  );
+  if (!fetched.ok) {
+    console.error("[intake.inbound-fax] iFax: failed to download fax", {
+      jobId: payload.jobId,
+      transactionId: payload.transactionId,
+      status: fetched.status,
+      snippet: fetched.snippet,
+    });
+    return new NextResponse("Failed to download fax file.", { status: 502 });
+  }
+  const { bytes, contentType } = fetched;
 
   const intakeId = randomUUID();
   const filePath = `intake/${intakeId}.pdf`;
 
   const { error: uploadErr } = await admin.storage
     .from(BUCKET)
-    .upload(filePath, payload.bytes, {
-      contentType: payload.contentType,
-      upsert: false,
-    });
+    .upload(filePath, bytes, { contentType, upsert: false });
   if (uploadErr) {
-    console.error("[intake.inbound-fax] iFax: storage upload failed", uploadErr);
+    console.error(
+      "[intake.inbound-fax] iFax: storage upload failed",
+      uploadErr,
+    );
     return new NextResponse("Storage upload failed.", { status: 500 });
   }
 
@@ -902,7 +818,7 @@ async function handleIfaxInbound(request: Request) {
       id: intakeId,
       source: "fax",
       provider: "ifax",
-      external_id: payload.faxId,
+      external_id: payload.jobId,
       from_number: payload.fromNumber,
       to_number: payload.toNumber,
       received_at: payload.receivedAt ?? new Date().toISOString(),
@@ -910,8 +826,8 @@ async function handleIfaxInbound(request: Request) {
       bucket: BUCKET,
       file_path: filePath,
       file_name: payload.fileName,
-      mime_type: payload.contentType,
-      file_size: payload.bytes.byteLength,
+      mime_type: contentType,
+      file_size: bytes.byteLength,
       status: "pending",
     })
     .select("id")
