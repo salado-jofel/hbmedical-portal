@@ -9,7 +9,6 @@ import { createClient } from "@/lib/supabase/server";
  * The original landing-page sections (Hero, WhyUs, Testimonials, etc.) still
  * live under `app/(sections)/` and can be re-enabled by swapping this file
  * back to importing + rendering them.
- * test
  */
 export const dynamic = "force-dynamic";
 
