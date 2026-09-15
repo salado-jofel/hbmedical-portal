@@ -286,6 +286,17 @@ interface CreateOrderModalProps {
      *  don't need this — their own facility is used — but passing it
      *  always is harmless and keeps the two callers symmetrical. */
     facilityId?: string | null;
+    /** True when the standalone IVR was built from an inbound fax (the
+     *  approver_display_name marker prefix). Faxes IS a merged bundle
+     *  of facesheet + clinical docs, so on this path the modal:
+     *    - drops facesheet + clinical_docs from canSubmit
+     *    - hides both upload zones behind an "auto-attached" pill
+     *    - relies on finalizeIvrConversion to insert the fax as a
+     *      facesheet-typed order_document, which wakes up the
+     *      standard AI extraction pipeline without extractor edits.
+     *  Valid ID + Wound Pictures behave normally (fax doesn't
+     *  contain either). */
+    isFromFax?: boolean;
   };
   /** When creating an order from a fax intake: shows a "Building from
    *  fax X.pdf" banner, and after the order + user's uploads are done,
@@ -395,6 +406,21 @@ export function CreateOrderModal(props: CreateOrderModalProps = {}) {
   // and would otherwise 500 on the NOT NULL constraint on
   // orders.facility_id.
   const facilityRequired = !!fromIntake;
+  // Fax-origin IVR conversion: the fax file is a merged bundle of the
+  // facesheet + clinical docs, so we don't ask the user to re-upload
+  // either. finalizeIvrConversion attaches the fax as document_type=
+  // 'facesheet' server-side, which wakes up the AI extraction pipeline.
+  // Valid ID is not in the fax so it still needs to be uploaded.
+  const isFaxIvrConversion = !!fromStandaloneIvr?.isFromFax;
+  // Which docs actually need to be uploaded, given the flow.
+  //   - Manual input: none required.
+  //   - Fax-IVR conversion: only Valid ID (fax carries the rest).
+  //   - Standard: facesheet + clinical docs + Valid ID.
+  const docsUploadedOk = !docsRequired
+    ? true
+    : isFaxIvrConversion
+      ? hasValidId
+      : hasFacesheet && hasClinicalDocs && hasValidId;
   const canSubmit =
     !!orderType &&
     // Skin Grafts orders are blocked from direct creation — go through
@@ -405,7 +431,7 @@ export function CreateOrderModal(props: CreateOrderModalProps = {}) {
     !!woundType &&
     !!dateOfService &&
     (!facilityRequired || !!facilityId) &&
-    (!docsRequired || (hasFacesheet && hasClinicalDocs && hasValidId)) &&
+    docsUploadedOk &&
     (!manualInput || patientNameProvided);
 
   function handleClose() {
@@ -582,6 +608,25 @@ export function CreateOrderModal(props: CreateOrderModalProps = {}) {
           toast.error(
             `Order created, but linking to the approved IVR failed: ${link.error ?? "unknown error"}. Open the order to attach the IVR manually.`,
             { duration: Infinity },
+          );
+        }
+        // Fax-origin IVRs come back with the auto-attached fax file
+        // in `extractableDocs`. Fire the AI trigger from HERE (client
+        // context, live session cookies) rather than from inside the
+        // server action — server-side fire-and-forget loses the
+        // cookie context and 401s.
+        if (
+          !manualInput &&
+          link.success &&
+          link.extractableDocs &&
+          link.extractableDocs.length > 0
+        ) {
+          triggerOrderExtraction(orderId, link.extractableDocs).catch(
+            (err) =>
+              console.error(
+                "[CreateOrderModal] fax-IVR AI trigger:",
+                err,
+              ),
           );
         }
       }
@@ -1029,44 +1074,69 @@ export function CreateOrderModal(props: CreateOrderModalProps = {}) {
                 Documents {manualInput && <span className="text-slate-400 normal-case font-normal tracking-normal">(optional)</span>}
               </h3>
 
-              {/* Facesheet + Clinical Docs side by side */}
-              <div className="flex gap-3">
-                <UploadZone
-                  label="Patient Facesheet"
-                  description="Insurance & demographics"
-                  docType="facesheet"
-                  required={docsRequired}
-                  files={docs}
-                  onAdd={addDocs}
-                  onRemove={removeDoc}
-                  error={facesheetError}
-                  accept={ACCEPT_DOCS}
-                  fileType="document"
-                />
-                <UploadZone
-                  label="Clinical Documentation"
-                  description="Doctor's notes, records"
-                  docType="clinical_docs"
-                  required={docsRequired}
-                  multiple
-                  files={docs}
-                  onAdd={addDocs}
-                  onRemove={removeDoc}
-                  error={clinicalDocsError}
-                  accept={ACCEPT_DOCS}
-                  fileType="document"
-                />
-              </div>
+              {/* Facesheet + Clinical Docs — hidden on the fax-IVR
+                  conversion path. The fax PDF is a merged bundle of
+                  the facesheet + clinical documentation already, and
+                  finalizeIvrConversion attaches it server-side as a
+                  facesheet-typed order_document so the standard AI
+                  extraction pipeline picks it up. Show a green pill
+                  so the user knows why the zones are missing. */}
+              {isFaxIvrConversion ? (
+                <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2.5 text-[12.5px] text-green-900 flex items-start gap-2">
+                  <FileText className="w-4 h-4 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold">
+                      Facesheet &amp; clinical docs auto-attached from fax
+                    </p>
+                    <p className="text-[11.5px] mt-0.5 leading-snug">
+                      The faxed IVR is a merged bundle — the portal will
+                      use it as the facesheet and clinical documentation
+                      for AI extraction. You only need to upload the
+                      patient&apos;s Valid ID below.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex gap-3">
+                    <UploadZone
+                      label="Patient Facesheet"
+                      description="Insurance & demographics"
+                      docType="facesheet"
+                      required={docsRequired}
+                      files={docs}
+                      onAdd={addDocs}
+                      onRemove={removeDoc}
+                      error={facesheetError}
+                      accept={ACCEPT_DOCS}
+                      fileType="document"
+                    />
+                    <UploadZone
+                      label="Clinical Documentation"
+                      description="Doctor's notes, records"
+                      docType="clinical_docs"
+                      required={docsRequired}
+                      multiple
+                      files={docs}
+                      onAdd={addDocs}
+                      onRemove={removeDoc}
+                      error={clinicalDocsError}
+                      accept={ACCEPT_DOCS}
+                      fileType="document"
+                    />
+                  </div>
 
-              {facesheetError && (
-                <p className="text-xs text-red-500">
-                  Patient facesheet is required.
-                </p>
-              )}
-              {clinicalDocsError && (
-                <p className="text-xs text-red-500">
-                  Clinical documentation is required.
-                </p>
+                  {facesheetError && (
+                    <p className="text-xs text-red-500">
+                      Patient facesheet is required.
+                    </p>
+                  )}
+                  {clinicalDocsError && (
+                    <p className="text-xs text-red-500">
+                      Clinical documentation is required.
+                    </p>
+                  )}
+                </>
               )}
 
               {/* Wound Pictures — chronic only. Post-surgical wounds are

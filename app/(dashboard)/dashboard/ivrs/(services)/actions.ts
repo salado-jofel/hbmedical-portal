@@ -1928,7 +1928,18 @@ export async function deleteIvrFile(
 export async function finalizeIvrConversion(input: {
   ivrId: string;
   orderId: string;
-}): Promise<{ success: boolean; error?: string }> {
+}): Promise<{
+  success: boolean;
+  error?: string;
+  /** Populated on the fax-origin path: the fax file(s) that were just
+   *  attached as facesheet-typed order_documents and should have the
+   *  AI extractor run against them. The CLIENT calls
+   *  triggerOrderExtraction with these — trying to fire it from here
+   *  inside a fire-and-forget produces intermittent 401s because the
+   *  outer request context can be reaped before the extraction fetch's
+   *  cookie read runs. */
+  extractableDocs?: Array<{ documentType: string; filePath: string }>;
+}> {
   try {
     const supabase = await createClient();
     const user = await getCurrentUserOrThrow(supabase);
@@ -2033,6 +2044,82 @@ export async function finalizeIvrConversion(input: {
     // PDF appear as the "uploaded IVR document" on the order's IVR
     // tab, competing with the built form we just seeded. The fax
     // stays accessible via the "View original IVR" banner up top.
+    //
+    // Fax-origin exception: the fax PDF IS a merged bundle of the
+    // facesheet + clinical documentation (client's inbound fax
+    // template), and the CreateOrderModal drops the facesheet /
+    // clinical_docs upload zones on this path. Attach the fax as
+    // document_type='facesheet' so the AI extraction pipeline has
+    // something to read and pre-fills Order Form / HCFA / patient
+    // data automatically. Metadata-only insert — the file bytes
+    // stay at the standalone-ivrs storage path.
+    const isFromFax = (ivr.approver_display_name as string | null)?.startsWith(
+      "Approved from fax",
+    );
+    let extractableForAi: Array<{
+      documentType: string;
+      filePath: string;
+      bucket: string;
+    }> = [];
+    if (isFromFax) {
+      const { data: ivrFiles } = await adminClient
+        .from("standalone_ivr_files")
+        .select("file_path, file_name, mime_type, file_size")
+        .eq("standalone_ivr_id", input.ivrId);
+      if (ivrFiles && ivrFiles.length > 0) {
+        // Skip files already registered on this order at any
+        // (order_id, file_path) — makes the action re-runnable
+        // (a second click on "Create Order from IVR" doesn't
+        // duplicate rows or refire the AI).
+        const paths = ivrFiles.map((f) => f.file_path as string);
+        const { data: existingDocs } = await adminClient
+          .from("order_documents")
+          .select("file_path, document_type")
+          .eq("order_id", input.orderId)
+          .in("file_path", paths);
+        const alreadyAsFacesheet = new Set(
+          (existingDocs ?? [])
+            .filter((d) => d.document_type === "facesheet")
+            .map((d) => d.file_path as string),
+        );
+
+        const toInsert = ivrFiles
+          .filter((f) => !alreadyAsFacesheet.has(f.file_path as string))
+          .map((f) => ({
+            order_id: input.orderId,
+            document_type: "facesheet",
+            bucket: BUCKET,
+            file_path: f.file_path,
+            file_name: f.file_name,
+            mime_type: f.mime_type,
+            file_size: f.file_size,
+            uploaded_by: user.id,
+          }));
+        if (toInsert.length > 0) {
+          const { error: docsErr } = await adminClient
+            .from("order_documents")
+            .insert(toInsert);
+          if (docsErr) {
+            console.error(
+              "[finalizeIvrConversion] fax→facesheet insert",
+              docsErr,
+            );
+            // Non-fatal — the order + linkage exist; the user can
+            // still fill Order Form / HCFA manually. Only the AI
+            // pre-fill is lost.
+          }
+        }
+        // Collect every faxed file (including those we skipped as
+        // duplicates) so the AI trigger still fires on the second
+        // click if it errored the first time. The extractor is
+        // idempotent as long as ai_extracted hasn't flipped.
+        extractableForAi = ivrFiles.map((f) => ({
+          documentType: "facesheet",
+          filePath: f.file_path as string,
+          bucket: BUCKET,
+        }));
+      }
+    }
 
     // 3. Flip the IVR to converted (if not already) + history.
     if (ivr.status !== "converted") {
@@ -2054,7 +2141,19 @@ export async function finalizeIvrConversion(input: {
 
     revalidatePath(IVRS_PATH);
     revalidatePath("/dashboard/orders");
-    return { success: true };
+    // Return the extractable docs so the CLIENT can fire the AI
+    // trigger (via triggerOrderExtraction) in its own live-session
+    // context. Attempting the fire-and-forget here fails with 401
+    // because Next.js reaps the request's cookie context by the
+    // time the fetch's `await cookies()` runs — 30+ min of debugging
+    // this went into the comment on 2026-08-31.
+    return {
+      success: true,
+      extractableDocs: extractableForAi.map((d) => ({
+        documentType: d.documentType,
+        filePath: d.filePath,
+      })),
+    };
   } catch (err) {
     console.error("[finalizeIvrConversion]", err);
     return {
