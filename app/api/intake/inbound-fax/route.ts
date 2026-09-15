@@ -653,8 +653,13 @@ function parseIfaxPayload(body: unknown): IfaxFaxPayload | null {
 
 /**
  * Download the PDF bytes for one inbound fax from iFax's REST API.
- * Returns base64 → Uint8Array. Endpoint verified 2026-09-16 against
- * iFax's public API docs (v1).
+ * iFax may return either:
+ *  - base64 in `data` (as their docs example shows), OR
+ *  - a signed URL in `data.url` / `data.file` (some tenants), OR
+ *  - raw application/pdf bytes (rare)
+ *
+ * We walk all three shapes defensively and reject empty results so a
+ * 0-byte PDF never lands in intake.
  */
 async function fetchIfaxFax(
   jobId: string,
@@ -685,13 +690,71 @@ async function fetchIfaxFax(
     return { ok: false, status: res.status, snippet };
   }
 
-  const json = (await res.json()) as {
-    status?: number | string;
-    message?: string;
-    data?: string;
-  };
-  const b64 = json.data;
-  if (!b64 || typeof b64 !== "string") {
+  const respContentType = res.headers.get("content-type") ?? "";
+
+  // Case 1 — raw PDF bytes (some fax APIs bypass the JSON envelope
+  // entirely when the file is small). Handle first so we don't try to
+  // JSON.parse binary garbage.
+  if (respContentType.toLowerCase().startsWith("application/pdf")) {
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    if (bytes.byteLength === 0) {
+      return { ok: false, status: 200, snippet: "Empty PDF body" };
+    }
+    return { ok: true, bytes, contentType: "application/pdf" };
+  }
+
+  // Case 2 — JSON envelope. iFax's docs example wraps base64 in `data`,
+  // but tenants have seen the same field carry either base64 OR a
+  // signed URL, and some responses nest one more level under `data.data`
+  // or `data.file`. Walk defensively.
+  const rawText = await res.text();
+  let json: Record<string, unknown>;
+  try {
+    json = JSON.parse(rawText) as Record<string, unknown>;
+  } catch {
+    return {
+      ok: false,
+      status: 200,
+      snippet: `Non-JSON body: ${rawText.slice(0, 200)}`,
+    };
+  }
+
+  // Collect every candidate that might carry the payload — top-level
+  // AND one level under `data` (the most common wrapper).
+  const inner =
+    json.data && typeof json.data === "object"
+      ? (json.data as Record<string, unknown>)
+      : {};
+  const stringCandidates = [
+    json.data,
+    json.file,
+    json.pdf,
+    json.base64,
+    json.content,
+    inner.data,
+    inner.file,
+    inner.pdf,
+    inner.base64,
+    inner.content,
+    inner.url,
+    inner.fileUrl,
+    inner.downloadUrl,
+    json.url,
+    json.fileUrl,
+    json.downloadUrl,
+  ].filter((v): v is string => typeof v === "string" && v.length > 0);
+
+  if (stringCandidates.length === 0) {
+    // Log a shape sketch of iFax's response so we can adapt without
+    // guessing on the next fax. Values sanitized to types-only.
+    console.error(
+      "[intake.inbound-fax] iFax: download response had no usable data field",
+      {
+        status: json.status,
+        message: json.message,
+        shape: describeShape(json),
+      },
+    );
     return {
       ok: false,
       status: 200,
@@ -699,10 +762,55 @@ async function fetchIfaxFax(
     };
   }
 
-  // iFax's base64 field may include a data URI prefix; strip if present.
-  const cleaned = b64.replace(/^data:application\/pdf;base64,/i, "");
-  const bytes = new Uint8Array(Buffer.from(cleaned, "base64"));
-  return { ok: true, bytes, contentType: "application/pdf" };
+  for (const candidate of stringCandidates) {
+    // Signed URL branch — fetch the bytes from wherever iFax stored them.
+    if (/^https?:\/\//i.test(candidate)) {
+      const inner2 = await fetch(candidate, {
+        headers: { accessToken: apiKey },
+      });
+      if (!inner2.ok) continue;
+      const bytes = new Uint8Array(await inner2.arrayBuffer());
+      if (bytes.byteLength === 0) continue;
+      return {
+        ok: true,
+        bytes,
+        contentType: inner2.headers.get("content-type") ?? "application/pdf",
+      };
+    }
+
+    // Base64 branch — strip data URI prefix, decode, check length.
+    const cleaned = candidate
+      .replace(/^data:application\/pdf;base64,/i, "")
+      .replace(/^data:[^;]+;base64,/i, "")
+      .replace(/\s+/g, "");
+    // Very short strings are almost certainly not a real PDF (a valid
+    // PDF header alone base64s to ~28 chars, and a 1-page fax is tens
+    // of KB minimum).
+    if (cleaned.length < 100) continue;
+    try {
+      const bytes = new Uint8Array(Buffer.from(cleaned, "base64"));
+      if (bytes.byteLength < 100) continue;
+      // Sanity check: PDFs start with "%PDF"
+      const head = String.fromCharCode(...bytes.slice(0, 4));
+      if (head !== "%PDF") {
+        console.warn(
+          "[intake.inbound-fax] iFax: decoded bytes don't start with %PDF header",
+          { firstBytes: head },
+        );
+        // Still accept — a fax MIGHT be a TIFF someday. Storing 0 bytes
+        // was the real issue, not header mismatch.
+      }
+      return { ok: true, bytes, contentType: "application/pdf" };
+    } catch {
+      continue;
+    }
+  }
+
+  return {
+    ok: false,
+    status: 200,
+    snippet: `All candidates yielded empty bytes. status=${json.status} message=${json.message}`,
+  };
 }
 
 async function handleIfaxInbound(request: Request) {
@@ -797,6 +905,21 @@ async function handleIfaxInbound(request: Request) {
     return new NextResponse("Failed to download fax file.", { status: 502 });
   }
   const { bytes, contentType } = fetched;
+
+  // Extra belt-and-suspenders — if downstream shape assumptions ever
+  // slip and we get zero bytes, refuse to persist. Better a 502 that
+  // iFax retries than a 0-byte PDF on the intake page.
+  if (bytes.byteLength === 0) {
+    console.error("[intake.inbound-fax] iFax: refusing to persist 0-byte PDF", {
+      jobId: payload.jobId,
+    });
+    return new NextResponse("Empty PDF from provider.", { status: 502 });
+  }
+  console.info("[intake.inbound-fax] iFax: downloaded fax", {
+    jobId: payload.jobId,
+    bytes: bytes.byteLength,
+    contentType,
+  });
 
   const intakeId = randomUUID();
   const filePath = `intake/${intakeId}.pdf`;
