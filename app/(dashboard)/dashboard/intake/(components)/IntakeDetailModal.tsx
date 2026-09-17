@@ -21,10 +21,16 @@ import {
   Phone,
   Clock,
   X,
+  FileWarning,
+  RefreshCw,
 } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { updateIntakeInStore } from "../(redux)/intake-slice";
-import { getIntakeSignedUrl, dismissIntake } from "../(services)/actions";
+import {
+  getIntakeSignedUrl,
+  dismissIntake,
+  refetchIntakeFile,
+} from "../(services)/actions";
 import { INTAKE_STATUS_LABELS } from "@/utils/interfaces/intake";
 import type { IExternalApprover } from "@/utils/interfaces/standalone-ivrs";
 import { ConfirmModal } from "@/app/(dashboard)/(components)/ConfirmModal";
@@ -70,9 +76,15 @@ export function IntakeDetailModal({
   const [confirmDismiss, setConfirmDismiss] = useState(false);
   const [dismissReason, setDismissReason] = useState("");
   const [buildIvrOpen, setBuildIvrOpen] = useState(false);
+  const [refetching, startRefetch] = useTransition();
+
+  // A 0-byte file is the signature of the pre-2026-09-16 iFax download
+  // bug — the row is fine, the bytes never landed. Don't bother signing
+  // a URL for it; show the recovery UI instead.
+  const isEmptyFile = intake?.fileSize === 0;
 
   useEffect(() => {
-    if (!intake) {
+    if (!intake || isEmptyFile) {
       setSignedUrl(null);
       return;
     }
@@ -83,7 +95,22 @@ export function IntakeDetailModal({
     return () => {
       cancelled = true;
     };
-  }, [intake]);
+  }, [intake, isEmptyFile]);
+
+  function doRefetch() {
+    if (!intake) return;
+    startRefetch(async () => {
+      const res = await refetchIntakeFile(intake.id);
+      if (!res.success || !res.intake) {
+        toast.error(res.error ?? "Failed to re-download the fax.");
+        return;
+      }
+      dispatch(updateIntakeInStore(res.intake));
+      toast.success(
+        `Re-downloaded ${(res.intake.fileSize! / 1024).toFixed(0)} KB from iFax.`,
+      );
+    });
+  }
 
   function doDismiss() {
     if (!intake) return;
@@ -171,7 +198,33 @@ export function IntakeDetailModal({
           <div className="grid grid-cols-1 md:grid-cols-[1fr_360px] flex-1 min-h-0">
             {/* PDF preview — takes ~75% of the width, fills height */}
             <div className="border-b md:border-b-0 md:border-r border-[#eee] bg-[#f9fafb] min-h-[400px] md:min-h-0">
-              {signedUrl ? (
+              {isEmptyFile ? (
+                <div className="flex flex-col items-center justify-center h-full min-h-[500px] md:min-h-0 px-8 text-center">
+                  <FileWarning className="w-10 h-10 stroke-1 text-amber-500" />
+                  <p className="mt-3 text-[14px] font-semibold text-[var(--text)]">
+                    This fax file is empty (0 KB)
+                  </p>
+                  <p className="mt-1 max-w-md text-[12.5px] text-[var(--text3)]">
+                    The provider download failed when this fax arrived, so
+                    there is nothing to preview. The pages are still stored
+                    at iFax — re-download them to restore the file.
+                  </p>
+                  {intake.provider === "ifax" && (
+                    <Button
+                      className="mt-4 gap-2"
+                      onClick={doRefetch}
+                      disabled={refetching || pending}
+                    >
+                      {refetching ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="w-4 h-4" />
+                      )}
+                      Re-download from iFax
+                    </Button>
+                  )}
+                </div>
+              ) : signedUrl ? (
                 <iframe
                   src={signedUrl}
                   title={intake.fileName ?? "Fax"}
@@ -241,7 +294,12 @@ export function IntakeDetailModal({
                   <Button
                     className="w-full justify-start gap-2"
                     onClick={() => setBuildIvrOpen(true)}
-                    disabled={pending}
+                    disabled={pending || isEmptyFile}
+                    title={
+                      isEmptyFile
+                        ? "Re-download the fax file first"
+                        : undefined
+                    }
                   >
                     <ArrowRight className="w-4 h-4" />
                     Build IVR from this fax

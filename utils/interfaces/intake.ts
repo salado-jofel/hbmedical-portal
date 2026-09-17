@@ -18,6 +18,9 @@ export interface IIntakeDocument {
   source: IntakeSource;
   provider: string; // 'documo'
   externalId: string | null;
+  /** iFax transactionId — needed with externalId (jobId) to re-download
+   *  the file. NULL for Documo rows and iFax rows before 2026-09-18. */
+  providerTransactionId: string | null;
   fromNumber: string | null;
   toNumber: string | null;
   receivedAt: string;

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { timingSafeEqual, randomUUID } from "crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { describeShape, fetchIfaxFax } from "@/lib/fax/ifax";
 
 /**
  * Inbound-fax webhook — provider-dispatched.
@@ -42,27 +43,6 @@ import { createAdminClient } from "@/lib/supabase/admin";
  */
 
 const BUCKET = process.env.SUPABASE_BUCKET ?? "hbmedical-bucket-private";
-
-/** Return a shape sketch of an unknown JSON value: keys and their types,
- *  drilling one level down into nested objects. NO scalar values are
- *  emitted — safe to log for debugging Documo's actual webhook shape
- *  without leaking any PHI that might be in a field like patient_name.
- */
-function describeShape(v: unknown, depth = 0): unknown {
-  if (v === null) return "null";
-  if (Array.isArray(v)) {
-    return `array(${v.length})${v.length > 0 && depth < 2 ? ":" + JSON.stringify(describeShape(v[0], depth + 1)) : ""}`;
-  }
-  if (typeof v === "object") {
-    if (depth > 2) return "object{...}";
-    const out: Record<string, unknown> = {};
-    for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
-      out[k] = describeShape(val, depth + 1);
-    }
-    return out;
-  }
-  return typeof v;
-}
 
 interface DocumoFaxPayload {
   /** Documo's identifier for this fax — used both as our idempotency
@@ -651,60 +631,6 @@ function parseIfaxPayload(body: unknown): IfaxFaxPayload | null {
   };
 }
 
-/**
- * Download the PDF bytes for one inbound fax from iFax's REST API.
- * Returns base64 → Uint8Array. Endpoint verified 2026-09-16 against
- * iFax's public API docs (v1).
- */
-async function fetchIfaxFax(
-  jobId: string,
-  transactionId: string,
-  apiKey: string,
-): Promise<
-  | { ok: true; bytes: Uint8Array; contentType: string }
-  | { ok: false; status: number; snippet?: string }
-> {
-  const url = "https://api.ifaxapp.com/v1/customer/inbound/fax-download";
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      accessToken: apiKey,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify({ jobId, transactionId }),
-  });
-
-  if (!res.ok) {
-    let snippet: string | undefined;
-    try {
-      snippet = (await res.text()).slice(0, 240);
-    } catch {
-      /* ignore body-read failures */
-    }
-    return { ok: false, status: res.status, snippet };
-  }
-
-  const json = (await res.json()) as {
-    status?: number | string;
-    message?: string;
-    data?: string;
-  };
-  const b64 = json.data;
-  if (!b64 || typeof b64 !== "string") {
-    return {
-      ok: false,
-      status: 200,
-      snippet: `Missing data field. status=${json.status} message=${json.message}`,
-    };
-  }
-
-  // iFax's base64 field may include a data URI prefix; strip if present.
-  const cleaned = b64.replace(/^data:application\/pdf;base64,/i, "");
-  const bytes = new Uint8Array(Buffer.from(cleaned, "base64"));
-  return { ok: true, bytes, contentType: "application/pdf" };
-}
-
 async function handleIfaxInbound(request: Request) {
   const expectedUser = process.env.IFAX_WEBHOOK_BASIC_USERNAME;
   const expectedPass = process.env.IFAX_WEBHOOK_BASIC_PASSWORD;
@@ -798,6 +724,21 @@ async function handleIfaxInbound(request: Request) {
   }
   const { bytes, contentType } = fetched;
 
+  // Extra belt-and-suspenders — if downstream shape assumptions ever
+  // slip and we get zero bytes, refuse to persist. Better a 502 that
+  // iFax retries than a 0-byte PDF on the intake page.
+  if (bytes.byteLength === 0) {
+    console.error("[intake.inbound-fax] iFax: refusing to persist 0-byte PDF", {
+      jobId: payload.jobId,
+    });
+    return new NextResponse("Empty PDF from provider.", { status: 502 });
+  }
+  console.info("[intake.inbound-fax] iFax: downloaded fax", {
+    jobId: payload.jobId,
+    bytes: bytes.byteLength,
+    contentType,
+  });
+
   const intakeId = randomUUID();
   const filePath = `intake/${intakeId}.pdf`;
 
@@ -819,6 +760,9 @@ async function handleIfaxInbound(request: Request) {
       source: "fax",
       provider: "ifax",
       external_id: payload.jobId,
+      // Needed alongside jobId to re-download the PDF later (the
+      // fax-download endpoint requires both). See refetchIntakeFile.
+      provider_transaction_id: payload.transactionId,
       from_number: payload.fromNumber,
       to_number: payload.toNumber,
       received_at: payload.receivedAt ?? new Date().toISOString(),

@@ -306,6 +306,7 @@ export function UploadIvrsModal({
                 source: "fax",
                 provider: "documo",
                 externalId: null,
+                providerTransactionId: null,
                 fromNumber: null,
                 toNumber: null,
                 receivedAt: new Date().toISOString(),
