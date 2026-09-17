@@ -43,7 +43,7 @@ In the iFax dashboard: **Developers → Webhooks → Add Webhook**.
 |---------------|----------------------------------------------------------------|
 | URL           | `https://meridianportal.io/api/intake/inbound-fax`             |
 | Event         | `Inbound Fax Events`                                           |
-| Method        | `POST` (multipart/form-data — iFax sets this automatically)    |
+| Method        | `POST` (application/json — verified against a live fax 2026-09-16) |
 | Auth          | **Basic Auth** — set username + password on the webhook form   |
 | Status        | `ACTIVE`                                                       |
 
@@ -66,20 +66,33 @@ SUPABASE_BUCKET=hbmedical-bucket-private
 
 After adding, redeploy so the runtime picks up the new envs.
 
-### 5. Field-name confirmation (first-run only)
+### 5. Webhook payload + download (verified 2026-09-16)
 
-iFax's public docs specify only `filename` for the PDF file part —
-the metadata field names (`from`, `to`, `pages`, `message_id`, etc.)
-aren't published. The adapter walks a list of common candidates and
-logs any unrecognized fields at INFO level:
+The webhook body is JSON with `jobId`, `transactionId`, `direction`,
+`fromNumber`, `toNumber`, `faxReceivedPages`, `faxCallEnd` (epoch
+seconds), `faxStatus`, `success`. There is no file in the webhook —
+the adapter calls `POST /v1/customer/inbound/fax-download` with
+`{ jobId, transactionId }` and `accessToken: IFAX_API_KEY`. The shared
+client lives in `lib/fax/ifax.ts`.
+
+Both IDs are persisted on the row (`external_id` = jobId,
+`provider_transaction_id` = transactionId). Log lines to watch:
 
 ```
-[intake.inbound-fax] iFax parsed { from, to, pages, externalId, unrecognizedFields }
+[intake.inbound-fax] iFax parsed { jobId, transactionId, ... }
+[intake.inbound-fax] iFax: downloaded fax { jobId, bytes, contentType }
+[ifax] download response had no usable data field { shape }   ← adapt lib/fax/ifax.ts
 ```
 
-After the first live fax lands, grep server logs for
-`unrecognizedFields` and, if non-empty, extend the candidate lists in
-`parseIfaxMultipart` (`app/api/intake/inbound-fax/route.ts`).
+### 6. Recovering a 0-byte fax
+
+Faxes received before 2026-09-16 (and any future provider hiccup) can
+land with `file_size = 0`. The intake modal detects this, hides the
+preview, and offers **Re-download from iFax** (admin/support). The
+action (`refetchIntakeFile`) recovers a missing `transactionId` via
+`POST /v1/customer/inbound/fax-list-all`, re-fetches the bytes, and
+overwrites the same storage path so any IVR/order rows that already
+reference it heal too.
 
 ---
 
@@ -101,8 +114,7 @@ In the Documo dashboard: **Settings → Webhooks → Inbound Fax Received**.
 |----------------------|----------------------------------------------------------------|
 | URL                  | `https://meridianportal.io/api/intake/inbound-fax`             |
 | Method               | `POST`                                                         |
-| Signing              | HMAC-SHA256 (header `x-documo-signature`)                      |
-| Signing secret       | Generate a strong secret, save it into Vercel env vars         |
+| Auth                 | **Basic Auth** — username + password on the webhook form       |
 | Payload format       | JSON                                                           |
 | Retry policy         | Default (Documo retries 5xx / timeouts several times)          |
 
@@ -116,7 +128,8 @@ Add to Production + Preview + Development:
 
 ```
 FAX_PROVIDER=documo   # or omit — documo is the default
-DOCUMO_WEBHOOK_SECRET=<the secret you configured in Documo>
+DOCUMO_WEBHOOK_USERNAME=<username from the Documo webhook form>
+DOCUMO_WEBHOOK_PASSWORD=<matching password>
 DOCUMO_API_KEY=<REST API key for downloading the fax PDF>
 # optional — defaults to hbmedical-bucket-private
 SUPABASE_BUCKET=hbmedical-bucket-private

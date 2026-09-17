@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getCurrentUserOrThrow } from "@/lib/supabase/auth";
+import { getCurrentUserOrThrow, getUserRole } from "@/lib/supabase/auth";
+import { fetchIfaxFax, findIfaxTransactionId } from "@/lib/fax/ifax";
 import type {
   IIntakeDocument,
   IntakeStatus,
@@ -19,6 +20,7 @@ const INTAKE_SELECT = `
   source,
   provider,
   external_id,
+  provider_transaction_id,
   from_number,
   to_number,
   received_at,
@@ -47,6 +49,8 @@ function mapIntake(row: Record<string, unknown>): IIntakeDocument {
     source: row.source as IIntakeDocument["source"],
     provider: row.provider as string,
     externalId: (row.external_id as string | null) ?? null,
+    providerTransactionId:
+      (row.provider_transaction_id as string | null) ?? null,
     fromNumber: (row.from_number as string | null) ?? null,
     toNumber: (row.to_number as string | null) ?? null,
     receivedAt: row.received_at as string,
@@ -303,6 +307,146 @@ export async function attachIntakeToOrder(input: {
     revalidatePath("/dashboard/orders");
     return { success: true };
   } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Unexpected error.",
+    };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Re-download a fax whose stored PDF is empty or corrupt.                    */
+/*                                                                            */
+/* Background: every iFax fax received before the 2026-09-16 download-shape  */
+/* fix landed in storage as a 0-byte PDF (the webhook decoded an unexpected  */
+/* response shape to an empty buffer and persisted it). The bytes are still  */
+/* on iFax's side, so admin/support can pull them again from the intake      */
+/* modal. Also useful any time a provider download partially fails.          */
+/*                                                                            */
+/* iFax's fax-download endpoint needs BOTH jobId (= external_id) and          */
+/* transactionId. Rows created before provider_transaction_id existed have   */
+/* only the jobId, so we recover the transactionId via fax-list-all and      */
+/* back-fill the column so the next re-fetch is a single call.               */
+/* -------------------------------------------------------------------------- */
+
+export async function refetchIntakeFile(
+  intakeId: string,
+): Promise<{ success: boolean; intake?: IIntakeDocument; error?: string }> {
+  try {
+    const supabase = await createClient();
+    await getCurrentUserOrThrow(supabase);
+    const role = await getUserRole(supabase);
+    if (role !== "admin" && role !== "support_staff") {
+      return { success: false, error: "Only admin or support can re-download a fax." };
+    }
+
+    // RLS-scoped read doubles as the access check.
+    const { data: intake } = await supabase
+      .from("intake_documents")
+      .select(INTAKE_SELECT)
+      .eq("id", intakeId)
+      .maybeSingle();
+    if (!intake) {
+      return { success: false, error: "Intake not found or access denied." };
+    }
+    const row = intake as Record<string, unknown>;
+    if (row.provider !== "ifax") {
+      return {
+        success: false,
+        error: `Re-download is only supported for iFax intakes (this one is ${String(row.provider)}).`,
+      };
+    }
+    const jobId = row.external_id as string | null;
+    if (!jobId) {
+      return { success: false, error: "This intake has no provider job ID to re-fetch with." };
+    }
+
+    const apiKey = process.env.IFAX_API_KEY;
+    if (!apiKey) {
+      return { success: false, error: "Server is missing IFAX_API_KEY." };
+    }
+
+    const admin = createAdminClient();
+
+    // Resolve transactionId — stored column first, fax-list-all fallback.
+    let transactionId = (row.provider_transaction_id as string | null) ?? null;
+    if (!transactionId) {
+      const found = await findIfaxTransactionId(
+        jobId,
+        new Date(row.received_at as string),
+        apiKey,
+      );
+      if ("error" in found) {
+        console.error("[refetchIntakeFile] transactionId lookup failed", {
+          intakeId,
+          jobId,
+          error: found.error,
+        });
+        return { success: false, error: `Could not recover the iFax transaction ID: ${found.error}` };
+      }
+      transactionId = found.transactionId;
+      await admin
+        .from("intake_documents")
+        .update({ provider_transaction_id: transactionId })
+        .eq("id", intakeId);
+    }
+
+    const fetched = await fetchIfaxFax(jobId, transactionId, apiKey);
+    if (!fetched.ok) {
+      console.error("[refetchIntakeFile] iFax download failed", {
+        intakeId,
+        jobId,
+        status: fetched.status,
+        snippet: fetched.snippet,
+      });
+      return {
+        success: false,
+        error: `iFax download failed (HTTP ${fetched.status})${fetched.snippet ? `: ${fetched.snippet}` : ""}`,
+      };
+    }
+    if (fetched.bytes.byteLength === 0) {
+      return { success: false, error: "iFax returned an empty file again." };
+    }
+
+    // Overwrite in place — same path, so every order_documents /
+    // standalone_ivr_files row that already points at it heals too.
+    const bucket = (row.bucket as string) || BUCKET;
+    const filePath = row.file_path as string;
+    const { error: uploadErr } = await admin.storage
+      .from(bucket)
+      .upload(filePath, fetched.bytes, {
+        contentType: fetched.contentType,
+        upsert: true,
+      });
+    if (uploadErr) {
+      console.error("[refetchIntakeFile] storage upload failed", uploadErr);
+      return { success: false, error: "Failed to store the re-downloaded file." };
+    }
+
+    const { data: updated, error: updErr } = await admin
+      .from("intake_documents")
+      .update({
+        file_size: fetched.bytes.byteLength,
+        mime_type: fetched.contentType,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", intakeId)
+      .select(INTAKE_SELECT)
+      .single();
+    if (updErr || !updated) {
+      console.error("[refetchIntakeFile] row update failed", updErr);
+      return { success: false, error: "File stored but the intake row failed to update." };
+    }
+
+    console.info("[refetchIntakeFile] re-downloaded fax", {
+      intakeId,
+      jobId,
+      bytes: fetched.bytes.byteLength,
+    });
+    revalidatePath(INTAKE_PATH);
+    return { success: true, intake: mapIntake(updated as Record<string, unknown>) };
+  } catch (err) {
+    console.error("[refetchIntakeFile] unexpected", err);
     return {
       success: false,
       error: err instanceof Error ? err.message : "Unexpected error.",
