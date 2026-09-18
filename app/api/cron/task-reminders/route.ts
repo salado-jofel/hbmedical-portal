@@ -1,3 +1,4 @@
+import { getMaintenanceState } from "@/lib/flags/maintenance";
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendTaskReminderEmail } from "@/lib/emails/send-task-reminder";
@@ -131,10 +132,21 @@ async function handleTaskReminderCron(request: Request) {
   return NextResponse.json({ ok: true, sent, failed });
 }
 
-export async function GET(request: Request) {
+// Skip while the portal is in maintenance — the DB may be mid-migration
+// and we don't want reminder emails going out against a half-applied
+// schema. Returns 200 so Vercel doesn't flag the cron as failed.
+async function guarded(request: Request) {
+  const { active } = await getMaintenanceState();
+  if (active) {
+    return NextResponse.json({ ok: true, skipped: "maintenance" });
+  }
   return handleTaskReminderCron(request);
 }
 
+export async function GET(request: Request) {
+  return guarded(request);
+}
+
 export async function POST(request: Request) {
-  return handleTaskReminderCron(request);
+  return guarded(request);
 }
