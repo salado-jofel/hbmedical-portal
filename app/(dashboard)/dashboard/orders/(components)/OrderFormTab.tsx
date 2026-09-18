@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { IOrderForm, DashboardOrder } from "@/utils/interfaces/orders";
 import { OrderFormDocument } from "./OrderFormDocument";
@@ -97,19 +97,8 @@ export function OrderFormTab({
 
   return (
     <div className={cn("absolute inset-0 overflow-y-auto px-3", !isActive && "hidden")}>
-      {aiStatus === "error" && (
-        <div className="flex items-center gap-3 m-4 p-4 rounded-xl bg-red-50 border border-red-100">
-          <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-          <div>
-            <p className="text-sm font-semibold text-red-600">
-              AI extraction timed out
-            </p>
-            <p className="text-xs text-red-500 mt-0.5">
-              Fill the form manually or re-upload the document to try again.
-            </p>
-          </div>
-        </div>
-      )}
+      {/* Extraction failures are surfaced by the modal-level banner
+          (visible from every tab, with Retry) — no per-tab copy here. */}
       <OrderFormDocument
         orderId={order.id}
         orderForm={orderForm}

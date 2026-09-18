@@ -278,6 +278,36 @@ export async function createNotifications(params: {
   }
 }
 
+/**
+ * Persist the outcome of an extraction attempt on the order so the modal
+ * can stop polling and offer a retry instead of spinning for the full
+ * poll budget. Never throws — bookkeeping must not mask the real error.
+ */
+async function recordExtractionFailure(orderId: string, message: string) {
+  try {
+    const admin = createAdminClient();
+    await admin
+      .from("orders")
+      .update({ ai_extraction_error: message.slice(0, 500) })
+      .eq("id", orderId)
+      .eq("ai_extracted", false); // never clobber a completed extraction
+  } catch (err) {
+    safeLogError("recordExtractionFailure", err, { orderId });
+  }
+}
+
+async function clearExtractionError(orderId: string) {
+  try {
+    const admin = createAdminClient();
+    await admin
+      .from("orders")
+      .update({ ai_extraction_error: null })
+      .eq("id", orderId);
+  } catch (err) {
+    safeLogError("clearExtractionError", err, { orderId });
+  }
+}
+
 export async function triggerCombinedExtraction(
   orderId: string,
   documents: Array<{ documentType: string; filePath: string; bucket?: string }>,
@@ -301,6 +331,8 @@ export async function triggerCombinedExtraction(
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
     const cookieHeader =
       preCapturedCookieHeader ?? (await forwardCookieHeader());
+
+    await clearExtractionError(orderId);
 
     const response = await fetch(`${baseUrl}/api/ai/extract-document`, {
       method: "POST",
@@ -328,20 +360,25 @@ export async function triggerCombinedExtraction(
     } catch {
       const snippet = raw.slice(0, 200).replace(/\s+/g, " ").trim();
       safeLogError("triggerCombinedExtraction", `non-JSON response (status ${response.status}): ${snippet}`, { orderId, status: response.status });
-      return {
-        success: false,
-        error: `AI extraction endpoint returned a non-JSON response (status ${response.status}). Check server logs for the real error.`,
-      };
+      const message = `AI extraction endpoint returned a non-JSON response (status ${response.status}). Check server logs for the real error.`;
+      await recordExtractionFailure(orderId, message);
+      return { success: false, error: message };
     }
 
     if (!response.ok || data.error) {
-      safeLogError("triggerCombinedExtraction", data.error ?? `HTTP ${response.status}`, { orderId });
-      return { success: false, error: data.error ?? `HTTP ${response.status}` };
+      const message = data.error ?? `HTTP ${response.status}`;
+      safeLogError("triggerCombinedExtraction", message, { orderId });
+      await recordExtractionFailure(orderId, message);
+      return { success: false, error: message };
     }
 
     return { success: true, error: null };
   } catch (err) {
     safeLogError("triggerCombinedExtraction", err, { orderId });
+    await recordExtractionFailure(
+      orderId,
+      err instanceof Error ? err.message : "AI extraction failed.",
+    );
     return { success: false, error: "AI extraction failed — fill form manually." };
   }
 }

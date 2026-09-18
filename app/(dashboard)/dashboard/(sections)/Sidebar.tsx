@@ -84,11 +84,17 @@ export const NAV_GROUPS: NavGroupDef[] = [
         icon: ShoppingCart,
         label: "Orders",
         href: "/dashboard/orders",
+        // Sales reps included (2026-09-19): they can convert approved
+        // IVRs into orders at clinics in their tree (since 08-31), so
+        // they need a way back to those orders — the page already
+        // admits distribution-side roles and getOrders scopes reps to
+        // their facility tree; only the nav entry was missing.
         visible: (role) =>
           isClinicalProvider(role) ||
           isClinicalStaff(role) ||
           isAdmin(role) ||
-          isSupport(role),
+          isSupport(role) ||
+          isSalesRep(role),
       },
       // IVR Forms — standalone IVR workflow. Everyone with a portal
       // account can see the list; RLS narrows the visible rows by role.
