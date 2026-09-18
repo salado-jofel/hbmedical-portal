@@ -3,8 +3,75 @@ import { jwtDecode } from "jwt-decode";
 import { type NextRequest, NextResponse } from "next/server";
 import { isSalesRep } from "@/utils/helpers/role";
 import type { UserRole } from "@/utils/helpers/role";
+import { getMaintenanceState } from "@/lib/flags/maintenance";
+import {
+  MAINTENANCE_PATH,
+  MAINTENANCE_BYPASS_COOKIE,
+  MAINTENANCE_BYPASS_PARAM,
+  MAINTENANCE_BYPASS_TOKEN_ENV,
+  MAINTENANCE_BYPASS_MAX_AGE_SECONDS,
+} from "@/utils/constants/maintenance";
+
+/**
+ * Maintenance gate — runs BEFORE any Supabase call so the screen still
+ * works while the database is mid-migration or unreachable.
+ *
+ *   flag on  → everything redirects to /maintenance, except requests
+ *              carrying a valid bypass cookie (operators verifying prod)
+ *   flag off → /maintenance itself redirects home so it can't linger
+ *
+ * Returns a response to short-circuit with, or null to continue.
+ */
+async function maintenanceGate(
+  request: NextRequest,
+): Promise<NextResponse | null> {
+  const { pathname } = request.nextUrl;
+  const onMaintenancePage = pathname === MAINTENANCE_PATH;
+  const state = await getMaintenanceState();
+
+  if (!state.active) {
+    if (onMaintenancePage) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/";
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
+    return null;
+  }
+
+  // Bypass: /maintenance?bypass=<token> sets an httpOnly cookie; any
+  // request carrying that cookie passes through. Token compared as a
+  // plain string — it's a one-off operator secret, not a credential.
+  const expected = process.env[MAINTENANCE_BYPASS_TOKEN_ENV];
+  const presented = request.nextUrl.searchParams.get(MAINTENANCE_BYPASS_PARAM);
+  if (onMaintenancePage && expected && presented && presented === expected) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/";
+    url.search = "";
+    const res = NextResponse.redirect(url);
+    res.cookies.set(MAINTENANCE_BYPASS_COOKIE, expected, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: MAINTENANCE_BYPASS_MAX_AGE_SECONDS,
+    });
+    return res;
+  }
+  const cookie = request.cookies.get(MAINTENANCE_BYPASS_COOKIE)?.value;
+  if (expected && cookie === expected) return null;
+
+  if (onMaintenancePage) return null;
+  const url = request.nextUrl.clone();
+  url.pathname = MAINTENANCE_PATH;
+  url.search = "";
+  return NextResponse.redirect(url);
+}
 
 export async function updateSession(request: NextRequest) {
+  const gated = await maintenanceGate(request);
+  if (gated) return gated;
+
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
