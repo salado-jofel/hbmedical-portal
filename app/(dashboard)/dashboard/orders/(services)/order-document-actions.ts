@@ -340,10 +340,15 @@ export async function getDocumentSignedUrl(
     let orderId: string | null = bucketPathMatch ? bucketPathMatch[1] : null;
     if (!orderId) {
       const adminForLookup = createAdminClient();
+      // One storage path can back several rows (a fax-built IVR is
+      // registered as BOTH facesheet and clinical_docs against the same
+      // file), so never maybeSingle() on file_path — it errors on >1
+      // match. Every row for a path belongs to the same order anyway.
       const { data: doc, error: docErr } = await adminForLookup
         .from("order_documents")
         .select("order_id")
         .eq("file_path", filePath)
+        .limit(1)
         .maybeSingle();
       if (docErr || !doc?.order_id) {
         return { url: null, error: "Invalid document path." };
