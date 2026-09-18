@@ -25,10 +25,20 @@ export const BUCKET = "hbmedical-bucket-private";
  */
 async function forwardCookieHeader(): Promise<string> {
   const store = await cookies();
-  return store
-    .getAll()
+  const all = store.getAll();
+  const header = all
     .map((c) => `${c.name}=${encodeURIComponent(c.value)}`)
     .join("; ");
+  // Diagnostic (names + sizes only, never values): the AI endpoint has
+  // 401'd on forwarded sessions before; this pins whether the auth
+  // cookies were present at capture time and how big the header got.
+  console.log("[forwardCookieHeader]", {
+    count: all.length,
+    names: all.map((c) => c.name),
+    authChunks: all.filter((c) => /-auth-token/.test(c.name)).length,
+    headerBytes: Buffer.byteLength(header),
+  });
+  return header;
 }
 
 /**

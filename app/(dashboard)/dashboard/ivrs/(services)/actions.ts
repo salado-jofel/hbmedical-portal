@@ -2048,11 +2048,14 @@ export async function finalizeIvrConversion(input: {
     // Fax-origin exception: the fax PDF IS a merged bundle of the
     // facesheet + clinical documentation (client's inbound fax
     // template), and the CreateOrderModal drops the facesheet /
-    // clinical_docs upload zones on this path. Attach the fax as
-    // document_type='facesheet' so the AI extraction pipeline has
-    // something to read and pre-fills Order Form / HCFA / patient
-    // data automatically. Metadata-only insert — the file bytes
-    // stay at the standalone-ivrs storage path.
+    // clinical_docs upload zones on this path. Attach the fax under
+    // BOTH document types (2026-09-18 — previously facesheet only,
+    // which left the Clinical Docs card yellow forever): the order's
+    // document cards and "What's left" checklist key off row
+    // existence per type, and the fax genuinely is both. Two metadata
+    // rows, one file — the bytes stay at the standalone-ivrs storage
+    // path. Only the facesheet row is handed to the AI trigger so the
+    // extractor doesn't process the same PDF twice.
     const isFromFax = (ivr.approver_display_name as string | null)?.startsWith(
       "Approved from fax",
     );
@@ -2077,31 +2080,34 @@ export async function finalizeIvrConversion(input: {
           .select("file_path, document_type")
           .eq("order_id", input.orderId)
           .in("file_path", paths);
-        const alreadyAsFacesheet = new Set(
-          (existingDocs ?? [])
-            .filter((d) => d.document_type === "facesheet")
-            .map((d) => d.file_path as string),
+        const FAX_DOC_TYPES = ["facesheet", "clinical_docs"] as const;
+        const alreadyRegistered = new Set(
+          (existingDocs ?? []).map(
+            (d) => `${d.document_type}::${d.file_path as string}`,
+          ),
         );
 
-        const toInsert = ivrFiles
-          .filter((f) => !alreadyAsFacesheet.has(f.file_path as string))
-          .map((f) => ({
+        const toInsert = ivrFiles.flatMap((f) =>
+          FAX_DOC_TYPES.filter(
+            (type) => !alreadyRegistered.has(`${type}::${f.file_path as string}`),
+          ).map((type) => ({
             order_id: input.orderId,
-            document_type: "facesheet",
+            document_type: type,
             bucket: BUCKET,
             file_path: f.file_path,
             file_name: f.file_name,
             mime_type: f.mime_type,
             file_size: f.file_size,
             uploaded_by: user.id,
-          }));
+          })),
+        );
         if (toInsert.length > 0) {
           const { error: docsErr } = await adminClient
             .from("order_documents")
             .insert(toInsert);
           if (docsErr) {
             console.error(
-              "[finalizeIvrConversion] fax→facesheet insert",
+              "[finalizeIvrConversion] fax→facesheet/clinical_docs insert",
               docsErr,
             );
             // Non-fatal — the order + linkage exist; the user can
@@ -2112,7 +2118,8 @@ export async function finalizeIvrConversion(input: {
         // Collect every faxed file (including those we skipped as
         // duplicates) so the AI trigger still fires on the second
         // click if it errored the first time. The extractor is
-        // idempotent as long as ai_extracted hasn't flipped.
+        // idempotent as long as ai_extracted hasn't flipped. Facesheet
+        // only — the clinical_docs row points at the same bytes.
         extractableForAi = ivrFiles.map((f) => ({
           documentType: "facesheet",
           filePath: f.file_path as string,

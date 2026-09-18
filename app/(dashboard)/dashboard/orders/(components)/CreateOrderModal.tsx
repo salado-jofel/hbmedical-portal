@@ -728,7 +728,18 @@ export function CreateOrderModal(props: CreateOrderModalProps = {}) {
     } else if (fromIntake && facilities?.length === 1) {
       setFacilityId(facilities[0].id);
     }
-  }, [open, fromStandaloneIvr?.facilityId, fromIntake, facilities]);
+    // Fax-built IVR conversions always run extraction — the fax IS the
+    // facesheet/clinical bundle and the IVR is already confirmed, so
+    // manual mode has nothing to offer. Force it off in case a prior
+    // open of this (persistent) modal left it checked.
+    if (isFaxIvrConversion) setManualInput(false);
+  }, [
+    open,
+    fromStandaloneIvr?.facilityId,
+    fromIntake,
+    facilities,
+    isFaxIvrConversion,
+  ]);
 
   // Auto-hide the internal trigger button whenever the parent is
   // controlling `open` — otherwise you'd get a duplicate "New Order"
@@ -1000,25 +1011,29 @@ export function CreateOrderModal(props: CreateOrderModalProps = {}) {
                 change in document requirements as soon as they toggle it on. */}
             <label
               className={cn(
-                "flex items-start gap-3 rounded-xl border-2 p-3 cursor-pointer transition-all",
-                manualInput
-                  ? "border-[var(--navy)] bg-blue-50"
-                  : "border-slate-200 hover:border-slate-300",
+                "flex items-start gap-3 rounded-xl border-2 p-3 transition-all",
+                isFaxIvrConversion
+                  ? "border-slate-200 bg-slate-50 opacity-60 cursor-not-allowed"
+                  : manualInput
+                    ? "border-[var(--navy)] bg-blue-50 cursor-pointer"
+                    : "border-slate-200 hover:border-slate-300 cursor-pointer",
               )}
             >
               <input
                 type="checkbox"
                 checked={manualInput}
+                disabled={isFaxIvrConversion}
                 onChange={(e) => setManualInput(e.target.checked)}
-                className="mt-0.5 h-4 w-4 accent-[var(--navy)] cursor-pointer"
+                className="mt-0.5 h-4 w-4 accent-[var(--navy)] cursor-pointer disabled:cursor-not-allowed"
               />
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-slate-700">
                   Manual input — fill all forms myself
                 </div>
                 <p className="text-[11px] text-slate-500 mt-0.5">
-                  Skips AI extraction. Order Form, IVR, and HCFA/1500 stay blank
-                  for you to complete manually. Document uploads become optional.
+                  {isFaxIvrConversion
+                    ? "Not available for fax-built IVRs — the fax already provides the documents and the IVR has been confirmed, so extraction runs automatically."
+                    : "Skips AI extraction. Order Form, IVR, and HCFA/1500 stay blank for you to complete manually. Document uploads become optional."}
                 </p>
               </div>
             </label>
