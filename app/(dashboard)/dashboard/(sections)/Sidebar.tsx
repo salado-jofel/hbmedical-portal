@@ -15,6 +15,9 @@ import {
   DollarSign,
   TrendingUp,
   ShieldCheck,
+  FileCheck2,
+  UserCheck,
+  Inbox,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -81,11 +84,40 @@ export const NAV_GROUPS: NavGroupDef[] = [
         icon: ShoppingCart,
         label: "Orders",
         href: "/dashboard/orders",
+        // Sales reps included (2026-09-19): they can convert approved
+        // IVRs into orders at clinics in their tree (since 08-31), so
+        // they need a way back to those orders — the page already
+        // admits distribution-side roles and getOrders scopes reps to
+        // their facility tree; only the nav entry was missing.
         visible: (role) =>
           isClinicalProvider(role) ||
           isClinicalStaff(role) ||
           isAdmin(role) ||
-          isSupport(role),
+          isSupport(role) ||
+          isSalesRep(role),
+      },
+      // IVR Forms — standalone IVR workflow. Everyone with a portal
+      // account can see the list; RLS narrows the visible rows by role.
+      {
+        icon: FileCheck2,
+        label: "IVR Forms",
+        href: "/dashboard/ivrs",
+        visible: (role) => !!role,
+      },
+      // External Approvers directory — internal admin/support only.
+      {
+        icon: UserCheck,
+        label: "External Approvers",
+        href: "/dashboard/approvers",
+        visible: (role) => isAdmin(role) || isSupport(role),
+      },
+      // Fax Intake inbox — inbound faxes from Documo land here for
+      // admin/support to triage into IVRs or orders.
+      {
+        icon: Inbox,
+        label: "Fax Intake",
+        href: "/dashboard/intake",
+        visible: (role) => isAdmin(role) || isSupport(role),
       },
     ],
   },

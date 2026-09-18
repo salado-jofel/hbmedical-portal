@@ -39,14 +39,67 @@ export async function createOrder(data: {
   manual_input?: boolean;
   patient_first_name?: string | null;
   patient_last_name?: string | null;
+  /** Explicit facility override — required for admin/support callers
+   *  (they have no facility_members membership so requireClinicRole
+   *  returns null). Clinic staff can omit this and their own facility
+   *  is used. Introduced 2026-08-03 to unblock the fax-intake → order
+   *  handoff where the triager must pick which clinic owns the fax. */
+  facility_id?: string | null;
 }): Promise<IOrderFormState> {
   try {
-    const { userId, facilityId } = await requireClinicRole();
+    const { userId, facilityId: userFacilityId, role } = await requireClinicRole();
+
+    // Explicit facility_id from caller wins (admin/support triage +
+    // sales rep IVR conversion flows); otherwise fall back to the
+    // user's own facility membership. If neither is present,
+    // orders.facility_id NOT NULL would blow up on insert — surface
+    // a friendly error instead of leaking the DB code.
+    const facilityId = data.facility_id?.trim() || userFacilityId;
+    if (!facilityId) {
+      return {
+        success: false,
+        error:
+          "No facility selected. Pick which clinic this order belongs to before submitting.",
+      };
+    }
 
     if (!data.wound_type) return { success: false, error: "Wound type is required." };
     if (!data.date_of_service) return { success: false, error: "Date of service is required." };
 
     const adminClient = createAdminClient();
+
+    // Sales rep authorization: reps can only create orders at clinics
+    // in their tree (client requirement, 2026-08-31). Verify via
+    // is_rep_facility, which is the same helper that gates their
+    // read access to orders and standalone_ivrs. Admin client so the
+    // RPC bypasses the caller's own RLS (we're validating identity
+    // here, not enforcing a policy).
+    if (role === "sales_representative") {
+      const { data: coversFacility, error: repCheckErr } = await adminClient.rpc(
+        "is_rep_facility",
+        // Postgres function uses `p_` prefixes on its param names —
+        // PGRST202 if you pass rep_id/facility_id instead.
+        { p_rep_id: userId, p_facility_id: facilityId },
+      );
+      if (repCheckErr) {
+        safeLogError("createOrder", repCheckErr, {
+          phase: "is_rep_facility check",
+          userId,
+          facilityId,
+        });
+        return {
+          success: false,
+          error: "Failed to verify sales rep facility access.",
+        };
+      }
+      if (!coversFacility) {
+        return {
+          success: false,
+          error:
+            "You can only create orders at clinics you're assigned to.",
+        };
+      }
+    }
     const orderNumber = generateOrderNumber();
 
     // Manual-input orders collect a patient name up-front (AI would otherwise

@@ -82,6 +82,7 @@ import {
   getDocumentSignedUrl,
   getForm1500,
   triggerDocumentExtraction,
+  triggerOrderExtraction,
 } from "../(services)/order-document-actions";
 import { compressImage } from "@/utils/helpers/compress-image";
 import {
@@ -276,6 +277,9 @@ export function OrderDetailModal({
 
   /* -- AI extraction status + order_form data -- */
   const [aiStatus, setAiStatus] = useState<AiStatus>("idle");
+  // Why the last extraction failed (orders.ai_extraction_error). Drives
+  // the retry banner; null while processing / after success.
+  const [aiError, setAiError] = useState<string | null>(null);
   const [orderForm, setOrderForm] = useState<IOrderForm | null>(null);
 
   const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
@@ -304,6 +308,17 @@ export function OrderDetailModal({
       pollCountRef.current += 1;
       try {
         const result = await getOrderAiStatus(order.id);
+        // Server recorded a failure — stop waiting and offer Retry now
+        // instead of burning the remaining poll budget.
+        if (!result.aiExtracted && result.error) {
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+            pollingIntervalRef.current = null;
+          }
+          setAiError(result.error);
+          setAiStatus("error");
+          return;
+        }
         if (result.aiExtracted && result.orderForm) {
           // Guard: the Master AI effect fallback may have already fired while this
           // in-flight poll callback was awaiting getOrderAiStatus. Without this check
@@ -365,9 +380,45 @@ export function OrderDetailModal({
           clearInterval(pollingIntervalRef.current);
           pollingIntervalRef.current = null;
         }
+        setAiError("AI extraction timed out after 5 minutes.");
         setAiStatus("error");
       }
     }, 5000);
+  }
+
+  /* ── Retry a failed extraction ──
+     Re-fires the same trigger CreateOrderModal uses, against the
+     facesheet / clinical docs already on the order. The trigger clears
+     ai_extraction_error before it starts, so the poll loop below can
+     tell a fresh attempt from the old failure. */
+  const [retryingAi, setRetryingAi] = useState(false);
+  async function handleRetryExtraction() {
+    const docs = localDocuments
+      .filter((d) => ["facesheet", "clinical_docs"].includes(d.documentType))
+      .map((d) => ({ documentType: d.documentType, filePath: d.filePath }));
+    if (docs.length === 0) {
+      toast.error("No facesheet or clinical docs on this order to extract from.");
+      return;
+    }
+    setRetryingAi(true);
+    try {
+      const res = await triggerOrderExtraction(order.id, docs);
+      if (!res.success) {
+        toast.error(res.error ?? "Could not start extraction.");
+        return;
+      }
+      setAiError(null);
+      aiCompletedRef.current = false;
+      pollCompletedRef.current = false;
+      aiToastShownRef.current = false;
+      setAiStatus("processing");
+      beginPolling();
+      toast("AI extraction restarted.", {
+        icon: <RefreshCw className="w-4 h-4 text-blue-500" />,
+      });
+    } finally {
+      setRetryingAi(false);
+    }
   }
 
   /* -- Dirty tracking for child tabs -- */
@@ -555,6 +606,17 @@ export function OrderDetailModal({
     const ageMs = Date.now() - new Date(order.created_at).getTime();
     const isRecentOrder = ageMs < 10 * 60 * 1000;
     setAiStatus(isRecentOrder && !order.manual_input ? "processing" : "idle");
+    setAiError(null);
+    if (!order.manual_input) {
+      getOrderAiStatus(order.id)
+        .then((res) => {
+          if (!res.aiExtracted && res.error) {
+            setAiError(res.error);
+            setAiStatus("error");
+          }
+        })
+        .catch(() => {});
+    }
 
     return () => {
       if (pollingIntervalRef.current) {
@@ -1736,6 +1798,33 @@ export function OrderDetailModal({
                     </div>
                   ) : (
                     <>
+                  {aiStatus === "error" && (
+                    <div className="flex-shrink-0 mx-3 mt-3 flex items-start gap-3 rounded-xl border border-red-100 bg-red-50 px-4 py-3">
+                      <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[13px] font-semibold text-red-600">
+                          AI extraction failed
+                        </p>
+                        <p className="text-[12px] text-red-500 mt-0.5 break-words">
+                          {aiError ?? "Unknown error."} You can retry, or fill the forms manually.
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="shrink-0 gap-1.5 border-red-200 text-red-700 hover:bg-red-100"
+                        onClick={handleRetryExtraction}
+                        disabled={retryingAi}
+                      >
+                        {retryingAi ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <RefreshCw className="w-3.5 h-3.5" />
+                        )}
+                        Retry extraction
+                      </Button>
+                    </div>
+                  )}
                   {/* Tab bar */}
                   <div className="flex-shrink-0 border-b border-[var(--border)] px-3 py-2">
                     <div

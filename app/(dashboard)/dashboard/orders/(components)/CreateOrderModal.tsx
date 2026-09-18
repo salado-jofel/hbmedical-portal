@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import {
   Dialog,
   DialogContent,
@@ -11,6 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, Loader2, Upload, X, FileText } from "lucide-react";
 import { createOrder } from "../(services)/order-write-actions";
+import { finalizeIvrConversion } from "../../ivrs/(services)/actions";
+import { attachIntakeToOrder } from "../../intake/(services)/actions";
 import {
   prepareOrderDocumentUpload,
   completeOrderDocumentUpload,
@@ -257,9 +260,74 @@ function UploadZone({
   );
 }
 
-export function CreateOrderModal() {
+interface CreateOrderModalProps {
+  /** External control for the open state. When provided, the modal
+   *  becomes controlled and the internal trigger button is hidden by
+   *  default (unless hideTrigger is explicitly false). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Hides the built-in "New Order" trigger button. Useful when opening
+   *  the modal from another component (e.g. IVR detail modal). */
+  hideTrigger?: boolean;
+  /** When creating an order from an approved standalone IVR, pass the
+   *  ID + a friendly label (usually the file name). This:
+   *    - shows a blue "Creating from approved IVR: <label>" banner up top
+   *    - pre-selects Skin Grafts as the order type and bypasses the
+   *      normal Skin-Grafts direct-creation gate
+   *    - after the order is created, calls finalizeIvrConversion() to
+   *      link order_ivr → standalone_ivrs, copy the IVR PDF to
+   *      order_documents, and flip the IVR to 'converted'. */
+  fromStandaloneIvr?: {
+    ivrId: string;
+    label: string | null;
+    /** The IVR's owning clinic. Forwarded straight into createOrder so
+     *  admin/support (who have no facility_members of their own) don't
+     *  fail the NOT NULL check on orders.facility_id. Clinic staff
+     *  don't need this — their own facility is used — but passing it
+     *  always is harmless and keeps the two callers symmetrical. */
+    facilityId?: string | null;
+    /** True when the standalone IVR was built from an inbound fax (the
+     *  approver_display_name marker prefix). Faxes IS a merged bundle
+     *  of facesheet + clinical docs, so on this path the modal:
+     *    - drops facesheet + clinical_docs from canSubmit
+     *    - hides both upload zones behind an "auto-attached" pill
+     *    - relies on finalizeIvrConversion to insert the fax as a
+     *      facesheet-typed order_document, which wakes up the
+     *      standard AI extraction pipeline without extractor edits.
+     *  Valid ID + Wound Pictures behave normally (fax doesn't
+     *  contain either). */
+    isFromFax?: boolean;
+  };
+  /** When creating an order from a fax intake: shows a "Building from
+   *  fax X.pdf" banner, and after the order + user's uploads are done,
+   *  attaches the intake PDF as a facesheet order_document and marks
+   *  the intake row as converted_order. */
+  fromIntake?: {
+    intakeId: string;
+    filePath: string;
+    fileName: string;
+    mimeType: string;
+    fileSize: number;
+  };
+  /** Selectable clinic facilities. Required for the fromIntake path:
+   *  admin/support triaging a fax don't belong to a facility themselves,
+   *  so createOrder can't derive facility_id from facility_members and
+   *  the triager must pick which clinic owns the fax. Ignored in the
+   *  standard flow — clinic staff always use their own facility. */
+  facilities?: Array<{ id: string; name: string }>;
+}
+
+export function CreateOrderModal(props: CreateOrderModalProps = {}) {
+  const { hideTrigger, fromStandaloneIvr, fromIntake, facilities } = props;
   const dispatch = useAppDispatch();
-  const [open, setOpen] = useState(false);
+  const router = useRouter();
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isControlled = props.open !== undefined;
+  const open = isControlled ? !!props.open : internalOpen;
+  const setOpen = (next: boolean) => {
+    if (isControlled) props.onOpenChange?.(next);
+    else setInternalOpen(next);
+  };
   const [woundType, setWoundType] = useState<"chronic" | "post_surgical" | "dfu" | "vlu">(
     "chronic",
   );
@@ -270,7 +338,7 @@ export function CreateOrderModal() {
   // is gated on a non-null choice via `canSubmit` below.
   const [orderType, setOrderType] = useState<
     "skin_grafts" | "dme_collagen" | "surgical_collagen" | "omeza" | null
-  >(null);
+  >(fromStandaloneIvr ? "skin_grafts" : null);
   const [manualInput, setManualInput] = useState(false);
   const [patientFirstName, setPatientFirstName] = useState("");
   const [patientLastName, setPatientLastName] = useState("");
@@ -278,6 +346,17 @@ export function CreateOrderModal() {
     new Date().toISOString().split("T")[0],
   );
   const [notes, setNotes] = useState("");
+  // Facility picker — rendered + required in the fromIntake path
+  // (admin/support triaging a fax has no membership of their own).
+  // In the fromStandaloneIvr path the picker stays hidden — the IVR
+  // already knows its owning clinic — but we still initialize the
+  // state from it so createOrder gets a non-null facility_id when
+  // admin/support runs the conversion.
+  const [facilityId, setFacilityId] = useState<string>(() => {
+    if (fromStandaloneIvr?.facilityId) return fromStandaloneIvr.facilityId;
+    if (fromIntake && facilities?.length === 1) return facilities[0].id;
+    return "";
+  });
   const [docs, setDocs] = useState<DocFile[]>([]);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -285,12 +364,20 @@ export function CreateOrderModal() {
 
   function reset() {
     setWoundType("chronic");
-    setOrderType(null);
+    // From-IVR mode always keeps skin_grafts preselected across resets,
+    // since the whole point of the flow is to convert one specific IVR
+    // into a Skin Grafts order.
+    setOrderType(fromStandaloneIvr ? "skin_grafts" : null);
     setManualInput(false);
     setPatientFirstName("");
     setPatientLastName("");
     setDateOfService(new Date().toISOString().split("T")[0]);
     setNotes("");
+    setFacilityId(() => {
+      if (fromStandaloneIvr?.facilityId) return fromStandaloneIvr.facilityId;
+      if (fromIntake && facilities?.length === 1) return facilities[0].id;
+      return "";
+    });
     setDocs([]);
     setUploadProgress(null);
     setSubmitted(false);
@@ -314,11 +401,37 @@ export function CreateOrderModal() {
   const patientNameProvided =
     patientFirstName.trim().length > 0 && patientLastName.trim().length > 0;
 
+  // Facility is required only in the fromIntake path — admin/support
+  // don't have a facility_members row so createOrder can't derive one
+  // and would otherwise 500 on the NOT NULL constraint on
+  // orders.facility_id.
+  const facilityRequired = !!fromIntake;
+  // Fax-origin IVR conversion: the fax file is a merged bundle of the
+  // facesheet + clinical docs, so we don't ask the user to re-upload
+  // either. finalizeIvrConversion attaches the fax as document_type=
+  // 'facesheet' server-side, which wakes up the AI extraction pipeline.
+  // Valid ID is not in the fax so it still needs to be uploaded.
+  const isFaxIvrConversion = !!fromStandaloneIvr?.isFromFax;
+  // Which docs actually need to be uploaded, given the flow.
+  //   - Manual input: none required.
+  //   - Fax-IVR conversion: only Valid ID (fax carries the rest).
+  //   - Standard: facesheet + clinical docs + Valid ID.
+  const docsUploadedOk = !docsRequired
+    ? true
+    : isFaxIvrConversion
+      ? hasValidId
+      : hasFacesheet && hasClinicalDocs && hasValidId;
   const canSubmit =
     !!orderType &&
+    // Skin Grafts orders are blocked from direct creation — go through
+    // the IVR workflow instead. When we're already IN the IVR-conversion
+    // flow (fromStandaloneIvr set), the gate is bypassed since the IVR
+    // approval upstream is what satisfies the compliance requirement.
+    (orderType !== "skin_grafts" || !!fromStandaloneIvr) &&
     !!woundType &&
     !!dateOfService &&
-    (!docsRequired || (hasFacesheet && hasClinicalDocs && hasValidId)) &&
+    (!facilityRequired || !!facilityId) &&
+    docsUploadedOk &&
     (!manualInput || patientNameProvided);
 
   function handleClose() {
@@ -341,6 +454,9 @@ export function CreateOrderModal() {
         manual_input: manualInput,
         patient_first_name: manualInput ? patientFirstName.trim() : null,
         patient_last_name: manualInput ? patientLastName.trim() : null,
+        // Only forward when actually chosen — clinic staff never set
+        // this, and their own facility is used by requireClinicRole.
+        facility_id: facilityId || null,
       });
 
       if (!result.success || !result.orderId) {
@@ -478,6 +594,66 @@ export function CreateOrderModal() {
 
       setUploadProgress(null);
 
+      // If we're finishing an IVR conversion, wire the standalone_ivr →
+      // order link now that the order + its uploads exist. Runs AFTER
+      // the user's uploads so the linkage summary comes at the end and
+      // any upload failures don't block the conversion (the IVR PDF and
+      // ivr_mode='uploaded' are what actually matter for compliance).
+      if (fromStandaloneIvr) {
+        const link = await finalizeIvrConversion({
+          ivrId: fromStandaloneIvr.ivrId,
+          orderId,
+        });
+        if (!link.success) {
+          toast.error(
+            `Order created, but linking to the approved IVR failed: ${link.error ?? "unknown error"}. Open the order to attach the IVR manually.`,
+            { duration: Infinity },
+          );
+        }
+        // Fax-origin IVRs come back with the auto-attached fax file
+        // in `extractableDocs`. Fire the AI trigger from HERE (client
+        // context, live session cookies) rather than from inside the
+        // server action — server-side fire-and-forget loses the
+        // cookie context and 401s.
+        if (
+          !manualInput &&
+          link.success &&
+          link.extractableDocs &&
+          link.extractableDocs.length > 0
+        ) {
+          triggerOrderExtraction(orderId, link.extractableDocs).catch(
+            (err) =>
+              console.error(
+                "[CreateOrderModal] fax-IVR AI trigger:",
+                err,
+              ),
+          );
+        }
+      }
+
+      // If we're finishing a fax-intake conversion, attach the intake
+      // PDF as a facesheet doc (metadata insert against the shared
+      // storage path) and flip the intake row → converted_order. Same
+      // "runs after user's uploads" reasoning.
+      if (fromIntake) {
+        // Attach the fax as the completed IVR document (default doctype
+        // in attachIntakeToOrder). The server-side helper also flips
+        // order_ivr.ivr_mode → 'uploaded' so the IVR Form tab shows the
+        // fax as the source of truth. Facesheet / clinical docs / valid
+        // ID are still uploaded separately above via the modal's own
+        // UploadZones — the fax alone is not enough.
+        const link = await attachIntakeToOrder({
+          intakeId: fromIntake.intakeId,
+          orderId,
+        });
+        if (!link.success) {
+          toast.error(
+            `Order created, but attaching the fax failed: ${link.error ?? "unknown error"}. Open the order to attach the fax manually.`,
+            { duration: Infinity },
+          );
+        }
+      }
+
       // Persistent (Infinity duration) failure summary. Lists every doc
       // that failed and the specific reason, so the user knows exactly
       // what to re-upload from the OrderDetailModal. Success toast only
@@ -509,11 +685,25 @@ export function CreateOrderModal() {
       const fullOrder = await getOrderById(orderId);
       if (fullOrder) {
         dispatch(addOrderToStore(fullOrder));
+      }
+
+      // Routing: if we were on a different page (e.g. /dashboard/ivrs
+      // for the from-IVR conversion flow), navigate to /dashboard/orders
+      // with ?open=<id> — the Orders Kanban listens for that param and
+      // opens the modal, then strips it from the URL so a refresh
+      // doesn't re-open. On /dashboard/orders itself we dispatch the
+      // in-page custom event, which is a bit snappier than a route push.
+      const onOrdersPage =
+        typeof window !== "undefined" &&
+        window.location.pathname === "/dashboard/orders";
+      if (onOrdersPage) {
         window.dispatchEvent(
           new CustomEvent("open-order-modal", {
             detail: { orderId, tab: "overview" },
           }),
         );
+      } else {
+        router.push(`/dashboard/orders?open=${orderId}`);
       }
     });
   }
@@ -526,16 +716,49 @@ export function CreateOrderModal() {
   const patientLastNameError =
     submitted && manualInput && patientLastName.trim().length === 0;
 
+  // Sync `facilityId` state from props whenever the modal transitions
+  // to open. The modal is mounted once by the parent and just toggled
+  // — the useState default only fires at mount, so a fresh IVR opened
+  // 30 seconds later wouldn't otherwise pick up its facilityId. Same
+  // for fromIntake's single-facility auto-pick.
+  useEffect(() => {
+    if (!open) return;
+    if (fromStandaloneIvr?.facilityId) {
+      setFacilityId(fromStandaloneIvr.facilityId);
+    } else if (fromIntake && facilities?.length === 1) {
+      setFacilityId(facilities[0].id);
+    }
+    // Fax-built IVR conversions always run extraction — the fax IS the
+    // facesheet/clinical bundle and the IVR is already confirmed, so
+    // manual mode has nothing to offer. Force it off in case a prior
+    // open of this (persistent) modal left it checked.
+    if (isFaxIvrConversion) setManualInput(false);
+  }, [
+    open,
+    fromStandaloneIvr?.facilityId,
+    fromIntake,
+    facilities,
+    isFaxIvrConversion,
+  ]);
+
+  // Auto-hide the internal trigger button whenever the parent is
+  // controlling `open` — otherwise you'd get a duplicate "New Order"
+  // button in whatever surface embedded us. Explicit hideTrigger can
+  // also force it hidden even in uncontrolled mode.
+  const showTrigger = !hideTrigger && !isControlled;
+
   return (
     <>
-      <Button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="bg-[var(--navy)] hover:bg-[var(--navy)]/80 text-white cursor-pointer rounded-lg shadow-sm"
-      >
-        <Plus className="w-4 h-4 mr-2" />
-        New Order
-      </Button>
+      {showTrigger && (
+        <Button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="bg-[var(--navy)] hover:bg-[var(--navy)]/80 text-white cursor-pointer rounded-lg shadow-sm"
+        >
+          <Plus className="w-4 h-4 mr-2" />
+          New Order
+        </Button>
+      )}
 
       <Dialog open={open} onOpenChange={handleClose}>
         <DialogContent className="w-[calc(100%-2rem)] sm:max-w-lg max-h-[92dvh] overflow-y-auto rounded-2xl border-[var(--border)] shadow-2xl p-0">
@@ -543,10 +766,95 @@ export function CreateOrderModal() {
           <div className="sticky top-0 bg-white z-10 px-6 pt-5 pb-4 border-b border-[var(--border)]">
             <DialogHeader>
               <DialogTitle className="text-lg font-semibold text-[var(--navy)]">
-                Create Order
+                {fromStandaloneIvr
+                  ? "Create Order from Approved IVR"
+                  : fromIntake
+                    ? "Create Order from Fax"
+                    : "Create Order"}
               </DialogTitle>
             </DialogHeader>
           </div>
+
+          {/* From-IVR banner. Small, unobtrusive hint at the top of the
+              body — everything else in the modal stays identical to the
+              standard flow. The IVR file gets attached as uploaded_ivr
+              via finalizeIvrConversion() after the order is saved. */}
+          {fromStandaloneIvr && (
+            <div className="px-6 pt-4">
+              <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2.5 text-[12.5px] text-green-900 flex items-start gap-2">
+                <FileText className="w-4 h-4 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold">Creating from approved IVR</p>
+                  <p className="text-[11.5px] mt-0.5 leading-snug">
+                    {fromStandaloneIvr.label
+                      ? `${fromStandaloneIvr.label} will be attached to this order automatically.`
+                      : "The approved IVR document will be attached to this order automatically."}{" "}
+                    Order type is pre-set to <b>Skin Grafts</b>.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* From-Fax banner — analogous hint for the fax-intake flow.
+              Intake PDF is attached as a facesheet document post-save.
+              Nothing about the docs section changes visually; users can
+              upload additional clinical/valid-ID docs as usual.
+
+              Facility picker sits right under the banner: admin/support
+              triaging a fax don't belong to any facility, so the order's
+              facility_id has to be picked explicitly here (otherwise the
+              NOT NULL constraint on orders.facility_id blows the insert). */}
+          {fromIntake && (
+            <div className="px-6 pt-4 space-y-3">
+              <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5 text-[12.5px] text-blue-900 flex items-start gap-2">
+                <FileText className="w-4 h-4 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold">Creating from inbound fax</p>
+                  <p className="text-[11.5px] mt-0.5 leading-snug">
+                    <span className="font-medium">{fromIntake.fileName}</span>{" "}
+                    will be attached as the completed <b>IVR document</b>{" "}
+                    and shown in the order&apos;s IVR Form tab. Upload the
+                    patient facesheet, clinical docs, and Valid ID below.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">
+                  Clinic / Facility <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={facilityId}
+                  onChange={(e) => setFacilityId(e.target.value)}
+                  className={cn(
+                    "border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--navy)]/20 focus:border-[var(--navy)]",
+                    submitted && !facilityId
+                      ? "border-red-300 bg-red-50"
+                      : "border-slate-200",
+                  )}
+                >
+                  <option value="">— Select the clinic this fax is for —</option>
+                  {(facilities ?? []).map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name}
+                    </option>
+                  ))}
+                </select>
+                {submitted && !facilityId && (
+                  <p className="text-xs text-red-500 mt-0.5">
+                    Pick which clinic this fax belongs to.
+                  </p>
+                )}
+                {(facilities?.length ?? 0) === 0 && (
+                  <p className="text-xs text-amber-600 mt-0.5">
+                    No clinics available to pick from. Add a facility before
+                    building an order from this fax.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="px-6 py-5 space-y-6">
             {/* Section 1 — Clinical Info */}
@@ -591,6 +899,31 @@ export function CreateOrderModal() {
                   <p className="text-xs text-red-500 mt-0.5">
                     Please select an order type.
                   </p>
+                )}
+                {/* Skin Grafts gate (Dr. Ben spec 2026-07-02): Skin Grafts
+                    orders must originate from an approved IVR — direct
+                    creation is blocked here. The user is routed to the
+                    IVR workflow. When we're already IN the IVR conversion
+                    flow (fromStandaloneIvr), the gate is inverted — this
+                    IS the approved-IVR path, so no warning. DME Collagen
+                    keeps parallel creation. */}
+                {orderType === "skin_grafts" && !fromStandaloneIvr && (
+                  <div className="mt-2 rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-[12px] text-amber-900">
+                    <p className="font-semibold mb-1">
+                      Skin Grafts orders start from an approved IVR
+                    </p>
+                    <p className="text-[11.5px] leading-snug">
+                      Upload the completed IVR to{" "}
+                      <a
+                        href="/dashboard/ivrs"
+                        className="underline font-medium hover:text-amber-800"
+                      >
+                        IVR Forms
+                      </a>{" "}
+                      and send it to an external approver. Once approved,
+                      you can create the order from that IVR in one click.
+                    </p>
+                  </div>
                 )}
               </div>
 
@@ -678,25 +1011,29 @@ export function CreateOrderModal() {
                 change in document requirements as soon as they toggle it on. */}
             <label
               className={cn(
-                "flex items-start gap-3 rounded-xl border-2 p-3 cursor-pointer transition-all",
-                manualInput
-                  ? "border-[var(--navy)] bg-blue-50"
-                  : "border-slate-200 hover:border-slate-300",
+                "flex items-start gap-3 rounded-xl border-2 p-3 transition-all",
+                isFaxIvrConversion
+                  ? "border-slate-200 bg-slate-50 opacity-60 cursor-not-allowed"
+                  : manualInput
+                    ? "border-[var(--navy)] bg-blue-50 cursor-pointer"
+                    : "border-slate-200 hover:border-slate-300 cursor-pointer",
               )}
             >
               <input
                 type="checkbox"
                 checked={manualInput}
+                disabled={isFaxIvrConversion}
                 onChange={(e) => setManualInput(e.target.checked)}
-                className="mt-0.5 h-4 w-4 accent-[var(--navy)] cursor-pointer"
+                className="mt-0.5 h-4 w-4 accent-[var(--navy)] cursor-pointer disabled:cursor-not-allowed"
               />
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-slate-700">
                   Manual input — fill all forms myself
                 </div>
                 <p className="text-[11px] text-slate-500 mt-0.5">
-                  Skips AI extraction. Order Form, IVR, and HCFA/1500 stay blank
-                  for you to complete manually. Document uploads become optional.
+                  {isFaxIvrConversion
+                    ? "Not available for fax-built IVRs — the fax already provides the documents and the IVR has been confirmed, so extraction runs automatically."
+                    : "Skips AI extraction. Order Form, IVR, and HCFA/1500 stay blank for you to complete manually. Document uploads become optional."}
                 </p>
               </div>
             </label>
@@ -752,44 +1089,69 @@ export function CreateOrderModal() {
                 Documents {manualInput && <span className="text-slate-400 normal-case font-normal tracking-normal">(optional)</span>}
               </h3>
 
-              {/* Facesheet + Clinical Docs side by side */}
-              <div className="flex gap-3">
-                <UploadZone
-                  label="Patient Facesheet"
-                  description="Insurance & demographics"
-                  docType="facesheet"
-                  required={docsRequired}
-                  files={docs}
-                  onAdd={addDocs}
-                  onRemove={removeDoc}
-                  error={facesheetError}
-                  accept={ACCEPT_DOCS}
-                  fileType="document"
-                />
-                <UploadZone
-                  label="Clinical Documentation"
-                  description="Doctor's notes, records"
-                  docType="clinical_docs"
-                  required={docsRequired}
-                  multiple
-                  files={docs}
-                  onAdd={addDocs}
-                  onRemove={removeDoc}
-                  error={clinicalDocsError}
-                  accept={ACCEPT_DOCS}
-                  fileType="document"
-                />
-              </div>
+              {/* Facesheet + Clinical Docs — hidden on the fax-IVR
+                  conversion path. The fax PDF is a merged bundle of
+                  the facesheet + clinical documentation already, and
+                  finalizeIvrConversion attaches it server-side as a
+                  facesheet-typed order_document so the standard AI
+                  extraction pipeline picks it up. Show a green pill
+                  so the user knows why the zones are missing. */}
+              {isFaxIvrConversion ? (
+                <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2.5 text-[12.5px] text-green-900 flex items-start gap-2">
+                  <FileText className="w-4 h-4 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold">
+                      Facesheet &amp; clinical docs auto-attached from fax
+                    </p>
+                    <p className="text-[11.5px] mt-0.5 leading-snug">
+                      The faxed IVR is a merged bundle — the portal will
+                      use it as the facesheet and clinical documentation
+                      for AI extraction. You only need to upload the
+                      patient&apos;s Valid ID below.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex gap-3">
+                    <UploadZone
+                      label="Patient Facesheet"
+                      description="Insurance & demographics"
+                      docType="facesheet"
+                      required={docsRequired}
+                      files={docs}
+                      onAdd={addDocs}
+                      onRemove={removeDoc}
+                      error={facesheetError}
+                      accept={ACCEPT_DOCS}
+                      fileType="document"
+                    />
+                    <UploadZone
+                      label="Clinical Documentation"
+                      description="Doctor's notes, records"
+                      docType="clinical_docs"
+                      required={docsRequired}
+                      multiple
+                      files={docs}
+                      onAdd={addDocs}
+                      onRemove={removeDoc}
+                      error={clinicalDocsError}
+                      accept={ACCEPT_DOCS}
+                      fileType="document"
+                    />
+                  </div>
 
-              {facesheetError && (
-                <p className="text-xs text-red-500">
-                  Patient facesheet is required.
-                </p>
-              )}
-              {clinicalDocsError && (
-                <p className="text-xs text-red-500">
-                  Clinical documentation is required.
-                </p>
+                  {facesheetError && (
+                    <p className="text-xs text-red-500">
+                      Patient facesheet is required.
+                    </p>
+                  )}
+                  {clinicalDocsError && (
+                    <p className="text-xs text-red-500">
+                      Clinical documentation is required.
+                    </p>
+                  )}
+                </>
               )}
 
               {/* Wound Pictures — chronic only. Post-surgical wounds are

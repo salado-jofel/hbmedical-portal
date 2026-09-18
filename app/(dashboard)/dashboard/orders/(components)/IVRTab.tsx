@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { IOrderIVR, DashboardOrder } from "@/utils/interfaces/orders";
 import { IVRFormDocument } from "./IVRFormDocument";
 import { IVRUploadView } from "./IVRUploadView";
+import { IvrExternalApprovalBanner } from "./IvrExternalApprovalBanner";
 import { cn } from "@/utils/utils";
 
 // Order statuses past which the IVR (built form OR uploaded file) is
@@ -123,6 +124,11 @@ export function IVRTab({
         <FormSkeleton />
       ) : (
         <>
+          {ivrData?.linkedStandaloneIvrId && (
+            <IvrExternalApprovalBanner
+              standaloneIvrId={ivrData.linkedStandaloneIvrId}
+            />
+          )}
           {/* Upload section — always at the top. Hidden once the IVR is
               fully locked (signed or marked complete) since no further
               changes are allowed. */}

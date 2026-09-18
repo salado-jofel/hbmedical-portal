@@ -8,6 +8,7 @@ import {
 import {
   isAdmin,
   isClinicSide,
+  isSalesRep,
   isSupport,
 } from "@/utils/helpers/role";
 import { safeLogError, safeLogInfo } from "@/lib/logging/safe-log";
@@ -24,10 +25,32 @@ export const BUCKET = "hbmedical-bucket-private";
  */
 async function forwardCookieHeader(): Promise<string> {
   const store = await cookies();
-  return store
-    .getAll()
+  const all = store.getAll();
+  const header = all
     .map((c) => `${c.name}=${encodeURIComponent(c.value)}`)
     .join("; ");
+  // Diagnostic (names + sizes only, never values): the AI endpoint has
+  // 401'd on forwarded sessions before; this pins whether the auth
+  // cookies were present at capture time and how big the header got.
+  console.log("[forwardCookieHeader]", {
+    count: all.length,
+    names: all.map((c) => c.name),
+    authChunks: all.filter((c) => /-auth-token/.test(c.name)).length,
+    headerBytes: Buffer.byteLength(header),
+  });
+  return header;
+}
+
+/**
+ * Public helper for callers that want to capture the caller's cookie
+ * header eagerly (while still in the outer request context) and pass
+ * it into a fire-and-forget fetch. Needed when triggerCombinedExtraction
+ * is invoked from inside another server action without awaiting — by
+ * the time the internal `await cookies()` runs, the outer request
+ * context can be gone and the AI endpoint 401s.
+ */
+export async function captureCookieHeader(): Promise<string> {
+  return forwardCookieHeader();
 }
 
 export const ORDER_WITH_RELATIONS_SELECT = `
@@ -71,10 +94,12 @@ export async function getUserFacilityId(userId: string): Promise<string | null> 
 export async function requireClinicRole(): Promise<{
   userId: string;
   /** Facility scope. Clinic-side users always have one (validated below).
-   *  Admins/support staff have no facility membership, so this is `null`
-   *  for them — callers that need a facility id (e.g. createOrder) must
-   *  guard against null themselves. Most order-mutation callers only need
-   *  `userId` and so accept the broader role set transparently. */
+   *  Admins / support / sales reps have no facility membership, so this
+   *  is `null` for them — callers that need a facility id (e.g.
+   *  createOrder) must guard against null themselves. For sales reps
+   *  specifically, callers also need to gate the operation with
+   *  is_rep_facility() so a rep can only mutate at clinics in their
+   *  tree; passing a null facilityId is the signal to run that gate. */
   facilityId: string | null;
   role: string;
 }> {
@@ -83,14 +108,23 @@ export async function requireClinicRole(): Promise<{
   const role = await getUserRole(supabase);
 
   // Admin + support get unconditional pass — they're org-wide and edit
-  // orders across facilities. Clinical roles still need a facility.
+  // orders across facilities.
   if (isAdmin(role) || isSupport(role)) {
+    return { userId: user.id, facilityId: null, role: role! };
+  }
+
+  // Sales reps also get through the role check but with facilityId=null
+  // — the actual per-facility authorization happens in the caller via
+  // is_rep_facility (see createOrder). Reps CAN create orders at
+  // clinics in their tree today (client requirement, 2026-08-31) but
+  // not at arbitrary clinics.
+  if (isSalesRep(role)) {
     return { userId: user.id, facilityId: null, role: role! };
   }
 
   if (!isClinicSide(role)) {
     throw new Error(
-      "Only clinical providers, staff, admins, or support can perform this action.",
+      "Only clinical providers, staff, admins, support, or sales reps can perform this action.",
     );
   }
 
@@ -244,9 +278,47 @@ export async function createNotifications(params: {
   }
 }
 
+/**
+ * Persist the outcome of an extraction attempt on the order so the modal
+ * can stop polling and offer a retry instead of spinning for the full
+ * poll budget. Never throws — bookkeeping must not mask the real error.
+ */
+async function recordExtractionFailure(orderId: string, message: string) {
+  try {
+    const admin = createAdminClient();
+    await admin
+      .from("orders")
+      .update({ ai_extraction_error: message.slice(0, 500) })
+      .eq("id", orderId)
+      .eq("ai_extracted", false); // never clobber a completed extraction
+  } catch (err) {
+    safeLogError("recordExtractionFailure", err, { orderId });
+  }
+}
+
+async function clearExtractionError(orderId: string) {
+  try {
+    const admin = createAdminClient();
+    await admin
+      .from("orders")
+      .update({ ai_extraction_error: null })
+      .eq("id", orderId);
+  } catch (err) {
+    safeLogError("clearExtractionError", err, { orderId });
+  }
+}
+
 export async function triggerCombinedExtraction(
   orderId: string,
   documents: Array<{ documentType: string; filePath: string; bucket?: string }>,
+  /** Pre-captured cookie header from the outer server-action context.
+   *  When present, we skip the internal cookies() read — that call
+   *  fails silently if the outer request context has been reaped
+   *  (which happens on every fire-and-forget invocation), and the
+   *  receiving /api/ai/extract-document endpoint then 401s. Callers
+   *  that fire-and-forget MUST pass this; direct awaited callers can
+   *  omit and fall back to the eager read. */
+  preCapturedCookieHeader?: string,
 ): Promise<{ success: boolean; error: string | null; skipped?: boolean }> {
   try {
     const extractable = documents.filter((d) =>
@@ -257,7 +329,10 @@ export async function triggerCombinedExtraction(
     }
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-    const cookieHeader = await forwardCookieHeader();
+    const cookieHeader =
+      preCapturedCookieHeader ?? (await forwardCookieHeader());
+
+    await clearExtractionError(orderId);
 
     const response = await fetch(`${baseUrl}/api/ai/extract-document`, {
       method: "POST",
@@ -285,20 +360,25 @@ export async function triggerCombinedExtraction(
     } catch {
       const snippet = raw.slice(0, 200).replace(/\s+/g, " ").trim();
       safeLogError("triggerCombinedExtraction", `non-JSON response (status ${response.status}): ${snippet}`, { orderId, status: response.status });
-      return {
-        success: false,
-        error: `AI extraction endpoint returned a non-JSON response (status ${response.status}). Check server logs for the real error.`,
-      };
+      const message = `AI extraction endpoint returned a non-JSON response (status ${response.status}). Check server logs for the real error.`;
+      await recordExtractionFailure(orderId, message);
+      return { success: false, error: message };
     }
 
     if (!response.ok || data.error) {
-      safeLogError("triggerCombinedExtraction", data.error ?? `HTTP ${response.status}`, { orderId });
-      return { success: false, error: data.error ?? `HTTP ${response.status}` };
+      const message = data.error ?? `HTTP ${response.status}`;
+      safeLogError("triggerCombinedExtraction", message, { orderId });
+      await recordExtractionFailure(orderId, message);
+      return { success: false, error: message };
     }
 
     return { success: true, error: null };
   } catch (err) {
     safeLogError("triggerCombinedExtraction", err, { orderId });
+    await recordExtractionFailure(
+      orderId,
+      err instanceof Error ? err.message : "AI extraction failed.",
+    );
     return { success: false, error: "AI extraction failed — fill form manually." };
   }
 }

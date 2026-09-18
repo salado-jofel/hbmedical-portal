@@ -41,9 +41,12 @@ const aiModel = createAmazonBedrock({
 //   apiKey: process.env.GEMINI_API_KEY,
 // });
 
-import { generateText } from "ai";
+import { generateText, type ModelMessage } from "ai";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { generateOrderPdf, type OrderPdfFormType } from "@/lib/pdf/generate-order-pdfs";
+import {
+  generateOrderPdf,
+  type OrderPdfFormType,
+} from "@/lib/pdf/generate-order-pdfs";
 import { NextRequest, NextResponse } from "next/server";
 import {
   requireOrderAccess,
@@ -59,6 +62,56 @@ import { safeLogError } from "@/lib/logging/safe-log";
 // chart. PDF generation is fire-and-forget after the flag flip, so the
 // 5-minute ceiling is plenty of headroom.
 export const maxDuration = 300;
+
+/* ── Model selection with availability fallback ──
+   Haiku 4.5 is the default (cost + speed). Bedrock occasionally answers
+   a model with 503 ServiceUnavailableException for minutes at a time
+   (seen 2026-09-18 for Haiku while Sonnet on the same account was fine).
+   The AI SDK already retries 3× per model; if the primary is still
+   unavailable after that, re-run the identical prompt on Sonnet 4.5
+   rather than failing the whole order. Only Bedrock-side / retryable
+   failures fall back — a bad prompt or timeout surfaces as-is. */
+const PRIMARY_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0";
+const FALLBACK_MODEL_ID = "us.anthropic.claude-sonnet-4-5-20250929-v1:0";
+
+function isModelUnavailable(err: unknown): boolean {
+  const e = err as {
+    name?: string;
+    statusCode?: number;
+    isRetryable?: boolean;
+    lastError?: { statusCode?: number; isRetryable?: boolean };
+  };
+  const status = e?.lastError?.statusCode ?? e?.statusCode;
+  const retryable = e?.lastError?.isRetryable ?? e?.isRetryable;
+  return (
+    e?.name === "AI_RetryError" ||
+    retryable === true ||
+    (typeof status === "number" && status >= 500)
+  );
+}
+
+async function generateWithFallback(
+  args: { messages: ModelMessage[]; abortSignal: AbortSignal },
+  tag: string,
+): Promise<{ text: string; modelId: string }> {
+  try {
+    const { text } = await generateText({
+      ...args,
+      model: aiModel(PRIMARY_MODEL_ID),
+    });
+    return { text, modelId: PRIMARY_MODEL_ID };
+  } catch (err) {
+    if (!isModelUnavailable(err)) throw err;
+    console.warn(
+      `[${tag}] ${PRIMARY_MODEL_ID} unavailable (${(err as Error)?.message?.slice(0, 120)}) — falling back to ${FALLBACK_MODEL_ID}`,
+    );
+    const { text } = await generateText({
+      ...args,
+      model: aiModel(FALLBACK_MODEL_ID),
+    });
+    return { text, modelId: FALLBACK_MODEL_ID };
+  }
+}
 
 /* ── Retry + timeout helpers ────────────────────────────────────────────── */
 
@@ -445,11 +498,7 @@ function sanitizeOrderFormFields(
     if (ORDER_FORM_ALLOWED_FIELDS.has(mappedKey)) {
       if (ORDER_FORM_POSITIVE_INT_FIELDS.has(mappedKey)) {
         const n = typeof value === "number" ? value : Number(value);
-        if (
-          !Number.isFinite(n) ||
-          !Number.isInteger(n) ||
-          n < 1
-        ) {
+        if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1) {
           console.warn(
             `[extract-document] Dropped invalid ${mappedKey} from AI output: ${JSON.stringify(value)}`,
           );
@@ -577,7 +626,8 @@ function sanitizeForm1500Fields(
   }
   // Normalize insurance_type to the exact values allowed by the DB check constraint
   if (typeof sanitized.insurance_type === "string") {
-    const normalized = INSURANCE_TYPE_NORMALIZE[sanitized.insurance_type.toLowerCase().trim()];
+    const normalized =
+      INSURANCE_TYPE_NORMALIZE[sanitized.insurance_type.toLowerCase().trim()];
     sanitized.insurance_type = normalized ?? null;
   }
   return sanitized;
@@ -642,6 +692,49 @@ function sanitizeIvrFields(
     }
   }
   return sanitized;
+}
+
+/* ── Linked-IVR merge guard ──
+   When an order was created from an approved standalone IVR (fax-built,
+   admin-confirmed), order_ivr already holds the record of truth copied by
+   finalizeIvrConversion. The extractor must not have a second vote on
+   those values — it may only fill columns that are still blank.
+   Returns the payload to upsert (possibly reduced to just the bookkeeping
+   columns) and whether the linked guard applied. */
+async function applyLinkedIvrFillBlanks(
+  adminClient: ReturnType<typeof createAdminClient>,
+  orderId: string,
+  payload: Record<string, unknown>,
+): Promise<{ payload: Record<string, unknown>; linked: boolean }> {
+  const { data: existing } = await adminClient
+    .from("order_ivr")
+    .select("*")
+    .eq("order_id", orderId)
+    .maybeSingle();
+  const row = existing as Record<string, unknown> | null;
+  if (!row || !row.linked_standalone_ivr_id) return { payload, linked: false };
+
+  const isBlank = (v: unknown) =>
+    v === null || v === undefined || (typeof v === "string" && v.trim() === "");
+
+  const merged: Record<string, unknown> = {
+    order_id: orderId,
+    ai_extracted: true,
+    ai_extracted_at: payload.ai_extracted_at,
+  };
+  let filled = 0;
+  for (const [key, value] of Object.entries(payload)) {
+    if (key in merged) continue;
+    if (isBlank(value)) continue;
+    if (!isBlank(row[key])) continue; // admin/IVR value wins
+    merged[key] = value;
+    filled++;
+  }
+  console.log(
+    `[extract] order_ivr linked to standalone IVR — fill-blanks mode, ${filled} column(s) added, none replaced`,
+    { orderId },
+  );
+  return { payload: merged, linked: true };
 }
 
 /* ── PDF generation helper ── */
@@ -910,6 +1003,12 @@ async function handleCombinedExtraction(
   baseUrl: string,
   orderId: string,
   documentsArray: CombinedDoc[],
+  /** The caller's Cookie header, forwarded verbatim on the single-doc
+   *  self-call below. Without it the inner request has no session and
+   *  requireOrderAccess 401s — which is exactly what happened on every
+   *  fax-built IVR conversion (the fax is attached as ONE facesheet doc,
+   *  so that path always lands here). */
+  cookieHeader: string | null,
 ): Promise<NextResponse> {
   const adminClient = createAdminClient();
 
@@ -926,7 +1025,10 @@ async function handleCombinedExtraction(
     const d = extractable[0];
     const res = await fetch(`${baseUrl}/api/ai/extract-document`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+      },
       body: JSON.stringify({
         orderId,
         documentType: d.documentType,
@@ -947,13 +1049,19 @@ async function handleCombinedExtraction(
     .single();
 
   if (orderCtxErr || !orderCtx) {
-    console.error("[extract-combined] Failed to fetch order:", orderCtxErr?.message);
+    console.error(
+      "[extract-combined] Failed to fetch order:",
+      orderCtxErr?.message,
+    );
     return NextResponse.json({ error: "Order not found" }, { status: 404 });
   }
 
   // Manual-input orders must never receive AI extraction — all forms stay blank.
   if ((orderCtx as { manual_input?: boolean }).manual_input) {
-    console.log("[extract-combined] Skipping — order.manual_input is true:", orderId);
+    console.log(
+      "[extract-combined] Skipping — order.manual_input is true:",
+      orderId,
+    );
     return NextResponse.json({ skipped: "manual_input" });
   }
 
@@ -968,7 +1076,11 @@ async function handleCombinedExtraction(
     .eq("id", orderCtx.created_by)
     .maybeSingle();
 
-  let assignedProvider: { first_name: string | null; last_name: string | null; phone: string | null } | null = null;
+  let assignedProvider: {
+    first_name: string | null;
+    last_name: string | null;
+    phone: string | null;
+  } | null = null;
   if (orderCtx.assigned_provider_id) {
     const { data: ap } = await adminClient
       .from("profiles")
@@ -982,7 +1094,8 @@ async function handleCombinedExtraction(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const physician = (assignedProvider || creator) as any;
   const physicianName: string | null = physician
-    ? `${physician.first_name ?? ""} ${physician.last_name ?? ""}`.trim() || null
+    ? `${physician.first_name ?? ""} ${physician.last_name ?? ""}`.trim() ||
+      null
     : null;
   const patientName: string | null = patient
     ? `${patient.first_name ?? ""} ${patient.last_name ?? ""}`.trim() || null
@@ -1018,9 +1131,23 @@ async function handleCombinedExtraction(
   }
 
   const addr: string | null = enr
-    ? [enr.billing_address, enr.billing_city, enr.billing_state, enr.billing_zip].filter(Boolean).join(", ") || null
+    ? [
+        enr.billing_address,
+        enr.billing_city,
+        enr.billing_state,
+        enr.billing_zip,
+      ]
+        .filter(Boolean)
+        .join(", ") || null
     : facility
-      ? [facility.address_line_1, facility.city, facility.state, facility.postal_code].filter(Boolean).join(", ") || null
+      ? [
+          facility.address_line_1,
+          facility.city,
+          facility.state,
+          facility.postal_code,
+        ]
+          .filter(Boolean)
+          .join(", ") || null
       : null;
 
   /* ── STEP 2: Download all files in parallel (with 1-retry on transient errors) ── */
@@ -1045,29 +1172,46 @@ async function handleCombinedExtraction(
     }),
   );
 
-  const facesheetFile = fileContents.find((f) => f.documentType === "facesheet");
-  const clinicalFile = fileContents.find((f) => f.documentType === "clinical_docs");
+  const facesheetFile = fileContents.find(
+    (f) => f.documentType === "facesheet",
+  );
+  const clinicalFile = fileContents.find(
+    (f) => f.documentType === "clinical_docs",
+  );
 
   /* ── STEP 3: Single combined AI call ── */
   type ContentBlock =
     | { type: "text"; text: string }
-    | { type: "file"; data: string; mediaType: "application/pdf" | "image/png" | "image/jpeg" | "image/heic" };
+    | {
+        type: "file";
+        data: string;
+        mediaType:
+          "application/pdf" | "image/png" | "image/jpeg" | "image/heic";
+      };
   const contentBlocks: ContentBlock[] = [];
 
   if (facesheetFile) {
-    contentBlocks.push({ type: "text", text: "Document 1 — Patient Facesheet:" });
+    contentBlocks.push({
+      type: "text",
+      text: "Document 1 — Patient Facesheet:",
+    });
     contentBlocks.push({
       type: "file",
       data: facesheetFile.base64,
-      mediaType: facesheetFile.mimeType as "application/pdf" | "image/png" | "image/jpeg" | "image/heic",
+      mediaType: facesheetFile.mimeType as
+        "application/pdf" | "image/png" | "image/jpeg" | "image/heic",
     });
   }
   if (clinicalFile) {
-    contentBlocks.push({ type: "text", text: "Document 2 — Clinical Documentation:" });
+    contentBlocks.push({
+      type: "text",
+      text: "Document 2 — Clinical Documentation:",
+    });
     contentBlocks.push({
       type: "file",
       data: clinicalFile.base64,
-      mediaType: clinicalFile.mimeType as "application/pdf" | "image/png" | "image/jpeg" | "image/heic",
+      mediaType: clinicalFile.mimeType as
+        "application/pdf" | "image/png" | "image/jpeg" | "image/heic",
     });
   }
   contentBlocks.push({
@@ -1077,11 +1221,13 @@ async function handleCombinedExtraction(
     ),
   });
 
-  const { text } = await generateText({
-    model: aiModel("us.anthropic.claude-haiku-4-5-20251001-v1:0"),
-    messages: [{ role: "user", content: contentBlocks }],
-    abortSignal: AbortSignal.timeout(CLAUDE_TIMEOUT_MS),
-  });
+  const { text } = await generateWithFallback(
+    {
+      messages: [{ role: "user", content: contentBlocks }],
+      abortSignal: AbortSignal.timeout(CLAUDE_TIMEOUT_MS),
+    },
+    "extract-combined",
+  );
 
   /* ── STEP 4: Parse JSON ── */
   let extractedFields: Record<string, unknown> = {};
@@ -1090,8 +1236,14 @@ async function handleCombinedExtraction(
     const jsonStr = jsonMatch?.[1] ?? jsonMatch?.[2] ?? text;
     extractedFields = JSON.parse(jsonStr.trim());
   } catch {
-    safeLogError("extract-combined", "JSON parse failed", { orderId, textLength: text.length });
-    return NextResponse.json({ error: "Failed to parse AI response as JSON" }, { status: 500 });
+    safeLogError("extract-combined", "JSON parse failed", {
+      orderId,
+      textLength: text.length,
+    });
+    return NextResponse.json(
+      { error: "Failed to parse AI response as JSON" },
+      { status: 500 },
+    );
   }
 
   /* ── STEP 5: Sanitize all field types from combined response ── */
@@ -1120,29 +1272,63 @@ async function handleCombinedExtraction(
       ai_extracted: true,
       ai_extracted_at: new Date().toISOString(),
       ...aiIvr,
-      facility_name:    (aiIvr.facility_name as string | null)    || facility?.name      || null,
-      facility_npi:     (aiIvr.facility_npi as string | null)     || enr?.facility_npi   || null,
-      facility_tin:     (aiIvr.facility_tin as string | null)     || enr?.facility_tin   || null,
-      facility_ptan:    (aiIvr.facility_ptan as string | null)    || enr?.facility_ptan  || null,
-      facility_fax:     (aiIvr.facility_fax as string | null)     || enr?.billing_fax    || null,
-      facility_address: (aiIvr.facility_address as string | null) || addr                || null,
-      facility_phone:   (aiIvr.facility_phone as string | null)   || enr?.billing_phone  || facility?.phone || null,
-      facility_contact: (aiIvr.facility_contact as string | null) || enr?.ap_contact_name || facility?.contact || null,
-      physician_name:   (aiIvr.physician_name as string | null)   || physicianName       || null,
-      physician_npi:    (aiIvr.physician_npi as string | null)    || creds?.npi_number   || null,
-      physician_tin:    (aiIvr.physician_tin as string | null)    || enr?.facility_tin   || null,
-      physician_fax:    (aiIvr.physician_fax as string | null)    || enr?.billing_fax    || null,
-      physician_address: (aiIvr.physician_address as string | null) || addr              || null,
-      physician_phone:  (aiIvr.physician_phone as string | null)  || physician?.phone    || null,
-      patient_name:     (aiIvr.patient_name as string | null)     || aiPatientName       || patientName         || null,
-      patient_dob:      (aiIvr.patient_dob as string | null)      || patient?.date_of_birth || null,
-      sales_rep_name:   repName                                                            || null,
+      facility_name:
+        (aiIvr.facility_name as string | null) || facility?.name || null,
+      facility_npi:
+        (aiIvr.facility_npi as string | null) || enr?.facility_npi || null,
+      facility_tin:
+        (aiIvr.facility_tin as string | null) || enr?.facility_tin || null,
+      facility_ptan:
+        (aiIvr.facility_ptan as string | null) || enr?.facility_ptan || null,
+      facility_fax:
+        (aiIvr.facility_fax as string | null) || enr?.billing_fax || null,
+      facility_address:
+        (aiIvr.facility_address as string | null) || addr || null,
+      facility_phone:
+        (aiIvr.facility_phone as string | null) ||
+        enr?.billing_phone ||
+        facility?.phone ||
+        null,
+      facility_contact:
+        (aiIvr.facility_contact as string | null) ||
+        enr?.ap_contact_name ||
+        facility?.contact ||
+        null,
+      physician_name:
+        (aiIvr.physician_name as string | null) || physicianName || null,
+      physician_npi:
+        (aiIvr.physician_npi as string | null) || creds?.npi_number || null,
+      physician_tin:
+        (aiIvr.physician_tin as string | null) || enr?.facility_tin || null,
+      physician_fax:
+        (aiIvr.physician_fax as string | null) || enr?.billing_fax || null,
+      physician_address:
+        (aiIvr.physician_address as string | null) || addr || null,
+      physician_phone:
+        (aiIvr.physician_phone as string | null) || physician?.phone || null,
+      patient_name:
+        (aiIvr.patient_name as string | null) ||
+        aiPatientName ||
+        patientName ||
+        null,
+      patient_dob:
+        (aiIvr.patient_dob as string | null) || patient?.date_of_birth || null,
+      sales_rep_name: repName || null,
     };
 
+    const { payload: ivrWrite } = await applyLinkedIvrFillBlanks(
+      adminClient,
+      orderId,
+      ivrPayload,
+    );
     const { error: ivrErr } = await adminClient
       .from("order_ivr")
-      .upsert(ivrPayload, { onConflict: "order_id" });
-    if (ivrErr) safeLogError("extract-combined", ivrErr, { phase: "order_ivr insert", orderId });
+      .upsert(ivrWrite, { onConflict: "order_id" });
+    if (ivrErr)
+      safeLogError("extract-combined", ivrErr, {
+        phase: "order_ivr insert",
+        orderId,
+      });
   }
 
   /* ── STEP 7: Upsert order_form_1500 ── */
@@ -1151,49 +1337,90 @@ async function handleCombinedExtraction(
       order_id: orderId,
       ...ai1500,
       ...(icd10 ? { diagnosis_a: icd10 } : {}),
-      service_facility_name:    (ai1500.service_facility_name as string | null)    || facility?.name        || null,
-      service_facility_address: (ai1500.service_facility_address as string | null) || addr                  || null,
-      service_facility_npi:     (ai1500.service_facility_npi as string | null)     || enr?.facility_npi     || null,
-      billing_provider_name:    (ai1500.billing_provider_name as string | null)    || facility?.name        || null,
-      billing_provider_address: (ai1500.billing_provider_address as string | null) || addr                  || null,
-      billing_provider_phone:   (ai1500.billing_provider_phone as string | null)   || enr?.billing_phone    || facility?.phone || null,
-      billing_provider_npi:     (ai1500.billing_provider_npi as string | null)     || enr?.facility_npi     || null,
-      billing_provider_tax_id:  (ai1500.billing_provider_tax_id as string | null)  || enr?.facility_tin     || null,
-      federal_tax_id:           (ai1500.federal_tax_id as string | null)           || enr?.facility_tin     || null,
-      referring_provider_name:  (ai1500.referring_provider_name as string | null)  || physicianName         || null,
-      referring_provider_npi:   (ai1500.referring_provider_npi as string | null)   || creds?.npi_number     || null,
+      service_facility_name:
+        (ai1500.service_facility_name as string | null) ||
+        facility?.name ||
+        null,
+      service_facility_address:
+        (ai1500.service_facility_address as string | null) || addr || null,
+      service_facility_npi:
+        (ai1500.service_facility_npi as string | null) ||
+        enr?.facility_npi ||
+        null,
+      billing_provider_name:
+        (ai1500.billing_provider_name as string | null) ||
+        facility?.name ||
+        null,
+      billing_provider_address:
+        (ai1500.billing_provider_address as string | null) || addr || null,
+      billing_provider_phone:
+        (ai1500.billing_provider_phone as string | null) ||
+        enr?.billing_phone ||
+        facility?.phone ||
+        null,
+      billing_provider_npi:
+        (ai1500.billing_provider_npi as string | null) ||
+        enr?.facility_npi ||
+        null,
+      billing_provider_tax_id:
+        (ai1500.billing_provider_tax_id as string | null) ||
+        enr?.facility_tin ||
+        null,
+      federal_tax_id:
+        (ai1500.federal_tax_id as string | null) || enr?.facility_tin || null,
+      referring_provider_name:
+        (ai1500.referring_provider_name as string | null) ||
+        physicianName ||
+        null,
+      referring_provider_npi:
+        (ai1500.referring_provider_npi as string | null) ||
+        creds?.npi_number ||
+        null,
     };
 
     const { error: f15Err } = await adminClient
       .from("order_form_1500")
       .upsert(form1500Payload, { onConflict: "order_id" });
-    if (f15Err) safeLogError("extract-combined", f15Err, { phase: "order_form_1500 insert", orderId });
+    if (f15Err)
+      safeLogError("extract-combined", f15Err, {
+        phase: "order_form_1500 insert",
+        orderId,
+      });
   }
 
   /* ── STEP 8: Upsert order_form ── */
   const orderFormPayload = {
     order_id: orderId,
     ...aiOf,
-    patient_name:        (aiOf.patient_name as string | null)  || aiPatientName || patientName || null,
-    patient_date:        (orderCtx as Record<string, unknown>).date_of_service || null,
-    physician_signature: physicianName                                         || null,
+    patient_name:
+      (aiOf.patient_name as string | null) ||
+      aiPatientName ||
+      patientName ||
+      null,
+    patient_date: (orderCtx as Record<string, unknown>).date_of_service || null,
+    physician_signature: physicianName || null,
     // Mirror order_ivr / order_form_1500: prefer the AI-extracted NPI when
     // present, fall back to the assigned provider's stored credential so the
     // signature block + Fortify physician-attestation row aren't blank.
-    physician_npi:       (aiOf.physician_npi as string | null) || creds?.npi_number || null,
-    ai_extracted:        true,
-    ai_extracted_at:     new Date().toISOString(),
+    physician_npi:
+      (aiOf.physician_npi as string | null) || creds?.npi_number || null,
+    ai_extracted: true,
+    ai_extracted_at: new Date().toISOString(),
   };
 
   const { error: ofErr } = await adminClient
     .from("order_form")
     .upsert(orderFormPayload, { onConflict: "order_id" });
-  if (ofErr) safeLogError("extract-combined", ofErr, { phase: "order_form insert", orderId });
+  if (ofErr)
+    safeLogError("extract-combined", ofErr, {
+      phase: "order_form insert",
+      orderId,
+    });
 
   /* ── STEP 9: Auto-create patient from facesheet data ── */
-  const firstName = (ai1500.patient_first_name as string | undefined);
-  const lastName  = (ai1500.patient_last_name  as string | undefined);
-  const dob       = (ai1500.patient_dob        as string | undefined);
+  const firstName = ai1500.patient_first_name as string | undefined;
+  const lastName = ai1500.patient_last_name as string | undefined;
+  const dob = ai1500.patient_dob as string | undefined;
 
   if (firstName && lastName && !orderCtx.patient_id) {
     const { data: existingPatient } = await adminClient
@@ -1211,19 +1438,26 @@ async function handleCombinedExtraction(
       const { data: newPatient, error: patientErr } = await adminClient
         .from("patients")
         .insert({
-          facility_id:   orderCtx.facility_id,
-          first_name:    firstName.trim(),
-          last_name:     lastName.trim(),
+          facility_id: orderCtx.facility_id,
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
           date_of_birth: dob ?? null,
-          is_active:     true,
+          is_active: true,
         })
         .select("id")
         .single();
-      if (patientErr) console.error("[extract-combined] patient create failed:", patientErr.message);
+      if (patientErr)
+        console.error(
+          "[extract-combined] patient create failed:",
+          patientErr.message,
+        );
       else patientId = newPatient?.id;
     }
     if (patientId) {
-      await adminClient.from("orders").update({ patient_id: patientId }).eq("id", orderId);
+      await adminClient
+        .from("orders")
+        .update({ patient_id: patientId })
+        .eq("id", orderId);
     }
   }
 
@@ -1237,35 +1471,43 @@ async function handleCombinedExtraction(
      PDFs to render. This was the root cause of the "AI extraction timed
      out" complaints — PDFs blocking the response was pushing total time
      past the Vercel 60s wall, and the flag never got set when it was. */
+  /* ── STEP 10b: Generate all 3 PDFs BEFORE the flag flip ──
+     Reversed from the original "flag first, PDFs in background" order
+     (2026-09-18). The 60s Vercel wall that motivated it is gone
+     (maxDuration = 300), and background work after the flag caused two
+     real problems: (a) the modal refreshes its document list the moment
+     ai_extracted flips, so the IVR Form / Order Form cards stayed yellow
+     until a manual regenerate — realtime INSERTs don't reliably reach
+     sales-rep sessions; (b) work kicked off after the response is sent
+     can be frozen on Vercel, so production PDFs might never render.
+     A PDF failure must never block the flag — generateAllPdfsInParallel
+     already logs per-form failures and only throws on the unexpected. */
+  try {
+    await generateAllPdfsInParallel(orderId);
+  } catch (err) {
+    console.error("[extract-combined] PDF generation failed:", err);
+  }
+
   await adminClient
     .from("orders")
     .update({ ai_extracted: true, ai_extracted_at: new Date().toISOString() })
     .eq("id", orderId);
   console.log("[extract-combined] orders.ai_extracted=true for:", orderId);
 
-  /* ── STEP 11: Generate all 3 PDFs (fire-and-forget) ──
-     We DON'T await this — it can take 15-30s and isn't on the critical
-     path. The next save (any field edit, sign, etc.) regenerates the
-     same PDFs anyway. If this fails for any reason, the order is still
-     usable and saving will recover. */
-  console.log("[extract-combined] kicking off PDF generation (background) for:", orderId);
-  generateAllPdfsInParallel(orderId).catch((err) => {
-    console.error("[extract-combined] background PDF gen failed:", err);
-  });
-
   /* ── STEP 12: History log ── */
   adminClient
     .from("order_history")
     .insert({
-      order_id:     orderId,
+      order_id: orderId,
       performed_by: null,
-      action:       "AI extracted patient and clinical data from uploaded documents",
-      old_status:   null,
-      new_status:   null,
-      notes:        null,
+      action: "AI extracted patient and clinical data from uploaded documents",
+      old_status: null,
+      new_status: null,
+      notes: null,
     })
     .then(({ error }) => {
-      if (error) console.error("[extract-combined] history error:", error.message);
+      if (error)
+        console.error("[extract-combined] history error:", error.message);
     });
 
   return NextResponse.json({ success: true, combined: true });
@@ -1302,6 +1544,19 @@ export async function POST(req: NextRequest) {
       await requireOrderAccess(orderId);
     } catch (err) {
       if (err instanceof OrderAccessError) {
+        if (err.kind === "unauthenticated") {
+          // Diagnostic (names + sizes only, never values) — pairs with
+          // the [forwardCookieHeader] log on the sending server action.
+          const rawCookie = req.headers.get("cookie") ?? "";
+          const received = req.cookies.getAll();
+          console.error("[extract] unauthenticated — cookies received", {
+            rawHeaderBytes: Buffer.byteLength(rawCookie),
+            count: received.length,
+            names: received.map((c) => c.name),
+            authChunks: received.filter((c) => /-auth-token/.test(c.name))
+              .length,
+          });
+        }
         return NextResponse.json(
           { error: err.message },
           { status: orderAccessErrorStatus(err) },
@@ -1324,14 +1579,22 @@ export async function POST(req: NextRequest) {
         path: Array.isArray(documentsArray) ? "combined" : "legacy",
         documentType: documentType ?? null,
         documents: Array.isArray(documentsArray)
-          ? documentsArray.map((d: any) => ({ type: d.documentType, hasPath: !!d.filePath }))
+          ? documentsArray.map((d: any) => ({
+              type: d.documentType,
+              hasPath: !!d.filePath,
+            }))
           : undefined,
       },
     });
 
     // ── Combined path: documents[] array with facesheet + clinical_docs ──
     if (Array.isArray(documentsArray) && documentsArray.length > 0) {
-      return handleCombinedExtraction(baseUrl, orderId, documentsArray);
+      return handleCombinedExtraction(
+        baseUrl,
+        orderId,
+        documentsArray,
+        req.headers.get("cookie"),
+      );
     }
 
     // ── Legacy single-doc path ──
@@ -1492,7 +1755,10 @@ export async function POST(req: NextRequest) {
       );
     } catch (err) {
       return NextResponse.json(
-        { error: err instanceof Error ? err.message : "Failed to download file." },
+        {
+          error:
+            err instanceof Error ? err.message : "Failed to download file.",
+        },
         { status: 500 },
       );
     }
@@ -1537,27 +1803,26 @@ export async function POST(req: NextRequest) {
             (orderCtx as { wound_type?: string | null }).wound_type ?? null,
           );
 
-    const { text } = await generateText({
-      model: aiModel("us.anthropic.claude-haiku-4-5-20251001-v1:0"),
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "file",
-              data: base64,
-              mediaType: mimeType as
-                | "application/pdf"
-                | "image/png"
-                | "image/jpeg"
-                | "image/heic",
-            },
-            { type: "text", text: prompt },
-          ],
-        },
-      ],
-      abortSignal: AbortSignal.timeout(CLAUDE_TIMEOUT_MS),
-    });
+    const { text } = await generateWithFallback(
+      {
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "file",
+                data: base64,
+                mediaType: mimeType as
+                  "application/pdf" | "image/png" | "image/jpeg" | "image/heic",
+              },
+              { type: "text", text: prompt },
+            ],
+          },
+        ],
+        abortSignal: AbortSignal.timeout(CLAUDE_TIMEOUT_MS),
+      },
+      "extract",
+    );
 
     /* ── STEP 5: Parse JSON response ── */
     let extractedFields: Record<string, unknown> = {};
@@ -1566,7 +1831,10 @@ export async function POST(req: NextRequest) {
       const jsonStr = jsonMatch?.[1] ?? jsonMatch?.[2] ?? text;
       extractedFields = JSON.parse(jsonStr.trim());
     } catch {
-      safeLogError("extract", "JSON parse failed", { orderId, textLength: text.length });
+      safeLogError("extract", "JSON parse failed", {
+        orderId,
+        textLength: text.length,
+      });
       return NextResponse.json(
         { error: "Failed to parse AI response as JSON" },
         { status: 500 },
@@ -1638,15 +1906,25 @@ export async function POST(req: NextRequest) {
         physician_phone:
           (aiIvr.physician_phone as string | null) || physician?.phone || null,
         patient_name:
-          (aiIvr.patient_name as string | null) || aiPatientName || patientName || null,
+          (aiIvr.patient_name as string | null) ||
+          aiPatientName ||
+          patientName ||
+          null,
         patient_dob:
-          (aiIvr.patient_dob as string | null) || patient?.date_of_birth || null,
+          (aiIvr.patient_dob as string | null) ||
+          patient?.date_of_birth ||
+          null,
         sales_rep_name: repName || null,
       };
 
+      const { payload: ivrWrite } = await applyLinkedIvrFillBlanks(
+        adminClient,
+        orderId,
+        ivrPayload,
+      );
       const { error: ivrErr } = await adminClient
         .from("order_ivr")
-        .upsert(ivrPayload, { onConflict: "order_id" });
+        .upsert(ivrWrite, { onConflict: "order_id" });
       if (ivrErr) {
         safeLogError("extract", ivrErr, { phase: "order_ivr insert", orderId });
       }
@@ -1714,10 +1992,15 @@ export async function POST(req: NextRequest) {
     const orderFormPayload = {
       order_id: orderId,
       ...aiOf,
-      patient_name: (aiOf.patient_name as string | null) || aiPatientName || patientName || null,
+      patient_name:
+        (aiOf.patient_name as string | null) ||
+        aiPatientName ||
+        patientName ||
+        null,
       patient_date: (orderCtx as any).date_of_service || null,
       physician_signature: physicianName || null,
-      physician_npi: (aiOf.physician_npi as string | null) || creds?.npi_number || null,
+      physician_npi:
+        (aiOf.physician_npi as string | null) || creds?.npi_number || null,
       ai_extracted: true,
       ai_extracted_at: new Date().toISOString(),
     };
@@ -1782,21 +2065,22 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    /* ── STEP 11: Mark order AI-extracted (flag flip BEFORE PDFs) ──
-       Same ordering rationale as the combined path — see comment there.
-       Polling target flips as soon as data is in DB; PDFs render in the
-       background without blocking the response. */
+    /* ── STEP 11: Generate PDFs BEFORE the flag flip ──
+       Same rationale as the combined path (see STEP 10b there): the
+       modal refreshes documents when ai_extracted flips, so the rows
+       must already exist. */
+    try {
+      await generateAllPdfsInParallel(orderId);
+    } catch (err) {
+      console.error("[extract] PDF generation failed:", err);
+    }
+
+    /* ── STEP 12: Mark order AI-extracted ── */
     await adminClient
       .from("orders")
       .update({ ai_extracted: true, ai_extracted_at: new Date().toISOString() })
       .eq("id", orderId);
     console.log("[extract] orders.ai_extracted=true for:", orderId);
-
-    /* ── STEP 12: Generate PDFs (fire-and-forget background work) ── */
-    console.log("[extract] kicking off PDF generation (background) for:", orderId);
-    generateAllPdfsInParallel(orderId).catch((err) => {
-      console.error("[extract] background PDF gen failed:", err);
-    });
 
     /* ── STEP 13: History log (fire-and-forget) ── */
     adminClient
