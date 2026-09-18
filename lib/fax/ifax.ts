@@ -147,15 +147,33 @@ export async function fetchIfaxFax(
     };
   }
 
+  // Per-candidate rejection reasons, logged (PHI-free: lengths + a
+  // short prefix only) when nothing decodes so the next fix isn't a
+  // guess.
+  const rejected: Array<{
+    len: number;
+    prefix: string;
+    kind: "url" | "base64";
+    reason: string;
+  }> = [];
+  const reject = (c: string, kind: "url" | "base64", reason: string) =>
+    rejected.push({ len: c.length, prefix: c.slice(0, 24), kind, reason });
+
   for (const candidate of stringCandidates) {
     // Signed URL branch — fetch the bytes from wherever iFax stored them.
     if (/^https?:\/\//i.test(candidate)) {
       const inner2 = await fetch(candidate, {
         headers: { accessToken: apiKey },
       });
-      if (!inner2.ok) continue;
+      if (!inner2.ok) {
+        reject(candidate, "url", `HTTP ${inner2.status}`);
+        continue;
+      }
       const bytes = new Uint8Array(await inner2.arrayBuffer());
-      if (bytes.byteLength === 0) continue;
+      if (bytes.byteLength === 0) {
+        reject(candidate, "url", "empty body");
+        continue;
+      }
       return {
         ok: true,
         bytes,
@@ -171,10 +189,16 @@ export async function fetchIfaxFax(
     // Very short strings are almost certainly not a real PDF (a valid
     // PDF header alone base64s to ~28 chars, and a 1-page fax is tens
     // of KB minimum).
-    if (cleaned.length < 100) continue;
+    if (cleaned.length < 100) {
+      reject(candidate, "base64", `too short after cleanup (${cleaned.length})`);
+      continue;
+    }
     try {
       const bytes = new Uint8Array(Buffer.from(cleaned, "base64"));
-      if (bytes.byteLength < 100) continue;
+      if (bytes.byteLength < 100) {
+        reject(candidate, "base64", `decoded to ${bytes.byteLength} bytes`);
+        continue;
+      }
       // Sanity check: PDFs start with "%PDF"
       const head = String.fromCharCode(...bytes.slice(0, 4));
       if (head !== "%PDF") {
@@ -186,11 +210,22 @@ export async function fetchIfaxFax(
         // was the real issue, not header mismatch.
       }
       return { ok: true, bytes, contentType: "application/pdf" };
-    } catch {
+    } catch (e) {
+      reject(
+        candidate,
+        "base64",
+        `decode threw: ${e instanceof Error ? e.message : String(e)}`,
+      );
       continue;
     }
   }
 
+  console.error("[ifax] download response: every candidate rejected", {
+    status: json.status,
+    message: json.message,
+    shape: describeShape(json),
+    rejected,
+  });
   return {
     ok: false,
     status: 200,
