@@ -291,20 +291,29 @@ export async function upsertOrderIVR(
 /* getOrderAiStatus                                                            */
 /* -------------------------------------------------------------------------- */
 
-export async function getOrderAiStatus(
-  orderId: string,
-): Promise<{ aiExtracted: boolean; orderForm: IOrderForm | null }> {
+export async function getOrderAiStatus(orderId: string): Promise<{
+  aiExtracted: boolean;
+  orderForm: IOrderForm | null;
+  /** Last extraction failure (orders.ai_extraction_error). Non-null only
+   *  while ai_extracted is false — lets the modal stop polling early and
+   *  offer Retry instead of waiting out the poll budget. */
+  error: string | null;
+}> {
   await requireOrderAccess(orderId);
   const supabase = await createClient();
 
   const { data: order } = await supabase
     .from("orders")
-    .select("ai_extracted")
+    .select("ai_extracted, ai_extraction_error")
     .eq("id", orderId)
     .single();
 
   if (!order?.ai_extracted) {
-    return { aiExtracted: false, orderForm: null };
+    return {
+      aiExtracted: false,
+      orderForm: null,
+      error: (order?.ai_extraction_error as string | null) ?? null,
+    };
   }
 
   const { data: form } = await supabase
@@ -314,11 +323,12 @@ export async function getOrderAiStatus(
     .single();
 
   if (!form) {
-    return { aiExtracted: true, orderForm: null };
+    return { aiExtracted: true, orderForm: null, error: null };
   }
 
   return {
     aiExtracted: true,
+    error: null,
     orderForm: {
       id:                          form.id,
       orderId:                     form.order_id,
