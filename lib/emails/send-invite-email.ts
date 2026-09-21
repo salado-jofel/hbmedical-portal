@@ -8,8 +8,12 @@ const LOGO_URL =
 type SendInviteEmailParams = {
   to: string;
   inviteUrl: string;
+  /** A role from InviteTokenRole, or "clinical_provider_offline" for the
+   *  manual (paper-signed) onboarding welcome email. */
   roleType: string;
   inviterName: string;
+  /** Optional PDF copies (offline onboarding sends the provider their scanned contracts). */
+  attachments?: Array<{ filename: string; content: Buffer }>;
 };
 
 export async function sendInviteEmail({
@@ -17,6 +21,7 @@ export async function sendInviteEmail({
   inviteUrl,
   roleType,
   inviterName,
+  attachments,
 }: SendInviteEmailParams): Promise<{ error: string | null }> {
   console.log("[sendInviteEmail] Sending to:", to, "role:", roleType);
   console.log("[resend] API key present:", !!process.env.RESEND_API_KEY);
@@ -26,7 +31,8 @@ export async function sendInviteEmail({
       from: ACCOUNTS_FROM_EMAIL,
       to,
       subject,
-      html: buildHtml({ body, inviteUrl }),
+      html: buildHtml({ body, inviteUrl, roleType }),
+      ...(attachments && attachments.length > 0 ? { attachments } : {}),
     });
     if (error) {
       console.error("[sendInviteEmail] Resend error:", error);
@@ -70,7 +76,21 @@ function buildContent(
   }
 }
 
-function buildHtml({ body, inviteUrl }: { body: string; inviteUrl: string }) {
+function buildHtml({
+  body,
+  inviteUrl,
+  roleType,
+}: {
+  body: string;
+  inviteUrl: string;
+  roleType: string;
+}) {
+  const isOffline = roleType === "clinical_provider_offline";
+  const heading = isOffline ? "Welcome to Meridian Portal" : "You've been invited to Meridian Portal";
+  const cta = isOffline ? "Set my password &rarr;" : "Accept Invitation &rarr;";
+  const expiry = isOffline
+    ? "This link expires after a short time. If it has expired, ask your Meridian admin or sales rep to resend it."
+    : "This invitation will expire. If you did not expect this email, you can safely ignore it.";
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -97,14 +117,14 @@ function buildHtml({ body, inviteUrl }: { body: string; inviteUrl: string }) {
         <img src="${LOGO_URL}" alt="Meridian" width="176" class="logo-img" />
       </div>
       <div class="content">
-        <h1 class="h1">You've been invited to Meridian Portal</h1>
+        <h1 class="h1">${heading}</h1>
         <p>${body}</p>
         <div class="btn-row">
           <a href="${inviteUrl}" class="btn" target="_blank" rel="noopener noreferrer">
-            Accept Invitation &rarr;
+            ${cta}
           </a>
         </div>
-        <p>This invitation will expire. If you did not expect this email, you can safely ignore it.</p>
+        <p>${expiry}</p>
         <p class="muted">
           Questions? Reply to this email or contact your Meridian admin.
         </p>

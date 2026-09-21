@@ -26,6 +26,11 @@ export interface SignedContractRow {
   userEmail: string | null;
   facilityId: string | null;
   facilityName: string | null;
+  /** "offline" = wet-signed paper scan uploaded during manual onboarding;
+   *  otherwise the inline e-sign method (type | draw | upload). */
+  signatureMethod: string;
+  /** Admin/rep who uploaded an offline scan; null for e-signatures. */
+  uploadedByName: string | null;
 }
 
 interface SignatureRow {
@@ -35,6 +40,8 @@ interface SignatureRow {
   signed_path: string;
   typed_name: string;
   signed_at: string;
+  signature_method: string;
+  uploaded_by?: string | null;
 }
 
 interface ProfileRow {
@@ -61,7 +68,9 @@ const labelForProvider = (contractType: string) =>
   PROVIDER_CONTRACT_LABELS[contractType] ?? contractType;
 
 const SIGNATURE_SELECT =
-  "id, user_id, contract_type, signed_path, typed_name, signed_at";
+  "id, user_id, contract_type, signed_path, typed_name, signed_at, signature_method";
+/** Provider rows also carry who uploaded an offline (paper) scan. */
+const PROVIDER_SIGNATURE_SELECT = `${SIGNATURE_SELECT}, uploaded_by`;
 
 async function enrichRows(
   admin: ReturnType<typeof createAdminClient>,
@@ -83,7 +92,11 @@ async function enrichRows(
   // Batch-load profiles + rep-office facilities (keyed by user_id — sales reps
   // own their rep_office via facilities.user_id, not a column on profiles).
   const userIds = Array.from(
-    new Set(rows.map((r) => r.user_id).filter((v): v is string => !!v)),
+    new Set(
+      rows
+        .flatMap((r) => [r.user_id, r.uploaded_by ?? null])
+        .filter((v): v is string => !!v),
+    ),
   );
   const profilesById = new Map<string, ProfileRow>();
   const facilityByUserId = new Map<string, FacilityRow>();
@@ -108,9 +121,10 @@ async function enrichRows(
   return rows.map((r) => {
     const profile = r.user_id ? profilesById.get(r.user_id) ?? null : null;
     const facility = r.user_id ? facilityByUserId.get(r.user_id) ?? null : null;
-    const fullName = profile
-      ? `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() || null
-      : null;
+    const nameOf = (p: ProfileRow | null) =>
+      p ? `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim() || p.email || null : null;
+    const fullName = nameOf(profile);
+    const uploader = r.uploaded_by ? profilesById.get(r.uploaded_by) ?? null : null;
     return {
       id: r.id,
       kind,
@@ -127,6 +141,8 @@ async function enrichRows(
       userEmail: profile?.email ?? null,
       facilityId: facility?.id ?? null,
       facilityName: facility?.name ?? null,
+      signatureMethod: r.signature_method,
+      uploadedByName: nameOf(uploader),
     };
   });
 }
@@ -160,7 +176,7 @@ export async function getMySignedProviderContracts(): Promise<SignedContractRow[
 
   const { data, error } = await supabase
     .from("provider_contract_signatures")
-    .select(SIGNATURE_SELECT)
+    .select(PROVIDER_SIGNATURE_SELECT)
     .eq("user_id", user.id)
     .order("contract_type", { ascending: true });
   if (error) {
@@ -190,7 +206,7 @@ export async function getAllSignedOnboardingContracts(): Promise<SignedContractR
         .order("signed_at", { ascending: false }),
       admin
         .from("provider_contract_signatures")
-        .select(SIGNATURE_SELECT)
+        .select(PROVIDER_SIGNATURE_SELECT)
         .not("user_id", "is", null)
         .order("signed_at", { ascending: false }),
     ]);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { FileCheck, FileText, ExternalLink } from "lucide-react";
+import { FileCheck, FileText, ExternalLink, PenLine } from "lucide-react";
 import { EmptyState } from "@/app/(components)/EmptyState";
 import {
   Select,
@@ -47,6 +47,15 @@ function TypeBadge({ kind }: { kind: ContractKind }) {
   );
 }
 
+/** Paper-signed scan uploaded by an admin/rep (manual onboarding). */
+function OfflineBadge() {
+  return (
+    <span className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded bg-amber-50 text-amber-700 border border-amber-200">
+      <PenLine className="w-2.5 h-2.5" /> Signed on paper
+    </span>
+  );
+}
+
 function fmtDate(iso: string): string {
   try {
     return new Date(iso).toLocaleDateString("en-US", {
@@ -66,20 +75,23 @@ function ContractCard({
   row: SignedContractRow;
   showTypeBadge?: boolean;
 }) {
+  const isOffline = row.signatureMethod === "offline";
   return (
     <div className="rounded-xl border border-[var(--border)] bg-white p-4 flex items-start gap-3 transition-colors hover:border-[var(--navy)]/30">
       <div className="shrink-0 w-10 h-10 rounded-lg bg-[var(--navy)]/5 text-[var(--navy)] flex items-center justify-center">
         <FileCheck className="w-5 h-5" />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <p className="text-sm font-semibold text-[var(--text1)] truncate">
             {row.label}
           </p>
           {showTypeBadge && <TypeBadge kind={row.kind} />}
+          {isOffline && <OfflineBadge />}
         </div>
         <p className="mt-0.5 text-xs text-[var(--text3)]">
           Signed {fmtDate(row.signedAt)} by {row.typedName}
+          {isOffline && row.uploadedByName && <> · uploaded by {row.uploadedByName}</>}
         </p>
       </div>
       {row.signedUrl ? (
