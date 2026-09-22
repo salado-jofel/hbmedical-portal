@@ -21,7 +21,9 @@ import { INVITE_TOKENS_TABLE } from "./_onboarding-shared";
 import {
   BUCKET,
   cleanupManualOnboarding,
+  isOfflineContractPath,
   loadOfflineContracts,
+  offlineContractFolder,
   offlineContractPath,
   requireOnboarder,
   sendOfflineOnboardingEmails,
@@ -50,10 +52,15 @@ export async function prepareOfflineContractUpload(input: {
     if (size > MAX_OFFLINE_CONTRACT_BYTES) return { success: false, error: "PDF is too large (max 25 MB)." };
 
     const admin = createAdminClient();
+    // Fresh timestamped name per upload (see offlineContractPath); a replaced
+    // scan's previous object is removed so the folder holds only live files.
+    const folder = offlineContractFolder(batchId);
+    const { data: existing } = await admin.storage.from(BUCKET).list(folder);
+    const stale = (existing ?? [])
+      .filter((o) => o.name.startsWith(`${contractType}-`))
+      .map((o) => `${folder}/${o.name}`);
+    if (stale.length > 0) await admin.storage.from(BUCKET).remove(stale);
     const filePath = offlineContractPath(batchId, contractType);
-    // Re-uploads for the same slot overwrite: drop any previous object first
-    // because signed upload URLs refuse to replace an existing file.
-    await admin.storage.from(BUCKET).remove([filePath]);
     const { data, error } = await admin.storage.from(BUCKET).createSignedUploadUrl(filePath);
     if (error || !data) {
       console.error("[prepareOfflineContractUpload] signed URL error:", error?.message);
@@ -102,8 +109,13 @@ export async function manualOnboardProvider(
       if (!rep) return { success: false, error: null, fieldErrors: { repId: "Selected rep is not active." } };
     }
 
-    // Uploads must be complete + valid PDFs before we touch auth.
-    const contracts = await loadOfflineContracts(d.batchId, providerName);
+    // Uploads must live in this batch's folder and be valid PDFs before we touch auth.
+    for (const c of d.contracts) {
+      if (!isOfflineContractPath(d.batchId, c.contractType as OfflineContractKey, c.filePath)) {
+        return { success: false, error: null, fieldErrors: { [`contracts.${c.contractType}.filePath`]: "Upload the signed PDF again." } };
+      }
+    }
+    const contracts = await loadOfflineContracts(d.contracts, providerName);
     const byType = new Map(d.contracts.map((c) => [c.contractType, c]));
 
     const { data: existing } = await admin

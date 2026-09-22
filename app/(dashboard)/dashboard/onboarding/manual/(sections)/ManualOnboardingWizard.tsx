@@ -57,6 +57,7 @@ export function ManualOnboardingWizard({
       return;
     }
     setFieldErrors({});
+    setServerError(null);
     setStep((s) => s + 1);
   }
 
@@ -123,7 +124,10 @@ export function ManualOnboardingWizard({
             variant="outline"
             size="sm"
             disabled={step === 0 || isPending}
-            onClick={() => setStep((s) => s - 1)}
+            onClick={() => {
+              setServerError(null);
+              setStep((s) => s - 1);
+            }}
             className="h-9 gap-1"
           >
             <ChevronLeft className="w-4 h-4" /> Back

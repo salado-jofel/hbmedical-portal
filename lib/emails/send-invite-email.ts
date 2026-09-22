@@ -53,6 +53,11 @@ function buildContent(
   const roleLabel = ROLE_LABELS[roleType as InviteTokenRole] ?? roleType;
 
   switch (roleType) {
+    case "clinical_provider_offline":
+      return {
+        subject: "Your Meridian Portal account is ready",
+        body: `<strong>${inviterName}</strong> has set up your clinic on the <strong>Meridian Portal</strong> using the agreements you signed on paper (copies are attached). Click below to choose your password. On your first sign-in you'll verify your mobile number and create the 4-digit PIN you use to sign orders.`,
+      };
     case "clinical_provider":
       return {
         subject: "You've been invited to join Meridian Portal as a Clinical Provider",

@@ -4,7 +4,6 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUserOrThrow, getUserRole } from "@/lib/supabase/auth";
 import { isAdmin, isSalesRep } from "@/utils/helpers/role";
-import { signedContractPath } from "@/lib/pdf/sign-contract";
 import { sendInviteEmail } from "@/lib/emails/send-invite-email";
 import { sendProviderContractsSignedEmail } from "@/lib/emails/send-provider-contracts-signed";
 import { STORAGE_BUCKETS } from "@/utils/constants/storage";
@@ -54,8 +53,26 @@ export function offlineToken(batchId: string): string {
   return `${OFFLINE_TOKEN_PREFIX}${batchId}`;
 }
 
+/** Folder shared by both scans of one wizard run — same prefix inline
+ *  e-signatures use (`provider-contracts-signed/<token>/`). */
+export function offlineContractFolder(batchId: string): string {
+  return `provider-contracts-signed/${offlineToken(batchId)}`;
+}
+
+/** Every upload gets a fresh, timestamped object name. Overwriting the same
+ *  path is NOT safe: Supabase storage keeps serving the previous bytes from
+ *  its cache for a while, which made a replaced scan fail validation. */
 export function offlineContractPath(batchId: string, contractType: OfflineContractKey): string {
-  return signedContractPath(offlineToken(batchId), contractType);
+  return `${offlineContractFolder(batchId)}/${contractType}-${Date.now()}.pdf`;
+}
+
+export function isOfflineContractPath(
+  batchId: string,
+  contractType: OfflineContractKey,
+  filePath: string,
+): boolean {
+  const prefix = `${offlineContractFolder(batchId)}/${contractType}-`;
+  return filePath.startsWith(prefix) && /^\d+\.pdf$/.test(filePath.slice(prefix.length));
 }
 
 export interface LoadedContract {
@@ -64,16 +81,18 @@ export interface LoadedContract {
   content: Buffer;
 }
 
-/** Downloads both scanned PDFs and verifies they are real, non-empty PDFs.
- *  Throws with a user-facing message when a file is missing or not a PDF. */
+/** Downloads both scanned PDFs (at the exact paths the wizard uploaded to,
+ *  already checked against the batch folder) and verifies they are real,
+ *  non-empty PDFs. Throws with a user-facing message otherwise. */
 export async function loadOfflineContracts(
-  batchId: string,
+  contracts: Array<{ contractType: string; filePath: string }>,
   providerName: string,
 ): Promise<LoadedContract[]> {
   const admin = createAdminClient();
   return Promise.all(
     OFFLINE_CONTRACTS.map(async (def) => {
-      const path = offlineContractPath(batchId, def.key);
+      const path = contracts.find((c) => c.contractType === def.key)?.filePath;
+      if (!path) throw new Error(`The ${def.short} upload is missing. Please upload it again.`);
       const { data, error } = await admin.storage.from(BUCKET).download(path);
       if (error || !data) {
         throw new Error(`The ${def.short} upload is missing. Please upload it again.`);

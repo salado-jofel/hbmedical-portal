@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { KeyRound, AlertCircle } from "lucide-react";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
@@ -11,7 +10,6 @@ import { signOut } from "@/app/(dashboard)/dashboard/(services)/actions";
 import { setInitialPin } from "../(services)/actions";
 
 export function PinSetupForm({ firstName }: { firstName: string }) {
-  const router = useRouter();
   const [pin, setPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -34,8 +32,10 @@ export function PinSetupForm({ firstName }: { firstName: string }) {
         return;
       }
       toast.success("PIN created.");
-      router.replace("/dashboard");
-      router.refresh();
+      // Hard navigation: the dashboard layout's PIN gate must re-run on a
+      // fresh request, and a soft replace inside this transition can sit on
+      // "Saving…" until the whole dashboard tree has streamed.
+      window.location.assign("/dashboard");
     });
   }
 
