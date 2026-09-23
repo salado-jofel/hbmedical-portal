@@ -6,6 +6,7 @@ import Providers from "./(sections)/Providers";
 import { isSalesRep } from "@/utils/helpers/role";
 import { evaluateMfaGate } from "@/lib/supabase/mfa-gate";
 import { evaluateContractsGate } from "@/lib/supabase/contracts-gate";
+import { evaluatePinGate } from "@/lib/supabase/pin-gate";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +54,17 @@ export default async function DashboardLayout({
         redirect("/sign-in/sms-mfa");
       case "ok":
         break;
+    }
+  }
+
+  // Hard gate #4: clinical providers onboarded from paper contracts have no
+  // signing PIN yet (admins never set it for them). Blocks the dashboard
+  // until they create one. Runs after MFA so the PIN is set from a fully
+  // verified session; /onboarding/pin lives outside this layout.
+  if (userData?.userId && userData.role === "clinical_provider") {
+    const decision = await evaluatePinGate(userData.userId, userData.role);
+    if (decision.kind === "must_set_pin") {
+      redirect("/onboarding/pin");
     }
   }
 
