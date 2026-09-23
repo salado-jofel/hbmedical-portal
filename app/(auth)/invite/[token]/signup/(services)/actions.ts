@@ -34,6 +34,7 @@ import {
   loadContractTemplate,
 } from "@/lib/pdf/templates";
 import { sendSalesRepContractsSignedEmail } from "@/lib/emails/send-sales-rep-contracts-signed";
+import { SIGNED_CONTRACTS_NOTIFY_TO } from "@/utils/constants/onboarding";
 
 const initialInviteSignUpState: InviteSignUpState = { error: null };
 
@@ -813,12 +814,6 @@ export async function signContract(
 /* ────────────────────────────────────────────────────────────────────────── */
 /*  emailSignedContractsToStaff — notify internal recipients with PDFs.       */
 /* ────────────────────────────────────────────────────────────────────────── */
-
-const SIGNED_CONTRACTS_NOTIFY_TO = [
-  "ben@hbmedicalsupplies.io",
-  "saladojofel@gmail.com",
-  "screductions@gmail.com",
-];
 
 async function emailSignedContractsToStaff({
   token,

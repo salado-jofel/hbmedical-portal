@@ -32,6 +32,7 @@ import type { ISubRep } from "@/utils/interfaces/sub-reps";
 import type { TableColumn } from "@/utils/interfaces/table-column";
 import type { IInviteTokenFormState } from "@/utils/interfaces/invite-tokens";
 import { InviteClinicSection } from "./InviteClinicSection";
+import { ManualOnboardSection } from "./ManualOnboardSection";
 import { InviteClinicStaffSection } from "./InviteClinicStaffSection";
 import { InviteSubRepSection } from "./InviteSubRepSection";
 import { InviteSalesRepSection } from "./InviteSalesRepSection";
@@ -377,6 +378,12 @@ export function OnboardingDashboard({
         showSection={isAdmin || showSubRepSection}
         hasCompletedSetup={hasCompletedSetup}
         repsWithFacilities={repsWithFacilities}
+      />
+
+      {/* ── Section A2 — Paper-signed clinic onboarding (admin + sales rep) ── */}
+      <ManualOnboardSection
+        showSection={isAdmin || showSubRepSection}
+        hasCompletedSetup={hasCompletedSetup}
       />
 
       {/* ── Section B — Invite Clinic Staff (clinical_provider only) ── */}
