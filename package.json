@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "health": "node --env-file=.env.local scripts/health-check.mjs"
   },
   "dependencies": {
     "@ai-sdk/amazon-bedrock": "^3.0.30",
