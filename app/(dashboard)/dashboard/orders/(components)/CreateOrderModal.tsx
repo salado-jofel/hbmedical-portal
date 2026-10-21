@@ -294,8 +294,8 @@ interface CreateOrderModalProps {
      *    - relies on finalizeIvrConversion to insert the fax as a
      *      facesheet-typed order_document, which wakes up the
      *      standard AI extraction pipeline without extractor edits.
-     *  Valid ID + Wound Pictures behave normally (fax doesn't
-     *  contain either). */
+     *  Valid ID + Wound Pictures stay available as optional upload
+     *  zones (the fax contains neither). */
     isFromFax?: boolean;
   };
   /** When creating an order from a fax intake: shows a "Building from
@@ -393,7 +393,6 @@ export function CreateOrderModal(props: CreateOrderModalProps = {}) {
 
   const hasFacesheet = docs.some((d) => d.type === "facesheet");
   const hasClinicalDocs = docs.some((d) => d.type === "clinical_docs");
-  const hasValidId = docs.some((d) => d.type === "valid_id");
 
   // Manual input skips AI extraction entirely; every document upload becomes
   // optional, and the order/IVR/HCFA forms stay blank for manual completion.
@@ -410,17 +409,24 @@ export function CreateOrderModal(props: CreateOrderModalProps = {}) {
   // facesheet + clinical docs, so we don't ask the user to re-upload
   // either. finalizeIvrConversion attaches the fax as document_type=
   // 'facesheet' server-side, which wakes up the AI extraction pipeline.
-  // Valid ID is not in the fax so it still needs to be uploaded.
   const isFaxIvrConversion = !!fromStandaloneIvr?.isFromFax;
   // Which docs actually need to be uploaded, given the flow.
   //   - Manual input: none required.
-  //   - Fax-IVR conversion: only Valid ID (fax carries the rest).
-  //   - Standard: facesheet + clinical docs + Valid ID.
-  const docsUploadedOk = !docsRequired
-    ? true
-    : isFaxIvrConversion
-      ? hasValidId
-      : hasFacesheet && hasClinicalDocs && hasValidId;
+  //   - Fax-IVR conversion: none — the fax carries facesheet + clinical.
+  //   - Standard: facesheet + clinical docs.
+  //
+  // Valid ID is NEVER required to create an order, on any path (client
+  // decision 2026-10-21). Clinics frequently don't have the patient's ID
+  // in hand at order time, and gating creation on it pushed users into
+  // checking "Manual input" purely to get past the block — which silently
+  // turned off AI extraction and left all three forms blank. Nothing
+  // downstream enforced it either (submitSignedOrder validates form
+  // signatures + IVR only), so the gate cost more than it bought. The
+  // upload zone stays, as an optional one.
+  const docsUploadedOk =
+    !docsRequired || isFaxIvrConversion
+      ? true
+      : hasFacesheet && hasClinicalDocs;
   const canSubmit =
     !!orderType &&
     // Skin Grafts orders are blocked from direct creation — go through
@@ -533,7 +539,10 @@ export function CreateOrderModal(props: CreateOrderModalProps = {}) {
           const { error: uploadErr } = await supabase.storage
             .from(prepared.bucket)
             .uploadToSignedUrl(prepared.filePath, prepared.uploadToken, file, {
-              contentType: file.type,
+              // Server-resolved mime — a HEIC the browser couldn't label
+              // would otherwise land as octet-stream and download rather
+              // than preview when someone clicks "View".
+              contentType: prepared.contentType || file.type,
             });
           if (uploadErr) {
             console.error("[CreateOrderModal] storage upload:", uploadErr);
@@ -710,7 +719,6 @@ export function CreateOrderModal(props: CreateOrderModalProps = {}) {
 
   const facesheetError = submitted && docsRequired && !hasFacesheet;
   const clinicalDocsError = submitted && docsRequired && !hasClinicalDocs;
-  const validIdError = submitted && docsRequired && !hasValidId;
   const patientFirstNameError =
     submitted && manualInput && patientFirstName.trim().length === 0;
   const patientLastNameError =
@@ -728,6 +736,15 @@ export function CreateOrderModal(props: CreateOrderModalProps = {}) {
     } else if (fromIntake && facilities?.length === 1) {
       setFacilityId(facilities[0].id);
     }
+    // Same mount-timing problem for the order type. IvrDetailModal renders
+    // this modal before its `ivr` has loaded, so `fromStandaloneIvr` is
+    // undefined at mount and the useState default lands on null — leaving the
+    // banner claiming "pre-set to Skin Grafts" while nothing is selected and
+    // Submit silently does nothing ("Please select an order type"). Re-apply
+    // it on open, but never clobber a type the user picked themselves.
+    if (fromStandaloneIvr) {
+      setOrderType((prev) => prev ?? "skin_grafts");
+    }
     // Fax-built IVR conversions always run extraction — the fax IS the
     // facesheet/clinical bundle and the IVR is already confirmed, so
     // manual mode has nothing to offer. Force it off in case a prior
@@ -735,6 +752,7 @@ export function CreateOrderModal(props: CreateOrderModalProps = {}) {
     if (isFaxIvrConversion) setManualInput(false);
   }, [
     open,
+    fromStandaloneIvr,
     fromStandaloneIvr?.facilityId,
     fromIntake,
     facilities,
@@ -815,7 +833,8 @@ export function CreateOrderModal(props: CreateOrderModalProps = {}) {
                     <span className="font-medium">{fromIntake.fileName}</span>{" "}
                     will be attached as the completed <b>IVR document</b>{" "}
                     and shown in the order&apos;s IVR Form tab. Upload the
-                    patient facesheet, clinical docs, and Valid ID below.
+                    patient facesheet and clinical docs below. Valid ID is
+                    optional.
                   </p>
                 </div>
               </div>
@@ -1106,8 +1125,8 @@ export function CreateOrderModal(props: CreateOrderModalProps = {}) {
                     <p className="text-[11.5px] mt-0.5 leading-snug">
                       The faxed IVR is a merged bundle — the portal will
                       use it as the facesheet and clinical documentation
-                      for AI extraction. You only need to upload the
-                      patient&apos;s Valid ID below.
+                      for AI extraction. You can add the patient&apos;s
+                      Valid ID below, but it isn&apos;t required.
                     </p>
                   </div>
                 </div>
@@ -1174,28 +1193,22 @@ export function CreateOrderModal(props: CreateOrderModalProps = {}) {
               )}
 
               {/* Valid ID — government-issued photo ID for the patient.
-                  Full-width to match Wound Pictures above. Required by
-                  default; becomes optional when manual_input is checked
-                  (same rules as Facesheet). Multiple files allowed for
-                  front + back. */}
+                  Full-width to match Wound Pictures above. ALWAYS optional,
+                  on every creation path, including fax-built IVR
+                  conversions — see the docsUploadedOk note above. Multiple
+                  files allowed for front + back. */}
               <UploadZone
                 label="Valid ID"
-                description="Driver's license, passport, etc. (front + back)"
+                description="Optional — driver's license, passport, etc. (front + back)"
                 docType="valid_id"
-                required={docsRequired}
+                required={false}
                 multiple
                 files={docs}
                 onAdd={addDocs}
                 onRemove={removeDoc}
-                error={validIdError}
                 accept={ACCEPT_DOCS}
                 fileType="document"
               />
-              {validIdError && (
-                <p className="text-xs text-red-500">
-                  Patient&apos;s valid ID is required.
-                </p>
-              )}
             </div>
 
             {/* Upload progress */}
