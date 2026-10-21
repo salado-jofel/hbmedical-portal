@@ -310,6 +310,17 @@ export const REQUIRED_DOC_TYPES = [
   { type: "delivery_invoice", label: "Invoice" },
 ] as const;
 
+// Required document types that a person uploads, as opposed to the ones the
+// portal generates itself (order_form, form_1500, additional_ivr,
+// delivery_invoice). If one of these is missing there is nothing to
+// regenerate — the only remedy is a re-upload, so these are the types the
+// order detail view offers an upload control for.
+export const USER_UPLOADABLE_DOC_TYPES: readonly string[] = [
+  "facesheet",
+  "clinical_docs",
+  "valid_id",
+];
+
 export const ALL_DOC_TYPES: Array<{ type: string; label: string }> = [
   { type: "facesheet",        label: "Facesheet" },
   { type: "clinical_docs",    label: "Clinical Docs" },
