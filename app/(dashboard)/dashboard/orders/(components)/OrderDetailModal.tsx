@@ -117,7 +117,13 @@ import { OrderChatTab } from "./OrderChatTab";
 import { OrderHistoryTab } from "./OrderHistoryTab";
 import toast from "react-hot-toast";
 import { cn } from "@/utils/utils";
-import { REQUIRED_DOC_TYPES, ALL_DOC_TYPES, isInvoiceVisibleForStatus, isItemsEditable } from "@/utils/constants/orders";
+import {
+  REQUIRED_DOC_TYPES,
+  ALL_DOC_TYPES,
+  USER_UPLOADABLE_DOC_TYPES,
+  isInvoiceVisibleForStatus,
+  isItemsEditable,
+} from "@/utils/constants/orders";
 import { getDisplayOrderStatus } from "@/utils/helpers/orders";
 import { DocumentViewerSheet } from "./DocumentViewerSheet";
 
@@ -216,6 +222,9 @@ export function OrderDetailModal({
     | null
   >(null);
   const [generatingPdfTypes, setGeneratingPdfTypes] = useState<Set<string>>(new Set());
+  /** Document types with an upload in flight, so the chip can show a spinner
+   *  instead of looking inert while a phone photo goes up. */
+  const [uploadingDocTypes, setUploadingDocTypes] = useState<Set<string>>(new Set());
   const [aiWindowExpired, setAiWindowExpired] = useState(true);
   const [woundPhotoUrls, setWoundPhotoUrls] = useState<Record<string, string>>(
     {},
@@ -1072,6 +1081,19 @@ export function OrderDetailModal({
   }
 
   async function handleUploadDoc(rawFile: File, docType: string) {
+    setUploadingDocTypes((prev) => new Set(prev).add(docType));
+    try {
+      await uploadOrderDocument(rawFile, docType);
+    } finally {
+      setUploadingDocTypes((prev) => {
+        const next = new Set(prev);
+        next.delete(docType);
+        return next;
+      });
+    }
+  }
+
+  async function uploadOrderDocument(rawFile: File, docType: string) {
     // Bytes go BROWSER → SUPABASE STORAGE directly via signed-upload URL,
     // bypassing Vercel's 4.5 MB serverless request body cap that broke
     // phone-camera facesheet/valid_id uploads in production. The server
@@ -1103,7 +1125,7 @@ export function OrderDetailModal({
     const { error: uploadErr } = await supabase.storage
       .from(prepared.bucket)
       .uploadToSignedUrl(prepared.filePath, prepared.uploadToken, file, {
-        contentType: file.type,
+        contentType: prepared.contentType || file.type,
       });
     if (uploadErr) {
       console.error("[handleUploadDoc] storage upload:", uploadErr);
@@ -2271,6 +2293,18 @@ export function OrderDetailModal({
                               "additional_ivr",
                               "delivery_invoice",
                             ].includes(doc.type);
+                            // Clinic-supplied docs have no generator behind
+                            // them. Until now a missing one was a dead end:
+                            // the create-order modal's failure toast says
+                            // "open the order to re-upload the missing
+                            // files", but the only upload control here filed
+                            // everything as document_type='other', so the
+                            // chip stayed amber forever.
+                            const isUserUploadable =
+                              USER_UPLOADABLE_DOC_TYPES.includes(doc.type);
+                            const isUploadingThis = uploadingDocTypes.has(
+                              doc.type,
+                            );
                             const isAiGenerating =
                               isRegenerableType &&
                               !uploaded &&
@@ -2320,6 +2354,38 @@ export function OrderDetailModal({
                                       : doc.label}
                                   </span>
                                 </button>
+                                {!uploaded &&
+                                  !isPdfGenerating &&
+                                  !isAiGenerating &&
+                                  isUserUploadable &&
+                                  (canEdit || isAdmin) && (
+                                    <label
+                                      className={cn(
+                                        "absolute top-1.5 right-2 p-0.5 rounded transition-colors",
+                                        isUploadingThis
+                                          ? "cursor-wait"
+                                          : "cursor-pointer hover:bg-[var(--gold-border)]",
+                                      )}
+                                      title={`Upload ${doc.label}`}
+                                    >
+                                      {isUploadingThis ? (
+                                        <Loader2 className="w-3 h-3 animate-spin text-[var(--gold)]" />
+                                      ) : (
+                                        <Upload className="w-3 h-3 text-[var(--gold)]" />
+                                      )}
+                                      <input
+                                        type="file"
+                                        className="hidden"
+                                        accept=".pdf,.jpg,.jpeg,.png,.heic"
+                                        disabled={isUploadingThis}
+                                        onChange={(e) => {
+                                          const f = e.target.files?.[0];
+                                          if (f) handleUploadDoc(f, doc.type);
+                                          e.target.value = "";
+                                        }}
+                                      />
+                                    </label>
+                                  )}
                                 {!uploaded &&
                                   !isPdfGenerating &&
                                   !isAiGenerating &&

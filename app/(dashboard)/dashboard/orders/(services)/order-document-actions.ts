@@ -77,6 +77,47 @@ const ALLOWED_DOCUMENT_MIMES = new Set([
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ]);
 
+/**
+ * Extension → mime, used only when the browser doesn't give us a usable one.
+ * Keep in sync with ALLOWED_DOCUMENT_MIMES above.
+ */
+const EXTENSION_MIMES: Record<string, string> = {
+  pdf: "application/pdf",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  heic: "image/heic",
+  heif: "image/heif",
+  gif: "image/gif",
+  webp: "image/webp",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+};
+
+/** Mime values that tell us nothing and shouldn't be trusted over the extension. */
+const UNRELIABLE_MIMES = new Set([
+  "",
+  "application/octet-stream",
+  "binary/octet-stream",
+]);
+
+/**
+ * Browsers don't reliably report a mime type for phone photos. iOS Safari
+ * returns an empty string for some HEIC picks, Android file managers send
+ * `application/octet-stream`, and several desktop browsers do the same for
+ * .heic. The client-side UploadZone accepts those files (it validates on the
+ * extension as well), so validating on the reported mime ALONE meant a Valid
+ * ID or facesheet photo sailed past the picker and then failed here with
+ * "Unsupported file type" — after the order row already existed. Fall back to
+ * the file extension whenever the reported mime is missing or generic.
+ */
+function resolveMimeType(fileName: string, mimeType: string): string {
+  const reported = (mimeType ?? "").trim().toLowerCase();
+  if (reported && !UNRELIABLE_MIMES.has(reported)) return reported;
+  const ext = fileName.split(".").pop()?.toLowerCase() ?? "";
+  return EXTENSION_MIMES[ext] ?? reported;
+}
+
 export interface PrepareOrderDocumentUploadInput {
   orderId: string;
   documentType: string;
@@ -90,6 +131,10 @@ export interface PrepareOrderDocumentUploadResult {
   bucket?: string;
   filePath?: string;
   uploadToken?: string;
+  /** Mime the server settled on — clients should upload with this as the
+   *  storage contentType so a HEIC photo the browser couldn't label doesn't
+   *  land as octet-stream and download instead of previewing. */
+  contentType?: string;
   error?: string;
 }
 
@@ -99,7 +144,13 @@ export async function prepareOrderDocumentUpload(
   try {
     const { orderId, documentType, fileName, mimeType, size } = input;
 
-    if (!orderId || !documentType || !fileName || !mimeType) {
+    // NOTE: mimeType is deliberately NOT required. Browsers hand us an empty
+    // string for some phone-camera picks (see resolveMimeType), and rejecting
+    // here would defeat the extension fallback below — the file would fail with
+    // "Missing required upload fields" before we ever look at its name. An
+    // unusable mime AND an unknown extension still gets rejected, just further
+    // down, with a message that tells the user which formats are accepted.
+    if (!orderId || !documentType || !fileName) {
       return { success: false, error: "Missing required upload fields." };
     }
 
@@ -120,7 +171,8 @@ export async function prepareOrderDocumentUpload(
       };
     }
 
-    if (!ALLOWED_DOCUMENT_MIMES.has(mimeType)) {
+    const resolvedMime = resolveMimeType(fileName, mimeType);
+    if (!ALLOWED_DOCUMENT_MIMES.has(resolvedMime)) {
       return {
         success: false,
         error: "Unsupported file type. Use PDF, JPG, PNG, or HEIC.",
@@ -150,6 +202,7 @@ export async function prepareOrderDocumentUpload(
       bucket: BUCKET,
       filePath,
       uploadToken: data.token,
+      contentType: resolvedMime,
     };
   } catch (err) {
     if (err instanceof OrderAccessError) {
@@ -207,7 +260,8 @@ export async function completeOrderDocumentUpload(
       return { success: false, error: "Uploaded file exceeds size limit." };
     }
 
-    if (!ALLOWED_DOCUMENT_MIMES.has(mimeType)) {
+    const resolvedMime = resolveMimeType(fileName, mimeType);
+    if (!ALLOWED_DOCUMENT_MIMES.has(resolvedMime)) {
       return { success: false, error: "Unsupported file type." };
     }
 
@@ -247,7 +301,7 @@ export async function completeOrderDocumentUpload(
         bucket: BUCKET,
         file_path: filePath,
         file_name: fileName,
-        mime_type: mimeType || null,
+        mime_type: resolvedMime || null,
         file_size: fileSize || null,
         uploaded_by: userId,
       })
