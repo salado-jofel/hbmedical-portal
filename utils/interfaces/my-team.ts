@@ -30,6 +30,10 @@ export interface IRepListRow {
   commissionInPeriod: number;
   commissionRate: number;
   overridePercent: number;
+  // A rep with NO rate row earns nothing at all — orders simply create no
+  // commission. That is invisible in commissionRate, which reads 0 both for
+  // "no rate configured" and for "deliberately set to 0%".
+  hasRate: boolean;
 }
 
 export interface IMyTeamKpis {

@@ -102,7 +102,8 @@ export function AccountsList({ salesReps, isAdmin, period }: {
       );
     }
     if (statusFilter !== "all") result = result.filter((a) => a.status === statusFilter);
-    if (isAdmin && repFilter !== "all") result = result.filter((a) => a.assigned_rep === repFilter);
+    if (isAdmin && repFilter === "unassigned") result = result.filter((a) => !a.assigned_rep);
+    else if (isAdmin && repFilter !== "all") result = result.filter((a) => a.assigned_rep === repFilter);
     if (tierFilter !== "all") result = result.filter((a) => a.tier === tierFilter);
     return result;
   }, [accounts, search, statusFilter, repFilter, tierFilter, isAdmin, isRep, ownerFilter, userId]);
