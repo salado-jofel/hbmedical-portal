@@ -19,10 +19,6 @@ import type {
 /* Helpers                                                                    */
 /* -------------------------------------------------------------------------- */
 
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 function currentPeriod(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -97,10 +93,14 @@ export async function setCommissionRate(
       return { success: false, error: "Unauthorized." };
     }
 
+    // NOTE: a missing override must reach Zod as undefined, not null —
+    // z.coerce.number() coerces null to 0, which would silently wipe the override.
+    const rawOverride = formData.get("override_percent");
     const raw = {
       rep_id:           formData.get("rep_id") as string,
       rate_percent:     formData.get("rate_percent") as string,
-      override_percent: formData.get("override_percent") as string,
+      override_percent:
+        rawOverride === null || rawOverride === "" ? undefined : (rawOverride as string),
     };
 
     const parsed = setCommissionRateSchema.safeParse(raw);
@@ -113,7 +113,7 @@ export async function setCommissionRate(
       return { success: false, error: null, fieldErrors };
     }
 
-    const { rep_id, rate_percent, override_percent } = parsed.data;
+    const { rep_id, rate_percent } = parsed.data;
     const adminClient = createAdminClient();
 
     // If rep (not admin): verify target is a direct sub-rep
@@ -134,39 +134,21 @@ export async function setCommissionRate(
       }
     }
 
-    const today = todayISO();
+    // One transaction closes the current rate and opens the new one. Doing it in
+    // two client statements (the old approach) briefly COMMITTED two active rows
+    // for this rep, and every reader selects the active row with .maybeSingle(),
+    // which errors on multiple rows — silently zeroing their future commissions.
+    // A NULL override tells the function to carry the rep's current value forward.
+    const { error: rpcError } = await adminClient.rpc("set_commission_rate", {
+      p_rep_id:           rep_id,
+      p_set_by:           user.id,
+      p_rate_percent:     rate_percent,
+      p_override_percent: parsed.data.override_percent ?? null,
+    });
 
-    // Insert new rate first — if this fails, old rate remains active (safe).
-    // Closing old rate after ensures there is never a gap with no active rate.
-    const { data: insertedRate, error: insertError } = await adminClient
-      .from(COMMISSION_RATES_TABLE)
-      .insert({
-        rep_id,
-        set_by:           user.id,
-        rate_percent,
-        override_percent,
-        effective_from:   today,
-        effective_to:     null,
-      })
-      .select("id")
-      .single();
-
-    if (insertError) {
-      console.error("[setCommissionRate] Insert error:", JSON.stringify(insertError));
-      return { success: false, error: insertError.message ?? "Failed to set commission rate." };
-    }
-
-    // Close all previous active rates for this rep, excluding the one just inserted
-    const { error: closeError } = await adminClient
-      .from(COMMISSION_RATES_TABLE)
-      .update({ effective_to: today })
-      .eq("rep_id", rep_id)
-      .is("effective_to", null)
-      .neq("id", insertedRate.id);
-
-    if (closeError) {
-      console.error("[setCommissionRate] Close old rate error:", JSON.stringify(closeError));
-      // Non-fatal: new rate is already active. Old rate will be shadowed by effective_from ordering.
+    if (rpcError) {
+      console.error("[setCommissionRate] RPC error:", JSON.stringify(rpcError));
+      return { success: false, error: rpcError.message ?? "Failed to set commission rate." };
     }
 
     revalidatePath(COMMISSIONS_PATH);
@@ -340,51 +322,46 @@ export async function calculateOrderCommission(orderId: string): Promise<{ succe
     if (hierarchy?.parent_rep_id) {
       const parentRepId = hierarchy.parent_rep_id;
 
-      // Fetch override_percent from parent's rate (rate set by parent for this child rep)
-      const { data: parentRate } = await adminClient
-        .from(COMMISSION_RATES_TABLE)
-        .select("override_percent")
-        .eq("rep_id", repId)
-        .eq("set_by", parentRepId)
-        .is("effective_to", null)
-        .maybeSingle();
+      // The override % lives on this rep's ACTIVE rate row — the very row the direct
+      // commission above was calculated from, so it is read from `rate` instead of
+      // being re-queried. Deliberately NOT keyed on set_by: the override belongs to
+      // the parent/child relationship, not to whoever last saved the rate. Keying it
+      // on set_by meant an admin editing a sub-rep's rate silently stopped the parent
+      // earning, because the surviving row was then set_by the admin.
+      const overridePct = Number(rate.override_percent);
+      const overrideAmount = (orderAmount * overridePct) / 100;
 
-      if (parentRate) {
-        const overridePct = Number(parentRate.override_percent);
-        const overrideAmount = (orderAmount * overridePct) / 100;
+      // Skip $0 override commissions
+      if (overrideAmount <= 0) {
+        console.info("[calculateOrderCommission] Skipping $0 override for parent:", parentRepId);
+      } else {
+        // Idempotency: skip if override already exists
+        const { data: existingOverride } = await adminClient
+          .from(COMMISSION_TABLE)
+          .select("id")
+          .eq("order_id", orderId)
+          .eq("rep_id", parentRepId)
+          .eq("type", "override")
+          .maybeSingle();
 
-        // Skip $0 override commissions
-        if (overrideAmount <= 0) {
-          console.info("[calculateOrderCommission] Skipping $0 override for parent:", parentRepId);
-        } else {
-          // Idempotency: skip if override already exists
-          const { data: existingOverride } = await adminClient
+        if (!existingOverride) {
+          const { error: overrideError } = await adminClient
             .from(COMMISSION_TABLE)
-            .select("id")
-            .eq("order_id", orderId)
-            .eq("rep_id", parentRepId)
-            .eq("type", "override")
-            .maybeSingle();
+            .insert({
+              order_id:          orderId,
+              rep_id:            parentRepId,
+              type:              "override",
+              order_amount:      orderAmount,
+              rate_percent:      overridePct,
+              commission_amount: overrideAmount,
+              adjustment:        0,
+              status:            "pending",
+              payout_period:     period,
+            });
 
-          if (!existingOverride) {
-            const { error: overrideError } = await adminClient
-              .from(COMMISSION_TABLE)
-              .insert({
-                order_id:          orderId,
-                rep_id:            parentRepId,
-                type:              "override",
-                order_amount:      orderAmount,
-                rate_percent:      overridePct,
-                commission_amount: overrideAmount,
-                adjustment:        0,
-                status:            "pending",
-                payout_period:     period,
-              });
-
-            if (overrideError) {
-              console.error("[calculateOrderCommission] Override insert error:", JSON.stringify(overrideError));
-              // Non-fatal: direct commission already created
-            }
+          if (overrideError) {
+            console.error("[calculateOrderCommission] Override insert error:", JSON.stringify(overrideError));
+            // Non-fatal: direct commission already created
           }
         }
       }

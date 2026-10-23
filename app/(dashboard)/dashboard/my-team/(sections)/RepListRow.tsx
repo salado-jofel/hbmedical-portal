@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { AlertTriangle } from "lucide-react";
 import { cn } from "@/utils/utils";
 import { formatAmount } from "@/utils/helpers/formatter";
 import type { IRepListRow } from "@/utils/interfaces/my-team";
@@ -21,6 +22,12 @@ export function RepListRow({ row }: { row: IRepListRow }) {
           {row.first_name} {row.last_name}
         </p>
         <p className="text-[11px] text-[var(--text3)] truncate">{row.email ?? ""}</p>
+        {!row.hasRate && (
+          <p className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-[var(--gold)]">
+            <AlertTriangle className="h-3 w-3 shrink-0" />
+            No commission rate — their orders earn nothing
+          </p>
+        )}
       </div>
 
       <div className="grid grid-cols-4 shrink-0 md:w-[480px]">

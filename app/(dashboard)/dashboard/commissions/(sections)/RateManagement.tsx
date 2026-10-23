@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useActionState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Users } from "lucide-react";
+import { Plus, Users, AlertTriangle } from "lucide-react";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -34,11 +34,23 @@ export default function RateManagement({
   const admin = isAdmin(role);
   const isRep = isSalesRep(role);
 
+  // This is an UPDATE form, so it must open showing the rep's CURRENT rate and
+  // override. It previously opened blank with the override hard-defaulted to 0,
+  // so saving a rate change silently reset the parent rep's override to nothing.
+  const [selectedRepId, setSelectedRepId] = useState(lockedRepId ?? "");
+  const editingRepId = lockedRepId ?? selectedRepId;
+  const currentRate = rates.find((r) => r.repId === editingRepId) ?? null;
+
+  // A specific rep with no rate row is not an empty list — it is money lost on
+  // every order they place, because a missing rate creates no commission row at
+  // all (not a $0 one). So it reads as a warning rather than a blank slate.
   const displayRates = lockedRepId
     ? rates.filter((r) => r.repId === lockedRepId)
     : isRep
       ? rates.filter((r) => r.repId !== userId)
       : rates;
+
+  const noRateWarning = !!lockedRepId && displayRates.length === 0;
 
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -104,15 +116,29 @@ export default function RateManagement({
 
         {displayRates.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-center">
-            <Users className="w-8 h-8 text-[#cbd5e1] mb-2" />
-            <p className="text-[13px] text-[var(--text3)]">
-              {isRep ? "No sub-rep rates configured" : "No rates configured yet"}
+            {noRateWarning ? (
+              <AlertTriangle className="mb-2 h-8 w-8 text-[var(--gold)]" />
+            ) : (
+              <Users className="w-8 h-8 text-[#cbd5e1] mb-2" />
+            )}
+            <p
+              className={
+                noRateWarning
+                  ? "text-[13px] font-semibold text-[var(--gold)]"
+                  : "text-[13px] text-[var(--text3)]"
+              }
+            >
+              {noRateWarning
+                ? "No commission rate set"
+                : isRep
+                  ? "No sub-rep rates configured"
+                  : "No rates configured yet"}
             </p>
-            <p className="mt-1 text-[11px] text-[var(--text3)]">
-              {isRep
-                ? "Set commission rates for your sub-representatives using the button above"
-                : lockedRepId
-                  ? "Commission rates are normally set when the rep is invited. Set one now to get this rep earning."
+            <p className="mt-1 max-w-[18rem] text-[11px] text-[var(--text3)]">
+              {noRateWarning
+                ? "This rep earns nothing until a rate is set — orders they place create no commission at all, and nothing is backdated once you set one."
+                : isRep
+                  ? "Set commission rates for your sub-representatives using the button above"
                   : "No commission rates have been set yet"}
             </p>
             {(admin || reps.length > 0) && (
@@ -192,6 +218,8 @@ export default function RateManagement({
                   <select
                     name="rep_id"
                     required
+                    value={selectedRepId}
+                    onChange={(e) => setSelectedRepId(e.target.value)}
                     className="h-9 w-full rounded-[7px] border border-[var(--border2)] bg-[var(--surface)] px-2 text-[13px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
                   >
                     <option value="">Select a rep…</option>
@@ -213,12 +241,14 @@ export default function RateManagement({
                   Rate % <span className="text-red-400">*</span>
                 </Label>
                 <Input
+                  key={"rate-" + (currentRate?.id ?? "new")}
                   name="rate_percent"
                   type="number"
                   min={0}
                   max={100}
                   step={0.5}
                   placeholder="5"
+                  defaultValue={currentRate?.ratePercent ?? ""}
                   className="h-9 text-sm"
                   required
                 />
@@ -235,15 +265,20 @@ export default function RateManagement({
                 <div className="space-y-1.5">
                   <Label className="text-[12px]">Override %</Label>
                   <Input
+                    key={"override-" + (currentRate?.id ?? "new")}
                     name="override_percent"
                     type="number"
                     min={0}
                     max={100}
                     step={0.5}
                     placeholder="0"
-                    defaultValue="0"
+                    defaultValue={currentRate?.overridePercent ?? 0}
                     className="h-9 text-sm"
                   />
+                  <p className="text-[11px] text-[var(--text3)]">
+                    Earned by this rep&apos;s parent on their sales, on top of the rate
+                    above. Changing it changes what the parent is paid.
+                  </p>
                   {state?.fieldErrors?.override_percent && (
                     <p className="text-[11px] text-red-500">{state.fieldErrors.override_percent}</p>
                   )}
