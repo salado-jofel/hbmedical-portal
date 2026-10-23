@@ -474,6 +474,7 @@ export async function getRepList(
     commissionInPeriod: commByRep[r.id] ?? 0,
     commissionRate: rateByRep[r.id]?.rate_percent ?? 0,
     overridePercent: rateByRep[r.id]?.override_percent ?? 0,
+    hasRate: rateByRep[r.id] != null,
   }));
 }
 

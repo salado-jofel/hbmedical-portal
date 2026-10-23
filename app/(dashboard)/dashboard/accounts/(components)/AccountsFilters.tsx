@@ -41,8 +41,11 @@ export function AccountsFilters({
   salesReps: IRepProfile[];
   isAdmin: boolean;
 }) {
+  // "Unassigned" is the one filter value that surfaces a money problem: a clinic
+  // with no assigned_rep earns nobody a commission, however much it orders.
   const repOptions = [
     { value: "all", label: "All reps" },
+    { value: "unassigned", label: "Unassigned (no rep)" },
     ...salesReps.map((rep) => ({
       value: rep.id,
       label: `${rep.first_name} ${rep.last_name}`,
