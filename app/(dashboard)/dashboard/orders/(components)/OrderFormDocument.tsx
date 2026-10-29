@@ -106,6 +106,9 @@ type FormState = {
   wound2DepthCm: string;
   treatmentPlan: string;
   patientName: string;
+  /** Date of birth. The DFU/VLU layouts show this; `patientDate` is the
+   *  patient signature date and is shown by the chronic/PS layout. */
+  patientDob: string;
   patientDate: string;
   physicianSignature: string;
   physicianSignatureDate: string;
@@ -281,6 +284,7 @@ function buildFormState(
   form: IOrderForm | null,
   opts?: {
     patientName?: string | null;
+    patientDob?: string | null;
     patientDate?: string | null;
     physicianSignature?: string | null;
     physicianSignatureDate?: string | null;
@@ -336,6 +340,7 @@ function buildFormState(
     wound2DepthCm: form?.wound2DepthCm?.toString() ?? "",
     treatmentPlan: form?.treatmentPlan ?? "",
     patientName: form?.patientName ?? opts?.patientName ?? "",
+    patientDob: form?.patientDob ?? opts?.patientDob ?? "",
     patientDate: form?.patientDate ?? opts?.patientDate ?? "",
     physicianSignature:
       form?.physicianSignature ?? opts?.physicianSignature ?? "",
@@ -850,6 +855,9 @@ interface OrderFormDocumentProps {
   currentUserName: string | null;
   aiStatus: AiStatus;
   patientName: string | null;
+  /** Patient DOB from the linked patient record. Seeds the DFU/VLU
+   *  "Date of Birth" field so it is never the date of service. */
+  patientDob: string | null;
   onSaved?: (updated: IOrderForm) => void;
   onDirtyChange?: (dirty: boolean) => void;
 }
@@ -864,12 +872,14 @@ export function OrderFormDocument({
   currentUserName,
   aiStatus,
   patientName,
+  patientDob,
   onSaved,
   onDirtyChange,
 }: OrderFormDocumentProps) {
   // Stable fallbacks derived from order props (never change during component lifetime)
   const formFallbacks = {
     patientName: patientName,
+    patientDob: patientDob,
     patientDate: order.date_of_service,
     physicianSignature: order.signed_by_name,
     physicianSignatureDate: order.signed_at
@@ -942,7 +952,7 @@ export function OrderFormDocument({
     const v = orderForm?.advancementReason ?? "";
     const matched = ADVANCEMENT_REASONS.find((r) => r.label === v);
     setAdvancementChoice(matched ? matched.id : v ? "other" : "");
-  }, [orderForm?.id, orderForm?.aiExtractedAt, patientName]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [orderForm?.id, orderForm?.aiExtractedAt, patientName, patientDob]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const ai = orderForm?.aiExtracted ?? false;
   const aiExtracted = orderForm?.aiExtracted ?? false;
@@ -1188,7 +1198,12 @@ export function OrderFormDocument({
 
     // ── Fields shared across ALL variants (chronic + PS + DFU + VLU) ──
     if (!formData.patientName) count++;
-    if (!formData.patientDate) count++;
+    // patientDate (the signature date) is rendered by the chronic/PS layout;
+    // patientDob is rendered by the DFU/VLU Fortify layout. Counting the one
+    // the clinician cannot see would be a deficiency they can never clear.
+    if (isDfu || isVlu) {
+      if (!formData.patientDob) count++;
+    } else if (!formData.patientDate) count++;
     if (!formData.chiefComplaint) count++;
     if (!formData.icd10Code) count++;
 
@@ -1258,6 +1273,7 @@ export function OrderFormDocument({
     formData.diabetesType,
     formData.ceapClassification,
     formData.patientName,
+    formData.patientDob,
     formData.patientDate,
     formData.chiefComplaint,
     formData.icd10Code,
@@ -1341,7 +1357,9 @@ export function OrderFormDocument({
   // blocks (the chronic-form sections render their own inline deficient
   // prop; these are for the parallel DFU/VLU patient info blocks).
   const patientNameDeficient = aiExtracted && !formData.patientName;
-  const patientDateDeficient = aiExtracted && !formData.patientDate;
+  // Only the DOB has a shared flag: patientDate is rendered by the
+  // chronic/PS layout alone, which checks it inline.
+  const patientDobDeficient = aiExtracted && !formData.patientDob;
   const chiefComplaintDeficient = aiExtracted && !formData.chiefComplaint;
   const icd10Deficient = aiExtracted && !formData.icd10Code;
 
@@ -1413,7 +1431,37 @@ export function OrderFormDocument({
     return { success: true, error: null };
   }
 
+  /* Save, guarded.
+   *
+   * Every failure the server actions report comes back as { success: false }
+   * and is handled inside saveFormFields below. This wrapper is for the other
+   * kind: the action never returning at all — a dropped connection, a 500, or
+   * most often a stale server-action id after a deploy while this page stayed
+   * open. That rejects the promise rather than returning a result.
+   *
+   * Without the finally, such a rejection escaped handleSave, setIsSaving(false)
+   * never ran, and the form was left with a spinning, permanently disabled Save
+   * button over unsaved work with no way to retry — reported as "it never
+   * actually saved AND there was no place to save it again".
+   *
+   * isDirty is deliberately untouched on failure: the dirty flag is what keeps
+   * the Save button on screen (FormActionBar renders it only when dirty), so
+   * clearing it here would hide the retry. Same shape as InvoiceDocument.save.
+   */
   async function handleSave() {
+    try {
+      await saveFormFields();
+    } catch (err) {
+      console.error("[OrderForm] save did not reach the server:", err);
+      toast.error(
+        "Save could not reach the server. Your changes are still here — press Save again, and reload the page if it keeps failing.",
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function saveFormFields() {
     setIsSaving(true);
 
     // Detect sign-state change relative to the last saved baseline.
@@ -1488,6 +1536,7 @@ export function OrderFormDocument({
       wound2_depth_cm: numOrNull(formData.wound2DepthCm),
       treatment_plan: strOrNull(formData.treatmentPlan),
       patient_name: strOrNull(formData.patientName),
+      patient_dob: strOrNull(formData.patientDob),
       patient_date: strOrNull(formData.patientDate),
       physician_signature: strOrNull(formData.physicianSignature),
       physician_signature_date: strOrNull(formData.physicianSignatureDate),
@@ -1809,6 +1858,7 @@ export function OrderFormDocument({
         wound2DepthCm: numOrNull2(formData.wound2DepthCm),
         treatmentPlan: strOrNull2(formData.treatmentPlan),
         patientName: strOrNull2(formData.patientName),
+        patientDob: strOrNull2(formData.patientDob),
         patientDate: strOrNull2(formData.patientDate),
         physicianSignature: strOrNull2(formData.physicianSignature),
         physicianSignatureDate: strOrNull2(formData.physicianSignatureDate),
@@ -2640,8 +2690,8 @@ export function OrderFormDocument({
               <FL className={cn(patientNameDeficient && "text-[#dc2626]")}>Patient Name</FL>
               <FormInput value={formData.patientName} onChange={(v) => set("patientName", v)} deficient={patientNameDeficient} className="w-44" placeholder="Patient name" />
               <span className="text-[#ccc] mx-1">|</span>
-              <FL className={cn(patientDateDeficient && "text-[#dc2626]")}>Date of Birth</FL>
-              <FormInput type="date" value={formData.patientDate} onChange={(v) => set("patientDate", v)} deficient={patientDateDeficient} className="w-32" />
+              <FL className={cn(patientDobDeficient && "text-[#dc2626]")}>Date of Birth</FL>
+              <FormInput type="date" value={formData.patientDob} onChange={(v) => set("patientDob", v)} deficient={patientDobDeficient} className="w-32" />
             </DocRow>
             <DocRow>
               <FL>Member / Policy ID</FL>
@@ -2924,8 +2974,8 @@ export function OrderFormDocument({
               <FL className={cn(patientNameDeficient && "text-[#dc2626]")}>Patient Name</FL>
               <FormInput value={formData.patientName} onChange={(v) => set("patientName", v)} deficient={patientNameDeficient} className="w-44" placeholder="Patient name" />
               <span className="text-[#ccc] mx-1">|</span>
-              <FL className={cn(patientDateDeficient && "text-[#dc2626]")}>Date of Birth</FL>
-              <FormInput type="date" value={formData.patientDate} onChange={(v) => set("patientDate", v)} deficient={patientDateDeficient} className="w-32" />
+              <FL className={cn(patientDobDeficient && "text-[#dc2626]")}>Date of Birth</FL>
+              <FormInput type="date" value={formData.patientDob} onChange={(v) => set("patientDob", v)} deficient={patientDobDeficient} className="w-32" />
             </DocRow>
             <DocRow>
               <FL>Member / Policy ID</FL>

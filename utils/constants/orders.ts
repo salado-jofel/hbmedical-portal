@@ -145,6 +145,22 @@ export const WOUND_TYPES = [
   { value: "vlu" as const, label: "VLU" },
 ];
 
+// ── orders.wound_type (code) → order_ivr.wound_type (the printed label on the
+// IVR's checkbox row). The IVR stores the label, not the code, so without this
+// map the wound type cannot cross from the order to the IVR at all.
+//
+// The IVR's checkbox list has no "Chronic" option. Any value outside the list
+// ticks "Other" and prints itself in the adjoining free-text box (see `isOther`
+// in IVRFormDocument), so "Chronic" renders as `☑ Other: Chronic` — the same
+// shape the Order Form already uses. Mapping it to the literal "Other" would
+// also tick the box but print the uninformative "Other: Other". ──
+export const WOUND_TYPE_TO_IVR_LABEL: Record<string, string> = {
+  dfu: "Diabetic Foot Ulcer",
+  vlu: "Venous Leg Ulcer",
+  post_surgical: "Post-Surgical Incision",
+  chronic: "Chronic",
+};
+
 // ── Order product category — picked at order creation alongside wound type. ──
 // `surgical_collagen` and `omeza` are legacy values still present on existing
 // rows; they're intentionally NOT in this picker since the user-facing options

@@ -7,6 +7,7 @@ import {
   Image,
   StyleSheet,
 } from "@react-pdf/renderer";
+import { resolveOrderFormDob } from "@/utils/helpers/order-form-dob";
 import { PDFHeader } from "./PDFHeader";
 import { CB, CBVal, CBArr } from "./PDFComponents";
 
@@ -159,6 +160,16 @@ export function OrderFormPDF({
   })();
   const patientNameVal = v(form?.patient_name) || patientFromOrder || "—";
   const patientDateVal = v(form?.patient_date) || v(order.date_of_service);
+  /* Date of birth. resolveOrderFormDob has no date-of-service input by
+     design — see the note there for what shipped without it. */
+  const patientDobVal =
+    resolveOrderFormDob({
+      formPatientDob: v(form?.patient_dob),
+      patientRecordDob: (() => {
+        const p = order.patient as Record<string, unknown> | null | undefined;
+        return p ? v(p.date_of_birth) : null;
+      })(),
+    }) ?? "—";
   const physSig        = v(form?.physician_signature);
   const physSigDate    = v(form?.physician_signature_date);
 
@@ -950,7 +961,7 @@ export function OrderFormPDF({
             <>
               <Section title="Patient Information">
                 <Row k="Patient Name" v={f.patient_name ?? patientNameVal} />
-                <Row k="Date of Birth" v={f.patient_date ?? patientDateVal} />
+                <Row k="Date of Birth" v={patientDobVal} />
                 <Row k="MRN" v={f.patient_mrn} />
                 <Row k="Medicare ID (MBI)" v={f.patient_mbi} />
                 <Row k="Insurance / Payer" v={f.insurance_type_label} />

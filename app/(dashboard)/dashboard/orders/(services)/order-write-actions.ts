@@ -22,6 +22,7 @@ import {
   generateOrderNumber,
   requireClinicRole,
   requireIVREditRole,
+  requireOrderFormEditRole,
   generateOrderPDFs,
   insertOrderHistory,
 } from "./_shared";
@@ -448,6 +449,7 @@ export async function saveOrderForm(
     wound_type?: string | null;
     treatment_plan?: string | null;
     patient_name?: string | null;
+    patient_dob?: string | null;
     patient_date?: string | null;
     physician_signature?: string | null;
     physician_signature_date?: string | null;
@@ -579,7 +581,9 @@ export async function saveOrderForm(
   updatedAt?: string;
 }> {
   try {
-    await requireIVREditRole();
+    // Order Form only — admin is excluded here but still edits the IVR,
+    // HCFA/1500 and invoices. See requireOrderFormEditRole.
+    await requireOrderFormEditRole();
     const adminClient = createAdminClient();
 
     // Defense-in-depth gate for numeric fields. Three buckets:

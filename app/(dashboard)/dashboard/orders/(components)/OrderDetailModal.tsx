@@ -199,6 +199,18 @@ export function OrderDetailModal({
     return canEdit && isItemsEditable(liveOrder.order_status);
   }, [canEdit, isAdmin, liveOrder.order_status]);
 
+  /* -- Order Form edit gate (narrower than effectiveCanEdit) --
+     The Order Form is the prescription and is the clinic's document: admin is
+     read-only on it, per client instruction (2026-10-28) that it "needs to be
+     siloed out and only changeable on the clinic side". Admin keeps full edit
+     rights on the IVR, HCFA/1500 and invoices, which still use
+     effectiveCanEdit above. Mirrors the server-side requireOrderFormEditRole
+     so the UI does not offer a save the action will refuse. */
+  const orderFormCanEdit = useMemo(() => {
+    if (isAdmin) return false;
+    return effectiveCanEdit;
+  }, [isAdmin, effectiveCanEdit]);
+
   // Signing of Order Form / IVR is only meaningful before admin approval.
   // Once the order hits manufacturer_review+, the provider can no longer
   // sign/unsign. Admin keeps `canSign` as passed (admin doesn't actually
@@ -1900,11 +1912,12 @@ export function OrderDetailModal({
                       aiStatus={aiStatus}
                       orderForm={orderForm}
                       order={liveOrder}
-                      canEdit={effectiveCanEdit}
+                      canEdit={orderFormCanEdit}
                       canSign={effectiveCanSign}
                       isAdmin={isAdmin}
                       currentUserName={currentUserName ?? null}
                       patientName={patientName}
+                      patientDob={order.patient_date_of_birth ?? null}
                       onSaved={(updated) => {
                         setOrderForm(updated);
                         setIsOrderFormDirty(false);

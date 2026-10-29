@@ -2001,6 +2001,14 @@ export async function finalizeIvrConversion(input: {
       if (val !== undefined && val !== null) formCopy[col] = val;
     }
 
+    /* Deliberate full-row replace — do NOT convert this to fill-blanks.
+       Everywhere else that writes order_ivr automatically (AI extraction of the
+       facesheet / clinical docs) may only fill columns that are still blank, so
+       a re-run never discards what a clinic typed. This path is the exception
+       by design: an admin is attaching an APPROVED standalone IVR to the order,
+       declaring it the record of truth, so it outranks whatever the order's IVR
+       already held — clinic edits included. Decided deliberately; the admin is
+       making an explicit choice, not triggering a background prefill. */
     const { data: existingIvr } = await adminClient
       .from("order_ivr")
       .select("id")

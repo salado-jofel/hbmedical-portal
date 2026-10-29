@@ -500,7 +500,24 @@ export function HCFA1500Document({
   }, [collab.remoteChangedSinceLoad, dirty, handleReload]);
 
   /* ── Save ── */
+  /* Save, guarded — see the note on OrderFormDocument.handleSave. A server
+   * action that rejects instead of returning { success: false } used to escape
+   * here and strand `saving` at true, leaving a spinning disabled Save button
+   * over unsaved work with no way to retry. */
   async function save() {
+    try {
+      await save1500Fields();
+    } catch (err) {
+      console.error("[HCFA1500] save did not reach the server:", err);
+      toast.error(
+        "Save could not reach the server. Your changes are still here — press Save again, and reload the page if it keeps failing.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function save1500Fields() {
     setSaving(true);
     const n = (v: string) => v.trim() || null;
     const p: Record<string, unknown> = {

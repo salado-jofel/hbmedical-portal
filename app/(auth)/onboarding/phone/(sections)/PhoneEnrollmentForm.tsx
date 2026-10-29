@@ -122,7 +122,14 @@ export function PhoneEnrollmentForm({ initialPhone, initialSendError = null }: P
       try {
         await signOut();
       } catch {
-        router.replace("/sign-in");
+        // Fall back to the /sign-out route, NOT /sign-in. If signOut() threw
+        // before clearing the session, the session is still live, and the
+        // middleware sends an authenticated user from /sign-in to /dashboard,
+        // where the MFA gate sends them straight back to this screen — so the
+        // old /sign-in fallback looped instead of logging anyone out. The
+        // route clears the session server-side first. Full document
+        // navigation because it is a route handler, not a client route.
+        window.location.assign("/sign-out");
       }
     });
   }

@@ -19,6 +19,7 @@ interface OrderFormTabProps {
   isAdmin: boolean;
   currentUserName: string | null;
   patientName: string | null;
+  patientDob: string | null;
   onSaved?: (updated: IOrderForm) => void;
   onDirtyChange?: (dirty: boolean) => void;
 }
@@ -74,6 +75,7 @@ export function OrderFormTab({
   isAdmin,
   currentUserName,
   patientName,
+  patientDob,
   onSaved,
   onDirtyChange,
 }: OrderFormTabProps) {
@@ -99,6 +101,18 @@ export function OrderFormTab({
     <div className={cn("absolute inset-0 overflow-y-auto px-3", !isActive && "hidden")}>
       {/* Extraction failures are surfaced by the modal-level banner
           (visible from every tab, with Retry) — no per-tab copy here. */}
+
+      {/* Admin is read-only on the Order Form only (the IVR, HCFA and invoice
+          stay editable), so say which door to use instead of leaving a form
+          that silently refuses to save. Same shape as Form1500Tab's notice. */}
+      {!canEdit && isAdmin && (
+        <p className="mt-2 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+          The order form is the clinic&apos;s document and is read-only here.
+          To get a correction, use Request Info to send the order back to the
+          clinic.
+        </p>
+      )}
+
       <OrderFormDocument
         orderId={order.id}
         orderForm={orderForm}
@@ -109,6 +123,7 @@ export function OrderFormTab({
         currentUserName={currentUserName}
         aiStatus={aiStatus}
         patientName={patientName}
+        patientDob={patientDob}
         onSaved={onSaved}
         onDirtyChange={onDirtyChange}
       />

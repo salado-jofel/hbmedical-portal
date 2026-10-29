@@ -155,6 +155,44 @@ export async function requireIVREditRole(): Promise<{
   return { userId: user.id, role: role! };
 }
 
+/**
+ * Who may edit the Order Form specifically.
+ *
+ * Narrower than requireIVREditRole: the Order Form is the prescription, and
+ * the clinic is the only party that may change it. Admin is excluded on
+ * client instruction (2026-10-28) — "the form can be changed and manipulated
+ * on the admin side, it needs to be siloed out and only changeable on the
+ * clinic side". The IVR, HCFA/1500 and invoices are explicitly NOT covered by
+ * this and stay admin-editable, so they keep using requireIVREditRole.
+ *
+ * This is the real gate, not the RLS policy: saveOrderForm reaches the DB
+ * through the service-role client, which bypasses RLS entirely. The matching
+ * policy change is defence-in-depth for any direct client-side write.
+ *
+ * support_staff is deliberately left with access — the client named only the
+ * admin side, and revoking support's access was not asked for.
+ */
+export async function requireOrderFormEditRole(): Promise<{
+  userId: string;
+  role: string;
+}> {
+  const supabase = await createClient();
+  const user = await getCurrentUserOrThrow(supabase);
+  const role = await getUserRole(supabase);
+
+  if (isAdmin(role)) {
+    throw new Error(
+      "The order form can only be changed on the clinic side. Use Request Info to ask the clinic for a correction.",
+    );
+  }
+
+  if (!isClinicSide(role) && !isSupport(role)) {
+    throw new Error("Only clinical providers, staff, or support staff can edit the order form.");
+  }
+
+  return { userId: user.id, role: role! };
+}
+
 export function getDocumentLabel(type: string): string {
   const labels: Record<string, string> = {
     facesheet: "Facesheet",
