@@ -19,46 +19,50 @@ export type PipelineStage = {
   hint: string;
   bar: string;
   /**
-   * Which figure the card leads with.
+   * Whether the stage's second line carries the rep's own cut.
    *
-   * "commission" for open stages — the rep's question is what they will make.
-   * "volume" for `paid`, deliberately: once a clinic pays, a real commission
-   * row exists, and a rate-based estimate on the same orders will disagree
-   * with it (a voided row, an adjustment, or a paid order that never got a
-   * commission row all break the arithmetic). Showing both would put two
-   * different answers to "what did I earn on these" on one screen, so the paid
-   * stage reports the money the CLINIC paid and hands the rep's own cut to
-   * RepEarnedCommissions, which reads the ledger.
+   * False for `paid` only. Once a clinic pays, a real commission row exists,
+   * and a rate-based estimate on the same orders will disagree with it — a
+   * voided row, an adjustment, or a paid order that never got a commission row
+   * all break the arithmetic. Main Rep's 7 paid orders estimate to $2,086 at
+   * 20% while the ledger holds $1,490. So the paid stage hands the rep's cut to
+   * RepEarnedCommissions, which reads the ledger instead of guessing.
    */
-  metric: "commission" | "volume";
+  showCommission: boolean;
 };
 
 /* Order follows the money's actual journey, so the row reads as a pipeline
- * rather than a set of unrelated tiles. */
+ * rather than a set of unrelated tiles.
+ *
+ * Every stage leads with the ORDER AMOUNT, on the client's instruction
+ * (2026-10-30, on a screenshot of this card): asked whether a rep should see
+ * the total order amount or just their commission, he answered "they need to
+ * see the entire bill for sure and then their commission second". So the bill
+ * is the headline and the rep's cut is the line beneath it — not the reverse. */
 export const BUCKETS: PipelineStage[] = [
   {
     key: "in_progress",
     label: "In Progress",
-    caption: "est. to you",
+    caption: "order value",
     hint: "Still in the clinic or under review — not yet cleared.",
     bar: "bg-slate-400",
-    metric: "commission",
+    showCommission: true,
   },
   {
     key: "fulfilled",
     label: "Went Through",
-    caption: "est. to you",
+    caption: "order value",
     hint: "Approved, shipped or delivered. Not invoiced yet.",
     bar: "bg-blue-500",
-    metric: "commission",
+    showCommission: true,
   },
   {
     key: "collectible",
     label: "Collectible",
-    caption: "est. to you",
+    caption: "billed, unpaid",
     hint: "Invoiced and waiting on the clinic to pay.",
     bar: "bg-amber-500",
-    metric: "commission",
+    showCommission: true,
   },
   {
     key: "paid",
@@ -66,7 +70,7 @@ export const BUCKETS: PipelineStage[] = [
     caption: "clinic paid",
     hint: "Collected. What this earned you is in Earned, below.",
     bar: "bg-emerald-500",
-    metric: "volume",
+    showCommission: false,
   },
 ];
 

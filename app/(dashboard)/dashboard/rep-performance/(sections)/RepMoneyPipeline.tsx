@@ -6,12 +6,13 @@ import { formatAmount } from "@/utils/helpers/formatter";
 import { BUCKETS, OPEN_KEYS } from "./_buckets";
 import RepOverrideStrip from "./RepOverrideStrip";
 
-/* What the rep is ABOUT to earn, stage by stage.
+/* What the rep has in flight and what it is worth, stage by stage.
  *
- * Commission-first by design: the rep's question is "what am I going to make",
- * so each open stage leads with their cut and carries the order volume
- * underneath as supporting detail. The `paid` stage is the handoff point and
- * leads with order volume instead — see the note on PipelineStage.metric.
+ * Bill-first, on the client's instruction: shown this card and asked whether a
+ * rep should see the total order amount or just their commission, he said
+ * "they need to see the entire bill for sure and then their commission
+ * second". So every stage leads with the order amount and carries the rep's
+ * own cut on the line beneath it.
  *
  * The earned counterpart is RepEarnedCommissions, which reads the real ledger.
  * Nothing in this card is money owed. */
@@ -43,14 +44,14 @@ export default function RepMoneyPipeline() {
         <div>
           <h3 className="flex items-center gap-1.5 text-sm font-semibold text-[var(--text1)]">
             <TrendingUp className="h-4 w-4 text-[var(--text3)]" />
-            Commission I&apos;m About to Earn
+            My Money Pipeline
           </h3>
           <p className="text-xs text-[var(--text3)]">
             Every order at your clinics, wherever it has reached.
           </p>
         </div>
         <div className="text-right">
-          <p className="text-xs text-[var(--text3)]">Est. still to come</p>
+          <p className="text-xs text-[var(--text3)]">Est. commission still to come</p>
           <p className="text-lg font-semibold text-[var(--text1)]">
             {openCommission === null ? "—" : formatAmount(openCommission)}
           </p>
@@ -58,15 +59,8 @@ export default function RepMoneyPipeline() {
       </div>
 
       <div className="grid grid-cols-2 gap-[10px] lg:grid-cols-4">
-        {BUCKETS.map(({ key, label, caption, hint, bar, metric }) => {
+        {BUCKETS.map(({ key, label, caption, hint, bar, showCommission }) => {
           const bucket = buckets[key];
-          const headline =
-            metric === "volume"
-              ? formatAmount(bucket.orderAmount)
-              : bucket.commissionEstimate === null
-                ? "—"
-                : formatAmount(bucket.commissionEstimate);
-
           return (
             <div
               key={key}
@@ -78,12 +72,12 @@ export default function RepMoneyPipeline() {
                 {caption}
               </p>
               <p className="text-base font-semibold text-[var(--text1)]">
-                {headline}
+                {formatAmount(bucket.orderAmount)}
               </p>
               <p className="text-xs text-[var(--text3)]">
                 {bucket.orders} order{bucket.orders !== 1 ? "s" : ""}
-                {metric === "commission" && (
-                  <> · {formatAmount(bucket.orderAmount)} ordered</>
+                {showCommission && bucket.commissionEstimate !== null && (
+                  <> · {formatAmount(bucket.commissionEstimate)} to you</>
                 )}
               </p>
               <p className="mt-1.5 text-[11px] leading-snug text-[var(--text3)]">
