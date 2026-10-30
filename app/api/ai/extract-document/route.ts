@@ -1440,8 +1440,14 @@ async function handleCombinedExtraction(
     // Date of birth and the patient signature date are different columns.
     // resolveOrderFormDob is deliberately incapable of returning the date of
     // service, which is what the form used to print as the DOB.
+    //
+    // ai1500.patient_dob leads: it is the extraction the facesheet actually
+    // yields, and the one STEP 9 below uses to auto-create the patient. The
+    // patient record is only a fallback here because it does not exist yet at
+    // this point in the run — on a first pass `patient` is null.
     patient_dob: resolveOrderFormDob({
-      extractedDob: aiIvr.patient_dob as string | null,
+      extractedDob: ai1500.patient_dob as string | null,
+      ivrExtractedDob: aiIvr.patient_dob as string | null,
       patientRecordDob: patient?.date_of_birth ?? null,
     }),
     patient_date: (orderCtx as Record<string, unknown>).date_of_service || null,
@@ -2073,10 +2079,12 @@ export async function POST(req: NextRequest) {
         aiPatientName ||
         patientName ||
         null,
-      // See the note on the other order_form payload: DOB is its own column
-      // and must never fall back to the date of service.
+      // See the note on the other order_form payload: DOB is its own column,
+      // must never fall back to the date of service, and takes the 1500's
+      // extracted DOB first because that is the one the facesheet yields.
       patient_dob: resolveOrderFormDob({
-        extractedDob: aiIvr.patient_dob as string | null,
+        extractedDob: ai1500.patient_dob as string | null,
+        ivrExtractedDob: aiIvr.patient_dob as string | null,
         patientRecordDob: patient?.date_of_birth ?? null,
       }),
       patient_date: (orderCtx as any).date_of_service || null,

@@ -8,9 +8,14 @@ const TIER_CARDS = [
   { tier: "C" as const, bg: "bg-[#f1f5f9]",          fg: "text-[var(--text3)]" },
 ];
 
+/* Hoisted so the selector returns a stable reference while the summary is
+ * still loading. Inlining this literal made the selector return a fresh
+ * object on every call, which Redux flags as a rerender hazard. */
+const NO_COUNTS = { A: 0, B: 0, C: 0 };
+
 export default function TierBreakdown() {
   const counts = useAppSelector(
-    (s) => s.repPerformance.summary?.tierCounts ?? { A: 0, B: 0, C: 0 },
+    (s) => s.repPerformance.summary?.tierCounts ?? NO_COUNTS,
   );
 
   return (

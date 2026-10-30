@@ -17,9 +17,20 @@
 export type OrderFormDobSources = {
   /** `order_form.patient_dob` — what the clinician saved or corrected. */
   formPatientDob?: string | null;
-  /** DOB parsed out of the uploaded facesheet / clinical docs. */
+  /**
+   * DOB from the 1500 extraction (`ai1500.patient_dob`). First of the
+   * extracted sources because it is the one the facesheet actually yields:
+   * it is what the route uses to auto-create the patient record, so when a
+   * DOB was read off the documents at all, it is here.
+   */
   extractedDob?: string | null;
-  /** `patients.date_of_birth` on the linked patient record. */
+  /** DOB from the IVR extraction. Frequently null even when the 1500 has one. */
+  ivrExtractedDob?: string | null;
+  /**
+   * `patients.date_of_birth` on the linked patient record. Last because the
+   * record is created *after* the order_form upsert during extraction, so it
+   * is null on a first pass and only resolves on later reads.
+   */
   patientRecordDob?: string | null;
 };
 
@@ -38,6 +49,7 @@ export function resolveOrderFormDob(
   for (const value of [
     sources.formPatientDob,
     sources.extractedDob,
+    sources.ivrExtractedDob,
     sources.patientRecordDob,
   ]) {
     if (!blank(value)) return (value as string).trim();

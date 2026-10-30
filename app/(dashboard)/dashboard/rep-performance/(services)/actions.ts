@@ -9,6 +9,7 @@ import { setQuotaSchema } from "@/utils/validators/quotas";
 import { SALES_QUOTAS_TABLE, REP_PERFORMANCE_PATH } from "@/utils/constants/quotas";
 import type { IQuota, IQuotaFormState, IRepPerformance, IRepPerformanceSummary } from "@/utils/interfaces/quotas";
 import { assignTiers } from "@/utils/helpers/tiers";
+import { buildRepMoneyPipeline } from "./_pipeline";
 
 /* -------------------------------------------------------------------------- */
 /* Helpers                                                                    */
@@ -486,10 +487,15 @@ export async function getRepPerformanceSummary(): Promise<IRepPerformanceSummary
     adminClient,
   );
 
-  const [{ pipelineRevenue, oneYearProjectedRevenue }, tierCounts] = await Promise.all([
-    buildRevenueExtras(isSalesRep(role) ? user.id : null, adminClient),
-    buildTierCounts(isSalesRep(role) ? user.id : null, adminClient),
-  ]);
+  const [{ pipelineRevenue, oneYearProjectedRevenue }, tierCounts, moneyPipeline] =
+    await Promise.all([
+      buildRevenueExtras(isSalesRep(role) ? user.id : null, adminClient),
+      buildTierCounts(isSalesRep(role) ? user.id : null, adminClient),
+      // Rep-only: admin gets the team analytics further down the page instead.
+      isSalesRep(role)
+        ? buildRepMoneyPipeline(user.id, adminClient)
+        : Promise.resolve(null),
+    ]);
 
   return {
     currentPeriod: period,
@@ -499,6 +505,7 @@ export async function getRepPerformanceSummary(): Promise<IRepPerformanceSummary
     pipelineRevenue,
     oneYearProjectedRevenue,
     tierCounts,
+    moneyPipeline,
   };
 }
 

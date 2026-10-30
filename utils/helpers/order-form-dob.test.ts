@@ -62,3 +62,44 @@ describe("resolveOrderFormDob", () => {
     expect(resolveOrderFormDob({})).not.toBe(today);
   });
 });
+
+describe("resolveOrderFormDob — extraction source ordering", () => {
+  /* Regression for a miss found by an end-to-end run on 2026-10-30: the
+     route passed only the IVR's extracted DOB and the patient record. The AI
+     returned null for the IVR DOB, and the patient record is created later in
+     the same run, so order_form.patient_dob was written null even though the
+     1500 extraction had read 1982-05-12 off the facesheet. */
+  it("uses the 1500 DOB when the IVR extraction came back empty", () => {
+    expect(
+      resolveOrderFormDob({
+        formPatientDob: null,
+        extractedDob: "1982-05-12",
+        ivrExtractedDob: null,
+        patientRecordDob: null, // patient row does not exist yet at this point
+      }),
+    ).toBe("1982-05-12");
+  });
+
+  it("falls back to the IVR DOB when the 1500 has none", () => {
+    expect(
+      resolveOrderFormDob({ extractedDob: null, ivrExtractedDob: "1975-03-03" }),
+    ).toBe("1975-03-03");
+  });
+
+  it("prefers the 1500 DOB over the IVR's when both are present", () => {
+    expect(
+      resolveOrderFormDob({ extractedDob: "1982-05-12", ivrExtractedDob: "1975-03-03" }),
+    ).toBe("1982-05-12");
+  });
+
+  it("still lets a clinician correction outrank every extracted source", () => {
+    expect(
+      resolveOrderFormDob({
+        formPatientDob: "1990-07-04",
+        extractedDob: "1982-05-12",
+        ivrExtractedDob: "1975-03-03",
+        patientRecordDob: "1960-01-01",
+      }),
+    ).toBe("1990-07-04");
+  });
+});
