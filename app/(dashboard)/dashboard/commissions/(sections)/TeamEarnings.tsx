@@ -4,10 +4,17 @@ import { useMemo } from "react";
 import { formatAmount } from "@/utils/helpers/formatter";
 import type { SubRep } from "@/utils/interfaces/my-team";
 
+/* The parent rep's override earnings per sub-rep.
+ *
+ * "Your Override $" comes straight from the parent's own override commission
+ * rows (SubRep.overrideEarned). It is NOT the sub-rep's commission times the
+ * override percentage — that percentage applies to the ORDER AMOUNT, and the
+ * old derivation disagreed with the commission ledger lower down this very
+ * page. */
 export default function TeamEarnings({ subReps }: { subReps: SubRep[] }) {
   const totals = useMemo(() => {
     const total = subReps.reduce(
-      (sum, r) => sum + (r.commissionEarned * (r.overridePercent / 100)),
+      (sum, r) => sum + r.overrideEarned,
       0,
     );
     return { total, count: subReps.length };
@@ -47,7 +54,7 @@ export default function TeamEarnings({ subReps }: { subReps: SubRep[] }) {
                 <td className="px-4 py-2 text-right text-[var(--text2)]">{formatAmount(r.commissionEarned)}</td>
                 <td className="px-4 py-2 text-right text-[var(--text2)]">{r.overridePercent}%</td>
                 <td className="px-4 py-2 text-right font-medium text-[var(--navy)]">
-                  {formatAmount(r.commissionEarned * (r.overridePercent / 100))}
+                  {formatAmount(r.overrideEarned)}
                 </td>
               </tr>
             ))}

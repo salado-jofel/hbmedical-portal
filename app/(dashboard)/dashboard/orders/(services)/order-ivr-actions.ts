@@ -13,6 +13,9 @@ import {
 import { logPhiAccess } from "@/lib/audit/log-phi-access";
 import { safeLogError } from "@/lib/logging/safe-log";
 import { requireOrderAccess } from "@/lib/supabase/order-access";
+import { IVR_LOCKED_STATUSES, isIvrLockedForUser } from "@/utils/constants/orders";
+import { isAdmin } from "@/utils/helpers/role";
+import type { UserRole } from "@/utils/helpers/role";
 
 /* -------------------------------------------------------------------------- */
 /* getOrderIVR                                                                 */
@@ -157,8 +160,34 @@ export async function upsertOrderIVR(
   updatedAt?: string;
 }> {
   try {
-    await requireIVREditRole();
+    const { role } = await requireIVREditRole();
     const adminClient = createAdminClient();
+
+    /* Status lock, enforced here and not only in the UI.
+     *
+     * Same rule as isIvrLockedForUser on the client: the clinic cannot change
+     * the IVR once the order is in the manufacturer's queue, and admin can at
+     * any status. IVRTab hides the editable form in that state, but the UI is
+     * a guardrail, not the boundary — a stale JS bundle, a replayed server
+     * action, or any non-UI caller would otherwise write straight through,
+     * because this action reaches the table with the service-role client and
+     * so bypasses the RLS policies that would have stopped it.
+     *
+     * Note this is the IVR's only lock. There is no signature lock: that gate
+     * was removed on 2026-06-26 and the submission one on 2026-10-30. */
+    const { data: lockCheck } = await adminClient
+      .from("orders")
+      .select("order_status")
+      .eq("id", orderId)
+      .maybeSingle();
+    if (!lockCheck) return { success: false, error: "Order not found." };
+    if (isIvrLockedForUser(lockCheck.order_status as string, isAdmin(role as UserRole))) {
+      return {
+        success: false,
+        error:
+          "This IVR can no longer be edited — the order is under manufacturer review or beyond.",
+      };
+    }
 
     if (ifMatchUpdatedAt) {
       const { data: current } = await adminClient
@@ -370,6 +399,7 @@ export async function getOrderAiStatus(orderId: string): Promise<{
       followupWeeks:               form.followup_weeks ?? null,
       treatmentPlan:               form.treatment_plan ?? null,
       patientName:                 form.patient_name ?? null,
+      patientDob:                  form.patient_dob ?? null,
       patientDate:                 form.patient_date ?? null,
       physicianSignature:          form.physician_signature ?? null,
       physicianSignatureDate:      form.physician_signature_date ?? null,
@@ -671,6 +701,7 @@ export async function getOrderForm(
       followupWeeks:               form.followup_weeks ?? null,
       treatmentPlan:               form.treatment_plan ?? null,
       patientName:                 form.patient_name ?? null,
+      patientDob:                  form.patient_dob ?? null,
       patientDate:                 form.patient_date ?? null,
       physicianSignature:          form.physician_signature ?? null,
       physicianSignatureDate:      form.physician_signature_date ?? null,
@@ -703,14 +734,11 @@ export async function getOrderForm(
 /* manufacturer's queue and editing it would invalidate downstream work.      */
 /* -------------------------------------------------------------------------- */
 
-const IVR_MODE_LOCKED_STATUSES = new Set([
-  "manufacturer_review",
-  "additional_info_needed",
-  "approved",
-  "shipped",
-  "delivered",
-  "canceled",
-]);
+/* Status set now lives in utils/constants/orders.ts as IVR_LOCKED_STATUSES —
+   it used to be declared here and again in IVRTab.tsx, each with a "keep in
+   sync" comment. Mode switching is status-locked for every role, admin
+   included: it wipes the opposite mode's data, so it is not the same thing as
+   correcting a field. */
 
 /** Snake_case columns that hold the built-IVR form data — wiped to NULL
  *  when switching from "built" → "uploaded". The structural ID, order
@@ -770,7 +798,7 @@ export async function switchIvrMode(
     if (orderErr || !order) {
       return { success: false, error: "Order not found." };
     }
-    if (IVR_MODE_LOCKED_STATUSES.has(order.order_status as string)) {
+    if (IVR_LOCKED_STATUSES.has(order.order_status as string)) {
       return {
         success: false,
         error:
@@ -889,8 +917,11 @@ export async function markIvrUploadedComplete(
     }
 
     const nowIso = new Date().toISOString();
-    // Stamp physician_signed_at/by — that's the IVR's lock indicator
-    // (order_ivr has no is_locked column, only physician_signed_at).
+    // Stamp physician_signed_at/by. NOTE: this no longer locks anything.
+    // physician_signed_at was the IVR's lock indicator until 2026-06-26, when
+    // locking became status-based (IVR_LOCKED_STATUSES), and it stopped
+    // gating submission on 2026-10-30. It is now a record of who marked the
+    // upload complete and when — nothing reads it as a lock or a gate.
     const { error: lockErr } = await adminClient
       .from("order_ivr")
       .upsert(

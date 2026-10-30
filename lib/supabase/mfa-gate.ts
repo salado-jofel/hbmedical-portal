@@ -1,6 +1,7 @@
 import type { UserRole } from "@/utils/helpers/role";
 import { createClient } from "@/lib/supabase/server";
 import { hasActiveSmsMfaSession } from "@/lib/supabase/sms-mfa-session";
+import { isDevLoginAllowedQuiet } from "@/lib/dev/dev-login-guard";
 
 /**
  * Roles where MFA is mandatory. Every workforce role in this app reads
@@ -48,6 +49,15 @@ export type MfaGateDecision =
  */
 export async function evaluateMfaGate(role: UserRole): Promise<MfaGateDecision> {
   if (!isMfaMandatoryRole(role)) return { kind: "ok" };
+
+  /* Local dev only — see lib/dev/dev-login-guard.ts for the three locks.
+     The dev account switcher mints a session with no password and no SMS
+     challenge, so without this the gate bounces every switched account
+     straight back to /onboarding/phone or /sign-in/sms-mfa and the dashboard
+     is unreachable. Testing a role-specific flow would otherwise need a real
+     phone and a real Twilio code per account, which is the friction this is
+     meant to remove. Inert in production: NODE_ENV alone closes it. */
+  if (await isDevLoginAllowedQuiet()) return { kind: "ok" };
 
   const supabase = await createClient();
   const {

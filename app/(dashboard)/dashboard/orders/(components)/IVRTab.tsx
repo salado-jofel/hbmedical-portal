@@ -7,17 +7,10 @@ import { IVRUploadView } from "./IVRUploadView";
 import { IvrExternalApprovalBanner } from "./IvrExternalApprovalBanner";
 import { cn } from "@/utils/utils";
 
-// Order statuses past which the IVR (built form OR uploaded file) is
-// locked from edits. Mirrors the server-side IVR_MODE_LOCKED_STATUSES in
-// order-ivr-actions.ts — keep in sync.
-const IVR_MODE_LOCKED_STATUSES = new Set<string>([
-  "manufacturer_review",
-  "additional_info_needed",
-  "approved",
-  "shipped",
-  "delivered",
-  "canceled",
-]);
+import {
+  IVR_LOCKED_STATUSES,
+  isIvrLockedForUser,
+} from "@/utils/constants/orders";
 
 function FormSkeleton() {
   return (
@@ -45,6 +38,8 @@ interface IVRTabProps {
   order: DashboardOrder;
   canEdit: boolean;
   canSign: boolean;
+  /** Admin bypasses the status lock on the IVR form's fields. */
+  isAdmin: boolean;
   currentUserName: string | null;
   ivrData: Partial<IOrderIVR> | null;
   resetIvrKey: number;
@@ -79,18 +74,24 @@ interface IVRTabProps {
  *   - Last upload deleted → silently flip mode back to "built", empty form
  *     reappears (built data was already wiped during the upload step)
  *
- * Lock semantics:
- *   - physician_signed_at being non-null = IVR locked (works for both
- *     paths: clinician signs the built form, OR clicks "Mark Complete"
- *     on the uploaded path)
- *   - Once locked, neither path can be edited
- *   - Order statuses past pending_signature also lock everything
+ * Lock semantics — status only. There is no signature lock: the
+ * physician_signed_at / "Mark IVR Complete" gate was removed on 2026-06-26,
+ * and the IVR's submission signature gate on 2026-10-30. Signing an IVR
+ * locks nothing and blocks nothing.
+ *   - Order statuses from manufacturer_review on lock the IVR, so it cannot
+ *     change under the manufacturer once queued (IVR_LOCKED_STATUSES)
+ *   - Admin bypasses that lock on the built form's fields and can correct
+ *     the IVR at any status (isIvrLockedForUser)
+ *   - The upload / mode-switch section stays locked for everyone, admin
+ *     included, because switchIvrMode enforces the same statuses on the
+ *     server — bypassing it here would offer an action the server refuses
  */
 export function IVRTab({
   isActive,
   order,
   canEdit,
   canSign,
+  isAdmin,
   currentUserName,
   ivrData,
   resetIvrKey,
@@ -100,12 +101,13 @@ export function IVRTab({
   onUploadDeleted,
   onUploadAdded,
 }: IVRTabProps) {
-  // Per Dr. Ben (2026-06-26): locking is purely status-based — once the
-  // order has moved past pending_signature, neither the built form nor
-  // the uploaded IVR can be edited. The old physician_signed_at /
-  // "Mark IVR Complete" gate is removed; users can freely delete and
-  // re-upload IVR files until the order is under manufacturer review.
-  const isLocked = IVR_MODE_LOCKED_STATUSES.has(order.order_status);
+  // Upload + mode switching: status-locked for everyone, admin included,
+  // because switchIvrMode enforces the same statuses server-side. Users can
+  // freely delete and re-upload IVR files until the order is under review.
+  const isLocked = IVR_LOCKED_STATUSES.has(order.order_status);
+  // The built form's own fields: admin bypasses the status lock so a wrong
+  // MAC/TIN on a submitted order can still be corrected in place.
+  const formLocked = isIvrLockedForUser(order.order_status, isAdmin);
   // True once any IVR document is attached (set by IVRUploadView via the
   // onDocCountChange callback). Drives whether to show the built form
   // below the upload section.
@@ -143,9 +145,9 @@ export function IVRTab({
             onUploadAdded={onUploadAdded}
           />
 
-          {/* Built IVR form — visible only when there is no uploaded
-              document AND the order isn't sign-locked. */}
-          {!hasUploadedDoc && !isLocked && (
+          {/* Built IVR form, editable — no uploaded document, and not locked
+              for this user (admin is never locked here). */}
+          {!hasUploadedDoc && !formLocked && (
             <IVRFormDocument
               key={resetIvrKey}
               order={order}
@@ -158,10 +160,10 @@ export function IVRTab({
             />
           )}
 
-          {/* Signed-built-form view: keep the form visible read-only so
-              audit/PDF preview stays available, but no upload swap is
-              possible (locked = locked). */}
-          {!hasUploadedDoc && isLocked && (
+          {/* Locked view: keep the form visible read-only so audit/PDF
+              preview stays available, but no upload swap is possible. Only
+              non-admins reach this branch. */}
+          {!hasUploadedDoc && formLocked && (
             <IVRFormDocument
               key={resetIvrKey}
               order={order}

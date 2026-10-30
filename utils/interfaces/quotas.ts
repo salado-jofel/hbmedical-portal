@@ -1,3 +1,5 @@
+import type { RepMoneyPipeline } from "@/utils/helpers/rep-pipeline";
+
 export interface IQuota {
   id: string;
   repId: string;
@@ -41,4 +43,10 @@ export interface IRepPerformanceSummary {
   pipelineRevenue: number;
   oneYearProjectedRevenue: number;
   tierCounts: { A: number; B: number; C: number };
+  /**
+   * What the rep has in flight and what it is worth, bucketed into
+   * in-progress / fulfilled / collectible / paid. Null for admin, who sees the
+   * team analytics instead. See utils/helpers/rep-pipeline.ts.
+   */
+  moneyPipeline: RepMoneyPipeline | null;
 }

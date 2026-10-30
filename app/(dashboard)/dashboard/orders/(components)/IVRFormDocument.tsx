@@ -667,7 +667,25 @@ export function IVRFormDocument({
     }
   }
 
+  /* Save, guarded — see the note on OrderFormDocument.handleSave. A server
+   * action that rejects instead of returning { success: false } (dropped
+   * connection, 500, stale action id after a deploy) used to escape here and
+   * strand isSaving at true, leaving a spinning disabled Save button over
+   * unsaved work. isDirty is left alone so the button stays available. */
   async function handleSave() {
+    try {
+      await saveIvrFields();
+    } catch (err) {
+      console.error("[IVRForm] save did not reach the server:", err);
+      toast.error(
+        "Save could not reach the server. Your changes are still here — press Save again, and reload the page if it keeps failing.",
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function saveIvrFields() {
     setIsSaving(true);
 
     // Detect sign-state change relative to last saved baseline.

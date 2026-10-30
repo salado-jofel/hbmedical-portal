@@ -17,7 +17,6 @@ import type {
   IOrderDocument,
   IOrderForm,
   IOrderHistory,
-  IOrderIVR,
 } from "@/utils/interfaces/orders";
 
 // Kept for type-compat with callers; the tab no longer edits draft items.
@@ -41,7 +40,6 @@ interface OrderOverviewTabProps {
   liveOrder: DashboardOrder;
   documents: IOrderDocument[];
   orderForm: IOrderForm | null;
-  ivrData: Partial<IOrderIVR> | null;
   history: IOrderHistory[];
 }
 
@@ -75,10 +73,6 @@ function isOrderFormSigned(form: IOrderForm | null): boolean {
   return !!form?.physicianSignedAt;
 }
 
-function isIvrSigned(ivr: Partial<IOrderIVR> | null): boolean {
-  return !!ivr?.physicianSignedAt;
-}
-
 function fmtRelativeTime(iso: string | null | undefined): string {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -101,7 +95,6 @@ export function OrderOverviewTab({
   liveOrder,
   documents,
   orderForm,
-  ivrData,
   history,
 }: OrderOverviewTabProps) {
   const status = liveOrder.order_status ?? "draft";
@@ -153,12 +146,11 @@ export function OrderOverviewTab({
         done: isOrderFormSigned(orderForm) && itemCount > 0,
         detail: itemCount > 0 ? `${itemCount} item${itemCount === 1 ? "" : "s"}` : undefined,
       },
-      {
-        id: "ivr",
-        label: "IVR Form completed",
-        icon: FileText,
-        done: isIvrSigned(ivrData),
-      },
+      // No "IVR Form completed" row: the IVR stopped being a submission
+      // requirement on 2026-10-30 when its signature gate was removed (see
+      // getUnsignedForms). It was keyed off isIvrSigned, so leaving it would
+      // report the order as incomplete forever and hold the progress bar
+      // below 100% on orders that are ready to go.
       {
         id: "signed",
         label: "Signed by provider",
@@ -172,7 +164,6 @@ export function OrderOverviewTab({
     liveOrder.signed_at,
     itemCount,
     orderForm,
-    ivrData,
   ]);
 
   const doneCount = checklist.filter((c) => c.done).length;

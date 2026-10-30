@@ -106,7 +106,10 @@ export function SmsMfaChallengeForm({
       try {
         await signOut();
       } catch {
-        router.replace("/sign-in");
+        // See PhoneEnrollmentForm: /sign-in bounces a still-authenticated
+        // user back through the gate to this screen, so the fallback has to
+        // be the route that clears the session itself.
+        window.location.assign("/sign-out");
       }
     });
   }

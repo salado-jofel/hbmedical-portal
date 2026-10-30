@@ -6,7 +6,20 @@ import { formatAmount } from "@/utils/helpers/formatter";
 
 export default function RepKpiRow() {
   const perf = useAppSelector((s) => s.repPerformance.summary?.myPerformance ?? null);
-  const pipeline = useAppSelector((s) => s.repPerformance.summary?.pipelineRevenue ?? 0);
+  const pipeline = useAppSelector(
+    (s) => s.repPerformance.summary?.moneyPipeline ?? null,
+  );
+
+  // Open order value = everything not yet collected, taken from the same
+  // buckets the Money Pipeline card below renders. The old "Est. Pipeline
+  // Revenue" card was sourced from buildRevenueExtras, which counted only
+  // approved + shipped and did not exclude orders the clinic had already paid
+  // for — so it disagreed with the breakdown. One definition, one number.
+  const openOrderValue = pipeline
+    ? pipeline.buckets.in_progress.orderAmount +
+      pipeline.buckets.fulfilled.orderAmount +
+      pipeline.buckets.collectible.orderAmount
+    : 0;
 
   // "1 Year Est. Projected" card was dropped — it's just current-month × 12,
   // pure extrapolation that sales reps shouldn't plan against.
@@ -20,8 +33,10 @@ export default function RepKpiRow() {
           value={formatAmount(perf?.actualRevenue ?? 0)}
           accentColor="teal"
         />
+        {/* Counts paid orders only — labelled accordingly, since "Orders This
+            Month" read as every order placed and undercounted a busy month. */}
         <KpiCard
-          label="Orders This Month"
+          label="Paid Orders This Month"
           value={String(perf?.paidOrders ?? 0)}
           accentColor="blue"
         />
@@ -38,8 +53,8 @@ export default function RepKpiRow() {
           accentColor="purple"
         />
         <KpiCard
-          label="Est. Pipeline Revenue"
-          value={formatAmount(pipeline)}
+          label="Open Order Value"
+          value={formatAmount(openOrderValue)}
           accentColor="blue"
         />
       </div>
