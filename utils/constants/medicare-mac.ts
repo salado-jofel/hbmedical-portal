@@ -13,3 +13,15 @@ export const MEDICARE_MAC_OPTIONS = [
 ] as const;
 
 export type MedicareMacValue = (typeof MEDICARE_MAC_OPTIONS)[number]["value"];
+
+/* facility_enrollment stores the slug ("palmetto_gba") while the IVR and the
+   standalone IVR print the contractor's name, so anything copying enrollment
+   onto a form has to translate. Returns null for an unknown or missing slug
+   rather than printing the raw value — a slug on a payer form is worse than a
+   blank the clinic can fill in. */
+export function getMedicareMacLabel(value: unknown): string | null {
+  if (typeof value !== "string" || value.trim() === "") return null;
+  return (
+    MEDICARE_MAC_OPTIONS.find((option) => option.value === value)?.label ?? null
+  );
+}

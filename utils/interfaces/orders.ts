@@ -606,6 +606,10 @@ export interface IOrderForm {
   treatmentPlan: string | null;
   // Signature section
   patientName: string | null;
+  /** Patient date of birth. Distinct from `patientDate`, which is the
+   *  patient signature date — the DFU/VLU layouts once shared one column
+   *  for both and printed the date of service as the DOB. */
+  patientDob: string | null;
   patientDate: string | null;
   physicianSignature: string | null;
   physicianSignatureDate: string | null;
@@ -1201,6 +1205,7 @@ export type DashboardOrder = {
   patient_first_name: string | null;
   patient_last_name: string | null;
   patient_full_name: string | null;
+  patient_date_of_birth: string | null;
   // provider names
   created_by_name: string | null;
   signed_by_name: string | null;
@@ -1303,6 +1308,7 @@ export function mapOrder(raw: RawOrderRecord): DashboardOrder {
     patient_first_name: patient?.first_name ?? null,
     patient_last_name: patient?.last_name ?? null,
     patient_full_name: patient ? `${patient.first_name} ${patient.last_name}` : null,
+    patient_date_of_birth: patient?.date_of_birth ?? null,
     // provider names (populated separately)
     created_by_name: null,
     signed_by_name: null,

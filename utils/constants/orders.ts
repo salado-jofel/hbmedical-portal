@@ -145,6 +145,22 @@ export const WOUND_TYPES = [
   { value: "vlu" as const, label: "VLU" },
 ];
 
+// ── orders.wound_type (code) → order_ivr.wound_type (the printed label on the
+// IVR's checkbox row). The IVR stores the label, not the code, so without this
+// map the wound type cannot cross from the order to the IVR at all.
+//
+// The IVR's checkbox list has no "Chronic" option. Any value outside the list
+// ticks "Other" and prints itself in the adjoining free-text box (see `isOther`
+// in IVRFormDocument), so "Chronic" renders as `☑ Other: Chronic` — the same
+// shape the Order Form already uses. Mapping it to the literal "Other" would
+// also tick the box but print the uninformative "Other: Other". ──
+export const WOUND_TYPE_TO_IVR_LABEL: Record<string, string> = {
+  dfu: "Diabetic Foot Ulcer",
+  vlu: "Venous Leg Ulcer",
+  post_surgical: "Post-Surgical Incision",
+  chronic: "Chronic",
+};
+
 // ── Order product category — picked at order creation alongside wound type. ──
 // `surgical_collagen` and `omeza` are legacy values still present on existing
 // rows; they're intentionally NOT in this picker since the user-facing options
@@ -333,10 +349,25 @@ export const ALL_DOC_TYPES: Array<{ type: string; label: string }> = [
   { type: "other",            label: "Other" },
 ];
 
-// The Invoice tab + doc card only show once an order is past the early
-// drafting stages (the invoice is meaningful only when the order is being
-// reviewed or fulfilled). Keep this in sync with the OrderDetailModal gate.
+// The Invoice tab + doc card are available for the WHOLE order lifecycle,
+// draft included, at client instruction (2026-10-30): "he wants invoice tab
+// to be shown and accessible even at draft stage of the order throughout the
+// lifecycle". This supports the referrals where Meridian only bills — an
+// invoice has to be raisable as soon as the script arrives, without waiting
+// for the order to reach review.
+//
+// Previously this started at manufacturer_review, on the reasoning that an
+// invoice is "meaningful only when the order is being reviewed or fulfilled".
+// Visibility is all this controls: editability is a separate gate
+// (isOrderFullyLocked), which still locks the invoice after the patient signs
+// or once the order is past approval.
+//
+// Every status is listed rather than returning true so there is still one
+// obvious place to hide the tab again, and so an unknown/null status is
+// treated as not-visible by the function below.
 export const INVOICE_VISIBLE_STATUSES = new Set<string>([
+  "draft",
+  "pending_signature",
   "manufacturer_review",
   "additional_info_needed",
   "approved",
@@ -347,6 +378,44 @@ export const INVOICE_VISIBLE_STATUSES = new Set<string>([
 
 export function isInvoiceVisibleForStatus(status: string | null | undefined): boolean {
   return !!status && INVOICE_VISIBLE_STATUSES.has(status);
+}
+
+// Order statuses from which the IVR is locked: once it reaches the
+// manufacturer's queue, editing it invalidates downstream work. Nothing to do
+// with signatures — the old physician_signed_at / "Mark IVR Complete" lock was
+// removed on 2026-06-26, and the IVR's submission signature gate on
+// 2026-10-30. This status lock is the only IVR lock left.
+//
+// Previously declared twice, in IVRTab.tsx and order-ivr-actions.ts, with a
+// "keep in sync" comment on each. One copy now.
+export const IVR_LOCKED_STATUSES = new Set<string>([
+  "manufacturer_review",
+  "additional_info_needed",
+  "approved",
+  "shipped",
+  "delivered",
+  "canceled",
+]);
+
+/**
+ * Whether the IVR is locked for this user.
+ *
+ * Admin bypasses, matching isOrderFullyLocked for the invoice: the client's
+ * instruction (2026-10-28) is that admin may change the IVR, HCFA and
+ * invoices and only the Order Form is off-limits. Without the bypass the lock
+ * shut admin out of the IVR from manufacturer_review onward — exactly the
+ * statuses an admin works in, and the reason a wrong MAC or TIN on a
+ * submitted order could not be corrected in place.
+ *
+ * The clinic is still locked out past review so an IVR cannot change under
+ * the manufacturer after it is queued.
+ */
+export function isIvrLockedForUser(
+  status: string | null | undefined,
+  isAdmin: boolean,
+): boolean {
+  if (isAdmin) return false;
+  return !!status && IVR_LOCKED_STATUSES.has(status);
 }
 
 // Items (order_items) are editable only before the order has moved into

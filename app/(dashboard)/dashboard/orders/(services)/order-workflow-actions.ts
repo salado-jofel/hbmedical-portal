@@ -397,9 +397,21 @@ export async function verifyProviderPin(
 /* -------------------------------------------------------------------------- */
 
 /**
- * Returns the names of forms that have not yet been physician-signed.
- * Used by the footer Sign Order / Sign & Submit handlers to block submission
- * until all 3 forms are signed.
+ * Returns the names of forms that have not yet been physician-signed and so
+ * still block submission. That is the Order Form, and only the Order Form.
+ *
+ * The IVR signature gate was removed at client instruction (2026-10-30).
+ * Dr. Ben: "do not get rid of the IVR — just unlock it so that a signature
+ * from the clinic is not needed", and "just the order form needs the four
+ * digit pin since it's a script". The IVR is Meridian's own billing artifact:
+ * either Meridian uses it internally, or a self-billing clinic takes it back
+ * and owns it on their side. Either way the clinic is not attesting to it, so
+ * it no longer holds up submission, signed or not, uploaded or not.
+ *
+ * Signing an IVR is still possible and existing signatures are untouched —
+ * only the requirement is gone. The IVR tab's own edit lock has been
+ * status-based rather than signature-based since 2026-06-26, so nothing else
+ * keyed off this.
  */
 export async function getUnsignedForms(
   orderId: string,
@@ -407,42 +419,18 @@ export async function getUnsignedForms(
   try {
     const adminClient = createAdminClient();
 
-    // The IVR has TWO valid signed-equivalent paths:
-    //   - Built form signed → order_ivr.physician_signed_at set
-    //   - External IVR document uploaded → order_documents row with
-    //     document_type='uploaded_ivr'. Per Dr. Ben (2026-06-26) an
-    //     uploaded IVR substitutes for signing the in-portal form.
-    const [
-      { data: orderForm },
-      { data: ivr },
-      { count: uploadedIvrCount },
-    ] = await Promise.all([
-      adminClient
-        .from("order_form")
-        .select("physician_signed_at")
-        .eq("order_id", orderId)
-        .maybeSingle(),
-      adminClient
-        .from("order_ivr")
-        .select("physician_signed_at")
-        .eq("order_id", orderId)
-        .maybeSingle(),
-      adminClient
-        .from("order_documents")
-        .select("id", { count: "exact", head: true })
-        .eq("order_id", orderId)
-        .eq("document_type", "uploaded_ivr"),
-    ]);
+    const { data: orderForm } = await adminClient
+      .from("order_form")
+      .select("physician_signed_at")
+      .eq("order_id", orderId)
+      .maybeSingle();
 
     const unsigned: string[] = [];
     if (!orderForm?.physician_signed_at) unsigned.push("Order Form");
-    const ivrCovered =
-      !!ivr?.physician_signed_at || (uploadedIvrCount ?? 0) > 0;
-    if (!ivrCovered) unsigned.push("IVR Form");
 
     return { unsignedForms: unsigned };
   } catch {
-    return { unsignedForms: ["Order Form", "IVR Form"] };
+    return { unsignedForms: ["Order Form"] };
   }
 }
 
@@ -469,43 +457,18 @@ export async function submitSignedOrder(
 
     const adminClient = createAdminClient();
 
-    // Re-validate all required form signatures server-side. The IVR can
-    // satisfy this requirement EITHER by being signed (built form path)
-    // OR by having at least one uploaded_ivr document attached (upload
-    // path). Kept in sync with getUnsignedForms above.
-    const [
-      { data: orderForm },
-      { data: ivr },
-      { count: uploadedIvrCount },
-    ] = await Promise.all([
-      adminClient
-        .from("order_form")
-        .select("physician_signed_at")
-        .eq("order_id", orderId)
-        .maybeSingle(),
-      adminClient
-        .from("order_ivr")
-        .select("physician_signed_at")
-        .eq("order_id", orderId)
-        .maybeSingle(),
-      adminClient
-        .from("order_documents")
-        .select("id", { count: "exact", head: true })
-        .eq("order_id", orderId)
-        .eq("document_type", "uploaded_ivr"),
-    ]);
+    // Re-validate the required form signature server-side. Only the Order
+    // Form is required — the IVR signature gate was removed at client
+    // instruction (2026-10-30). Kept in sync with getUnsignedForms above,
+    // which carries the reasoning.
+    const { data: orderForm } = await adminClient
+      .from("order_form")
+      .select("physician_signed_at")
+      .eq("order_id", orderId)
+      .maybeSingle();
 
     if (!orderForm?.physician_signed_at) {
       return { success: false, error: "Order Form is not signed." };
-    }
-    const ivrCovered =
-      !!ivr?.physician_signed_at || (uploadedIvrCount ?? 0) > 0;
-    if (!ivrCovered) {
-      return {
-        success: false,
-        error:
-          "IVR is missing — either sign the in-portal IVR form or upload a completed IVR document.",
-      };
     }
 
     const { data: order } = await adminClient

@@ -713,7 +713,10 @@ export async function seedForm1500ForDelivery(
       billing_provider_address: billingAddress,
       billing_provider_phone: enrollment?.billing_phone ?? order.facility?.phone ?? null,
       billing_provider_npi: enrollment?.facility_npi ?? null,
-      billing_provider_tax_id: enrollment?.facility_tin ?? null,
+      // facility_tin is the retired enrollment column, facility_ein the one the
+      // form writes now — read both, as federal_tax_id (Box 25) already does.
+      billing_provider_tax_id:
+        enrollment?.facility_tin ?? enrollment?.facility_ein ?? null,
       // Box 31 — physician signature: intentionally left blank per spec.
       // Biller handles signing in their billing software.
     };
@@ -918,7 +921,7 @@ export async function getForm1500(orderId: string) {
       billing_provider_address: billingAddress,
       billing_provider_phone:  enrollment?.billing_phone ?? facility?.phone ?? null,
       billing_provider_npi:    enrollment?.facility_npi ?? null,
-      billing_provider_tax_id: enrollment?.facility_tin ?? null,
+      billing_provider_tax_id: enrollment?.facility_tin ?? enrollment?.facility_ein ?? null,
     };
     const { data: created } = await adminClient
       .from("order_form_1500")
@@ -939,7 +942,7 @@ export async function getForm1500(orderId: string) {
   if (!row.billing_provider_address) row.billing_provider_address = billingAddress;
   if (!row.billing_provider_phone)   row.billing_provider_phone   = enrollment?.billing_phone ?? facility?.phone ?? null;
   if (!row.billing_provider_npi)     row.billing_provider_npi     = enrollment?.facility_npi ?? null;
-  if (!row.billing_provider_tax_id)  row.billing_provider_tax_id  = enrollment?.facility_tin ?? null;
+  if (!row.billing_provider_tax_id)  row.billing_provider_tax_id  = enrollment?.facility_tin ?? enrollment?.facility_ein ?? null;
 
   return row;
 }

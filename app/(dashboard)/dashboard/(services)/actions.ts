@@ -20,7 +20,17 @@ export async function signOut() {
     // Revoke SMS MFA cookie+row before signOut so sales reps can't reuse the
     // session if they sign back in within the 12h window. No-op for roles
     // that don't have an SMS session.
-    await revokeCurrentSmsMfaSession();
+    //
+    // Best-effort on purpose: this is bookkeeping, while auth.signOut() below
+    // is the call that actually ends the session. It reaches the DB through the
+    // admin client, so a transient failure here used to throw past the
+    // sign-out and leave the user logged in — on a gate screen, that means
+    // stranded, because the gates are the screens with nowhere else to go.
+    try {
+      await revokeCurrentSmsMfaSession();
+    } catch (err) {
+      console.error("[signOut] SMS MFA session revoke failed", err);
+    }
     await supabase.auth.signOut();
   }
 

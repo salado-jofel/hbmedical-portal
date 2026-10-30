@@ -199,6 +199,18 @@ export function OrderDetailModal({
     return canEdit && isItemsEditable(liveOrder.order_status);
   }, [canEdit, isAdmin, liveOrder.order_status]);
 
+  /* -- Order Form edit gate (narrower than effectiveCanEdit) --
+     The Order Form is the prescription and is the clinic's document: admin is
+     read-only on it, per client instruction (2026-10-28) that it "needs to be
+     siloed out and only changeable on the clinic side". Admin keeps full edit
+     rights on the IVR, HCFA/1500 and invoices, which still use
+     effectiveCanEdit above. Mirrors the server-side requireOrderFormEditRole
+     so the UI does not offer a save the action will refuse. */
+  const orderFormCanEdit = useMemo(() => {
+    if (isAdmin) return false;
+    return effectiveCanEdit;
+  }, [isAdmin, effectiveCanEdit]);
+
   // Signing of Order Form / IVR is only meaningful before admin approval.
   // Once the order hits manufacturer_review+, the provider can no longer
   // sign/unsign. Admin keeps `canSign` as passed (admin doesn't actually
@@ -1200,14 +1212,19 @@ export function OrderDetailModal({
     });
   }
 
-  // The IVR can come from either the built (in-portal) form or an uploaded
-  // external file. Submit requires ONE of the two — otherwise the order
-  // would reach manufacturer review with no IVR at all (e.g. user uploaded
-  // a file, changed their mind, deleted it, and the built form was wiped).
-  const ivrIsComplete =
-    !!ivrData?.physicianSignedAt ||
-    documents.some((d) => d.documentType === "uploaded_ivr");
-
+  /* The IVR no longer gates submission in any form — signature or upload.
+   *
+   * Removed at client instruction (2026-10-30) along with the IVR signature
+   * requirement; see getUnsignedForms for the reasoning. It could not simply
+   * keep the upload half: with the signature no longer required, "signed OR
+   * uploaded" collapses into "uploaded", which would have blocked every
+   * clinic that fills the in-portal IVR form instead of attaching a file —
+   * the opposite of unlocking it.
+   *
+   * Consequence worth knowing: an order can now reach manufacturer review
+   * with an empty IVR. That is admin's check at review rather than a
+   * submission block, which is the trade the client asked for.
+   */
   async function handleSubmitOrder() {
     if (draftItems.length === 0) {
       toast.error("Add at least one product in the Order Form tab before submitting.", {
@@ -1231,14 +1248,6 @@ export function OrderDetailModal({
     const facesheetOk = order.manual_input || hasFacesheet;
     if (!facesheetOk || !order.date_of_service || !order.wound_type) {
       setCompletionOpen(true);
-      return;
-    }
-    if (!ivrIsComplete) {
-      toast.error(
-        "IVR is required — either sign the in-portal IVR form or upload a completed IVR document before submitting.",
-        { duration: 5000 },
-      );
-      setTab("ivr");
       return;
     }
     setSubmitting(true);
@@ -1271,14 +1280,6 @@ export function OrderDetailModal({
     const facesheetOk = order.manual_input || hasFacesheet;
     if (!facesheetOk || !order.date_of_service || !order.wound_type) {
       setCompletionOpen(true);
-      return;
-    }
-    if (!ivrIsComplete) {
-      toast.error(
-        "IVR is required — either sign the in-portal IVR form or upload a completed IVR document before submitting.",
-        { duration: 5000 },
-      );
-      setTab("ivr");
       return;
     }
     setSubmitting(true);
@@ -1556,8 +1557,9 @@ export function OrderDetailModal({
   /* ── Derived ── */
   const status = liveOrder.order_status;
   const displayStatus = getDisplayOrderStatus(liveOrder);
-  // Invoice tab + doc card only show once the order is past the early
-  // drafting stages — see INVOICE_VISIBLE_STATUSES.
+  // Invoice tab + doc card are available at every status, draft included —
+  // see INVOICE_VISIBLE_STATUSES. Editability is gated separately by
+  // isOrderFullyLocked inside InvoiceDocument.
   const invoiceUnlocked = isInvoiceVisibleForStatus(status);
   // HCFA / 1500 tab gate: only visible once the order has been delivered, and
   // only to roles that participate in the billing workflow. Sales reps are
@@ -1892,7 +1894,6 @@ export function OrderDetailModal({
                       liveOrder={liveOrder}
                       documents={localDocuments}
                       orderForm={orderForm}
-                      ivrData={ivrData}
                       history={history}
                     />
                     <OrderFormTab
@@ -1900,11 +1901,12 @@ export function OrderDetailModal({
                       aiStatus={aiStatus}
                       orderForm={orderForm}
                       order={liveOrder}
-                      canEdit={effectiveCanEdit}
+                      canEdit={orderFormCanEdit}
                       canSign={effectiveCanSign}
                       isAdmin={isAdmin}
                       currentUserName={currentUserName ?? null}
                       patientName={patientName}
+                      patientDob={order.patient_date_of_birth ?? null}
                       onSaved={(updated) => {
                         setOrderForm(updated);
                         setIsOrderFormDirty(false);
@@ -1916,6 +1918,7 @@ export function OrderDetailModal({
                       order={liveOrder}
                       canEdit={effectiveCanEdit}
                       canSign={effectiveCanSign}
+                      isAdmin={isAdmin}
                       currentUserName={currentUserName ?? null}
                       ivrData={ivrData}
                       resetIvrKey={resetIvrKey}

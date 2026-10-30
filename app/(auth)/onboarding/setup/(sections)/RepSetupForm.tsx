@@ -271,6 +271,19 @@ export default function RepSetupForm() {
             isPendingMesssage="Saving..."
           />
         </div>
+
+        {/* The middleware forces a rep with has_completed_setup = false here
+            from every path, and /sign-in bounces back to /dashboard which
+            bounces back here — so without this the screen is a dead end and
+            the only way off it is clearing cookies by hand. A plain link to
+            the /sign-out route rather than the server action: no client state
+            to get stuck in, and it still works if JS has not hydrated. */}
+        <a
+          href="/sign-out"
+          className="block w-full text-center text-xs text-[var(--text3)] hover:text-[var(--navy)]"
+        >
+          Sign out
+        </a>
       </form>
     </AuthCard>
   );

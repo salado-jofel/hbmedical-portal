@@ -55,6 +55,9 @@ import {
 } from "@/lib/supabase/order-access";
 import { logPhiAccess } from "@/lib/audit/log-phi-access";
 import { safeLogError } from "@/lib/logging/safe-log";
+import { mergeFillingBlanks } from "@/utils/helpers/fill-blanks";
+import { resolveOrderFormDob } from "@/utils/helpers/order-form-dob";
+import { getMedicareMacLabel } from "@/utils/constants/medicare-mac";
 
 // Vercel Pro plan supports up to 300s. The combined extraction (download
 // docs → Claude inference → DB writes → mark ai_extracted=true) usually
@@ -694,47 +697,57 @@ function sanitizeIvrFields(
   return sanitized;
 }
 
-/* ── Linked-IVR merge guard ──
-   When an order was created from an approved standalone IVR (fax-built,
-   admin-confirmed), order_ivr already holds the record of truth copied by
-   finalizeIvrConversion. The extractor must not have a second vote on
-   those values — it may only fill columns that are still blank.
-   Returns the payload to upsert (possibly reduced to just the bookkeeping
-   columns) and whether the linked guard applied. */
-async function applyLinkedIvrFillBlanks(
+/* ── Extraction merge guard ──
+   Extraction re-runs on every facesheet / clinical-doc upload, so a later run
+   must not get a second vote on a value that is already recorded — least of all
+   one a provider typed. Whatever the row holds wins; a run may only fill
+   columns that are still blank.
+
+   This originally applied to order_ivr alone, and only when the order came from
+   an approved standalone IVR (fax-built, admin-confirmed) where order_ivr held
+   the record of truth copied by finalizeIvrConversion. Every other order, and
+   every order_form / order_form_1500, fell through to a blind upsert that
+   replaced the whole row, silently discarding clinic edits whenever another
+   document was uploaded. The reasoning was never specific to linked IVRs or to
+   one table, so the guard now covers all three.
+
+   NOTE: this belongs on extraction/prefill writes only. The deliberate writes —
+   upsertOrderIVR, the Order Form save, signing, IVR mode switches — must still
+   replace values, or providers could not edit their own forms.
+
+   Returns the payload to upsert: on an update, the blank columns plus the
+   bookkeeping ones. */
+const EXTRACTION_BOOKKEEPING = ["order_id", "ai_extracted", "ai_extracted_at"];
+
+async function applyExtractionFillBlanks(
   adminClient: ReturnType<typeof createAdminClient>,
+  table: "order_ivr" | "order_form" | "order_form_1500",
   orderId: string,
   payload: Record<string, unknown>,
-): Promise<{ payload: Record<string, unknown>; linked: boolean }> {
+): Promise<Record<string, unknown>> {
   const { data: existing } = await adminClient
-    .from("order_ivr")
+    .from(table)
     .select("*")
     .eq("order_id", orderId)
     .maybeSingle();
   const row = existing as Record<string, unknown> | null;
-  if (!row || !row.linked_standalone_ivr_id) return { payload, linked: false };
 
-  const isBlank = (v: unknown) =>
-    v === null || v === undefined || (typeof v === "string" && v.trim() === "");
-
-  const merged: Record<string, unknown> = {
-    order_id: orderId,
-    ai_extracted: true,
-    ai_extracted_at: payload.ai_extracted_at,
-  };
-  let filled = 0;
-  for (const [key, value] of Object.entries(payload)) {
-    if (key in merged) continue;
-    if (isBlank(value)) continue;
-    if (!isBlank(row[key])) continue; // admin/IVR value wins
-    merged[key] = value;
-    filled++;
-  }
-  console.log(
-    `[extract] order_ivr linked to standalone IVR — fill-blanks mode, ${filled} column(s) added, none replaced`,
-    { orderId },
+  const { payload: merged, filled, preserved, isInsert } = mergeFillingBlanks(
+    row,
+    payload,
+    EXTRACTION_BOOKKEEPING,
   );
-  return { payload: merged, linked: true };
+  if (isInsert) {
+    console.log(`[extract] ${table} has no row yet — writing in full`, {
+      orderId,
+    });
+  } else {
+    console.log(
+      `[extract] ${table} fill-blanks — ${filled} column(s) added, ${preserved} preserved, none replaced`,
+      { orderId },
+    );
+  }
+  return merged;
 }
 
 /* ── PDF generation helper ── */
@@ -1276,10 +1289,23 @@ async function handleCombinedExtraction(
         (aiIvr.facility_name as string | null) || facility?.name || null,
       facility_npi:
         (aiIvr.facility_npi as string | null) || enr?.facility_npi || null,
+      // facility_tin was retired from the enrollment form in favour of
+      // facility_ein; the column stays for older production rows. The 1500
+      // payload below has always read both — the IVR only read the retired one,
+      // so an enrolled clinic's tax id never reached the IVR.
       facility_tin:
-        (aiIvr.facility_tin as string | null) || enr?.facility_tin || null,
+        (aiIvr.facility_tin as string | null) ||
+        enr?.facility_tin ||
+        enr?.facility_ein ||
+        null,
       facility_ptan:
         (aiIvr.facility_ptan as string | null) || enr?.facility_ptan || null,
+      // Nothing assigned this before, so the enrolled MAC never reached the
+      // IVR and the field came up blank-and-required on every order.
+      medicare_admin_contractor:
+        (aiIvr.medicare_admin_contractor as string | null) ||
+        getMedicareMacLabel(enr?.medicare_mac) ||
+        null,
       facility_fax:
         (aiIvr.facility_fax as string | null) || enr?.billing_fax || null,
       facility_address:
@@ -1299,7 +1325,10 @@ async function handleCombinedExtraction(
       physician_npi:
         (aiIvr.physician_npi as string | null) || creds?.npi_number || null,
       physician_tin:
-        (aiIvr.physician_tin as string | null) || enr?.facility_tin || null,
+        (aiIvr.physician_tin as string | null) ||
+        enr?.facility_tin ||
+        enr?.facility_ein ||
+        null,
       physician_fax:
         (aiIvr.physician_fax as string | null) || enr?.billing_fax || null,
       physician_address:
@@ -1316,8 +1345,9 @@ async function handleCombinedExtraction(
       sales_rep_name: repName || null,
     };
 
-    const { payload: ivrWrite } = await applyLinkedIvrFillBlanks(
+    const ivrWrite = await applyExtractionFillBlanks(
       adminClient,
+      "order_ivr",
       orderId,
       ivrPayload,
     );
@@ -1365,9 +1395,13 @@ async function handleCombinedExtraction(
       billing_provider_tax_id:
         (ai1500.billing_provider_tax_id as string | null) ||
         enr?.facility_tin ||
+        enr?.facility_ein ||
         null,
       federal_tax_id:
-        (ai1500.federal_tax_id as string | null) || enr?.facility_tin || null,
+        (ai1500.federal_tax_id as string | null) ||
+        enr?.facility_tin ||
+        enr?.facility_ein ||
+        null,
       referring_provider_name:
         (ai1500.referring_provider_name as string | null) ||
         physicianName ||
@@ -1378,9 +1412,15 @@ async function handleCombinedExtraction(
         null,
     };
 
+    const f1500Write = await applyExtractionFillBlanks(
+      adminClient,
+      "order_form_1500",
+      orderId,
+      form1500Payload,
+    );
     const { error: f15Err } = await adminClient
       .from("order_form_1500")
-      .upsert(form1500Payload, { onConflict: "order_id" });
+      .upsert(f1500Write, { onConflict: "order_id" });
     if (f15Err)
       safeLogError("extract-combined", f15Err, {
         phase: "order_form_1500 insert",
@@ -1397,6 +1437,19 @@ async function handleCombinedExtraction(
       aiPatientName ||
       patientName ||
       null,
+    // Date of birth and the patient signature date are different columns.
+    // resolveOrderFormDob is deliberately incapable of returning the date of
+    // service, which is what the form used to print as the DOB.
+    //
+    // ai1500.patient_dob leads: it is the extraction the facesheet actually
+    // yields, and the one STEP 9 below uses to auto-create the patient. The
+    // patient record is only a fallback here because it does not exist yet at
+    // this point in the run — on a first pass `patient` is null.
+    patient_dob: resolveOrderFormDob({
+      extractedDob: ai1500.patient_dob as string | null,
+      ivrExtractedDob: aiIvr.patient_dob as string | null,
+      patientRecordDob: patient?.date_of_birth ?? null,
+    }),
     patient_date: (orderCtx as Record<string, unknown>).date_of_service || null,
     physician_signature: physicianName || null,
     // Mirror order_ivr / order_form_1500: prefer the AI-extracted NPI when
@@ -1408,9 +1461,15 @@ async function handleCombinedExtraction(
     ai_extracted_at: new Date().toISOString(),
   };
 
+  const orderFormWrite = await applyExtractionFillBlanks(
+    adminClient,
+    "order_form",
+    orderId,
+    orderFormPayload,
+  );
   const { error: ofErr } = await adminClient
     .from("order_form")
-    .upsert(orderFormPayload, { onConflict: "order_id" });
+    .upsert(orderFormWrite, { onConflict: "order_id" });
   if (ofErr)
     safeLogError("extract-combined", ofErr, {
       phase: "order_form insert",
@@ -1875,10 +1934,19 @@ export async function POST(req: NextRequest) {
           (aiIvr.facility_name as string | null) || facility?.name || null,
         facility_npi:
           (aiIvr.facility_npi as string | null) || enr?.facility_npi || null,
+        // See the combined-path payload above: facility_tin is the retired
+        // column, facility_ein the one the enrollment form writes now.
         facility_tin:
-          (aiIvr.facility_tin as string | null) || enr?.facility_tin || null,
+          (aiIvr.facility_tin as string | null) ||
+          enr?.facility_tin ||
+          enr?.facility_ein ||
+          null,
         facility_ptan:
           (aiIvr.facility_ptan as string | null) || enr?.facility_ptan || null,
+        medicare_admin_contractor:
+          (aiIvr.medicare_admin_contractor as string | null) ||
+          getMedicareMacLabel(enr?.medicare_mac) ||
+          null,
         facility_fax:
           (aiIvr.facility_fax as string | null) || enr?.billing_fax || null,
         facility_address:
@@ -1898,7 +1966,10 @@ export async function POST(req: NextRequest) {
         physician_npi:
           (aiIvr.physician_npi as string | null) || creds?.npi_number || null,
         physician_tin:
-          (aiIvr.physician_tin as string | null) || enr?.facility_tin || null,
+          (aiIvr.physician_tin as string | null) ||
+          enr?.facility_tin ||
+          enr?.facility_ein ||
+          null,
         physician_fax:
           (aiIvr.physician_fax as string | null) || enr?.billing_fax || null,
         physician_address:
@@ -1917,8 +1988,9 @@ export async function POST(req: NextRequest) {
         sales_rep_name: repName || null,
       };
 
-      const { payload: ivrWrite } = await applyLinkedIvrFillBlanks(
+      const ivrWrite = await applyExtractionFillBlanks(
         adminClient,
+        "order_ivr",
         orderId,
         ivrPayload,
       );
@@ -1964,9 +2036,13 @@ export async function POST(req: NextRequest) {
         billing_provider_tax_id:
           (ai1500.billing_provider_tax_id as string | null) ||
           enr?.facility_tin ||
+          enr?.facility_ein ||
           null,
         federal_tax_id:
-          (ai1500.federal_tax_id as string | null) || enr?.facility_tin || null,
+          (ai1500.federal_tax_id as string | null) ||
+          enr?.facility_tin ||
+          enr?.facility_ein ||
+          null,
         referring_provider_name:
           (ai1500.referring_provider_name as string | null) ||
           physicianName ||
@@ -1977,9 +2053,15 @@ export async function POST(req: NextRequest) {
           null,
       };
 
+      const f1500Write = await applyExtractionFillBlanks(
+        adminClient,
+        "order_form_1500",
+        orderId,
+        form1500Payload,
+      );
       const { error: f15Err } = await adminClient
         .from("order_form_1500")
-        .upsert(form1500Payload, { onConflict: "order_id" });
+        .upsert(f1500Write, { onConflict: "order_id" });
       if (f15Err) {
         console.error(
           "[extract] order_form_1500 FAILED:",
@@ -1997,6 +2079,14 @@ export async function POST(req: NextRequest) {
         aiPatientName ||
         patientName ||
         null,
+      // See the note on the other order_form payload: DOB is its own column,
+      // must never fall back to the date of service, and takes the 1500's
+      // extracted DOB first because that is the one the facesheet yields.
+      patient_dob: resolveOrderFormDob({
+        extractedDob: ai1500.patient_dob as string | null,
+        ivrExtractedDob: aiIvr.patient_dob as string | null,
+        patientRecordDob: patient?.date_of_birth ?? null,
+      }),
       patient_date: (orderCtx as any).date_of_service || null,
       physician_signature: physicianName || null,
       physician_npi:
@@ -2005,9 +2095,15 @@ export async function POST(req: NextRequest) {
       ai_extracted_at: new Date().toISOString(),
     };
 
+    const orderFormWrite = await applyExtractionFillBlanks(
+      adminClient,
+      "order_form",
+      orderId,
+      orderFormPayload,
+    );
     const { error: ofErr } = await adminClient
       .from("order_form")
-      .upsert(orderFormPayload, { onConflict: "order_id" });
+      .upsert(orderFormWrite, { onConflict: "order_id" });
     if (ofErr) {
       safeLogError("extract", ofErr, { phase: "order_form insert", orderId });
     } else {
