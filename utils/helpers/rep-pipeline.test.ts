@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildRepLedgerTotals,
   buildRepPipelineTotals,
   classifyOrderMoney,
   estimateCommission,
   isOverdueForCollection,
+  ledgerRowAmount,
   mergeRepPipelineTotals,
 } from "./rep-pipeline";
 
@@ -320,5 +322,100 @@ describe("mergeRepPipelineTotals", () => {
     mergeRepPipelineTotals([subRepA, subRepB]);
     mergeRepPipelineTotals([subRepA, subRepB]);
     expect(subRepB.buckets.fulfilled.commissionEstimate).toBe(before);
+  });
+});
+
+describe("ledgerRowAmount", () => {
+  it("prefers the settled final_amount over the raw commission", () => {
+    expect(
+      ledgerRowAmount({ finalAmount: 90, commissionAmount: 100, adjustment: 5 }),
+    ).toBe(90);
+  });
+
+  it("falls back to commission plus adjustment", () => {
+    expect(ledgerRowAmount({ commissionAmount: 100, adjustment: 5 })).toBe(105);
+    expect(ledgerRowAmount({ commissionAmount: 100 })).toBe(100);
+  });
+
+  it("treats a negative adjustment as a deduction", () => {
+    expect(ledgerRowAmount({ commissionAmount: 100, adjustment: -25 })).toBe(75);
+  });
+
+  it("reads a zero final_amount as zero, not as missing", () => {
+    // A settled-to-nothing row must not silently fall back to the raw amount.
+    expect(ledgerRowAmount({ finalAmount: 0, commissionAmount: 100 })).toBe(0);
+  });
+
+  it("returns zero rather than NaN on unusable input", () => {
+    expect(ledgerRowAmount({})).toBe(0);
+    expect(ledgerRowAmount({ finalAmount: Number.NaN })).toBe(0);
+  });
+});
+
+describe("buildRepLedgerTotals", () => {
+  const rows = [
+    { type: "direct", status: "pending", commissionAmount: 100 },
+    { type: "direct", status: "approved", commissionAmount: 200 },
+    { type: "direct", status: "paid", commissionAmount: 400 },
+    { type: "override", status: "pending", commissionAmount: 10 },
+    { type: "override", status: "paid", commissionAmount: 20 },
+    { type: "direct", status: "void", commissionAmount: 9999 },
+  ];
+
+  it("splits recorded commission by lifecycle stage", () => {
+    const { all } = buildRepLedgerTotals(rows);
+    expect(all.pending).toBe(110);
+    expect(all.approved).toBe(200);
+    expect(all.paid).toBe(420);
+    expect(all.total).toBe(730);
+  });
+
+  it("keeps direct and override earnings apart", () => {
+    const { direct, override } = buildRepLedgerTotals(rows);
+    expect(direct.total).toBe(700);
+    expect(override.total).toBe(30);
+    expect(override.approved).toBe(0);
+  });
+
+  it("excludes voided commission entirely", () => {
+    const { all, direct } = buildRepLedgerTotals(rows);
+    // The 9999 void appears in no stage and in no total.
+    expect(all.total).toBe(730);
+    expect(direct.pending + direct.approved + direct.paid).toBe(direct.total);
+  });
+
+  it("keeps each side's stages summing to its own total", () => {
+    const { direct, override, all } = buildRepLedgerTotals(rows);
+    for (const side of [direct, override, all]) {
+      expect(side.pending + side.approved + side.paid).toBe(side.total);
+    }
+    expect(direct.total + override.total).toBe(all.total);
+  });
+
+  it("counts an unknown status as pending instead of dropping the money", () => {
+    // Dropping it would quietly shrink the rep's earned total; "not yet paid
+    // out" is the conservative reading.
+    const { all } = buildRepLedgerTotals([
+      { type: "direct", status: "on_hold", commissionAmount: 50 },
+      { type: "direct", status: null, commissionAmount: 25 },
+    ]);
+    expect(all.pending).toBe(75);
+    expect(all.paid).toBe(0);
+    expect(all.total).toBe(75);
+  });
+
+  it("treats a row with no type as direct, not override", () => {
+    const { direct, override } = buildRepLedgerTotals([
+      { status: "paid", commissionAmount: 60 },
+    ]);
+    expect(direct.paid).toBe(60);
+    expect(override.total).toBe(0);
+  });
+
+  it("returns zeroed totals for a rep with no commission rows", () => {
+    const { all, direct, override } = buildRepLedgerTotals([]);
+    expect(all.total).toBe(0);
+    expect(direct.total).toBe(0);
+    expect(override.total).toBe(0);
   });
 });

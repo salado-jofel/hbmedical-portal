@@ -6,7 +6,17 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdminOrThrow, getCurrentUserOrThrow, getUserRole } from "@/lib/supabase/auth";
 import { isAdmin, isSalesRep } from "@/utils/helpers/role";
 import { setCommissionRateSchema } from "@/utils/validators/commissions";
-import { COMMISSION_RATES_TABLE, COMMISSION_TABLE, PAYOUTS_TABLE, COMMISSIONS_PATH } from "@/utils/constants/commissions";
+import {
+  COMMISSION_RATES_TABLE,
+  COMMISSION_TABLE,
+  PAYOUTS_TABLE,
+  COMMISSIONS_PATH,
+  MY_TEAM_PATH,
+  MY_TEAM_REP_PATH,
+  REP_PERFORMANCE_PATH,
+  COMMISSION_GAP_NOTIFICATION,
+} from "@/utils/constants/commissions";
+import { createNotifications } from "@/app/(dashboard)/dashboard/orders/(services)/_shared";
 import type {
   ICommissionRate,
   ICommission,
@@ -27,6 +37,79 @@ function currentPeriod(): string {
 function profileName(p: { first_name: string; last_name: string } | null): string {
   if (!p) return "Unknown";
   return `${p.first_name} ${p.last_name}`.trim();
+}
+
+/**
+ * Refresh every page that renders commission figures.
+ *
+ * Revalidating only the Commissions page meant an admin working on a rep's
+ * detail page saw stale data after saving a rate, approving, adjusting,
+ * voiding or paying out — the write succeeded but the page still showed the
+ * old value, which reads as a failure and invites a second click. Admins are
+ * in fact redirected away from the Commissions page, so it was the one page
+ * they never saw.
+ */
+function revalidateCommissionViews(): void {
+  revalidatePath(COMMISSIONS_PATH);
+  revalidatePath(MY_TEAM_PATH);
+  // Dynamic route: revalidated by pattern so every sub-rep's page is covered.
+  revalidatePath(MY_TEAM_REP_PATH, "page");
+  // Carries the rep's money pipeline and earned-commission cards.
+  revalidatePath(REP_PERFORMANCE_PATH);
+}
+
+/**
+ * Record a payment that produced no commission.
+ *
+ * `calculateOrderCommission` is called from Stripe payment webhooks, where a
+ * failure used to end at a `console.warn` the webhook then swallowed: the
+ * clinic paid, the order completed, and the rep's commission silently never
+ * existed. Nobody found out. A notification to admins makes the loss durable
+ * and visible, since the webhook cannot surface anything to a user itself.
+ *
+ * Never throws — a reporting failure must not break the payment flow.
+ */
+async function reportCommissionGap(
+  adminClient: ReturnType<typeof createAdminClient>,
+  order: { id: string; order_number: string | null; facility_id: string | null },
+  reason: string,
+): Promise<void> {
+  try {
+    // Stripe retries a failed webhook, and each retry walks the same failure
+    // path. Without this the admins' feed fills with the same alert for one
+    // order, which is how a real alert gets ignored.
+    const { data: existing } = await adminClient
+      .from("notifications")
+      .select("id")
+      .eq("order_id", order.id)
+      .eq("type", COMMISSION_GAP_NOTIFICATION)
+      .limit(1);
+
+    if (existing && existing.length > 0) {
+      console.info(
+        "[reportCommissionGap] Already reported for order:",
+        order.id,
+        "— skipping duplicate.",
+      );
+      return;
+    }
+
+    const orderNumber = order.order_number ?? "Unknown order";
+    await createNotifications({
+      adminClient,
+      orderId: order.id,
+      orderNumber,
+      facilityId: order.facility_id ?? "",
+      type: COMMISSION_GAP_NOTIFICATION,
+      title: "Commission not created",
+      body: `Order ${orderNumber} was paid but no commission was recorded: ${reason} Fix the cause, then recalculate so the rep is not shorted.`,
+      oldStatus: null,
+      newStatus: null,
+      notifyRoles: ["admin"],
+    });
+  } catch (err) {
+    console.error("[reportCommissionGap] Failed to notify admins:", err);
+  }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -151,7 +234,7 @@ export async function setCommissionRate(
       return { success: false, error: rpcError.message ?? "Failed to set commission rate." };
     }
 
-    revalidatePath(COMMISSIONS_PATH);
+    revalidateCommissionViews();
     return { success: true, error: null };
   } catch (err) {
     console.error("[setCommissionRate] Unexpected error:", err);
@@ -227,7 +310,7 @@ export async function calculateOrderCommission(orderId: string): Promise<{ succe
     // Fetch order with facility → assigned sales rep (NOT user_id which is the clinic owner)
     const { data: order, error: orderError } = await adminClient
       .from("orders")
-      .select("id, order_number, order_status, facilities!orders_facility_id_fkey(assigned_rep)")
+      .select("id, order_number, order_status, facility_id, facilities!orders_facility_id_fkey(assigned_rep)")
       .eq("id", orderId)
       .maybeSingle();
 
@@ -239,7 +322,23 @@ export async function calculateOrderCommission(orderId: string): Promise<{ succe
     const facility = Array.isArray(order.facilities) ? order.facilities[0] : order.facilities;
     const repId: string | null = facility?.assigned_rep ?? null;
     console.log("[calculateOrderCommission] orderId:", orderId, "| facility:", facility, "| repId:", repId);
-    if (!repId) return { success: false, error: "No rep assigned to this order." };
+
+    // From here on the order is known, so every failure can be reported to
+    // admins rather than disappearing into the webhook's swallowed warning.
+    const orderRef = {
+      id: orderId,
+      order_number: order.order_number as string | null,
+      facility_id: order.facility_id as string | null,
+    };
+
+    if (!repId) {
+      await reportCommissionGap(
+        adminClient,
+        orderRef,
+        "no sales rep is assigned to the ordering facility.",
+      );
+      return { success: false, error: "No rep assigned to this order." };
+    }
 
     // Fetch order total from order_items
     const { data: items, error: itemsError } = await adminClient
@@ -269,10 +368,22 @@ export async function calculateOrderCommission(orderId: string): Promise<{ succe
 
     if (rateError) {
       console.error("[calculateOrderCommission] Rate fetch error:", JSON.stringify(rateError));
+      await reportCommissionGap(
+        adminClient,
+        orderRef,
+        "the rep's commission rate could not be read.",
+      );
       return { success: false, error: "Failed to fetch commission rate." };
     }
     console.log("[calculateOrderCommission] orderId:", orderId, "| repId:", repId, "| rate:", rate, "| orderAmount:", orderAmount);
-    if (!rate) return { success: false, error: "No active commission rate for this rep." };
+    if (!rate) {
+      await reportCommissionGap(
+        adminClient,
+        orderRef,
+        "the rep has no active commission rate. Set one on their rep page.",
+      );
+      return { success: false, error: "No active commission rate for this rep." };
+    }
 
     const ratePercent = Number(rate.rate_percent);
     const commissionAmount = (orderAmount * ratePercent) / 100;
@@ -309,6 +420,11 @@ export async function calculateOrderCommission(orderId: string): Promise<{ succe
 
     if (insertError) {
       console.error("[calculateOrderCommission] Insert error:", JSON.stringify(insertError));
+      await reportCommissionGap(
+        adminClient,
+        orderRef,
+        "writing the commission record failed.",
+      );
       return { success: false, error: "Failed to insert commission record." };
     }
 
@@ -367,7 +483,7 @@ export async function calculateOrderCommission(orderId: string): Promise<{ succe
       }
     }
 
-    revalidatePath(COMMISSIONS_PATH);
+    revalidateCommissionViews();
     return { success: true };
   } catch (err) {
     console.error("[calculateOrderCommission] Unexpected error:", err);
@@ -402,7 +518,7 @@ export async function adjustCommission(
       return { success: false, error: error.message ?? "Failed to adjust commission." };
     }
 
-    revalidatePath(COMMISSIONS_PATH);
+    revalidateCommissionViews();
     return { success: true };
   } catch (err) {
     console.error("[adjustCommission] Unexpected error:", err);
@@ -435,7 +551,7 @@ export async function approveCommissions(
       return { success: false, error: error.message ?? "Failed to approve commissions." };
     }
 
-    revalidatePath(COMMISSIONS_PATH);
+    revalidateCommissionViews();
     return { success: true };
   } catch (err) {
     console.error("[approveCommissions] Unexpected error:", err);
@@ -500,7 +616,7 @@ export async function voidCommission(
       return { success: false, error: updateError.message ?? "Failed to void commission." };
     }
 
-    revalidatePath(COMMISSIONS_PATH);
+    revalidateCommissionViews();
     return { success: true };
   } catch (err) {
     console.error("[voidCommission] Unexpected error:", err);
@@ -604,7 +720,7 @@ export async function generatePayout(
       return { success: false, error: upsertError.message ?? "Failed to generate payout." };
     }
 
-    revalidatePath(COMMISSIONS_PATH);
+    revalidateCommissionViews();
     return { success: true };
   } catch (err) {
     console.error("[generatePayout] Unexpected error:", err);
@@ -663,7 +779,7 @@ export async function markPayoutPaid(
       // Non-fatal: payout already marked paid
     }
 
-    revalidatePath(COMMISSIONS_PATH);
+    revalidateCommissionViews();
     return { success: true };
   } catch (err) {
     console.error("[markPayoutPaid] Unexpected error:", err);

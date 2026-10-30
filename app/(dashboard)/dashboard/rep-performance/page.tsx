@@ -8,6 +8,7 @@ import Providers from "./(sections)/Providers";
 import RepHero from "./(sections)/RepHero";
 import RepKpiRow from "./(sections)/RepKpiRow";
 import RepMoneyPipeline from "./(sections)/RepMoneyPipeline";
+import RepEarnedCommissions from "./(sections)/RepEarnedCommissions";
 import RepTables from "./(sections)/RepTables";
 import AdminQuotaBoard from "./(sections)/AdminQuotaBoard";
 import TierBreakdown from "./(sections)/TierBreakdown";
@@ -71,6 +72,7 @@ export default async function RepPerformancePage() {
           <RepHero />
           <RepKpiRow />
           <RepMoneyPipeline />
+          <RepEarnedCommissions />
           <TierBreakdown />
           <RepTables />
         </>

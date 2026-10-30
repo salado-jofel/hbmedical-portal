@@ -21,6 +21,7 @@
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { COMMISSION_RATES_TABLE, COMMISSION_TABLE } from "@/utils/constants/commissions";
 import {
+  buildRepLedgerTotals,
   buildRepPipelineTotals,
   mergeRepPipelineTotals,
   type RepMoneyPipeline,
@@ -180,23 +181,27 @@ export async function buildRepMoneyPipeline(
   const ratePercent =
     rateRow?.rate_percent != null ? Number(rateRow.rate_percent) : null;
 
+  // Every period, not just the current one: "what have I earned" is a
+  // lifetime question. The month-scoped figure is `commissionEarned` on
+  // IRepPerformance, which this deliberately does not duplicate.
   const { data: ledgerRows } = await adminClient
     .from(COMMISSION_TABLE)
-    .select("type, final_amount, commission_amount, adjustment")
+    .select("type, status, final_amount, commission_amount, adjustment")
     .eq("rep_id", repId)
     .neq("status", "void");
 
-  let ledgerDirect = 0;
-  let ledgerOverride = 0;
-  for (const c of ledgerRows ?? []) {
-    const row = c as Record<string, unknown>;
-    const amount =
-      row.final_amount != null
-        ? Number(row.final_amount)
-        : Number(row.commission_amount ?? 0) + Number(row.adjustment ?? 0);
-    if (row.type === "override") ledgerOverride += amount;
-    else ledgerDirect += amount;
-  }
+  const ledger = buildRepLedgerTotals(
+    (ledgerRows ?? []).map((c) => {
+      const row = c as Record<string, unknown>;
+      return {
+        type: row.type as string | null,
+        status: row.status as string | null,
+        finalAmount: row.final_amount as number | null,
+        commissionAmount: row.commission_amount as number | null,
+        adjustment: row.adjustment as number | null,
+      };
+    }),
+  );
 
   const [own, override] = await Promise.all([
     totalsForRepFacilities(repId, ratePercent, adminClient),
@@ -206,8 +211,7 @@ export async function buildRepMoneyPipeline(
   return {
     ...own,
     ratePercent,
-    ledgerDirect,
-    ledgerOverride,
+    ledger,
     override,
   };
 }

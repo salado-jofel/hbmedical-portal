@@ -12,6 +12,8 @@ export interface SubRep {
   commissionRate: number;
   overridePercent: number;
   commissionEarned: number;
+  /** What the parent actually earned in override on this sub-rep (ledger). */
+  overrideEarned: number;
   ordersInPeriod: number;
   deliveredInPeriod: number;
   commissionInPeriod: number;

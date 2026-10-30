@@ -7,6 +7,53 @@ import { isSalesRep, isAdmin } from "@/utils/helpers/role";
 import type { ISubRepDetail, ICommissionHistoryRow, IRepListRow, IMyTeamKpis } from "@/utils/interfaces/my-team";
 import type { AccountPeriod } from "@/utils/interfaces/accounts";
 import { getAccountsWithMetrics } from "@/app/(dashboard)/dashboard/accounts/(services)/actions";
+import { ledgerRowAmount } from "@/utils/helpers/rep-pipeline";
+
+/**
+ * What the PARENT actually earned in override on one sub-rep's orders, for a
+ * single payout period.
+ *
+ * Read from the parent's own `override` commission rows, not derived. The old
+ * formula was `subRepCommission * (overridePercent / 100)`, but
+ * `calculateOrderCommission` applies the override percentage to the ORDER
+ * AMOUNT. Deriving it from the sub-rep's commission understated every override
+ * by a factor of the sub-rep's own rate: a $3,600 order under a 15% sub-rep
+ * with a 3% override paid the parent $108, while the UI showed $16.20 — and
+ * the commission ledger on the very same page showed the real $108.
+ */
+async function overrideEarnedFromSubRep(
+  adminClient: ReturnType<typeof createAdminClient>,
+  parentRepId: string,
+  facilityIds: string[],
+  period: string,
+): Promise<number> {
+  if (facilityIds.length === 0) return 0;
+
+  const { data: orders } = await adminClient
+    .from("orders")
+    .select("id")
+    .in("facility_id", facilityIds);
+
+  const orderIds = (orders ?? []).map((o: { id: string }) => o.id);
+  if (orderIds.length === 0) return 0;
+
+  const { data: rows } = await adminClient
+    .from("commissions")
+    .select("final_amount, commission_amount, adjustment")
+    .eq("rep_id", parentRepId)
+    .eq("type", "override")
+    .eq("payout_period", period)
+    .neq("status", "void")
+    .in("order_id", orderIds);
+
+  return (rows ?? []).reduce((sum: number, c: Record<string, unknown>) => {
+    return sum + ledgerRowAmount({
+      finalAmount: c.final_amount as number | null,
+      commissionAmount: c.commission_amount as number | null,
+      adjustment: c.adjustment as number | null,
+    });
+  }, 0);
+}
 
 export async function getMySubReps(period: AccountPeriod = "this_month") {
   const supabase = await createClient();
@@ -101,6 +148,13 @@ export async function getMySubReps(period: AccountPeriod = "this_month") {
           : Number(c.commission_amount) + Number(c.adjustment ?? 0));
       }, 0);
 
+      const overrideEarned = await overrideEarnedFromSubRep(
+        adminClient,
+        user.id,
+        facilityIds,
+        currentPeriod,
+      );
+
       return {
         ...rep,
         accountCount: accountCount || 0,
@@ -109,6 +163,7 @@ export async function getMySubReps(period: AccountPeriod = "this_month") {
         commissionRate: rate?.rate_percent || 0,
         overridePercent: rate?.override_percent || 0,
         commissionEarned,
+        overrideEarned,
         ordersInPeriod,
         deliveredInPeriod,
         commissionInPeriod: commissionEarned,
@@ -227,7 +282,12 @@ export async function getSubRepDetail(subRepId: string): Promise<ISubRepDetail |
 
   const overrideEarnedThisPeriod = isAdmin(role)
     ? null
-    : commissionEarned * (overridePercent / 100);
+    : await overrideEarnedFromSubRep(
+        adminClient,
+        user.id,
+        facilityIds,
+        currentPeriod,
+      );
 
   const { data: history } = await adminClient
     .from("commissions")

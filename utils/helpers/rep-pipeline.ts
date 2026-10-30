@@ -218,6 +218,113 @@ export type RepOverridePipeline = {
   subRepsMissingRate: number;
 };
 
+/* ---------------------------------------------------------------------------
+ * Earned commission — the ledger side.
+ *
+ * Everything above this point is a FORECAST computed from orders. Everything
+ * below is money the system has actually recorded in `commissions`, which only
+ * happens after a Stripe payment. The two are kept in separate shapes on
+ * purpose: a rep asking "what am I about to earn" and "what have I earned" is
+ * asking two different questions, and blurring them would let a forecast pass
+ * itself off as a payout.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * Recorded commission at each stage of the payout lifecycle
+ * (`pending -> approved -> paid`). Voided rows are counted nowhere.
+ */
+export type RepLedgerTotals = {
+  /** Earned, awaiting an admin's approval. */
+  pending: number;
+  /** Approved, awaiting a payout run. */
+  approved: number;
+  /** Paid out to the rep. */
+  paid: number;
+  /** pending + approved + paid — everything earned, however far along. */
+  total: number;
+};
+
+/** Earned commission split by how the rep earned it. */
+export type RepCommissionLedger = {
+  /** From the rep's own orders. */
+  direct: RepLedgerTotals;
+  /** Override on a sub-rep's orders. */
+  override: RepLedgerTotals;
+  /** direct + override. */
+  all: RepLedgerTotals;
+};
+
+/** One `commissions` row, in the shape this module needs. */
+export type RepLedgerRow = {
+  type?: string | null;
+  status?: string | null;
+  finalAmount?: number | null;
+  commissionAmount?: number | null;
+  adjustment?: number | null;
+};
+
+const EMPTY_LEDGER = (): RepLedgerTotals => ({
+  pending: 0,
+  approved: 0,
+  paid: 0,
+  total: 0,
+});
+
+/**
+ * What one ledger row is worth.
+ *
+ * `final_amount` is the admin-settled figure and wins whenever it is set;
+ * otherwise the raw commission plus any adjustment. Mirrors the same rule in
+ * the commissions and my-team services so every page agrees on one number.
+ */
+export function ledgerRowAmount(row: RepLedgerRow): number {
+  const amount =
+    row.finalAmount != null
+      ? Number(row.finalAmount)
+      : Number(row.commissionAmount ?? 0) + Number(row.adjustment ?? 0);
+  return Number.isFinite(amount) ? amount : 0;
+}
+
+/**
+ * Total recorded commission, split by lifecycle stage and by direct/override.
+ *
+ * An unrecognised (non-void) status is counted as `pending` rather than
+ * dropped: dropping it would quietly shrink the rep's earned total, and "not
+ * yet paid out" is the conservative reading — it never claims money has landed
+ * in the rep's pocket. Voids are excluded outright, a void being a reversal.
+ */
+export function buildRepLedgerTotals(
+  rows: RepLedgerRow[],
+): RepCommissionLedger {
+  const ledger: RepCommissionLedger = {
+    direct: EMPTY_LEDGER(),
+    override: EMPTY_LEDGER(),
+    all: EMPTY_LEDGER(),
+  };
+
+  for (const row of rows) {
+    const status = row.status ?? "";
+    if (status === "void") continue;
+
+    const stage: keyof Omit<RepLedgerTotals, "total"> =
+      status === "approved"
+        ? "approved"
+        : status === "paid"
+          ? "paid"
+          : "pending";
+
+    const amount = ledgerRowAmount(row);
+    const side = row.type === "override" ? ledger.override : ledger.direct;
+
+    side[stage] += amount;
+    side.total += amount;
+    ledger.all[stage] += amount;
+    ledger.all.total += amount;
+  }
+
+  return ledger;
+}
+
 /**
  * The bucket totals plus the figures a rep needs to read them correctly:
  * the rate the estimates used, and what the commission ledger actually holds.
@@ -226,12 +333,11 @@ export type RepMoneyPipeline = RepPipelineTotals & {
   /** The rate the estimates were computed at; null when none is configured. */
   ratePercent: number | null;
   /**
-   * Commission actually recorded on the ledger, all periods, excluding voids,
-   * split by type. Authoritative, unlike the estimates — shown alongside them
-   * so a rep can see where forecast ends and owed money begins.
+   * Commission actually recorded on the ledger, all periods, excluding voids.
+   * Authoritative, unlike the estimates above — shown alongside them so a rep
+   * can see where forecast ends and real earnings begin.
    */
-  ledgerDirect: number;
-  ledgerOverride: number;
+  ledger: RepCommissionLedger;
   /** Null when the rep has no sub-reps. */
   override: RepOverridePipeline | null;
 };
