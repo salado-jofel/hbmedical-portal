@@ -9,47 +9,96 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
-  Cell,
 } from "recharts";
+import { formatStatus } from "@/utils/helpers/formatter";
 import type { DashboardOrder } from "@/utils/interfaces/orders";
 
-const FULFILLMENT_STATUSES = [
-  { key: "pending",    label: "Pending",    color: "#c47d0a" },
-  { key: "processing", label: "Processing", color: "#1565c0" },
-  { key: "fulfilled",  label: "Fulfilled",  color: "#0d7a6b" },
-  { key: "canceled",   label: "Canceled",   color: "#dc2626" },
+const FALLBACK_COLOR = "#94a3b8";
+
+/* Presentation only — both rows are built from the data, so a status missing
+ * from these maps still draws, labelled via formatStatus() in the fallback
+ * colour. The delivery map previously omitted `exception` and `canceled`
+ * entirely, which would have silently dropped those orders from the bar the
+ * first time one occurred.
+ *
+ * The lifecycle arrays control stacking order only. A status not listed sorts
+ * to the end rather than disappearing.
+ *
+ * Keys are prefixed because the two axes collide: `canceled` is a valid value
+ * of BOTH fulfillment_status and delivery_status, and the bars share a stackId,
+ * so an unprefixed dataKey would make one axis overwrite the other. */
+const FULFILLMENT_PRESENTATION: Record<string, { label: string; color: string }> = {
+  pending:    { label: "Pending",    color: "#c47d0a" },
+  processing: { label: "Processing", color: "#1565c0" },
+  fulfilled:  { label: "Fulfilled",  color: "#0d7a6b" },
+  canceled:   { label: "Canceled",   color: "#dc2626" },
+};
+const FULFILLMENT_ORDER = ["pending", "processing", "fulfilled", "canceled"] as const;
+
+const DELIVERY_PRESENTATION: Record<string, { label: string; color: string }> = {
+  not_shipped:   { label: "Not Shipped",   color: "#94a3b8" },
+  label_created: { label: "Label Created", color: "#c47d0a" },
+  in_transit:    { label: "In Transit",    color: "#1565c0" },
+  delivered:     { label: "Delivered",     color: "#0d7a6b" },
+  returned:      { label: "Returned",      color: "#dc2626" },
+  exception:     { label: "Exception",     color: "#b91c1c" },
+  canceled:      { label: "Canceled",      color: "#dc2626" },
+};
+const DELIVERY_ORDER = [
+  "not_shipped", "label_created", "in_transit", "delivered",
+  "returned", "exception", "canceled",
 ] as const;
 
-const DELIVERY_STATUSES = [
-  { key: "not_shipped",   label: "Not Shipped",   color: "#94a3b8" },
-  { key: "label_created", label: "Label Created", color: "#c47d0a" },
-  { key: "in_transit",    label: "In Transit",    color: "#1565c0" },
-  { key: "delivered",     label: "Delivered",     color: "#0d7a6b" },
-  { key: "returned",      label: "Returned",      color: "#dc2626" },
-] as const;
+type Series = { status: string; dataKey: string; label: string; color: string };
+
+function toSeries(
+  counts: Record<string, number>,
+  presentation: Record<string, { label: string; color: string }>,
+  lifecycle: readonly string[],
+  prefix: string,
+): Series[] {
+  const rank = (status: string) => {
+    const index = lifecycle.indexOf(status);
+    return index === -1 ? lifecycle.length : index;
+  };
+  return Object.keys(counts)
+    .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
+    .map((status) => ({
+      status,
+      dataKey: `${prefix}${status}`,
+      label: presentation[status]?.label ?? formatStatus(status),
+      color: presentation[status]?.color ?? FALLBACK_COLOR,
+    }));
+}
 
 export function FulfillmentChart({ orders }: { orders: DashboardOrder[] }) {
-  const data = useMemo(() => {
+  const { data, fulfillmentSeries, deliverySeries } = useMemo(() => {
     const fulfillmentCounts: Record<string, number> = {};
     const deliveryCounts: Record<string, number> = {};
 
     for (const o of orders) {
-      fulfillmentCounts[o.fulfillment_status] = (fulfillmentCounts[o.fulfillment_status] ?? 0) + 1;
-      deliveryCounts[o.delivery_status] = (deliveryCounts[o.delivery_status] ?? 0) + 1;
+      if (o.fulfillment_status) {
+        fulfillmentCounts[o.fulfillment_status] = (fulfillmentCounts[o.fulfillment_status] ?? 0) + 1;
+      }
+      if (o.delivery_status) {
+        deliveryCounts[o.delivery_status] = (deliveryCounts[o.delivery_status] ?? 0) + 1;
+      }
     }
 
-    return [
-      {
-        name: "Fulfillment",
-        ...Object.fromEntries(FULFILLMENT_STATUSES.map((s) => [s.key, fulfillmentCounts[s.key] ?? 0])),
-        ...Object.fromEntries(DELIVERY_STATUSES.map((s) => [s.key, 0])),
-      },
-      {
-        name: "Delivery",
-        ...Object.fromEntries(FULFILLMENT_STATUSES.map((s) => [s.key, 0])),
-        ...Object.fromEntries(DELIVERY_STATUSES.map((s) => [s.key, deliveryCounts[s.key] ?? 0])),
-      },
-    ];
+    const fSeries = toSeries(fulfillmentCounts, FULFILLMENT_PRESENTATION, FULFILLMENT_ORDER, "f_");
+    const dSeries = toSeries(deliveryCounts, DELIVERY_PRESENTATION, DELIVERY_ORDER, "d_");
+    const zeros = (series: Series[]) => Object.fromEntries(series.map((s) => [s.dataKey, 0]));
+    const values = (series: Series[], counts: Record<string, number>) =>
+      Object.fromEntries(series.map((s) => [s.dataKey, counts[s.status] ?? 0]));
+
+    return {
+      fulfillmentSeries: fSeries,
+      deliverySeries: dSeries,
+      data: [
+        { name: "Fulfillment", ...zeros(dSeries), ...values(fSeries, fulfillmentCounts) },
+        { name: "Delivery",    ...zeros(fSeries), ...values(dSeries, deliveryCounts) },
+      ],
+    };
   }, [orders]);
 
   const hasData = orders.length > 0;
@@ -101,11 +150,11 @@ export function FulfillmentChart({ orders }: { orders: DashboardOrder[] }) {
                 )}
                 wrapperStyle={{ paddingTop: 4 }}
               />
-              {FULFILLMENT_STATUSES.map((s) => (
-                <Bar key={s.key} dataKey={s.key} name={s.label} stackId="row" fill={s.color} radius={0} />
+              {fulfillmentSeries.map((s) => (
+                <Bar key={s.dataKey} dataKey={s.dataKey} name={s.label} stackId="row" fill={s.color} radius={0} />
               ))}
-              {DELIVERY_STATUSES.map((s) => (
-                <Bar key={s.key} dataKey={s.key} name={s.label} stackId="row" fill={s.color} radius={0} />
+              {deliverySeries.map((s) => (
+                <Bar key={s.dataKey} dataKey={s.dataKey} name={s.label} stackId="row" fill={s.color} radius={0} />
               ))}
             </BarChart>
           </ResponsiveContainer>

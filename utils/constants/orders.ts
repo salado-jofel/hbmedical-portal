@@ -380,6 +380,22 @@ export function isInvoiceVisibleForStatus(status: string | null | undefined): bo
   return !!status && INVOICE_VISIBLE_STATUSES.has(status);
 }
 
+// Invoice states that mean "we have billed the clinic and the money has not
+// arrived" — the receivable. Excludes `paid` (collected), `void` (written
+// off), `draft` (not sent yet) and `not_applicable` (Pay Now orders, which
+// never raise an invoice).
+//
+// This is the line between revenue and receivable. The admin dashboard used to
+// report one "Total Revenue" figure that summed every non-canceled order
+// regardless of payment, so unpaid invoices and untouched drafts counted as
+// earnings. See bucketOrderMoney in utils/helpers/order-money.ts.
+export const OUTSTANDING_INVOICE_STATUSES = new Set<string>([
+  "issued",
+  "sent",
+  "partially_paid",
+  "overdue",
+]);
+
 // Order statuses from which the IVR is locked: once it reaches the
 // manufacturer's queue, editing it invalidates downstream work. Nothing to do
 // with signatures — the old physician_signed_at / "Mark IVR Complete" lock was

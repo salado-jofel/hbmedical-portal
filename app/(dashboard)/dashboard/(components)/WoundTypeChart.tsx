@@ -9,27 +9,51 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
+import { formatStatus } from "@/utils/helpers/formatter";
 import type { DashboardOrder } from "@/utils/interfaces/orders";
 
-const WOUND_CONFIG = [
-  { key: "chronic",      label: "Chronic",      color: "#0d7a6b" },
-  { key: "post_surgical",label: "Post-Surgical", color: "#1565c0" },
-  { key: null,           label: "Unknown",       color: "#94a3b8" },
-];
+const NO_WOUND_TYPE = "__none__";
+const FALLBACK_COLOR = "#94a3b8";
+
+/**
+ * Presentation only — the chart is driven by the data, not by this map.
+ *
+ * A wound_type missing from here still renders, labelled via formatStatus()
+ * and drawn in the fallback colour. The previous version mapped over the
+ * config instead of the counts, so `dfu` and `vlu` were never looked up: when
+ * the DFU/VLU order form templates shipped this chart kept drawing two
+ * slices, dropping 12 of 103 orders while the centre still read 103. Mapping
+ * over the data makes that failure impossible.
+ */
+const WOUND_PRESENTATION: Record<string, { label: string; color: string }> = {
+  chronic:       { label: "Chronic",       color: "#0d7a6b" },
+  post_surgical: { label: "Post-Surgical", color: "#1565c0" },
+  dfu:           { label: "DFU",           color: "#c47d0a" },
+  vlu:           { label: "VLU",           color: "#6d28d9" },
+  [NO_WOUND_TYPE]: { label: "Unknown",     color: FALLBACK_COLOR },
+};
 
 export function WoundTypeChart({ orders }: { orders: DashboardOrder[] }) {
   const { data, total } = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const o of orders) {
-      const key = o.wound_type ?? "__none__";
+      const key = o.wound_type ?? NO_WOUND_TYPE;
       counts[key] = (counts[key] ?? 0) + 1;
     }
-    const entries = WOUND_CONFIG.map((c) => ({
-      label: c.label,
-      count: counts[c.key ?? "__none__"] ?? 0,
-      color: c.color,
-    })).filter((e) => e.count > 0);
-    return { data: entries, total: orders.length };
+    const entries = Object.entries(counts)
+      .filter(([, count]) => count > 0)
+      .map(([key, count]) => ({
+        label: WOUND_PRESENTATION[key]?.label ?? formatStatus(key),
+        count,
+        color: WOUND_PRESENTATION[key]?.color ?? FALLBACK_COLOR,
+      }))
+      .sort((a, b) => b.count - a.count);
+    // Centre total is the sum of what's drawn, so the ring and the number can
+    // never disagree — the symptom that made the dropped slices invisible.
+    return {
+      data: entries,
+      total: entries.reduce((sum, e) => sum + e.count, 0),
+    };
   }, [orders]);
 
   return (

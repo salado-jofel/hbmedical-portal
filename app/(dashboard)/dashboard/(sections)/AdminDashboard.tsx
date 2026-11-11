@@ -17,6 +17,7 @@ import { UserStatusChart } from "@/app/(dashboard)/dashboard/(components)/UserSt
 import { ActivityFeed } from "@/app/(dashboard)/dashboard/(components)/ActivityFeed";
 import { AlertsBanner } from "@/app/(dashboard)/dashboard/(components)/AlertsBanner";
 import { formatAmount, formatDate, formatStatus } from "@/utils/helpers/formatter";
+import { bucketOrderMoney } from "@/utils/helpers/order-money";
 import type { TableColumn } from "@/utils/interfaces/table-column";
 import type { DashboardOrder } from "@/utils/interfaces/orders";
 import type { IUser } from "@/utils/interfaces/users";
@@ -29,6 +30,9 @@ const STATUS_VARIANT: Record<string, StatusVariant> = {
   delivered: "green", canceled: "red",
 };
 
+// Every order_status in orders_order_status_check, in lifecycle order. Keep
+// this list exhaustive: a status missing here is a column of orders that
+// silently never appears, and the counts stop summing to Total Orders.
 const PIPELINE = [
   { key: "draft",                    label: "Draft",       variant: "blue"  as StatusVariant },
   { key: "pending_signature",        label: "Pending Sig", variant: "gold"  as StatusVariant },
@@ -37,6 +41,7 @@ const PIPELINE = [
   { key: "approved",                 label: "Approved",    variant: "teal"  as StatusVariant },
   { key: "shipped",                  label: "Shipped",     variant: "blue"  as StatusVariant },
   { key: "delivered",                label: "Delivered",   variant: "green" as StatusVariant },
+  { key: "canceled",                 label: "Canceled",    variant: "red"   as StatusVariant },
 ];
 
 const QUICK_ACTIONS = [
@@ -62,10 +67,10 @@ export function AdminDashboard({
 }) {
   const router = useRouter();
 
-  const revenue = useMemo(
-    () => orders.filter((o) => o.order_status !== "canceled").reduce((s, o) => s + (o.total_amount ?? 0), 0),
-    [orders],
-  );
+  // Money splits three ways — collected / outstanding / pipeline. A single
+  // "Total Revenue" card used to sum every non-canceled order regardless of
+  // payment, which counted unbilled drafts as earnings.
+  const money = useMemo(() => bucketOrderMoney(orders), [orders]);
   const activeOrders = useMemo(
     () => orders.filter((o) => o.order_status !== "canceled" && o.order_status !== "draft").length,
     [orders],
@@ -94,8 +99,24 @@ export function AdminDashboard({
       <AlertsBanner orders={orders} users={users} />
 
       {/* 2. KPI grid */}
-      <div className="mb-5 grid grid-cols-2 gap-[10px] lg:grid-cols-4">
-        <KpiCard label="Total Revenue"  value={formatAmount(revenue)}        accentColor="teal"   />
+      <div className="mb-5 grid grid-cols-2 gap-[10px] lg:grid-cols-3">
+        <KpiCard
+          label="Collected"
+          value={formatAmount(money.collected)}
+          accentColor="green"
+        />
+        <KpiCard
+          label="Outstanding"
+          value={formatAmount(money.outstanding)}
+          delta={`${money.outstandingOrders} unpaid`}
+          deltaType="warn"
+          accentColor="gold"
+        />
+        <KpiCard
+          label="Pipeline"
+          value={formatAmount(money.pipeline)}
+          accentColor="teal"
+        />
         <KpiCard label="Total Orders"   value={String(orders.length)}        accentColor="blue"   />
         <KpiCard label="Active Orders"  value={String(activeOrders)}         accentColor="gold"   />
         <KpiCard label="Users"          value={String(users.length)}         accentColor="purple" />
@@ -125,7 +146,7 @@ export function AdminDashboard({
           <p className="text-[13px] font-semibold text-[var(--navy)]">Order Pipeline</p>
           <p className="mt-[1px] text-[11px] text-[var(--text3)]">Count by status</p>
         </div>
-        <div className="grid grid-cols-7 gap-2 p-4">
+        <div className="grid grid-cols-4 gap-2 p-4 lg:grid-cols-8">
           {PIPELINE.map(({ key, label, variant }) => (
             <Link
               key={key}

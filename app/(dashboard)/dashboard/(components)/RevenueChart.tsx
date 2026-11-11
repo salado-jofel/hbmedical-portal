@@ -10,6 +10,7 @@ import {
   Area,
   AreaChart,
 } from "recharts";
+import { isCollected } from "@/utils/helpers/order-money";
 import type { DashboardOrder } from "@/utils/interfaces/orders";
 
 const TEAL = "#0d7a6b";
@@ -25,13 +26,29 @@ function formatCurrency(value: number): string {
   }).format(value);
 }
 
+/* Collected revenue by month.
+ *
+ * Two deliberate choices, both of which this chart previously got wrong:
+ *
+ *   1. Only collected orders count. It used to include every non-canceled
+ *      order, so unbilled drafts appeared as revenue.
+ *   2. Months are keyed on paid_at, not placed_at. An order placed in March
+ *      and paid in May is May's revenue. Keying on placed_at made this a chart
+ *      of order creation wearing a revenue label.
+ *
+ * An order marked paid with no paid_at is skipped rather than guessed at —
+ * both Stripe webhooks stamp paid_at alongside payment_status, so a missing
+ * one means something is wrong upstream and inventing a date would hide it.
+ */
 export function RevenueChart({ orders }: { orders: DashboardOrder[] }) {
   const data = useMemo(() => {
     const byMonth: Record<string, number> = {};
     const years = new Set<number>();
     for (const o of orders) {
       if (o.order_status === "canceled") continue;
-      const d = new Date(o.placed_at);
+      if (!isCollected(o) || !o.paid_at) continue;
+      const d = new Date(o.paid_at);
+      if (Number.isNaN(d.getTime())) continue;
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
       byMonth[key] = (byMonth[key] ?? 0) + (o.total_amount ?? 0);
       years.add(d.getFullYear());
@@ -52,7 +69,7 @@ export function RevenueChart({ orders }: { orders: DashboardOrder[] }) {
     <div className="overflow-hidden rounded-[var(--r)] border border-[var(--border)] bg-[var(--surface)]">
       <div className="border-b border-[var(--border)] px-4 py-[0.8rem]">
         <p className="text-[13px] font-semibold text-[var(--navy)]">Revenue Trend</p>
-        <p className="mt-[1px] text-[11px] text-[var(--text3)]">Monthly order revenue</p>
+        <p className="mt-[1px] text-[11px] text-[var(--text3)]">Collected revenue by month paid</p>
       </div>
       <div className="p-4">
         {data.length === 0 ? (

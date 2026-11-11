@@ -1245,6 +1245,29 @@ function getArray<T>(val: MaybeRelation<T>): T[] {
   return Array.isArray(val) ? val : [val];
 }
 
+/**
+ * Sum one money column across every line item on an order.
+ *
+ * Order money is the sum of all lines, never one of them. Missing or
+ * non-numeric values contribute 0 so a half-filled draft still totals.
+ */
+function sumItems(
+  items: ReadonlyArray<{
+    shipping_amount?: number | null;
+    tax_amount?: number | null;
+    subtotal?: number | null;
+    total_amount?: number | null;
+  }>,
+  field: "shipping_amount" | "tax_amount" | "subtotal" | "total_amount",
+): number {
+  let total = 0;
+  for (const item of items) {
+    const value = Number(item[field] ?? 0);
+    if (Number.isFinite(value)) total += value;
+  }
+  return total;
+}
+
 export function mapOrder(raw: RawOrderRecord): DashboardOrder {
   const facility = getSingle(raw.facilities);
   const patient = getSingle(raw.patients);
@@ -1292,16 +1315,28 @@ export function mapOrder(raw: RawOrderRecord): DashboardOrder {
     icd10_code: raw.icd10_code ?? null,
     followup_days: raw.followup_days ?? null,
     symptoms: raw.symptoms ?? [],
-    // item fields
+    // Item fields, two kinds.
+    //
+    // product_*, quantity and unit_price describe ONE line — the first — and
+    // are the single-product summary OrderCard and EditOrderModal render.
+    // They stay first-item deliberately.
+    //
+    // The money fields are order-level totals and must sum every line. They
+    // also read firstItem until 2026-11-04, which silently discarded every
+    // line after the first: the admin dashboard reported $40,841 of revenue
+    // against a true $86,036.50 across 103 orders, 13 of which had more than
+    // one item and one of which had 18. The figure was also unstable —
+    // ORDER_WITH_RELATIONS_SELECT requests order_items with no `order by`, so
+    // "first" was physical row order and moved after any UPDATE or autovacuum.
     product_id: firstItem?.product_id ?? null,
     product_name: firstItem?.product_name ?? "",
     product_sku: firstItem?.product_sku ?? "",
     quantity: Number(firstItem?.quantity ?? 0),
     unit_price: Number(firstItem?.unit_price ?? 0),
-    shipping_amount: Number(firstItem?.shipping_amount ?? 0),
-    tax_amount: Number(firstItem?.tax_amount ?? 0),
-    subtotal: Number(firstItem?.subtotal ?? 0),
-    total_amount: Number(firstItem?.total_amount ?? 0),
+    shipping_amount: sumItems(items, "shipping_amount"),
+    tax_amount: sumItems(items, "tax_amount"),
+    subtotal: sumItems(items, "subtotal"),
+    total_amount: sumItems(items, "total_amount"),
     // facility
     facility_name: facility?.name ?? "",
     // patient
